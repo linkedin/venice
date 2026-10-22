@@ -43,9 +43,10 @@ might be not the same depending on the exact setup.
 With deferred version swap in clusters where degraded mode is disabled, a reachable child controller that has not
 created the new version yet is allowed to catch up until the store's bootstrap-to-online timeout, measured from the
 parent version's creation time (24 hours by default). Failed requests and missing versions the child has already created
-retain a five-poll limit. Exhausted retries remain failed across polls until a successful fetch or terminal-push
-cleanup. Clusters with degraded mode enabled retain five-poll handling for all missing versions, including healthy
-regions, to preserve intentional region exclusions without introducing new version metadata.
+retain a five-poll limit, bounded by the same deadline. Exhausted retries remain failed across polls until the target
+version is fetched or terminal-push cleanup. Clusters with degraded mode enabled retain five-poll handling for all
+missing versions, including healthy regions, to preserve intentional region exclusions without introducing new version
+metadata.
 
 ## Usage
 

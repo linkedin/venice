@@ -581,13 +581,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String clusterName,
       String regionKafkaTopicName) {
     // Degraded-mode clusters retain legacy retries because a missing version may be intentionally excluded.
-    if (veniceParentHelixAdmin.isDegradedModeEnabled(clusterName) || storeResponse == null
-        || storeResponse.getStore().getLargestUsedVersionNumber() >= targetVersionNum) {
+    if (veniceParentHelixAdmin.isDegradedModeEnabled(clusterName)) {
       return didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName);
     }
 
-    // A child behind the target version may still be consuming ADD_VERSION.
-    fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
     long bootstrapDeadlineMs = parentStore.getVersion(targetVersionNum).getCreatedTime()
         + TimeUnit.HOURS.toMillis(parentStore.getBootstrapToOnlineTimeoutInHours());
     if (System.currentTimeMillis() > bootstrapDeadlineMs) {
@@ -597,6 +594,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           bootstrapDeadlineMs);
       return true;
     }
+    if (storeResponse == null || storeResponse.getStore().getLargestUsedVersionNumber() >= targetVersionNum
+        || fetchNonTargetRegionStoreRetryCountMap
+            .getOrDefault(regionKafkaTopicName, 0) >= MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
+      return didMaxRetriesExceedForStoreFetchInRegion(regionKafkaTopicName);
+    }
+
+    // A child behind the target version may still be consuming ADD_VERSION.
+    fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
     logMessageIfNotRedundant("Waiting for child controller to create version " + regionKafkaTopicName);
     return false;
   }
