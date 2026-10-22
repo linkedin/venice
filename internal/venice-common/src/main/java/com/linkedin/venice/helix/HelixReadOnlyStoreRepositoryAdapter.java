@@ -12,7 +12,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.function.BiFunction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,28 +57,19 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
 
   @Override
   public Store getStore(String storeName) {
-    return getStore(storeName, ReadOnlyStoreRepository::getStore);
-  }
-
-  @Override
-  public Store getStoreFromCache(String storeName) {
-    return getStore(storeName, ReadOnlyStoreRepository::getStoreFromCache);
-  }
-
-  private Store getStore(String storeName, BiFunction<ReadOnlyStoreRepository, String, Store> lookup) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (forwardToRegularRepository(systemStoreType)) {
-      return lookup.apply(regularStoreRepository, storeName);
+      return regularStoreRepository.getStore(storeName);
     }
     // Get the regular store name
     String regularStoreName = systemStoreType.extractRegularStoreName(storeName);
-    Store regularStore = lookup.apply(regularStoreRepository, regularStoreName);
+    Store regularStore = regularStoreRepository.getStore(regularStoreName);
     if (regularStore == null) {
       return null;
     }
     // Get ZK shared system store name
     String zkSharedStoreName = systemStoreType.getZkSharedStoreName();
-    Store zkSharedStore = lookup.apply(systemStoreRepository, zkSharedStoreName);
+    Store zkSharedStore = systemStoreRepository.getStore(zkSharedStoreName);
     if (zkSharedStore == null) {
       return null;
     }
