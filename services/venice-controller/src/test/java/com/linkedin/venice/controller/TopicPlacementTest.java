@@ -35,7 +35,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -198,9 +198,9 @@ public class TopicPlacementTest {
     when(store.getIsDavinciHeartbeatReported()).thenReturn(marker.equals("heartbeat"));
     when(store.isBlobTransferEnabled()).thenReturn(marker.equals("blob"));
     if (marker.equals("cdc") || marker.equals("malformed")) {
-      ViewConfig view = mock(ViewConfig.class);
-      when(view.getViewClassName())
-          .thenReturn(marker.equals("cdc") ? "com.linkedin.venice.views.ChangeCaptureView" : null);
+      ViewConfigImpl view = new ViewConfigImpl(
+          marker.equals("cdc") ? "com.linkedin.venice.views.ChangeCaptureView" : null,
+          Collections.emptyMap());
       when(store.getViewConfigs()).thenReturn(Collections.singletonMap("view", view));
     }
     when(placement.isEnabled(config.getClusterName())).thenReturn(!policy.equals("LEGACY"));

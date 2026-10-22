@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.placement;
 
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
@@ -53,9 +54,6 @@ public final class TopicPlacementContext {
     if (store == null) {
       return MigrationCategory.UNKNOWN;
     }
-    if (store.isHybrid()) {
-      return MigrationCategory.HYBRID_VT;
-    }
     // Older metadata can omit views; this is equivalent to having no configured views.
     Map<String, ViewConfig> views = store.getViewConfigs();
     if (views == null) {
@@ -63,7 +61,9 @@ public final class TopicPlacementContext {
     }
     boolean malformedView = false;
     for (ViewConfig view: views.values()) {
-      String className = view == null ? null : view.getViewClassName();
+      StoreViewConfig viewConfig = view == null ? null : view.dataModel();
+      CharSequence rawClassName = viewConfig == null ? null : viewConfig.getViewClassName();
+      String className = rawClassName == null ? null : rawClassName.toString();
       if (CHANGE_CAPTURE_VIEW_CLASS.equals(className)) {
         return MigrationCategory.CDC_VT;
       }
@@ -75,6 +75,9 @@ public final class TopicPlacementContext {
     if (store.isDaVinciPushStatusStoreEnabled() || store.getIsDavinciHeartbeatReported()
         || store.isBlobTransferEnabled()) {
       return MigrationCategory.DAVINCI_VT;
+    }
+    if (store.isHybrid()) {
+      return MigrationCategory.HYBRID_VT;
     }
     return MigrationCategory.BATCH_VT;
   }

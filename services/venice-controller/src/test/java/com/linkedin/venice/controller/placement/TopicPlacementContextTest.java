@@ -7,8 +7,10 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.venice.controller.placement.TopicPlacementContext.MigrationCategory;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -27,9 +29,7 @@ public class TopicPlacementContextTest {
     when(store.isBlobTransferEnabled()).thenReturn(blob);
     Map<String, ViewConfig> views = new HashMap<>();
     if (viewClass != null) {
-      ViewConfig view = mock(ViewConfig.class);
-      when(view.getViewClassName()).thenReturn(viewClass);
-      views.put("view", view);
+      views.put("view", new ViewConfigImpl(viewClass, Collections.emptyMap()));
     }
     when(store.getViewConfigs()).thenReturn(views);
     return store;
@@ -45,9 +45,14 @@ public class TopicPlacementContextTest {
         { false, null, false, true, false, MigrationCategory.DAVINCI_VT },
         { false, null, false, false, true, MigrationCategory.DAVINCI_VT },
         { false, null, true, true, true, MigrationCategory.DAVINCI_VT },
-        { true, cdc, true, true, true, MigrationCategory.HYBRID_VT },
+        { true, cdc, true, true, true, MigrationCategory.CDC_VT },
+        { true, cdc, false, false, false, MigrationCategory.CDC_VT },
+        { true, null, true, false, false, MigrationCategory.DAVINCI_VT },
+        { true, null, false, true, false, MigrationCategory.DAVINCI_VT },
+        { true, null, false, false, true, MigrationCategory.DAVINCI_VT },
         { false, cdc, true, true, true, MigrationCategory.CDC_VT },
         { false, "com.linkedin.venice.views.MaterializedView", false, false, false, MigrationCategory.BATCH_VT },
+        { true, "com.linkedin.venice.views.MaterializedView", false, false, false, MigrationCategory.HYBRID_VT },
         { false, "example.ChangeCaptureView", false, false, false, MigrationCategory.BATCH_VT } };
   }
 
@@ -71,18 +76,36 @@ public class TopicPlacementContextTest {
 
   @DataProvider
   public Object[][] malformedViews() {
-    ViewConfig missingClass = mock(ViewConfig.class);
-    ViewConfig blankClass = mock(ViewConfig.class);
-    when(blankClass.getViewClassName()).thenReturn(" ");
+    ViewConfig missingClass = new ViewConfigImpl(null, Collections.emptyMap());
+    ViewConfig blankClass = new ViewConfigImpl(" ", Collections.emptyMap());
     return new Object[][] { { Collections.singletonMap("view", null) },
-        { Collections.singletonMap("view", missingClass) }, { Collections.singletonMap("view", blankClass) } };
+        { Collections.singletonMap("view", missingClass) }, { Collections.singletonMap("view", blankClass) },
+        { Collections.singletonMap("view", new ViewConfigImpl(null)) } };
   }
 
   @Test(dataProvider = "malformedViews")
   public void testMalformedViewMetadataIsUnverified(Map<String, ViewConfig> views) {
-    Store store = store(false, null, false, false, false);
-    when(store.getViewConfigs()).thenReturn(views);
-    assertEquals(context(store).getMigrationCategory(), MigrationCategory.UNKNOWN);
+    for (boolean hybrid: new boolean[] { false, true }) {
+      Store store = store(hybrid, null, false, false, false);
+      when(store.getViewConfigs()).thenReturn(views);
+      assertEquals(context(store).getMigrationCategory(), MigrationCategory.UNKNOWN);
+    }
+  }
+
+  @Test(dataProvider = "malformedViews")
+  public void testKnownCdcTakesPrecedenceOverMalformedViews(Map<String, ViewConfig> malformed) {
+    for (boolean cdcFirst: new boolean[] { false, true }) {
+      Map<String, ViewConfig> views = new LinkedHashMap<>();
+      ViewConfig cdc = new ViewConfigImpl("com.linkedin.venice.views.ChangeCaptureView", Collections.emptyMap());
+      if (cdcFirst) {
+        views.put("cdc", cdc);
+      }
+      views.putAll(malformed);
+      views.put("cdc", cdc);
+      Store store = store(true, null, true, true, true);
+      when(store.getViewConfigs()).thenReturn(views);
+      assertEquals(context(store).getMigrationCategory(), MigrationCategory.CDC_VT);
+    }
   }
 
   @Test
