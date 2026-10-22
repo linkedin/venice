@@ -35,6 +35,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -42,6 +43,9 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -134,6 +138,7 @@ public class TopicPlacementTest {
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().getTopicName(), "batch-store_v1");
     assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
+    assertEquals(captured.getValue().getMigrationCategory(), TopicPlacementContext.MigrationCategory.BATCH_VT);
     verifyCreate("batch-store", alternative);
   }
 
@@ -146,6 +151,7 @@ public class TopicPlacementTest {
     verify(placement).select(captured.capture());
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().getTopicName(), name + "_v1");
+    assertEquals(captured.getValue().getMigrationCategory(), TopicPlacementContext.MigrationCategory.BATCH_VT);
     verifyCreate(name, alternative);
   }
 
@@ -168,15 +174,41 @@ public class TopicPlacementTest {
     verifyCreate(pushStatus, selection == TopicPlacement.Selection.TREATMENT);
   }
 
-  @Test
-  public void testHybridOwnerPushStatusUsesStaticPlacement() {
-    String name = preparePushStatusStore();
-    configureStaticSettings(name, true);
-    when(store.isHybrid()).thenReturn(true);
+  @DataProvider
+  public Object[][] metadataExclusions() {
+    List<Object[]> cases = new ArrayList<>();
+    for (String marker: new String[] { "hybrid", "cdc", "pushStatus", "heartbeat", "blob", "malformed" }) {
+      for (boolean pushStatus: new boolean[] { false, true }) {
+        for (String policy: new String[] { "ACTIVE", "SHADOW", "LEGACY" }) {
+          for (boolean staticAlternative: new boolean[] { false, true }) {
+            cases.add(new Object[] { marker, pushStatus, policy, staticAlternative });
+          }
+        }
+      }
+    }
+    return cases.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "metadataExclusions")
+  public void testMetadataAdmission(String marker, boolean pushStatus, String policy, boolean staticAlternative) {
+    String name = pushStatus ? preparePushStatusStore() : "batch-store";
+    configureStaticSettings(name, staticAlternative);
+    when(store.isHybrid()).thenReturn(marker.equals("hybrid"));
+    when(store.isDaVinciPushStatusStoreEnabled()).thenReturn(marker.equals("pushStatus"));
+    when(store.getIsDavinciHeartbeatReported()).thenReturn(marker.equals("heartbeat"));
+    when(store.isBlobTransferEnabled()).thenReturn(marker.equals("blob"));
+    if (marker.equals("cdc") || marker.equals("malformed")) {
+      ViewConfig view = mock(ViewConfig.class);
+      when(view.getViewClassName())
+          .thenReturn(marker.equals("cdc") ? "com.linkedin.venice.views.ChangeCaptureView" : null);
+      when(store.getViewConfigs()).thenReturn(Collections.singletonMap("view", view));
+    }
+    when(placement.isEnabled(config.getClusterName())).thenReturn(!policy.equals("LEGACY"));
+    when(placement.isShadowMode(config.getClusterName())).thenReturn(policy.equals("SHADOW"));
     when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
     create(name, PushType.BATCH);
     verify(placement, never()).select(any());
-    verifyCreate(name, true);
+    verifyCreate(name, !policy.equals("ACTIVE") && staticAlternative);
   }
 
   @Test
@@ -281,8 +313,8 @@ public class TopicPlacementTest {
 
   @DataProvider
   public Object[][] excludedScope() {
-    return new Object[][] { { "hybrid-store", PushType.BATCH, true },
-        { "batch-store", PushType.STREAM_REPROCESSING, false }, { "batch-store", PushType.INCREMENTAL, false },
+    return new Object[][] { { "batch-store", PushType.STREAM_REPROCESSING, false },
+        { "batch-store", PushType.INCREMENTAL, false },
         { VeniceSystemStoreUtils.getParticipantStoreNameForCluster("cluster"), PushType.BATCH, false },
         { VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushType.BATCH, false },
         { VeniceSystemStoreUtils.getMetaStoreName("batch-store"), PushType.BATCH, false },

@@ -3115,7 +3115,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
     }
-    if (store.isHybrid() || VeniceSystemStoreUtils.isSystemStore(storeName)) {
+    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
       return staticAlternative;
     }
 
@@ -3125,7 +3125,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeName,
         versionTopic.getName(),
         topicManager.getPubSubClusterAddress(),
-        staticAlternative);
+        staticAlternative,
+        store);
+    if (context.getMigrationCategory() != TopicPlacementContext.MigrationCategory.BATCH_VT) {
+      boolean appliedAlternative = shadowMode && staticAlternative;
+      LOGGER.info(
+          "Topic placement metadata exclusion: cluster={} store={} topic={} destination={} category={} shadow={} staticAlternative={} appliedAlternative={}",
+          context.getClusterName(),
+          context.getStoreName(),
+          context.getTopicName(),
+          context.getDestinationAddress(),
+          context.getMigrationCategory(),
+          shadowMode,
+          staticAlternative,
+          appliedAlternative);
+      return appliedAlternative;
+    }
     TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
     boolean proposedAlternative = selection == TopicPlacement.Selection.TREATMENT;
     if (!shadowMode) {
