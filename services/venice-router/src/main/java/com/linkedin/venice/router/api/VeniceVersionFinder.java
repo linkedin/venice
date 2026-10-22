@@ -103,21 +103,26 @@ public class VeniceVersionFinder {
     boolean newVersionDecompressorReady;
 
     Integer existingVersionNumber = lastCurrentVersionMap.get(storeName);
-    if (existingVersionNumber == null) {
-      if (metadataCurrentVersionNumber == Store.NON_EXISTING_VERSION) {
+    if (existingVersionNumber == null || existingVersionNumber == Store.NON_EXISTING_VERSION) {
+      if (existingVersionNumber == null && metadataCurrentVersionNumber == Store.NON_EXISTING_VERSION) {
         /** new store push has completed but the routers are not up-to-date on the latest metadata yet
          * This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
         store = metadataRepository.refreshOneStore(storeName);
         metadataCurrentVersionNumber = store.getCurrentVersion();
       }
-      // check if new store is ready to serve
-      lastCurrentVersionMap.putIfAbsent(storeName, metadataCurrentVersionNumber);
+      // Remember the metadata refresh without caching an uninitialized serving version.
+      lastCurrentVersionMap.putIfAbsent(storeName, Store.NON_EXISTING_VERSION);
       newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersionNumber);
       newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
       newVersionDecompressorReady =
           isDecompressorReady(store.getVersion(metadataCurrentVersionNumber), newVersionKafkaTopic);
       if (newVersionPartitionResourcesReady && newVersionDecompressorReady) {
         // new store ready to serve
+        RouterCurrentVersionStats currentVersionStats = storeStats.get(storeName);
+        if (currentVersionStats != null) {
+          currentVersionStats.updateCurrentVersion(metadataCurrentVersionNumber);
+        }
+        lastCurrentVersionMap.put(storeName, metadataCurrentVersionNumber);
         existingVersionNumber = metadataCurrentVersionNumber;
       } else {
         // new store not ready to serve
@@ -173,11 +178,11 @@ public class VeniceVersionFinder {
     }
 
     stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
-    if (existingVersionPartitionResourcesReady) {
+    if (existingVersionPartitionResourcesReady && existingVersionDecompressorReady) {
       lastCurrentVersionMap.put(storeName, existingVersionNumber);
       return existingVersionNumber;
     } else {
-      // Existing version's Helix resource has been deleted — cannot serve either version.
+      // Neither version has usable routing and decompression resources.
       // Reset to force re-evaluation on next request.
       lastCurrentVersionMap.put(storeName, Store.NON_EXISTING_VERSION);
       return Store.NON_EXISTING_VERSION;
