@@ -186,20 +186,23 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       return;
     }
     versionIsOnline = isVersionOnline(version);
-    if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
-      LOGGER.info(
-          "Store: {} changed, updated quota in: versionTopic: {} from: {} to: {} and store quota is {}enabled, "
-              + "so we reset the store quota and resume all partitions.",
-          this.storeName,
-          this.versionTopic,
-          this.storeQuotaInBytes,
-          store.getStorageQuotaInByte(),
-          store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
-      resumeAllPartitions();
-    }
-
     try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
       boolean isHybridQuotaUpdated = isHybridStoreDiskQuotaUpdated(store);
+      if (!isHybridQuotaUpdated) {
+        return;
+      }
+      if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
+        LOGGER.info(
+            "Store: {} changed, updated quota in: versionTopic: {} from: {} to: {} and store quota is {}enabled, "
+                + "so we reset the store quota and resume all partitions.",
+            this.storeName,
+            this.versionTopic,
+            this.storeQuotaInBytes,
+            store.getStorageQuotaInByte(),
+            store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
+        resumeAllPartitions();
+      }
+
       boolean oldHybridQuotaEnabledState = isHybridQuotaEnabled();
       setStoreQuota(store);
       boolean isHybridQuotaChangedToDisabled = oldHybridQuotaEnabledState && !isHybridQuotaEnabled();
