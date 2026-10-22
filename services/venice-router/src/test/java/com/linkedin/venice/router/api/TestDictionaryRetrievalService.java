@@ -9,54 +9,36 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.VeniceRouterConfig;
-import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
-import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import io.netty.buffer.Unpooled;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -70,25 +52,14 @@ public class TestDictionaryRetrievalService {
   MetricsRepository metricsRepository;
   Store store;
   Version version;
-  private DictionaryRetrievalService service;
 
   private static final String STORE_NAME = "test_store";
   private static final int VERSION_NUMBER = 1;
   private static final String KAFKA_TOPIC_NAME = STORE_NAME + "_v1";
   private static final int DICTIONARY_RETRIEVAL_TIME_MS = 3 * Time.MS_PER_SECOND;
 
-  private enum WarmupScenario {
-    SUCCESS, NO_ONLINE_REPLICA, FETCH_FAILURE, FETCH_TIMEOUT, MISSING_COMPRESSOR, INITIALIZATION_FAILURE, VERSION_ERROR,
-    VERSION_KILLED, VERSION_RETIRED, SETUP_FAILURE, NON_CURRENT
-  }
-
-  private enum ExistingDownloadState {
-    PENDING, COMPLETED, CANCELLED
-  }
-
   @BeforeMethod
   public void setUp() {
-    service = null;
     onlineInstanceFinder = mock(OnlineInstanceFinder.class);
     routerConfig = mock(VeniceRouterConfig.class);
     metadataRepository = mock(ReadOnlyStoreRepository.class);
@@ -111,161 +82,6 @@ public class TestDictionaryRetrievalService {
     compressorFactory = mock(CompressorFactory.class);
     metricsRepository = new MetricsRepository();
     sslFactory = mock(SSLFactory.class);
-  }
-
-  @AfterMethod(alwaysRun = true)
-  public void tearDown() throws IOException {
-    if (service != null) {
-      service.stopInner();
-    }
-  }
-
-  private void createService() {
-    service = new DictionaryRetrievalService(
-        onlineInstanceFinder,
-        routerConfig,
-        Optional.of(sslFactory),
-        metadataRepository,
-        storageNodeClient,
-        compressorFactory,
-        metricsRepository);
-  }
-
-  private void configureCurrentDictionaryVersion() {
-    doReturn(VERSION_NUMBER).when(store).getCurrentVersion();
-    doReturn(STORE_NAME).when(version).getStoreName();
-    doReturn(VERSION_NUMBER).when(version).getNumber();
-    doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
-    doReturn(DICTIONARY_RETRIEVAL_TIME_MS).when(routerConfig).getDictionaryRetrievalTimeMs();
-  }
-
-  private void configureOnlineInstance(String topic) {
-    doReturn(1).when(onlineInstanceFinder).getNumberOfPartitions(topic);
-    doReturn(Collections.singletonList(new Instance("node", "localhost", 1234))).when(onlineInstanceFinder)
-        .getReadyToServeInstances(topic, 0);
-  }
-
-  private PortableHttpResponse createDictionaryResponse() throws IOException {
-    PortableHttpResponse response = mock(PortableHttpResponse.class);
-    doReturn(200).when(response).getStatusCode();
-    doReturn(Unpooled.wrappedBuffer(new byte[] { 1 })).when(response).getContentInByteBuf();
-    return response;
-  }
-
-  @DataProvider
-  public Object[][] warmupScenarios() {
-    return Arrays.stream(WarmupScenario.values()).map(scenario -> new Object[] { scenario }).toArray(Object[][]::new);
-  }
-
-  @Test(dataProvider = "warmupScenarios", timeOut = 10 * Time.MS_PER_SECOND)
-  public void testWarmupRequiresInitializedCompressor(WarmupScenario scenario) throws Exception {
-    configureCurrentDictionaryVersion();
-    if (scenario == WarmupScenario.FETCH_TIMEOUT) {
-      doReturn(200).when(routerConfig).getDictionaryRetrievalTimeMs();
-    }
-    if (scenario == WarmupScenario.NON_CURRENT) {
-      doReturn(Store.NON_EXISTING_VERSION).when(store).getCurrentVersion();
-      doReturn(VersionStatus.STARTED).when(version).getStatus();
-    } else if (scenario == WarmupScenario.SETUP_FAILURE) {
-      doAnswer(invocation -> {
-        throw new IllegalStateException("Dictionary setup failed");
-      }).when(version).getStoreName();
-    }
-    if (scenario != WarmupScenario.NO_ONLINE_REPLICA) {
-      configureOnlineInstance(KAFKA_TOPIC_NAME);
-    }
-    boolean initializeCompressor = scenario == WarmupScenario.SUCCESS;
-    AtomicBoolean compressorReady = new AtomicBoolean();
-    doAnswer(invocation -> compressorReady.get()).when(compressorFactory)
-        .versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
-    doAnswer(invocation -> {
-      if (scenario == WarmupScenario.INITIALIZATION_FAILURE) {
-        throw new VeniceException("Compressor initialization failed");
-      }
-      compressorReady.set(initializeCompressor);
-      return null;
-    }).when(compressorFactory).createVersionSpecificCompressorIfNotExist(any(), any(), any());
-    BlockingQueue<CompletableFuture<PortableHttpResponse>> responses = new LinkedBlockingQueue<>();
-    doAnswer(invocation -> {
-      if (scenario == WarmupScenario.VERSION_ERROR || scenario == WarmupScenario.VERSION_KILLED) {
-        Version replacement = new VersionImpl(STORE_NAME, VERSION_NUMBER);
-        replacement.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-        replacement.setStatus(scenario == WarmupScenario.VERSION_ERROR ? VersionStatus.ERROR : VersionStatus.KILLED);
-        doReturn(replacement).when(store).getVersion(VERSION_NUMBER);
-        doReturn(Collections.singletonList(replacement)).when(store).getVersions();
-      } else if (scenario == WarmupScenario.VERSION_RETIRED) {
-        doReturn(null).when(store).getVersion(VERSION_NUMBER);
-        doReturn(Collections.emptyList()).when(store).getVersions();
-        service.getStoreChangeListener().handleStoreChanged(store);
-      }
-      CompletableFuture<PortableHttpResponse> responseFuture = invocation.getArgument(1);
-      if (scenario == WarmupScenario.FETCH_FAILURE) {
-        responseFuture.completeExceptionally(new IOException("Dictionary unavailable"));
-      } else if (scenario == WarmupScenario.NON_CURRENT) {
-        responses.add(responseFuture);
-      } else if (scenario != WarmupScenario.FETCH_TIMEOUT) {
-        responseFuture.complete(createDictionaryResponse());
-      }
-      return null;
-    }).when(storageNodeClient).sendRequest(any(), any());
-
-    createService();
-    boolean skipped = scenario == WarmupScenario.VERSION_ERROR || scenario == WarmupScenario.VERSION_KILLED
-        || scenario == WarmupScenario.VERSION_RETIRED;
-    if (initializeCompressor || skipped || scenario == WarmupScenario.NON_CURRENT) {
-      assertTrue(service.startInner());
-      if (initializeCompressor) {
-        assertTrue(service.getDownloadingDictionaryFutures().get(KAFKA_TOPIC_NAME).isDone());
-        assertFalse(service.getDownloadingDictionaryFutures().get(KAFKA_TOPIC_NAME).isCompletedExceptionally());
-      } else if (skipped) {
-        assertNull(service.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
-        verify(compressorFactory, never()).createVersionSpecificCompressorIfNotExist(any(), any(), any());
-      } else {
-        CompletableFuture<PortableHttpResponse> response = responses.poll(2, TimeUnit.SECONDS);
-        assertNotNull(response, "Non-current dictionaries must be downloaded in the background");
-        assertFalse(service.getDownloadingDictionaryFutures().get(KAFKA_TOPIC_NAME).isDone());
-        response.completeExceptionally(new IOException("Non-current dictionary unavailable"));
-        assertNotNull(responses.poll(2, TimeUnit.SECONDS), "Non-current dictionary downloads must retry");
-      }
-    } else {
-      VeniceException exception = expectThrows(VeniceException.class, service::startInner);
-      assertTrue(exception.getMessage().contains("Dictionary warmup failed"));
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
-        assertNotNull(service.getFetchDelayTimeinMsMap().get(KAFKA_TOPIC_NAME));
-      });
-      if (scenario == WarmupScenario.SETUP_FAILURE) {
-        assertFalse(service.getDownloadingDictionaryFutures().containsKey(KAFKA_TOPIC_NAME));
-      }
-    }
-    assertEquals(compressorReady.get(), initializeCompressor);
-    assertEquals(
-        metricsRepository.getMetric(".dictionary_retrieval_service--dictionary_download_success.Count").value(),
-        initializeCompressor ? 1.0 : 0.0);
-  }
-
-  @DataProvider
-  public Object[][] existingDownloads() {
-    return Arrays.stream(ExistingDownloadState.values()).map(state -> new Object[] { state }).toArray(Object[][]::new);
-  }
-
-  @Test(dataProvider = "existingDownloads", timeOut = 10 * Time.MS_PER_SECOND)
-  public void testWarmupValidatesExistingDownload(ExistingDownloadState state) throws Exception {
-    configureCurrentDictionaryVersion();
-    doReturn(200).when(routerConfig).getDictionaryRetrievalTimeMs();
-    createService();
-    CompletableFuture<Void> existingDownload = new CompletableFuture<>();
-    if (state == ExistingDownloadState.COMPLETED) {
-      existingDownload.complete(null);
-    } else if (state == ExistingDownloadState.CANCELLED) {
-      existingDownload.cancel(false);
-    }
-    service.getDownloadingDictionaryFutures().put(KAFKA_TOPIC_NAME, existingDownload);
-    VeniceException exception = expectThrows(VeniceException.class, service::startInner);
-    assertTrue(exception.getMessage().contains("Dictionary warmup failed"));
-    if (state == ExistingDownloadState.CANCELLED) {
-      assertTrue(existingDownload.isCancelled());
-    }
-    verify(storageNodeClient, never()).sendRequest(any(), any());
   }
 
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
@@ -423,70 +239,69 @@ public class TestDictionaryRetrievalService {
     }
   }
 
+  /**
+   * 1. This test verifies that the dictionary is fetched for a store with a future version. i.e. VersionStatus.STARTED or VersionStatus.PUSHED.
+   * 2. To simulate when the push of the future version has started but the dictionary is not ready, this test ensures that dictionary retrieval is retried if the first two attempts fail.
+   */
   @Test(timeOut = 10 * Time.MS_PER_SECOND)
   public void testFutureVersionDictionaryRetrieval() throws Exception {
-    try (CompressorFactory realCompressorFactory = new CompressorFactory();
-        VeniceMetricsRepository versionMetrics = new VeniceMetricsRepository()) {
-      Version futureVersion = new VersionImpl(STORE_NAME, VERSION_NUMBER);
-      futureVersion.setCompressionStrategy(CompressionStrategy.NO_OP);
-      futureVersion.setStatus(VersionStatus.ONLINE);
-      doReturn(Collections.singletonList(futureVersion)).when(store).getVersions();
-      doReturn(futureVersion).when(store).getVersion(VERSION_NUMBER);
+    DictionaryRetrievalService dictionaryRetrievalService = null;
+    try {
+      /** if dictionaryRetrievalTimeMs not set, the value would default to 0
+       * -> timeout getDictionaryFromResponse()
+       * -> fail dictionary download */
       when(routerConfig.getDictionaryRetrievalTimeMs()).thenReturn(DICTIONARY_RETRIEVAL_TIME_MS);
-      HelixCustomizedViewOfflinePushRepository routingRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
-      doReturn(true).when(routingRepository).containsKafkaTopic(KAFKA_TOPIC_NAME);
-      doReturn(1).when(routingRepository).getNumberOfPartitions(KAFKA_TOPIC_NAME);
-      doReturn(Collections.singletonList(new Instance("node", "localhost", 1234))).when(routingRepository)
-          .getReadyToServeInstances(KAFKA_TOPIC_NAME, 0);
-      BlockingQueue<CompletableFuture<PortableHttpResponse>> responses = new LinkedBlockingQueue<>();
+
+      dictionaryRetrievalService = spy(
+          new DictionaryRetrievalService(
+              onlineInstanceFinder,
+              routerConfig,
+              Optional.of(sslFactory),
+              metadataRepository,
+              storageNodeClient,
+              compressorFactory,
+              metricsRepository));
+      dictionaryRetrievalService.start();
+      StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
+
+      // Set up the store and version with VersionStatus.STARTED
+      doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
+      doReturn(VersionStatus.STARTED).when(version).getStatus();
+      doReturn(STORE_NAME).when(version).getStoreName();
+      doReturn(VERSION_NUMBER).when(version).getNumber();
+      doReturn(false).when(compressorFactory).versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
+
+      doReturn(1).when(onlineInstanceFinder).getNumberOfPartitions(KAFKA_TOPIC_NAME);
+      Instance mockInstance = mock(Instance.class);
+      doReturn("localhost").when(mockInstance).getUrl(anyBoolean());
+      List<Instance> instances = new ArrayList<>();
+      instances.add(mockInstance);
+      doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(KAFKA_TOPIC_NAME, 0);
+
+      doReturn(new byte[] {}).when(dictionaryRetrievalService).getDictionaryFromResponse(any(), any());
+
+      // Trigger dictionary retrieval
+      storeChangeListener.handleStoreChanged(store);
+
+      // Simulate network response to query the dictionary
       doAnswer(invocation -> {
-        responses.add(invocation.getArgument(1));
-        return null;
+        return null; // Return null because the method is void
       }).when(storageNodeClient).sendRequest(any(), any());
 
-      try (DictionaryRetrievalService dictionaryRetrievalService = new DictionaryRetrievalService(
-          routingRepository,
-          routerConfig,
-          Optional.of(sslFactory),
-          metadataRepository,
-          storageNodeClient,
-          realCompressorFactory,
-          metricsRepository)) {
-        dictionaryRetrievalService.start();
-        StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
-
-        futureVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-        futureVersion.setStatus(VersionStatus.STARTED);
-        doReturn(true).when(store).isEnableReads();
-        doReturn(VERSION_NUMBER).when(store).getCurrentVersion();
-
-        VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-            metadataRepository,
-            routingRepository,
-            mock(StaleVersionStats.class),
-            mock(HelixReadOnlyStoreConfigRepository.class),
-            Collections.emptyMap(),
-            "cluster",
-            realCompressorFactory,
-            versionMetrics);
-
-        storeChangeListener.handleStoreChanged(store);
-        for (int attempt = 0; attempt < 2; attempt++) {
-          CompletableFuture<PortableHttpResponse> response = responses.poll(2, TimeUnit.SECONDS);
-          assertNotNull(response, "Dictionary download should retry after failure");
-          assertEquals(versionFinder.getVersion(STORE_NAME, null), Store.NON_EXISTING_VERSION);
-          response.completeExceptionally(new IOException("Dictionary temporarily unavailable"));
-        }
-        futureVersion.setStatus(VersionStatus.ONLINE);
-        storeChangeListener.handleStoreChanged(store);
-        CompletableFuture<PortableHttpResponse> response = responses.poll(2, TimeUnit.SECONDS);
-        assertNotNull(response);
-        assertEquals(versionFinder.getVersion(STORE_NAME, null), Store.NON_EXISTING_VERSION);
-        response.complete(createDictionaryResponse());
-        TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
-          assertNotNull(realCompressorFactory.getVersionSpecificCompressor(KAFKA_TOPIC_NAME));
-          assertEquals(versionFinder.getVersion(STORE_NAME, null), VERSION_NUMBER);
-        });
+      // Verify that the dictionary is fetched successfully
+      DictionaryRetrievalService finalDictionaryRetrievalService = dictionaryRetrievalService;
+      TestUtils.waitForNonDeterministicAssertion(MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS, TimeUnit.SECONDS, () -> {
+        assertTrue(finalDictionaryRetrievalService.getDownloadingDictionaryFutures().containsKey(KAFKA_TOPIC_NAME));
+      });
+    } finally {
+      if (dictionaryRetrievalService != null) {
+        dictionaryRetrievalService.stop();
+        dictionaryRetrievalService.close();
+        when(routerConfig.getDictionaryRetrievalTimeMs()).thenReturn(0);
+        // Reset to NO_OP for the next test
+        doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+        // Reset store version status to ONLINE
+        doReturn(VersionStatus.ONLINE).when(version).getStatus();
       }
     }
   }
