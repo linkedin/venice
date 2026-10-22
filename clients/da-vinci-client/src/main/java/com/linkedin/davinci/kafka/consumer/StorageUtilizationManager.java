@@ -411,24 +411,27 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   public double getDiskQuotaUsage() {
-    long quota = storeQuotaInBytes;
-    if (quota == Store.UNLIMITED_STORAGE_QUOTA) {
+    long storeQuota = storeQuotaInBytes;
+    if (storeQuota == Store.UNLIMITED_STORAGE_QUOTA) {
       return -1.;
     }
 
+    double quota = storeQuota;
     // TODO: Remove this config when prod cluster metric is reported correctly.
     if (isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled) {
       if (partitionCount == 0) {
         return 0.;
       }
-      quota = diskQuotaPerPartition * partitionConsumptionSizeMap.size();
+      // This host's exact share of the store quota; the per-partition enforcement quota rounds small quotas to 0.
+      quota = (double) storeQuota * partitionConsumptionSizeMap.size() / partitionCount;
     }
 
     long usage = 0;
     for (StoragePartitionDiskUsage diskUsage: partitionConsumptionSizeMap.values()) {
       usage += diskUsage.getUsage();
     }
-    return (double) usage / quota;
+    // A zero share has no meaningful ratio: this is Infinity with usage and NaN without, which OTel omits.
+    return usage / quota;
   }
 
   public void notifyFlushToDisk(PartitionConsumptionState pcs) {

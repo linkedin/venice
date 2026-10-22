@@ -362,7 +362,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     double thisNodeQuotaResponsibility = getNodeResponsibilityForQuota(partitionAssignment, thisNodeId);
     if (thisNodeQuotaResponsibility <= 0) {
       storeVersionRateLimiters.remove(topic);
-      stats.getStoreStats(storeName).removeVersion(version);
+      removeStoreVersionStats(storeName, version);
       return;
     }
     long quotaInRcu = store.getReadQuotaInCU();
@@ -448,11 +448,9 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   @Override
   public void onRoutingDataDeleted(String kafkaTopic) {
     storeVersionRateLimiters.remove(kafkaTopic);
-    ServerReadQuotaUsageStats storeStats =
-        stats.getNullableStoreStats(Version.parseStoreFromKafkaTopicName(kafkaTopic));
-    if (storeStats != null) {
-      storeStats.removeVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
-    }
+    removeStoreVersionStats(
+        Version.parseStoreFromKafkaTopicName(kafkaTopic),
+        Version.parseVersionFromKafkaTopicName(kafkaTopic));
   }
 
   @Override
@@ -464,6 +462,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   public void handleStoreDeleted(String storeName) {
     Set<String> topics = getStoreTopics(storeName);
     removeTopics(topics);
+    stats.removeStore(storeName);
   }
 
   /**
@@ -552,7 +551,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
             topic);
         if (thisNodeQuotaResponsibility <= 0) {
           storeVersionRateLimiters.remove(topic);
-          stats.getStoreStats(store.getName()).removeVersion(versionNumber);
+          removeStoreVersionStats(store.getName(), versionNumber);
         } else {
           computeNewRateLimiter(store.getName(), versionNumber, topic, quotaInRcu, thisNodeQuotaResponsibility, true);
         }
@@ -573,10 +572,16 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     for (String topic: topicsToRemove) {
       customizedViewRepository.unSubscribeRoutingDataChange(topic, this);
       storeVersionRateLimiters.remove(topic);
-      ServerReadQuotaUsageStats storeStats = stats.getNullableStoreStats(Version.parseStoreFromKafkaTopicName(topic));
-      if (storeStats != null) {
-        storeStats.removeVersion(Version.parseVersionFromKafkaTopicName(topic));
-      }
+      removeStoreVersionStats(
+          Version.parseStoreFromKafkaTopicName(topic),
+          Version.parseVersionFromKafkaTopicName(topic));
+    }
+  }
+
+  private void removeStoreVersionStats(String storeName, int version) {
+    ServerReadQuotaUsageStats storeStats = stats.getNullableStoreStats(storeName);
+    if (storeStats != null) {
+      storeStats.removeVersion(version);
     }
   }
 

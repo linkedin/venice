@@ -58,7 +58,7 @@ public class RetryManagerStats extends AbstractVeniceStats {
       this.baseAttributes = otelData.getBaseAttributes();
     }
 
-    this.retryLimitPerSecond = AsyncMetricEntityStateBase.create(
+    this.retryLimitPerSecond = AsyncMetricEntityStateBase.createWithState(
         RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity(),
         otelRepository,
         (sensorName, stats) -> registerSensorIfAbsent(sensorName, stats),
@@ -69,12 +69,11 @@ public class RetryManagerStats extends AbstractVeniceStats {
         }, RetryManagerTehutiMetricName.RETRY_LIMIT_PER_SECONDS.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        () -> {
-          TokenBucket bucket = retryManager.getRetryTokenBucket();
-          return bucket == null ? -1 : (long) bucket.getAmortizedRefillPerSecond();
-        });
+        getMetricScope(),
+        retryManager::getRetryTokenBucket,
+        TokenBucket::getAmortizedRefillPerSecond);
 
-    this.retriesRemaining = AsyncMetricEntityStateBase.create(
+    this.retriesRemaining = AsyncMetricEntityStateBase.createWithState(
         RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity(),
         otelRepository,
         (sensorName, stats) -> registerSensorIfAbsent(sensorName, stats),
@@ -85,10 +84,9 @@ public class RetryManagerStats extends AbstractVeniceStats {
         }, RetryManagerTehutiMetricName.RETRIES_REMAINING.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        () -> {
-          TokenBucket bucket = retryManager.getRetryTokenBucket();
-          return bucket == null ? -1 : bucket.getStaleTokenCount();
-        });
+        getMetricScope(),
+        retryManager::getRetryTokenBucket,
+        TokenBucket::getStaleTokenCount);
 
     this.rejectedRetry = MetricEntityStateBase.create(
         RETRY_RATE_LIMIT_REJECTION_COUNT.getMetricEntity(),

@@ -8,8 +8,10 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.GaugeObservation;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -28,7 +30,6 @@ import io.opentelemetry.api.metrics.LongUpDownCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.api.metrics.ObservableDoubleGauge;
-import io.opentelemetry.api.metrics.ObservableDoubleMeasurement;
 import io.opentelemetry.api.metrics.ObservableLongCounter;
 import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.api.metrics.ObservableLongMeasurement;
@@ -55,6 +56,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -75,6 +77,11 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final OpenTelemetry openTelemetry;
   /** SdkMeterProvider that is used to create the OpenTelemetry instance */
   private SdkMeterProvider sdkMeterProvider = null;
+  /**
+   * How long a closed observable counter keeps reporting its final totals: 0 with exactly one known reader, else one
+   * export interval (several readers, or an application-initialized OpenTelemetry whose readers aren't visible here).
+   */
+  private long observableCounterRetireDelayMs = 0;
 
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
@@ -136,6 +143,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     this.metricPrefix = newMetricPrefix;
     this.openTelemetry = parent.openTelemetry;
     this.sdkMeterProvider = null; // Child does not own the provider
+    this.observableCounterRetireDelayMs = parent.observableCounterRetireDelayMs;
     validateMetricName(getMetricPrefix());
 
     if (emitOpenTelemetryMetrics && openTelemetry != null) {
@@ -159,6 +167,11 @@ public class VeniceOpenTelemetryMetricsRepository {
     return new VeniceOpenTelemetryMetricsRepository(this, newMetricPrefix);
   }
 
+  /** See {@link #observableCounterRetireDelayMs}. */
+  public long getObservableCounterRetireDelayMs() {
+    return observableCounterRetireDelayMs;
+  }
+
   private OpenTelemetry initializeOpenTelemetry(VeniceMetricsConfig metricsConfig) {
     OpenTelemetry otel;
     if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
@@ -170,6 +183,9 @@ public class VeniceOpenTelemetryMetricsRepository {
             metricsConfig.getServiceName());
       } else {
         LOGGER.info("Successfully obtained globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
+        // The application's readers aren't visible here, so allow each of them an export interval to collect.
+        this.observableCounterRetireDelayMs =
+            TimeUnit.SECONDS.toMillis(metricsConfig.getExportOtelMetricsIntervalInSeconds());
         return otel;
       }
     }
@@ -180,6 +196,7 @@ public class VeniceOpenTelemetryMetricsRepository {
         metricsConfig.toString());
     try {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+      int readerCount = 0;
 
       if (metricsConfig.exportOtelMetricsToEndpoint()) {
         MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
@@ -187,6 +204,7 @@ public class VeniceOpenTelemetryMetricsRepository {
             PeriodicMetricReader.builder(httpExporter)
                 .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
                 .build());
+        readerCount++;
       }
 
       if (metricsConfig.exportOtelMetricsToLog()) {
@@ -195,13 +213,17 @@ public class VeniceOpenTelemetryMetricsRepository {
             PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
                 .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
                 .build());
+        readerCount++;
       }
 
       if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
         // additional metrics reader apart from the above. For instance,
         // an in-memory metric reader can be passed in for testing purposes.
         builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
+        readerCount++;
       }
+      this.observableCounterRetireDelayMs =
+          readerCount > 1 ? TimeUnit.SECONDS.toMillis(metricsConfig.getExportOtelMetricsIntervalInSeconds()) : 0;
 
       if (metricsConfig.useOtelExponentialHistogram()) {
         setExponentialHistogramAggregation(builder, metricsConfig);
@@ -246,6 +268,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
+  /** Gauges from {@link #registerObservableGauge} that are still open, so each is closed only once. */
+  private final Set<Object> openObservableGauges = VeniceConcurrentHashMap.newKeySet();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -393,9 +417,8 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   /**
    * Creates an SDK instrument for non-async metric types (histograms, sync counters, gauges).
-   * Async gauges must use {@link #registerObservableLongGauge} / {@link #registerObservableDoubleGauge};
-   * async counters must use {@link #registerObservableLongCounter} /
-   * {@link #registerObservableLongUpDownCounter}.
+   * Async gauges must use {@link #registerObservableGauge}; async counters must use
+   * {@link #registerObservableLongCounter} / {@link #registerObservableLongUpDownCounter}.
    */
   public Object createInstrument(MetricEntity metricEntity) {
     MetricType metricType = metricEntity.getMetricType();
@@ -416,7 +439,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       case ASYNC_GAUGE:
       case ASYNC_DOUBLE_GAUGE:
         throw new IllegalArgumentException(
-            "Async gauges must be registered via registerObservableLongGauge / registerObservableDoubleGauge, not createInstrument. Metric: "
+            "Async gauges must be registered via registerObservableGauge, not createInstrument. Metric: "
                 + metricEntity.getMetricName());
 
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
@@ -515,76 +538,60 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * Registers an {@link ObservableLongGauge} backed by a single multi-emit callback. Use this for
-   * {@link MetricType#ASYNC_GAUGE} metrics with dynamic dimensions (e.g., per-enum, per-entity) so
-   * the caller can iterate and emit only the attribute combinations that currently have data —
-   * avoiding the cardinality blowout of registering one instrument per combo.
-   *
-   * <p>The callback is invoked by the OTel SDK on every collection cycle on the SDK's collection
-   * thread. It may call {@code measurement.record(value, attrs)} zero or more times to emit data
-   * points. Combos not emitted during a given collection are not present in that cycle's output.
-   * Backing state read inside the callback must be safely published (volatile, concurrent
-   * collections, or immutable).
-   *
-   * <p>Each call creates a new SDK instrument handle via {@code buildWithCallback} — there is no
-   * deduplication. Multiple callers (e.g., different stores) can register callbacks for the same
-   * metric name; the OTel SDK natively aggregates all their data points during collection.
-   *
-   * <p>Callers should ensure their callback does not throw — uncaught exceptions are caught by the
-   * OTel SDK and logged, but the semantics of partial emissions within a single callback depend on
-   * where the throw happens. Implementations in this repo wrap per-combo bodies in try/catch to
-   * isolate failures across combos.
+   * Registers an async gauge owned by {@code scope}: closing the scope stops it, as does closing it earlier with
+   * {@link #closeObservableInstrument}. Its callback emits through {@link GaugeObservation#of}, so null state,
+   * non-finite values and resolver failures emit no sample.
    */
-  public ObservableLongGauge registerObservableLongGauge(
+  public Object registerObservableGauge(
       MetricEntity metricEntity,
-      @Nonnull Consumer<ObservableLongMeasurement> reportCallback) {
+      @Nonnull MetricScope scope,
+      @Nonnull Consumer<GaugeObservation> reportCallback) {
+    Objects.requireNonNull(scope, "scope");
+    MetricType metricType = metricEntity.getMetricType();
+    if (metricType != MetricType.ASYNC_GAUGE && metricType != MetricType.ASYNC_DOUBLE_GAUGE) {
+      throw new IllegalArgumentException(
+          "registerObservableGauge should only be called for ASYNC_GAUGE or ASYNC_DOUBLE_GAUGE metrics, but got: "
+              + metricType + " for metric: " + metricEntity.getMetricName());
+    }
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-    if (metricEntity.getMetricType() != MetricType.ASYNC_GAUGE) {
-      throw new IllegalArgumentException(
-          "registerObservableLongGauge should only be called for ASYNC_GAUGE metrics, but got: "
-              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
-    }
+    Object gauge = buildObservableGauge(metricEntity, reportCallback);
+    openObservableGauges.add(gauge);
+    scope.register(() -> closeObservableInstrument(metricEntity, gauge));
+    return gauge;
+  }
+
+  private Object buildObservableGauge(MetricEntity metricEntity, Consumer<GaugeObservation> reportCallback) {
+    Consumer<Exception> onFailure = e -> recordFailureMetric(metricEntity, e);
     try {
+      if (metricEntity.getMetricType() == MetricType.ASYNC_DOUBLE_GAUGE) {
+        return meter.gaugeBuilder(getFullMetricName(metricEntity))
+            .setUnit(metricEntity.getUnit().name())
+            .setDescription(getMetricDescription(metricEntity, metricsConfig))
+            .buildWithCallback(
+                measurement -> reportGauge(reportCallback, GaugeObservation.of(measurement, onFailure), onFailure));
+      }
       return meter.gaugeBuilder(getFullMetricName(metricEntity))
           .ofLongs()
           .setUnit(metricEntity.getUnit().name())
           .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(reportCallback);
+          .buildWithCallback(
+              measurement -> reportGauge(reportCallback, GaugeObservation.of(measurement, onFailure), onFailure));
     } catch (RuntimeException e) {
-      throw new VeniceException(
-          "Failed to register ObservableLongGauge for metric: " + metricEntity.getMetricName(),
-          e);
+      throw new VeniceException("Failed to register ObservableGauge for metric: " + metricEntity.getMetricName(), e);
     }
   }
 
-  /**
-   * Registers an {@link ObservableDoubleGauge} backed by a single multi-emit callback. Same
-   * contract as {@link #registerObservableLongGauge} but for {@link MetricType#ASYNC_DOUBLE_GAUGE}.
-   * See that method's Javadoc for callback threading, aggregation behaviour, and exception-safety
-   * expectations.
-   */
-  public ObservableDoubleGauge registerObservableDoubleGauge(
-      MetricEntity metricEntity,
-      @Nonnull Consumer<ObservableDoubleMeasurement> reportCallback) {
-    if (!emitOpenTelemetryMetrics()) {
-      return null;
-    }
-    if (metricEntity.getMetricType() != MetricType.ASYNC_DOUBLE_GAUGE) {
-      throw new IllegalArgumentException(
-          "registerObservableDoubleGauge should only be called for ASYNC_DOUBLE_GAUGE metrics, but got: "
-              + metricEntity.getMetricType() + " for metric: " + metricEntity.getMetricName());
-    }
+  /** Runs a gauge callback; an exception it throws outside {@link GaugeObservation#observe} is a failure too. */
+  private static void reportGauge(
+      Consumer<GaugeObservation> reportCallback,
+      GaugeObservation observation,
+      Consumer<Exception> onFailure) {
     try {
-      return meter.gaugeBuilder(getFullMetricName(metricEntity))
-          .setUnit(metricEntity.getUnit().name())
-          .setDescription(getMetricDescription(metricEntity, metricsConfig))
-          .buildWithCallback(reportCallback);
-    } catch (RuntimeException e) {
-      throw new VeniceException(
-          "Failed to register ObservableDoubleGauge for metric: " + metricEntity.getMetricName(),
-          e);
+      reportCallback.accept(observation);
+    } catch (Exception e) {
+      onFailure.accept(e);
     }
   }
 
@@ -593,7 +600,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    * methods, so the OTel SDK stops invoking its callback. The SDK retains every callback until the
    * returned handle is closed, so callers that re-register an observable must close the previous
    * handle to avoid leaking callbacks and emitting duplicate data points under stale attributes.
-   * No-op if the handle is null (OTel disabled).
+   * No-op if the handle is null (OTel disabled). A gauge closes only once, however many of its owners close it.
    */
   public void closeObservableInstrument(MetricEntity metricEntity, Object instrument) {
     if (instrument == null) {
@@ -601,10 +608,14 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
     switch (metricEntity.getMetricType()) {
       case ASYNC_GAUGE:
-        ((ObservableLongGauge) instrument).close();
+        if (openObservableGauges.remove(instrument)) {
+          ((ObservableLongGauge) instrument).close();
+        }
         break;
       case ASYNC_DOUBLE_GAUGE:
-        ((ObservableDoubleGauge) instrument).close();
+        if (openObservableGauges.remove(instrument)) {
+          ((ObservableDoubleGauge) instrument).close();
+        }
         break;
       case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
         ((ObservableLongCounter) instrument).close();

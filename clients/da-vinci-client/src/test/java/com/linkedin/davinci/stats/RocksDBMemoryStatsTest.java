@@ -38,12 +38,22 @@ public class RocksDBMemoryStatsTest {
   public void testSetRMDBlockCacheRegistersGauges() {
     RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
+    assertNull(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge"));
+    assertNull(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge"));
+    assertNull(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge"));
+
     Cache mockCache = createMockCache(512L, 256L);
     stats.setRMDBlockCache(mockCache, 1024L);
 
     assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge").value(), 1024.0);
     assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(), 512.0);
     assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge").value(), 256.0);
+
+    stats.closeRMDBlockCache();
+
+    assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-capacity.Gauge").value(), 1024.0);
+    assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-usage.Gauge").value(), 0.0);
+    assertEquals(metricsRepository.getMetric(".test_store--rocksdb.rmd-block-cache-pinned-usage.Gauge").value(), 0.0);
   }
 
   @Test

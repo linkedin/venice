@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.dimensions.ReplicaType;
@@ -240,6 +241,22 @@ public class StoreIngestionTaskAggregationTest {
     assertWithinTolerance(total, 3_500L, "no-arg sums every state");
   }
 
+  @Test
+  public void testHasReplicaTypeReflectsLocalPartitions() {
+    StoreIngestionTask leaderOnlyTask = mockSitWith(freshPcs(LeaderFollowerStateType.LEADER));
+    assertTrue(leaderOnlyTask.hasReplicaType(ReplicaType.LEADER));
+    assertFalse(leaderOnlyTask.hasReplicaType(ReplicaType.FOLLOWER));
+
+    StoreIngestionTask followerOnlyTask =
+        mockSitWith(freshPcs(LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER));
+    assertFalse(followerOnlyTask.hasReplicaType(ReplicaType.LEADER));
+    assertTrue(followerOnlyTask.hasReplicaType(ReplicaType.FOLLOWER));
+
+    StoreIngestionTask noPartitionTask = mockSitWith();
+    assertFalse(noPartitionTask.hasReplicaType(ReplicaType.LEADER));
+    assertFalse(noPartitionTask.hasReplicaType(ReplicaType.FOLLOWER));
+  }
+
   // --- Helpers ---
 
   /**
@@ -254,6 +271,7 @@ public class StoreIngestionTaskAggregationTest {
     doCallRealMethod().when(task).getActiveKeyCount(nullable(ReplicaType.class));
     doCallRealMethod().when(task).getEstimatedUniqueIngestedKeyCount();
     doCallRealMethod().when(task).getEstimatedUniqueIngestedKeyCount(nullable(ReplicaType.class));
+    doCallRealMethod().when(task).hasReplicaType(nullable(ReplicaType.class));
     return task;
   }
 

@@ -10,6 +10,7 @@ import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolver;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -28,9 +29,12 @@ import io.tehuti.metrics.stats.Min;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 
 public class AdminConsumptionStats extends AbstractVeniceStats {
+  private static final double UNASSIGNED_PENDING_COUNT = -1D;
+
   private final MetricEntityStateBase failureCountMetric;
   private final MetricEntityStateBase retriableFailureCountMetric;
   private final MetricEntityStateBase divFailureCountMetric;
@@ -71,22 +75,28 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
    * consumption cycle. Pending messages could be caused by blocked admin operations or insufficient resources.
    */
-  private double pendingAdminMessagesCountGauge;
+  private volatile Double pendingAdminMessagesCountGauge;
   /**
    * A gauge reporting the number of stores with pending messages at the end of each consumption cycle.
    */
-  private double storesWithPendingAdminMessagesCountGauge;
+  private volatile Double storesWithPendingAdminMessagesCountGauge;
   /**
    * adminConsumptionOffsetLag = End offset of the admin topic in the source Kafka cluster - the latest consumed offset
    */
-  private long adminConsumptionOffsetLag;
+  private volatile Long adminConsumptionOffsetLag;
   /**
    * maxAdminConsumptionOffsetLag = End offset of the admin topic in the source Kafka cluster - the latest persisted offset
    * If there is a failed admin message for a specific store, with store level isolation, admin messages for other stores
    * will be processed; however, the checkpoint offset will freeze until there is no more failed admin message. In general,
    * the maxAdminConsumptionOffsetLag is equal to adminConsumptionOffsetLag, unless there is a failed admin message.
    */
-  private long maxAdminConsumptionOffsetLag;
+  private volatile Long maxAdminConsumptionOffsetLag;
+  /**
+   * Whether each lag above comes from a collection since the last failed or incomplete one. OTel reports a lag only
+   * while its flag is set; Tehuti always reports the last value.
+   */
+  private volatile boolean adminConsumptionOffsetLagCollected;
+  private volatile boolean maxAdminConsumptionOffsetLagCollected;
 
   /**
    * Total end to end latency from the time when the message was first generated in the parent controller to when it's
@@ -196,60 +206,61 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    AsyncMetricEntityStateBase.create(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_MESSAGE_PENDING_COUNT,
         AdminConsumptionTehutiMetricNameEnum.PENDING_ADMIN_MESSAGES_COUNT,
-        Arrays.asList(
-            new AsyncGauge(
-                (ignored, ignored2) -> pendingAdminMessagesCountGauge,
-                AdminConsumptionTehutiMetricNameEnum.PENDING_ADMIN_MESSAGES_COUNT.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        () -> (long) pendingAdminMessagesCountGauge);
-
-    AsyncMetricEntityStateBase.create(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_STORE_PENDING_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+        () -> pendingAdminMessagesCountGauge,
+        () -> known(pendingAdminMessagesCountGauge, UNASSIGNED_PENDING_COUNT));
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_STORE_PENDING_COUNT,
         AdminConsumptionTehutiMetricNameEnum.STORES_WITH_PENDING_ADMIN_MESSAGES_COUNT,
-        Arrays.asList(
-            new AsyncGauge(
-                (ignored, ignored2) -> storesWithPendingAdminMessagesCountGauge,
-                AdminConsumptionTehutiMetricNameEnum.STORES_WITH_PENDING_ADMIN_MESSAGES_COUNT.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        () -> (long) storesWithPendingAdminMessagesCountGauge);
-
-    AsyncMetricEntityStateBase.create(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+        () -> storesWithPendingAdminMessagesCountGauge,
+        () -> known(storesWithPendingAdminMessagesCountGauge, UNASSIGNED_PENDING_COUNT));
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_OFFSET_LAG,
         AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG,
-        Arrays.asList(
-            new AsyncGauge(
-                (ignored, ignored2) -> this.adminConsumptionOffsetLag,
-                AdminConsumptionTehutiMetricNameEnum.ADMIN_CONSUMPTION_OFFSET_LAG.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        () -> this.adminConsumptionOffsetLag);
-
-    AsyncMetricEntityStateBase.create(
-        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG.getMetricEntity(),
-        otelRepository,
-        this::registerSensorIfAbsent,
+        () -> adminConsumptionOffsetLag,
+        () -> adminConsumptionOffsetLagCollected ? known(adminConsumptionOffsetLag, Long.MAX_VALUE) : null);
+    registerGauge(
+        otelData,
+        AdminConsumptionOtelMetricEntity.ADMIN_CONSUMPTION_CONSUMER_CHECKPOINT_OFFSET_LAG,
         AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG,
-        Arrays.asList(
-            new AsyncGauge(
-                (ignored, ignored2) -> this.maxAdminConsumptionOffsetLag,
-                AdminConsumptionTehutiMetricNameEnum.MAX_ADMIN_CONSUMPTION_OFFSET_LAG.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        () -> this.maxAdminConsumptionOffsetLag);
+        () -> maxAdminConsumptionOffsetLag,
+        () -> maxAdminConsumptionOffsetLagCollected ? maxAdminConsumptionOffsetLag : null);
 
     // Tehuti-only
     adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
+  }
+
+  /** Tehuti reports {@code value}, or 0 before it is set; OTel reports {@code otelState}, omitting it when null. */
+  private <T extends Number> void registerGauge(
+      OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData,
+      AdminConsumptionOtelMetricEntity otelMetric,
+      AdminConsumptionTehutiMetricNameEnum tehutiMetric,
+      Supplier<T> value,
+      LiveStateResolver<T> otelState) {
+    AsyncMetricEntityStateBase.createWithState(
+        otelMetric.getMetricEntity(),
+        otelData.getOtelRepository(),
+        this::registerSensorIfAbsent,
+        tehutiMetric,
+        Arrays.asList(new AsyncGauge((ignored, ignored2) -> {
+          T current = value.get();
+          return current == null ? 0D : current.doubleValue();
+        }, tehutiMetric.getMetricName())),
+        otelData.getBaseDimensionsMap(),
+        otelData.getBaseAttributes(),
+        getMetricScope(),
+        otelState,
+        state -> state);
+  }
+
+  /** {@code value}, or null while it is unset or the sentinel for a value this controller doesn't know. */
+  private static <T extends Number> T known(T value, T unknown) {
+    return value == null || value.equals(unknown) ? null : value;
   }
 
   /**
@@ -307,10 +318,27 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void setAdminConsumptionOffsetLag(long adminConsumptionOffsetLag) {
     this.adminConsumptionOffsetLag = adminConsumptionOffsetLag;
+    this.adminConsumptionOffsetLagCollected = true;
   }
 
   public void setMaxAdminConsumptionOffsetLag(long maxAdminConsumptionOffsetLag) {
     this.maxAdminConsumptionOffsetLag = maxAdminConsumptionOffsetLag;
+    this.maxAdminConsumptionOffsetLagCollected = true;
+  }
+
+  /**
+   * Marks both lags unknown after a lag collection fails or can't find the admin topic's end position: OTel omits
+   * each lag until it is collected again, and Tehuti keeps reporting the last values.
+   */
+  public void markAdminConsumptionOffsetLagsUnknown() {
+    this.adminConsumptionOffsetLagCollected = false;
+    this.maxAdminConsumptionOffsetLagCollected = false;
+  }
+
+  /** Clears both lags once this controller stops consuming the admin topic: Tehuti reads 0 and OTel omits them. */
+  public void clearAdminConsumptionOffsetLags() {
+    this.adminConsumptionOffsetLag = null;
+    this.maxAdminConsumptionOffsetLag = null;
   }
 
   public void recordAdminMessagesWithFutureProtocolVersionCount() {

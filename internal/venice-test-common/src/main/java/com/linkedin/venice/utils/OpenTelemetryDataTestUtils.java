@@ -233,6 +233,23 @@ public abstract class OpenTelemetryDataTestUtils {
         .orElse(null);
   }
 
+  /**
+   * Asserts that no data point of the metric, of any type, has exactly {@code attributes}, or with null
+   * {@code attributes} that the metric has no data points at all.
+   */
+  public static void assertNoDataPoint(
+      Collection<MetricData> metricsData,
+      String metricName,
+      String prefix,
+      Attributes attributes) {
+    String fullMetricName = DEFAULT_METRIC_PREFIX + prefix + "." + metricName;
+    boolean found = metricsData.stream()
+        .filter(metricData -> metricData.getName().equals(fullMetricName))
+        .flatMap(metricData -> metricData.getData().getPoints().stream())
+        .anyMatch(point -> attributes == null || point.getAttributes().equals(attributes));
+    assertFalse("Unexpected data point for " + fullMetricName + " " + attributes, found);
+  }
+
   public static ExponentialHistogramPointData getExponentialHistogramPointData(
       Collection<MetricData> metricsData,
       String metricName,

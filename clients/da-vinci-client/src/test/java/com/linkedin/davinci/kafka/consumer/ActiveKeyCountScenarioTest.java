@@ -12,6 +12,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REPLICA_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_VERSION_ROLE;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static org.mockito.ArgumentMatchers.any;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
@@ -198,18 +200,18 @@ public class ActiveKeyCountScenarioTest {
 
   @Test
   public void testGaugeEmitsAfterBatchPush() {
-    // Leader-only: OTel shows 100 for leader, -1 for follower; Tehuti shows 100 (sum)
+    // Leader-only: OTel omits the unhosted follower type; Tehuti shows 100 (sum)
     PartitionConsumptionState leaderPcs = freshPcs(LeaderFollowerStateType.LEADER);
     doBatch(leaderPcs, 100);
     try (MetricsTestContext ctx = createMetricsContext(leaderPcs)) {
-      assertGauge(ctx.reader, 100L, -1L);
+      assertGauge(ctx.reader, 100L, null);
       assertTehutiGauge(ctx.tehutiRepo, 100L);
     }
-    // Follower-only: OTel shows -1 for leader, 80 for follower; Tehuti shows 80 (sum)
+    // Follower-only: OTel omits the unhosted leader type; Tehuti shows 80 (sum)
     PartitionConsumptionState followerPcs = freshPcs(LeaderFollowerStateType.STANDBY);
     doBatch(followerPcs, 80);
     try (MetricsTestContext ctx = createMetricsContext(followerPcs)) {
-      assertGauge(ctx.reader, -1L, 80L);
+      assertGauge(ctx.reader, null, 80L);
       assertTehutiGauge(ctx.tehutiRepo, 80L);
     }
   }
@@ -253,9 +255,9 @@ public class ActiveKeyCountScenarioTest {
     doBatch(pcs, 40);
     pcs.incrementActiveKeyCount();
     try (MetricsTestContext ctx = createMetricsContext(pcs)) {
-      assertGauge(ctx.reader, -1L, 41L);
+      assertGauge(ctx.reader, null, 41L);
       pcs.setLeaderFollowerState(LeaderFollowerStateType.LEADER);
-      assertGauge(ctx.reader, 41L, -1L);
+      assertGauge(ctx.reader, 41L, null);
       pcs.incrementActiveKeyCount();
       validateLongPointDataFromGauge(
           ctx.reader,
@@ -284,7 +286,7 @@ public class ActiveKeyCountScenarioTest {
   public void testGaugeFeatureNotStartedEmitsNegativeOne() {
     PartitionConsumptionState pcs = freshPcs(LeaderFollowerStateType.LEADER);
     try (MetricsTestContext ctx = createMetricsContext(pcs)) {
-      assertGauge(ctx.reader, -1L, -1L);
+      assertGauge(ctx.reader, -1L, null);
       assertTehutiGauge(ctx.tehutiRepo, -1L);
     }
   }
@@ -419,31 +421,37 @@ public class ActiveKeyCountScenarioTest {
         .build();
   }
 
-  private void assertGauge(InMemoryMetricReader reader, long expectedLeader, long expectedFollower) {
-    validateLongPointDataFromGauge(
-        reader,
-        expectedLeader,
-        buildAttributes(VersionRole.CURRENT, ReplicaType.LEADER),
-        ACTIVE_KEY_METRIC_NAME,
-        TEST_PREFIX);
-    validateLongPointDataFromGauge(
-        reader,
-        expectedFollower,
-        buildAttributes(VersionRole.CURRENT, ReplicaType.FOLLOWER),
-        ACTIVE_KEY_METRIC_NAME,
-        TEST_PREFIX);
+  /** A null expectation asserts that the replica type is omitted because this host does not have it. */
+  private void assertGauge(InMemoryMetricReader reader, Long expectedLeader, Long expectedFollower) {
+    assertGaugeReplica(reader, ReplicaType.LEADER, expectedLeader);
+    assertGaugeReplica(reader, ReplicaType.FOLLOWER, expectedFollower);
+  }
+
+  private void assertGaugeReplica(InMemoryMetricReader reader, ReplicaType replicaType, Long expected) {
+    Attributes attributes = buildAttributes(VersionRole.CURRENT, replicaType);
+    if (expected == null) {
+      assertNull(
+          getLongPointDataFromGaugeIfPresent(
+              reader.collectAllMetrics(),
+              ACTIVE_KEY_METRIC_NAME,
+              TEST_PREFIX,
+              attributes));
+    } else {
+      validateLongPointDataFromGauge(reader, expected, attributes, ACTIVE_KEY_METRIC_NAME, TEST_PREFIX);
+    }
   }
 
   private MetricsTestContext createMetricsContext(PartitionConsumptionState... pcsList) {
     // Shared mock task — both OTel and Tehuti read PCS from the same task
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     doReturn(Arrays.asList(pcsList)).when(mockTask).getPartitionConsumptionStates();
-    // The OTel gauges call task.getActiveKeyCount(replicaType) and
+    // The OTel gauges call task.hasReplicaType(replicaType), then task.getActiveKeyCount(replicaType) and
     // task.getEstimatedUniqueIngestedKeyCount(replicaType); have the mock run the real
     // SIT aggregation, which iterates getPartitionConsumptionStates() (stubbed above).
     doCallRealMethod().when(mockTask).getActiveKeyCount(any());
     doCallRealMethod().when(mockTask).getActiveKeyCount();
     doCallRealMethod().when(mockTask).getEstimatedUniqueIngestedKeyCount(any(ReplicaType.class));
+    doCallRealMethod().when(mockTask).hasReplicaType(any());
 
     // OTel: VeniceMetricsRepository + InMemoryMetricReader
     InMemoryMetricReader reader = InMemoryMetricReader.create();

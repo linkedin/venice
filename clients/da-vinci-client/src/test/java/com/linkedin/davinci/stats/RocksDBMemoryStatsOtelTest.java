@@ -4,6 +4,7 @@ import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITI
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -94,12 +95,21 @@ public class RocksDBMemoryStatsOtelTest {
   public void testRMDBlockCacheGauges() {
     RocksDBMemoryStats stats = new RocksDBMemoryStats(metricsRepository, TEST_STATS_NAME, false, TEST_CLUSTER_NAME);
 
+    validateNoGauge("rocksdb.rmd_block_cache.capacity");
+    validateNoGauge("rocksdb.rmd_block_cache.usage");
+    validateNoGauge("rocksdb.rmd_block_cache.pinned_usage");
+
     Cache mockCache = createMockCache(512L, 256L);
     stats.setRMDBlockCache(mockCache, 1024L);
 
     validateGauge("rocksdb.rmd_block_cache.capacity", 1024);
     validateGauge("rocksdb.rmd_block_cache.usage", 512);
     validateGauge("rocksdb.rmd_block_cache.pinned_usage", 256);
+
+    stats.closeRMDBlockCache();
+    validateNoGauge("rocksdb.rmd_block_cache.capacity");
+    validateNoGauge("rocksdb.rmd_block_cache.usage");
+    validateNoGauge("rocksdb.rmd_block_cache.pinned_usage");
   }
 
   @Test
@@ -159,5 +169,14 @@ public class RocksDBMemoryStatsOtelTest {
         expectedAttributes,
         metricName,
         TEST_METRIC_PREFIX);
+  }
+
+  private void validateNoGauge(String metricName) {
+    assertNull(
+        OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            metricName,
+            TEST_METRIC_PREFIX,
+            expectedAttributes));
   }
 }
