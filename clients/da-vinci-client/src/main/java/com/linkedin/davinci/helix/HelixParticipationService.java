@@ -1,5 +1,7 @@
 package com.linkedin.davinci.helix;
 
+import static com.linkedin.venice.ConfigKeys.CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED;
+
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -280,6 +282,8 @@ public class HelixParticipationService extends AbstractVeniceService
       LOGGER.info("Helix Manager is null.");
     }
     ingestionBackend.close();
+    // VeniceServer stops ingestion reporting before stopping Helix participation.
+    Utils.closeQuietlyWithErrorLogged(statusStoreWriter);
     if (blobTransferManager != null) {
       try {
         blobTransferManager.close();
@@ -330,6 +334,19 @@ public class HelixParticipationService extends AbstractVeniceService
     }
   }
 
+  PushStatusStoreWriter createPushStatusStoreWriter(
+      SchemaEntry valueSchemaEntry,
+      DerivedSchemaEntry updateSchemaEntry) {
+    return new PushStatusStoreWriter(
+        ingestionService.getVeniceWriterFactory(),
+        instance.getNodeId(),
+        valueSchemaEntry,
+        updateSchemaEntry,
+        veniceConfigLoader.getCombinedProperties().getBoolean(CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED, false)
+            ? storeName -> clusterName
+            : storeName -> null);
+  }
+
   /**
    * check RouterServer#asyncStart() for details about asyncStart
    * The difference between router async start and here is router asyncStart is disabled in prod since it is risky,
@@ -359,11 +376,7 @@ public class HelixParticipationService extends AbstractVeniceService
           WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema));
     }
     // We use push status store for persisting incremental push statuses
-    statusStoreWriter = new PushStatusStoreWriter(
-        ingestionService.getVeniceWriterFactory(),
-        instance.getNodeId(),
-        valueSchemaEntry,
-        updateSchemaEntry);
+    statusStoreWriter = createPushStatusStoreWriter(valueSchemaEntry, updateSchemaEntry);
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
