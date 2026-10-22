@@ -1,21 +1,14 @@
 package com.linkedin.venice.controller.placement;
 
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
-import java.util.Collections;
-import java.util.Map;
 import java.util.Objects;
 
 
 /** Store, topic and destination details used to select a backend. */
 public final class TopicPlacementContext {
   public enum MigrationCategory {
-    UNKNOWN, BATCH_VT, HYBRID_VT, CDC_VT, DAVINCI_VT
+    UNKNOWN, BATCH_VT, HYBRID_VT
   }
-
-  // Persisted CDC metadata may outlive the removed before-image view implementation.
-  private static final String CHANGE_CAPTURE_VIEW_CLASS = "com.linkedin.venice.views.ChangeCaptureView";
 
   private final String clusterName;
   private final String storeName;
@@ -53,28 +46,6 @@ public final class TopicPlacementContext {
   private static MigrationCategory classify(Store store) {
     if (store == null) {
       return MigrationCategory.UNKNOWN;
-    }
-    // Older metadata can omit views; this is equivalent to having no configured views.
-    Map<String, ViewConfig> views = store.getViewConfigs();
-    if (views == null) {
-      views = Collections.emptyMap();
-    }
-    boolean malformedView = false;
-    for (ViewConfig view: views.values()) {
-      StoreViewConfig viewConfig = view == null ? null : view.dataModel();
-      CharSequence rawClassName = viewConfig == null ? null : viewConfig.getViewClassName();
-      String className = rawClassName == null ? null : rawClassName.toString();
-      if (CHANGE_CAPTURE_VIEW_CLASS.equals(className)) {
-        return MigrationCategory.CDC_VT;
-      }
-      malformedView |= className == null || className.trim().isEmpty();
-    }
-    if (malformedView) {
-      return MigrationCategory.UNKNOWN;
-    }
-    if (store.isDaVinciPushStatusStoreEnabled() || store.getIsDavinciHeartbeatReported()
-        || store.isBlobTransferEnabled()) {
-      return MigrationCategory.DAVINCI_VT;
     }
     if (store.isHybrid()) {
       return MigrationCategory.HYBRID_VT;

@@ -35,7 +35,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -44,7 +43,6 @@ import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import org.apache.logging.log4j.Level;
@@ -162,10 +160,11 @@ public class TopicPlacementTest {
   }
 
   @Test(dataProvider = "selectionsAndStaticSettings")
-  public void testStaticSettingsDoNotOverrideActiveSelection(
+  public void testProvisionedPushStatusUsesOwnerSelectionOverStaticSettings(
       TopicPlacement.Selection selection,
       boolean staticAlternative) {
     String pushStatus = preparePushStatusStore();
+    when(store.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     configureStaticSettings("batch-store," + pushStatus, staticAlternative);
     when(placement.select(any())).thenReturn(selection);
     create("batch-store", PushType.BATCH);
@@ -177,12 +176,10 @@ public class TopicPlacementTest {
   @DataProvider
   public Object[][] metadataExclusions() {
     List<Object[]> cases = new ArrayList<>();
-    for (String marker: new String[] { "hybrid", "cdc", "pushStatus", "heartbeat", "blob", "malformed" }) {
-      for (boolean pushStatus: new boolean[] { false, true }) {
-        for (String policy: new String[] { "ACTIVE", "SHADOW", "LEGACY" }) {
-          for (boolean staticAlternative: new boolean[] { false, true }) {
-            cases.add(new Object[] { marker, pushStatus, policy, staticAlternative });
-          }
+    for (boolean pushStatus: new boolean[] { false, true }) {
+      for (String policy: new String[] { "ACTIVE", "SHADOW", "LEGACY" }) {
+        for (boolean staticAlternative: new boolean[] { false, true }) {
+          cases.add(new Object[] { pushStatus, policy, staticAlternative });
         }
       }
     }
@@ -190,19 +187,10 @@ public class TopicPlacementTest {
   }
 
   @Test(dataProvider = "metadataExclusions")
-  public void testMetadataAdmission(String marker, boolean pushStatus, String policy, boolean staticAlternative) {
+  public void testHybridMetadataAdmission(boolean pushStatus, String policy, boolean staticAlternative) {
     String name = pushStatus ? preparePushStatusStore() : "batch-store";
     configureStaticSettings(name, staticAlternative);
-    when(store.isHybrid()).thenReturn(marker.equals("hybrid"));
-    when(store.isDaVinciPushStatusStoreEnabled()).thenReturn(marker.equals("pushStatus"));
-    when(store.getIsDavinciHeartbeatReported()).thenReturn(marker.equals("heartbeat"));
-    when(store.isBlobTransferEnabled()).thenReturn(marker.equals("blob"));
-    if (marker.equals("cdc") || marker.equals("malformed")) {
-      ViewConfigImpl view = new ViewConfigImpl(
-          marker.equals("cdc") ? "com.linkedin.venice.views.ChangeCaptureView" : null,
-          Collections.emptyMap());
-      when(store.getViewConfigs()).thenReturn(Collections.singletonMap("view", view));
-    }
+    when(store.isHybrid()).thenReturn(true);
     when(placement.isEnabled(config.getClusterName())).thenReturn(!policy.equals("LEGACY"));
     when(placement.isShadowMode(config.getClusterName())).thenReturn(policy.equals("SHADOW"));
     when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
