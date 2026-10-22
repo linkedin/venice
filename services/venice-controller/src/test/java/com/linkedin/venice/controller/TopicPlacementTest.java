@@ -42,6 +42,8 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -168,15 +170,30 @@ public class TopicPlacementTest {
     verifyCreate(pushStatus, selection == TopicPlacement.Selection.TREATMENT);
   }
 
-  @Test
-  public void testHybridOwnerPushStatusUsesStaticPlacement() {
-    String name = preparePushStatusStore();
-    configureStaticSettings(name, true);
+  @DataProvider
+  public Object[][] hybridPlacementCases() {
+    List<Object[]> cases = new ArrayList<>();
+    for (boolean pushStatus: new boolean[] { false, true }) {
+      for (String policy: new String[] { "ACTIVE", "SHADOW", "LEGACY" }) {
+        for (boolean staticAlternative: new boolean[] { false, true }) {
+          cases.add(new Object[] { pushStatus, policy, staticAlternative });
+        }
+      }
+    }
+    return cases.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "hybridPlacementCases")
+  public void testHybridPlacementAcrossModes(boolean pushStatus, String policy, boolean staticAlternative) {
+    String name = pushStatus ? preparePushStatusStore() : "batch-store";
+    configureStaticSettings(name, staticAlternative);
     when(store.isHybrid()).thenReturn(true);
+    when(placement.isEnabled(config.getClusterName())).thenReturn(!policy.equals("LEGACY"));
+    when(placement.isShadowMode(config.getClusterName())).thenReturn(policy.equals("SHADOW"));
     when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
     create(name, PushType.BATCH);
     verify(placement, never()).select(any());
-    verifyCreate(name, true);
+    verifyCreate(name, !policy.equals("ACTIVE") && staticAlternative);
   }
 
   @Test
@@ -281,8 +298,8 @@ public class TopicPlacementTest {
 
   @DataProvider
   public Object[][] excludedScope() {
-    return new Object[][] { { "hybrid-store", PushType.BATCH, true },
-        { "batch-store", PushType.STREAM_REPROCESSING, false }, { "batch-store", PushType.INCREMENTAL, false },
+    return new Object[][] { { "batch-store", PushType.STREAM_REPROCESSING, false },
+        { "batch-store", PushType.INCREMENTAL, false },
         { VeniceSystemStoreUtils.getParticipantStoreNameForCluster("cluster"), PushType.BATCH, false },
         { VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushType.BATCH, false },
         { VeniceSystemStoreUtils.getMetaStoreName("batch-store"), PushType.BATCH, false },
