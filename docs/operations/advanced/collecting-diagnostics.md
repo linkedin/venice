@@ -51,22 +51,25 @@ Analyze JFR recordings with [JDK Mission Control](https://github.com/openjdk/jmc
 For reads that execute on a server worker and throw an exception during lookup or response construction, look for
 `Storage read execution failed` in `StorageReadRequestHandler` logs. The warning records:
 
-- `submittedAtEpochMs`: wall-clock time when the request or parallel batch was submitted to its executor.
+- `submittedAtEpochMs`: estimated wall-clock submission time, derived at failure from the monotonic elapsed duration.
+  Account for millisecond precision and any wall-clock adjustments between submission and failure.
 - `queueWaitMs` and `executionMs`: monotonic durations before worker execution and from worker start to failure.
 - `queueLengthAtSubmission`: queued tasks at submission, not the queue size at failure.
 - `resource`, `requestType`, `retry`, `streaming`, and `requestKeyCount`: request context without keys or values.
 - `chunkIndex`: zero-based parallel chunk index, or `-1` for sequential execution.
-- `requestIdentity`: a best-effort, process-local correlation token also included in the HTTP request-error log. Combine
-  it with resource, host, and timestamp; it is not a globally unique request ID.
+- `requestIdentity`: an object identity hash also included in the HTTP request-error log. Hashes can collide and be reused
+  after garbage collection. Use resource, host, and a short timestamp window to join those two log lines on a best-effort
+  basis; this is not a unique request correlation ID.
 
 Compare submission time and queue wait with the replica's OFFLINE transition and physical partition-removal logs. A
-submission after removal demonstrates that this read was dispatched after removal; it was not already waiting in the
-storage executor before removal. Submission is measured at the storage handler, not at network arrival, and does not
-identify the caller's routing snapshot or establish whether a client retry succeeded.
+submission after removal, allowing for timestamp uncertainty, indicates this read was dispatched after removal rather
+than waiting in the storage executor before removal. Submission is measured at the storage handler, not at network
+arrival, and does not identify the caller's routing snapshot or establish whether a client retry succeeded.
 
-Each failed parallel chunk emits its own warning; these warnings are not unique failed-request counts. Successful reads
-and early rejections do not emit this diagnostic. Read-response exceptions, HTTP statuses, and client retry behavior are
-unchanged.
+Warnings are rate-limited by resource and exception class using the shared `RedundantExceptionFilter` (a 60-second
+default reset interval), including across parallel chunks and requests. They are sampled diagnostics, not failed-request
+counts. Successful reads and early rejections do not emit this diagnostic. Read-response exceptions, HTTP statuses,
+existing HTTP request-error logs, and client retry behavior are unchanged.
 
 ### Graceful-Drop Ordering
 
@@ -79,12 +82,19 @@ and synchronous backend exceptions, rather than treating a duplicate stop as com
 a fresh stop future.
 Stops registered during startup wait for startup to exit before unsubscribing, including cleanup after partial startup
 failure. If ingestion-task shutdown overtakes queued unsubscribe actions or stop is requested after shutdown begins,
-the stop futures complete after shutdown cleanup or fail with the cleanup error.
+the stop futures complete after shutdown cleanup or fail with the cleanup error. A task closed before its ingestion
+loop starts performs cleanup from `close()`; a later invocation of the loop skips execution and duplicate cleanup.
+Successful Customized State removal is shared by stop and drop within a lifecycle, and invalidated when startup or
+reset republishes state. A stale stop callback cannot withdraw a restarted replica's state.
 
-OFFLINE remains asynchronous. DROPPED waits for pending routing withdrawal, bounded by the existing 60-minute partition
-drop timeout. A failed unsubscribe, failed or timed-out withdrawal, or an interruption during withdrawal or draining
-fails the transition before physical deletion. Customized State removal is still attempted if unsubscribe fails, but
-normal graceful drop does not delete storage on that failure.
+OFFLINE remains asynchronous. DROPPED waits for pending routing withdrawal, bounded by the configured stop-consumption
+timeout. The subsequent storage-drop completion wait retains its separate 60-minute bound. A failed unsubscribe, failed
+or timed-out withdrawal, or an interruption during withdrawal or draining fails the transition before physical deletion.
+Interruption logs identify whether withdrawal was unconfirmed or the post-withdrawal drain interval was interrupted;
+storage is retained even during shutdown because an interrupt does not establish that cached routes have drained.
+Customized State removal is still attempted if unsubscribe fails, but normal graceful drop does not delete storage on
+that failure. Unsubscribe and withdrawal failures are logged for non-serving versions as well, without extending the
+current/backup graceful-wait eligibility.
 
 Customized State removal acknowledges the server's routing-state write, not propagation through every controller,
 metadata server, or client cache. Routing convergence or queued reads exceeding the configured interval can still

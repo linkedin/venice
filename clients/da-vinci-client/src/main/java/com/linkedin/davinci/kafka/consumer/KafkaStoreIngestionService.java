@@ -898,6 +898,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           LOGGER.info(
               "Ignore start consumption for replica: {} as service is stopping.",
               Utils.getReplicaId(topic, partitionId));
+          storeIngestionTask.close();
           return;
         }
         ingestionExecutorService.submit(storeIngestionTask);

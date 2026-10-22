@@ -75,7 +75,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -101,7 +100,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -460,7 +458,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
-  public void testCloseStoreIngestionTask() {
+  public void testCloseStoreIngestionTask() throws Exception {
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -504,14 +502,17 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotEquals(storeIngestionTask, newStoreIngestionTask);
     assertEquals(newStoreIngestionTask.getStorageEngine(), storageEngine2);
 
-    // Mimic a graceful shutdown timeout
+    // The stopped service retains a real task without ever submitting it to the executor.
     kafkaStoreIngestionService
         .startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0, Optional.empty());
-    StoreIngestionTask shutdownTimeoutTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    // Initialize the latch forcefully to mimic task is running
-    shutdownTimeoutTask.getGracefulShutdownLatch().get();
-    // Graceful shutdown wait should time out
-    Assert.assertFalse(shutdownTimeoutTask.shutdownAndWait(1));
+    StoreIngestionTask unsubmittedTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    assertFalse(kafkaStoreIngestionService.isRunning());
+    assertTrue(unsubmittedTask.shutdownAndWait(0));
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
+    CompletableFuture<Void> stopFuture = kafkaStoreIngestionService.stopConsumption(config, 0);
+    stopFuture.get(5, TimeUnit.SECONDS);
+    assertSame(kafkaStoreIngestionService.stopConsumption(config, 0), stopFuture);
+    assertTrue(unsubmittedTask.getGracefulShutdownLatch().get().await(0, TimeUnit.SECONDS));
     kafkaStoreIngestionService.close();
   }
 
@@ -540,20 +541,18 @@ public abstract class KafkaStoreIngestionServiceTest {
         AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB));
 
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
-    StoreIngestionTask oldTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    // Mimic an inactive task whose run() has not finished its cleanup yet.
-    oldTask.getGracefulShutdownLatch().get();
+    StoreIngestionTask oldTask = spy(kafkaStoreIngestionService.getStoreIngestionTask(topicName));
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topicName, oldTask);
     oldTask.close();
 
-    long startTimeMs = System.currentTimeMillis();
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
-    assertTrue(System.currentTimeMillis() - startTimeMs >= TimeUnit.SECONDS.toMillis(1));
+    verify(oldTask).waitForShutdown(1);
     Assert.assertNotSame(kafkaStoreIngestionService.getStoreIngestionTask(topicName), oldTask);
     kafkaStoreIngestionService.close();
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStopConsumptionRetainsClosedTaskCleanupOutcome(boolean cleanupFails) throws Exception {
+  @Test
+  public void testStopConsumptionDelegatesToStoppingTask() {
     String topicName = "test-store_v1";
     VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(
         topicName,
@@ -561,30 +560,12 @@ public abstract class KafkaStoreIngestionServiceTest {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0);
     StoreIngestionTask task = mock(StoreIngestionTask.class);
     CompletableFuture<Void> cleanupFuture = new CompletableFuture<>();
+    doReturn(false).when(task).isRunning();
     doReturn(cleanupFuture).when(task).unSubscribePartition(topicPartition);
     kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topicName, task);
-    task.close();
 
+    // The task's synchronized unsubscribe decides atomically between enqueueing and awaiting shutdown cleanup.
     assertSame(kafkaStoreIngestionService.stopConsumption(config, 0), cleanupFuture);
-    assertSame(kafkaStoreIngestionService.stopConsumption(config, 0), cleanupFuture);
-    assertFalse(cleanupFuture.isDone());
-
-    VeniceException cleanupFailure = new VeniceException("Test shutdown cleanup failure");
-    if (cleanupFails) {
-      cleanupFuture.completeExceptionally(cleanupFailure);
-    } else {
-      cleanupFuture.complete(null);
-    }
-    CompletableFuture<Void> repeatedStop = kafkaStoreIngestionService.stopConsumption(config, 0);
-    assertSame(repeatedStop, cleanupFuture);
-    if (cleanupFails) {
-      ExecutionException exception =
-          Assert.expectThrows(ExecutionException.class, () -> repeatedStop.get(5, TimeUnit.SECONDS));
-      assertSame(exception.getCause(), cleanupFailure);
-    } else {
-      repeatedStop.get(5, TimeUnit.SECONDS);
-    }
-    verify(task, never()).isRunning();
   }
 
   @Test

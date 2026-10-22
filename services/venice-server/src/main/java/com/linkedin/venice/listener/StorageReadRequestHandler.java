@@ -532,7 +532,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleSingleGetRequest(GetRouterRequest request) {
     final int queueLen = this.executor.getQueue().size();
-    final long submittedAtMs = System.currentTimeMillis();
     final long submittedAtNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       if (request.shouldRequestBeTerminatedEarly()) {
@@ -573,7 +572,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
         return response;
       } catch (RuntimeException e) {
-        logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, -1, e);
+        logStorageExecutionFailure(request, queueLen, submittedAtNs, queueWaitMs, -1, e);
         throw e;
       }
     }, executor);
@@ -582,12 +581,16 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private void logStorageExecutionFailure(
       RouterRequest request,
       int queueLen,
-      long submittedAtMs,
       long submittedAtNs,
       double queueWaitMs,
       int chunkIndex,
       RuntimeException exception) {
-    double executionTimeMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs) - queueWaitMs;
+    if (REDUNDANT_LOGGING_FILTER.isRedundantException(request.getResourceName(), exception.getClass().getName())) {
+      return;
+    }
+    double elapsedMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs);
+    long submittedAtMs = System.currentTimeMillis() - (long) elapsedMs;
+    double executionTimeMs = elapsedMs - queueWaitMs;
     // Failed lookups do not return response stats, so preserve their timing separately from the response path.
     LOGGER.warn(
         "Storage read execution failed: resource={}, requestType={}, retry={}, streaming={}, requestIdentity={}, "
@@ -648,7 +651,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture<Void>[] chunkFutures = new CompletableFuture[chunkCount];
 
     final int queueLen = threadPoolExecutor.getQueue().size();
-    final long submittedAtMs = System.currentTimeMillis();
     final long submittedAtNs = System.nanoTime();
     for (int cur = 0; cur < chunkCount; ++cur) {
       final int finalCur = cur;
@@ -667,7 +669,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
           chunkOfResponse.getStats().setStorageExecutionSubmissionWaitTime(queueWaitMs);
         } catch (RuntimeException e) {
-          logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, finalCur, e);
+          logStorageExecutionFailure(request, queueLen, submittedAtNs, queueWaitMs, finalCur, e);
           throw e;
         }
       }, threadPoolExecutor);
@@ -732,7 +734,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   public CompletableFuture<ReadResponse> handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     final int queueLen = this.executor.getQueue().size();
-    final long submittedAtMs = System.currentTimeMillis();
     final long submittedAtNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       double queueWaitMs = LatencyUtils.getElapsedTimeFromNSToMS(submittedAtNs);
@@ -753,7 +754,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         responseWrapper.getStats().setStorageExecutionQueueLen(queueLen);
         return responseWrapper;
       } catch (RuntimeException e) {
-        logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, -1, e);
+        logStorageExecutionFailure(request, queueLen, submittedAtNs, queueWaitMs, -1, e);
         throw e;
       }
     }, executor);
@@ -769,7 +770,6 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     final int queueLen = this.computeExecutor.getQueue().size();
-    final long submittedAtMs = System.currentTimeMillis();
     final long submittedAtNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
       if (request.shouldRequestBeTerminatedEarly()) {
@@ -789,7 +789,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         response.getStats().setStorageExecutionQueueLen(queueLen);
         return response;
       } catch (RuntimeException e) {
-        logStorageExecutionFailure(request, queueLen, submittedAtMs, submittedAtNs, queueWaitMs, -1, e);
+        logStorageExecutionFailure(request, queueLen, submittedAtNs, queueWaitMs, -1, e);
         throw e;
       }
     }, computeExecutor);

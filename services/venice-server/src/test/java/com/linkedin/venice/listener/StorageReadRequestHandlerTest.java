@@ -113,6 +113,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.InMemoryLogAppender;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
@@ -512,6 +513,7 @@ public class StorageReadRequestHandlerTest {
 
   @Test(dataProvider = "failureDiagnosticRequests")
   public void testStorageFailureDiagnostics(RequestType requestType, boolean parallel) throws Exception {
+    RedundantExceptionFilter.getRedundantExceptionFilter().clearBitSet();
     String topic = "diagnostic-store_v1";
     byte[] key = "key-not-for-logging".getBytes(StandardCharsets.UTF_8);
     int partition = 3;
@@ -594,8 +596,11 @@ public class StorageReadRequestHandlerTest {
         long executionEnd = System.nanoTime();
         List<String> diagnostics =
             appender.getLogs().stream().filter(log -> log.startsWith(prefix)).collect(Collectors.toList());
-        assertEquals(diagnostics.size(), i + 1);
-        String diagnostic = diagnostics.get(i);
+        assertEquals(diagnostics.size(), 1, "Repeated chunk failures must share the resource/exception rate limit");
+        if (i > 0) {
+          continue;
+        }
+        String diagnostic = diagnostics.get(0);
         Map<String, String> fields = Arrays.stream(diagnostic.substring(prefix.length()).split(", "))
             .map(field -> field.split("=", 2))
             .collect(Collectors.toMap(field -> field[0], field -> field[1]));
@@ -605,7 +610,7 @@ public class StorageReadRequestHandlerTest {
         assertEquals(fields.get("streaming"), "true");
         assertEquals(fields.get("requestIdentity"), String.valueOf(System.identityHashCode(request)));
         long submissionMs = Long.parseLong(fields.get("submittedAtEpochMs"));
-        assertTrue(submissionMs >= beforeSubmissionMs && submissionMs <= afterSubmissionMs);
+        assertTrue(submissionMs >= beforeSubmissionMs - 1 && submissionMs <= afterSubmissionMs + 1);
         double queueWaitMs = Double.parseDouble(fields.get("queueWaitMs"));
         assertTrue(queueWaitMs >= (executionStart - afterSubmissionNs) / 1_000_000.0);
         assertTrue(queueWaitMs <= (executionEnd - beforeSubmissionNs) / 1_000_000.0);
@@ -629,7 +634,30 @@ public class StorageReadRequestHandlerTest {
               .anyMatch(
                   log -> log.startsWith("Exception thrown for " + topic)
                       && log.contains("requestIdentity=" + System.identityHashCode(request))));
+
+      RuntimeException[] failures = { failure, new VeniceException("Different diagnostic failure"), failure };
+      for (int i = 0; i < failures.length; i++) {
+        reset(context);
+        if (i == 2) {
+          doReturn("another-diagnostic-store_v1").when(request).getResourceName();
+        }
+        doThrow(failures[i]).when(storageEngine).get(anyInt(), any(ByteBuffer.class));
+        doThrow(failures[i]).when(storageEngine).get(anyInt(), any(byte[].class));
+        doThrow(failures[i]).when(storageEngine).get(anyInt(), any(byte[].class), any(ByteBuffer.class));
+        handler.channelRead(context, request);
+        queuedExecutor.getQueue().forEach(Runnable::run);
+        queuedExecutor.getQueue().clear();
+        assertEquals(
+            appender.getLogs().stream().filter(log -> log.startsWith(prefix)).count(),
+            (long) i + 1,
+            "Only a different resource or exception class should emit another warning");
+        verify(context).writeAndFlush(argumentCaptor.capture());
+        response = (HttpShortcutResponse) argumentCaptor.getValue();
+        assertEquals(response.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        assertTrue(response.getMessage().contains(failures[i].getMessage()));
+      }
     } finally {
+      RedundantExceptionFilter.getRedundantExceptionFilter().clearBitSet();
       logger.removeAppender(appender);
       appender.stop();
       queuedExecutor.shutdownNow();

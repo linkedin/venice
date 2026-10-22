@@ -487,6 +487,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
   private final CompletableFuture<Void> shutdownCleanupFuture = new CompletableFuture<>();
+  // Guarded by this; cleanup belongs to run(), or to close() if the task never starts.
+  private boolean runOrCloseStarted;
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
@@ -2063,8 +2065,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
+    CountDownLatch shutdownLatch;
+    synchronized (this) {
+      if (runOrCloseStarted) {
+        return;
+      }
+      runOrCloseStarted = true;
+      shutdownLatch = gracefulShutdownLatch.get();
+    }
     LogContext.setLogContext(serverConfig.getLogContext());
-    CountDownLatch shutdownLatch = gracefulShutdownLatch.get();
     boolean doFlush = true;
     try {
       // Update thread name to include topic to make it easy debugging
@@ -2434,17 +2443,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pendingUnsubscribeFutures.add(action.getFuture());
       }
     }
+    Exception cleanupFailure;
     try {
-      Exception cleanupFailure = internalCloseResources(doFlush);
-      if (cleanupFailure != null) {
-        pendingUnsubscribeFutures.forEach(future -> future.completeExceptionally(cleanupFailure));
-        return;
-      }
+      cleanupFailure = internalCloseResources(doFlush);
     } catch (Throwable t) {
       pendingUnsubscribeFutures.forEach(future -> future.completeExceptionally(t));
       throw t;
     }
-    pendingUnsubscribeFutures.forEach(future -> future.complete(null));
+    if (cleanupFailure == null) {
+      pendingUnsubscribeFutures.forEach(future -> future.complete(null));
+    } else {
+      pendingUnsubscribeFutures.forEach(future -> future.completeExceptionally(cleanupFailure));
+    }
   }
 
   private Exception internalCloseResources(boolean doFlush) {
@@ -5865,26 +5875,39 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Stops the consumer task.
    */
-  public synchronized void close() {
-    // Evict any pending repair tasks
-    getIsRunning().set(false);
-    // KafkaConsumer is closed at the end of the run method.
-    // The operation is executed on a single thread in run method.
-    // This method signals the run method to end, which closes the
-    // resources before exiting.
+  public void close() {
+    CountDownLatch shutdownLatch;
+    synchronized (this) {
+      // Evict any pending repair tasks
+      getIsRunning().set(false);
+      if (runOrCloseStarted) {
+        // KafkaConsumer is closed at the end of the run method.
+        // The operation is executed on a single thread in run method.
+        // This method signals the run method to end, which closes the
+        // resources before exiting.
 
-    if (recordTransformer != null) {
-      // shut down the threadpool first, since tasks running in it may require a valid recordTransformer object
-      this.recordTransformerOnRecoveryThreadPool.shutdownNow();
+        if (recordTransformer != null) {
+          // shut down the threadpool first, since tasks running in it may require a valid recordTransformer object
+          this.recordTransformerOnRecoveryThreadPool.shutdownNow();
 
-      long startTime = System.nanoTime();
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
-      LOGGER.info(
-          "DaVinciRecordTransformer onEndVersionIngestion took {} ms for store version: {}",
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          storeVersionName);
-      Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
+          long startTime = System.nanoTime();
+          Store store = storeRepository.getStoreOrThrow(storeName);
+          recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
+          LOGGER.info(
+              "DaVinciRecordTransformer onEndVersionIngestion took {} ms for store version: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              storeVersionName);
+          Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
+        }
+        return;
+      }
+      runOrCloseStarted = true;
+      shutdownLatch = gracefulShutdownLatch.get();
+    }
+    try {
+      internalClose(false);
+    } finally {
+      shutdownLatch.countDown();
     }
   }
 

@@ -297,6 +297,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
           remainingWaitMs,
           routingWithdrawalTimestampMs);
       if (!Utils.sleep(remainingWaitMs)) {
+        logger.warn(
+            "Interrupted during graceful drop delay for replica: {}. Keeping storage because cached routes may still be active",
+            replicaId);
         throw new VeniceException("Interrupted during graceful drop delay for replica: " + replicaId);
       }
     } finally {
@@ -316,9 +319,13 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       if (waitForWithdrawal) {
         this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
       }
-      return future.get(WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS);
+      return future.get(getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds(), TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      logger.warn(
+          "Interrupted while waiting for routing withdrawal for replica: {}. Keeping storage because withdrawal is unconfirmed",
+          replicaId,
+          e);
       throw new VeniceException("Interrupted while waiting for routing withdrawal for replica: " + replicaId, e);
     } catch (ExecutionException | TimeoutException e) {
       logger.error("Failed to withdraw routing before dropping replica: {}", replicaId, e);
