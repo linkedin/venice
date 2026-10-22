@@ -4,6 +4,7 @@ import static com.linkedin.venice.client.store.ClientConfig.defaultGenericClient
 import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 
 import com.linkedin.alpini.base.concurrency.NamedThreadFactory;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
@@ -154,38 +155,55 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private Set<String> harClusters;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
-    super(clientConfig);
-    this.clientConfig = clientConfig;
-    this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
-    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
-        ? clientConfig.getMetadataRefreshIntervalInSeconds()
-        : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    this.connWarmupTimeoutInSeconds = clientConfig.getMetadataConnWarmupTimeoutInSeconds() > 0
-        ? clientConfig.getMetadataConnWarmupTimeoutInSeconds()
-        : DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT;
-    this.d2TransportClient = d2TransportClient;
-    this.d2ServiceDiscovery = new D2ServiceDiscovery();
-    this.clusterDiscoveryD2ServiceName = d2TransportClient.getServiceName();
-    this.compressorFactory = new CompressorFactory();
-    this.clusterStats = clientConfig.getClusterStats();
-    this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
-    InternalAvroStoreClient metadataSchemaResponseStoreClient = new AvroGenericStoreClientImpl(
-        // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster discovery
-        new D2TransportClient(clusterDiscoveryD2ServiceName, d2TransportClient.getD2Client()),
-        false,
-        defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
-    this.metadataResponseSchemaReader =
-        new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
-    /**
-     * When gRPC is enabled the top-level {@code r2Client} is allowed to be null: the R2 client used for non-storage
-     * requests lives in {@link GrpcClientConfig} instead. Both the connection warmup and the dictionary fetch below
-     * go over R2, so resolve the transport against whichever client is actually populated.
-     */
-    this.r2TransportClient = new R2TransportClient(
-        clientConfig.useGrpc() ? clientConfig.getGrpcClientConfig().getR2Client() : clientConfig.getR2Client());
-    this.harClusters = clientConfig.getHarClusters();
-    this.scheduler = Optional.ofNullable(clientConfig.getMetadataRefreshExecutor())
-        .orElseGet(() -> Executors.newScheduledThreadPool(1));
+    this(clientConfig, d2TransportClient, new InstanceHealthMonitor(clientConfig.getInstanceHealthMonitorConfig()));
+  }
+
+  /**
+   * Takes ownership of {@code instanceHealthMonitor}: it is closed if construction fails, and by {@link #close()}.
+   */
+  @VisibleForTesting
+  RequestBasedMetadata(
+      ClientConfig clientConfig,
+      D2TransportClient d2TransportClient,
+      InstanceHealthMonitor instanceHealthMonitor) {
+    super(clientConfig, instanceHealthMonitor);
+    try {
+      this.clientConfig = clientConfig;
+      this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
+      this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
+          ? clientConfig.getMetadataRefreshIntervalInSeconds()
+          : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
+      this.connWarmupTimeoutInSeconds = clientConfig.getMetadataConnWarmupTimeoutInSeconds() > 0
+          ? clientConfig.getMetadataConnWarmupTimeoutInSeconds()
+          : DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT;
+      this.d2TransportClient = d2TransportClient;
+      this.d2ServiceDiscovery = new D2ServiceDiscovery();
+      this.clusterDiscoveryD2ServiceName = d2TransportClient.getServiceName();
+      this.compressorFactory = new CompressorFactory();
+      this.clusterStats = clientConfig.getClusterStats();
+      this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
+      InternalAvroStoreClient metadataSchemaResponseStoreClient = new AvroGenericStoreClientImpl(
+          // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster
+          // discovery
+          new D2TransportClient(clusterDiscoveryD2ServiceName, d2TransportClient.getD2Client()),
+          false,
+          defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
+      this.metadataResponseSchemaReader =
+          new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
+      /**
+       * When gRPC is enabled the top-level {@code r2Client} is allowed to be null: the R2 client used for non-storage
+       * requests lives in {@link GrpcClientConfig} instead. Both the connection warmup and the dictionary fetch below
+       * go over R2, so resolve the transport against whichever client is actually populated.
+       */
+      this.r2TransportClient = new R2TransportClient(
+          clientConfig.useGrpc() ? clientConfig.getGrpcClientConfig().getR2Client() : clientConfig.getR2Client());
+      this.harClusters = clientConfig.getHarClusters();
+      this.scheduler = Optional.ofNullable(clientConfig.getMetadataRefreshExecutor())
+          .orElseGet(() -> Executors.newScheduledThreadPool(1));
+    } catch (RuntimeException | Error e) {
+      closeInstanceHealthMonitorAfterFailure(e);
+      throw e;
+    }
   }
 
   // For unit tests only
@@ -861,6 +879,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     versionPartitionerMap.clear();
     Utils.closeQuietlyWithErrorLogged(metadataResponseSchemaReader);
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
+    // Close the health monitor last: the refresh above calls updateLiveInstanceSet on it.
+    super.close();
   }
 
   private CompletableFuture<TransportClientResponse> fetchMetadata() {

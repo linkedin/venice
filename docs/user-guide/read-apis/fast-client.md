@@ -216,11 +216,12 @@ ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
 
 ## Health Monitoring
 
-Configure instance health monitoring to avoid unhealthy servers:
+Each Fast Client creates its own instance health monitor, which tracks unhealthy and overloaded servers so requests
+avoid them. The monitor is not shared with other clients and is closed when the client is closed. Pass settings to tune
+it; the client's R2 client is used unless the settings name another one:
 
 ```java
 InstanceHealthMonitorConfig healthConfig = new InstanceHealthMonitorConfig.Builder()
-    .setClient(r2Client)
     .setRoutingRequestDefaultTimeoutMS(1000)
     .setRoutingPendingRequestCounterInstanceBlockThreshold(50)
     .setHeartBeatIntervalSeconds(30)
@@ -229,7 +230,7 @@ InstanceHealthMonitorConfig healthConfig = new InstanceHealthMonitorConfig.Build
 
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
     // ... basic config ...
-    .setInstanceHealthMonitor(new InstanceHealthMonitor(healthConfig))
+    .setInstanceHealthMonitorConfig(healthConfig)
     .build();
 ```
 

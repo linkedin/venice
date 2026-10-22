@@ -142,18 +142,17 @@ public class InstanceHealthMonitorTest {
   }
 
   /**
-   * Metadata and a separate lifecycle owner may both close a shared monitor, in either order.
+   * Closing the metadata closes its monitor; closing again (from metadata or directly) is harmless.
    */
   @Test
   public void testCloseIsIdempotentAndDrainsLateCompletions() throws Exception {
     InstanceHealthMonitor monitor = new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().build());
     ClientConfig clientConfig = mock(ClientConfig.class);
-    when(clientConfig.getInstanceHealthMonitor()).thenReturn(monitor);
     when(clientConfig.getClientRoutingStrategyType()).thenReturn(ClientRoutingStrategyType.LEAST_LOADED);
     when(clientConfig.getStoreName()).thenReturn("test-store");
     AbstractStoreMetadata metadata = mock(
         AbstractStoreMetadata.class,
-        withSettings().useConstructor(clientConfig).defaultAnswer(CALLS_REAL_METHODS));
+        withSettings().useConstructor(clientConfig, monitor).defaultAnswer(CALLS_REAL_METHODS));
     ChainedCompletableFuture<Integer, Integer> request =
         monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>());
     try {

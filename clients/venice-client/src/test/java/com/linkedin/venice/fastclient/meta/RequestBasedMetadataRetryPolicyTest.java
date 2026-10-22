@@ -61,7 +61,7 @@ public class RequestBasedMetadataRetryPolicyTest {
       doAnswer(ignored -> response.get()).when(transport).get(anyString());
       doReturn(Utils.getSchemaFromResource("avro/MetadataResponseRecord/v4/MetadataResponseRecord.avsc")).when(schemas)
           .getValueSchema(4);
-      metadata = new RequestBasedMetadata(config, transport);
+      metadata = RequestBasedMetadataTestUtils.newRequestBasedMetadata(config, transport);
       metadata.setD2ServiceDiscovery(discovery);
       metadata.setMetadataResponseSchemaReader(schemas);
       metadata.discoverD2Service();

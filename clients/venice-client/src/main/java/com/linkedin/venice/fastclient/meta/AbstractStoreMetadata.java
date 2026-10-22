@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.listeners.StoreConfigChangeListener;
 import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
@@ -44,13 +45,39 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   private final CopyOnWriteArrayList<StoreConfigChangeListener> storeConfigChangeListeners =
       new CopyOnWriteArrayList<>();
 
+  /**
+   * Creates this metadata's own {@link InstanceHealthMonitor} from {@link ClientConfig#getInstanceHealthMonitorConfig()}.
+   * The monitor is never shared with other clients and is closed by {@link #close()}.
+   */
   public AbstractStoreMetadata(ClientConfig clientConfig) {
+    this(clientConfig, new InstanceHealthMonitor(clientConfig.getInstanceHealthMonitorConfig()));
+  }
+
+  /**
+   * Takes ownership of {@code instanceHealthMonitor}: it is closed if construction fails, and by {@link #close()}.
+   */
+  @VisibleForTesting
+  AbstractStoreMetadata(ClientConfig clientConfig, InstanceHealthMonitor instanceHealthMonitor) {
     this.clientConfig = clientConfig;
-    this.instanceHealthMonitor = clientConfig.getInstanceHealthMonitor();
+    this.instanceHealthMonitor = instanceHealthMonitor;
     this.storeName = clientConfig.getStoreName();
-    ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
-    LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, storeName);
-    this.routingStrategy = getRoutingStrategy(clientRoutingStrategyType);
+    try {
+      ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
+      LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, storeName);
+      this.routingStrategy = getRoutingStrategy(clientRoutingStrategyType);
+    } catch (RuntimeException | Error e) {
+      closeInstanceHealthMonitorAfterFailure(e);
+      throw e;
+    }
+  }
+
+  /** For subclass constructors: release the owned monitor when construction fails, keeping the original error. */
+  protected final void closeInstanceHealthMonitorAfterFailure(Throwable failure) {
+    try {
+      instanceHealthMonitor.close();
+    } catch (Throwable closeFailure) {
+      failure.addSuppressed(closeFailure);
+    }
   }
 
   private AbstractClientRoutingStrategy getRoutingStrategy(ClientRoutingStrategyType clientRoutingStrategyType) {
@@ -133,6 +160,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     return Store.DEFAULT_BATCH_GET_LIMIT;
   }
 
+  /**
+   * Closes the health monitor owned by this metadata. Subclasses must call this after stopping anything that still
+   * uses the monitor, such as the metadata refresh.
+   */
   @Override
   public void close() throws IOException {
     Utils.closeQuietlyWithErrorLogged(instanceHealthMonitor);
