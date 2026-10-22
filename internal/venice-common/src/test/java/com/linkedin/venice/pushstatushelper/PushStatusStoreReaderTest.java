@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anySet;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertEqualsDeep;
@@ -25,8 +27,11 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.PushMonitorUtils;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,11 +40,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -49,6 +58,7 @@ public class PushStatusStoreReaderTest {
 
   private D2Client d2ClientMock;
   private AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClientMock;
+  private AvroSpecificStoreClient<PushStatusKey, PushStatusValue> clusterClient;
   private final static int storeVersion = 42;
   private final static String storeName = "venice-test-push-status-store";
   private final static String incPushVersion = "ip-2022";
@@ -59,6 +69,7 @@ public class PushStatusStoreReaderTest {
   public void setUp() {
     d2ClientMock = mock(D2Client.class);
     storeClientMock = mock(AvroSpecificStoreClient.class);
+    clusterClient = mock(AvroSpecificStoreClient.class);
   }
 
   private Map<PushStatusKey, PushStatusValue> getPushStatusInstanceData(
@@ -470,5 +481,306 @@ public class PushStatusStoreReaderTest {
 
     ClientConfig clientConfig = storeReaderSpy.getClientConfig(storeName);
     Assert.assertFalse(clientConfig.isStatTrackingEnabled());
+  }
+
+  private PushStatusStoreReader clusterReader() {
+    return clusterReader(store -> "cluster");
+  }
+
+  private PushStatusStoreReader clusterReader(Function<String, String> resolver) {
+    PushStatusStoreReader reader =
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10, resolver));
+    doReturn(storeClientMock).when(reader).getVeniceClient(anyString());
+    doReturn(clusterClient).when(reader).getClusterVeniceClient("cluster");
+    return reader;
+  }
+
+  private PushStatusValue status(CharSequence instance, int status) {
+    PushStatusValue value = new PushStatusValue();
+    value.instances = Collections.singletonMap(instance, status);
+    return value;
+  }
+
+  @DataProvider
+  public Object[][] legacyOverlapStatuses() {
+    return new Object[][] { { ExecutionStatus.COMPLETED }, { ExecutionStatus.ERROR },
+        { ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED }, { ExecutionStatus.STARTED } };
+  }
+
+  @Test(dataProvider = "legacyOverlapStatuses")
+  public void testClusterReadsMergeMixedClientsAcrossAllReadPaths(ExecutionStatus legacyStatus) throws Exception {
+    try (PushStatusStoreReader reader = clusterReader()) {
+      PushStatusValue legacy = status(new Utf8("legacy"), legacyStatus.getValue());
+      PushStatusValue primary = status("new", ExecutionStatus.COMPLETED.getValue());
+      primary.instances = new HashMap<>(primary.instances);
+      primary.instances.put("legacy", ExecutionStatus.STARTED.getValue());
+      Map<CharSequence, Integer> expected = new HashMap<>();
+      expected.put("legacy", legacyStatus.getValue());
+      expected.put("new", ExecutionStatus.COMPLETED.getValue());
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(legacy));
+      when(clusterClient.get(any())).thenReturn(CompletableFuture.completedFuture(primary));
+
+      assertEquals(reader.getVersionStatus(storeName, storeVersion, Optional.empty()), expected);
+      assertEquals(reader.getPartitionStatus(storeName, storeVersion, 0, Optional.empty()), expected);
+      assertEquals(
+          reader.getPartitionOrVersionStatusAsync(storeName, storeVersion, 0, Optional.empty(), Optional.empty(), true)
+              .get(),
+          expected);
+      assertEquals(reader.getSupposedlyOngoingIncrementalPushVersions(storeName, storeVersion), expected);
+      verify(clusterClient).get(
+          PushStatusStoreUtils.getClusterPushStatusKey(
+              storeName,
+              PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion)));
+
+      PushStatusKey partitionKey =
+          getServerIncrementalPushKey(storeVersion, 0, incPushVersion, SERVER_INCREMENTAL_PUSH_PREFIX);
+      when(storeClientMock.batchGet(Collections.singleton(partitionKey)))
+          .thenReturn(CompletableFuture.completedFuture(Collections.singletonMap(partitionKey, legacy)));
+      PushStatusKey clusterKey = PushStatusStoreUtils.getClusterPushStatusKey(storeName, partitionKey);
+      when(clusterClient.batchGet(Collections.singleton(clusterKey)))
+          .thenReturn(CompletableFuture.completedFuture(Collections.singletonMap(clusterKey, primary)));
+      assertEquals(reader.getPartitionStatuses(storeName, storeVersion, incPushVersion, 1).get(0), expected);
+      doReturn(PushStatusStoreReader.InstanceStatus.ALIVE).when(reader).getInstanceStatus(anyString(), anyString());
+      assertEquals(
+          PushMonitorUtils
+              .getDaVinciPushStatusAndDetails(reader, storeName + "_v" + storeVersion, 1, Optional.empty(), 0, 0, false)
+              .getStatus(),
+          legacyStatus == END_OF_INCREMENTAL_PUSH_RECEIVED ? ExecutionStatus.STARTED : legacyStatus);
+
+      primary.instances = Collections.singletonMap("legacy", ExecutionStatus.COMPLETED.getValue());
+      assertEquals(
+          reader.getVersionStatus(storeName, storeVersion, Optional.empty()),
+          Collections.singletonMap("legacy", legacyStatus.getValue()));
+      Assert.assertTrue(legacy.instances.keySet().iterator().next() instanceof Utf8);
+    }
+  }
+
+  @Test
+  public void testClusterReadFallbackAndMissingRecordSemantics() {
+    try (PushStatusStoreReader reader = clusterReader()) {
+      PushStatusValue legacy = status(new Utf8("legacy"), 1);
+      Map<CharSequence, Integer> expected = Collections.singletonMap("legacy", 1);
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(legacy));
+      when(clusterClient.get(any())).thenReturn(CompletableFuture.completedFuture(null));
+      assertEquals(reader.getVersionStatus(storeName, storeVersion, Optional.empty()), expected);
+      CompletableFuture<PushStatusValue> failed = new CompletableFuture<>();
+      failed.completeExceptionally(new VeniceClientException("cluster unavailable"));
+      when(clusterClient.get(any())).thenReturn(failed);
+      assertEquals(reader.getVersionStatus(storeName, storeVersion, Optional.empty()), expected);
+      when(clusterClient.get(any())).thenThrow(new VeniceClientException("cluster unavailable"));
+      assertEquals(reader.getVersionStatus(storeName, storeVersion, Optional.empty()), expected);
+      doReturn(new CompletableFuture<PushStatusValue>()).when(clusterClient).get(any());
+      assertEquals(reader.getVersionStatus(storeName, storeVersion, Optional.empty()), expected);
+
+      when(clusterClient.get(any())).thenReturn(CompletableFuture.completedFuture(null));
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(null));
+      Assert.assertNull(reader.getVersionStatus(storeName, storeVersion, Optional.empty()));
+      Assert.assertTrue(reader.getPartitionStatus(storeName, storeVersion, 0, Optional.empty()).isEmpty());
+      PushStatusValue primary = status(new Utf8("new"), 2);
+      when(clusterClient.get(any())).thenReturn(CompletableFuture.completedFuture(primary));
+      assertEquals(
+          reader.getVersionStatus(storeName, storeVersion, Optional.empty()),
+          Collections.singletonMap("new", 2));
+      primary.instances = null;
+      Assert.assertNull(reader.getVersionStatus(storeName, storeVersion, Optional.empty()));
+      primary.instances = Collections.emptyMap();
+      Assert.assertTrue(reader.getVersionStatus(storeName, storeVersion, Optional.empty()).isEmpty());
+      legacy.instances = null;
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(legacy));
+      Assert.assertTrue(reader.getVersionStatus(storeName, storeVersion, Optional.empty()).isEmpty());
+      primary.instances = null;
+      Assert.assertTrue(reader.getVersionStatus(storeName, storeVersion, Optional.empty()).isEmpty());
+      when(clusterClient.get(any())).thenReturn(CompletableFuture.completedFuture(null));
+      Assert.assertNull(reader.getVersionStatus(storeName, storeVersion, Optional.empty()));
+      when(storeClientMock.get(any())).thenReturn(failed);
+      Assert.assertThrows(
+          VeniceException.class,
+          () -> reader.getVersionStatus(storeName, storeVersion, Optional.empty()));
+    }
+  }
+
+  @Test
+  public void testLegacyHeartbeatIsAuthoritativeAcrossBootstrapRestarts() {
+    try (PushStatusStoreReader reader = clusterReader()) {
+      PushStatusValue legacy = new PushStatusValue();
+      PushStatusValue primary = new PushStatusValue();
+      legacy.reportTimestamp = 1L;
+      primary.reportTimestamp = 2L;
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(legacy));
+      when(clusterClient.get(any())).thenReturn(new CompletableFuture<>());
+      assertEquals(reader.getHeartbeat(storeName, "instance"), 1L);
+      legacy.reportTimestamp = -1L;
+      assertEquals(reader.getInstanceStatus(storeName, "instance"), PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING);
+      legacy.reportTimestamp = System.currentTimeMillis();
+      primary.reportTimestamp = -1L;
+      assertEquals(reader.getInstanceStatus(storeName, "instance"), PushStatusStoreReader.InstanceStatus.ALIVE);
+      legacy.reportTimestamp = -1L;
+      primary.reportTimestamp = System.currentTimeMillis();
+      assertEquals(reader.getInstanceStatus(storeName, "instance"), PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING);
+      verifyNoInteractions(clusterClient);
+      when(clusterClient.get(any())).thenReturn(CompletableFuture.completedFuture(primary));
+      legacy.reportTimestamp = null;
+      assertEquals(reader.getHeartbeat(storeName, "instance"), primary.reportTimestamp.longValue());
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(null));
+      primary.reportTimestamp = -1L;
+      assertEquals(reader.getInstanceStatus(storeName, "instance"), PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING);
+    }
+  }
+
+  @Test
+  public void testMissingHeartbeatUsesBoundedClusterFallbackAndPropagatesLegacyFailure() {
+    try (PushStatusStoreReader reader = clusterReader()) {
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(null));
+      when(clusterClient.get(any())).thenReturn(new CompletableFuture<>());
+      assertEquals(reader.getHeartbeat(storeName, "instance"), 0L);
+      CompletableFuture<PushStatusValue> failure = new CompletableFuture<>();
+      failure.completeExceptionally(new VeniceClientException("heartbeat unavailable"));
+      when(clusterClient.get(any())).thenReturn(failure);
+      assertEquals(reader.getHeartbeat(storeName, "instance"), 0L);
+      when(clusterClient.get(any())).thenReturn(CompletableFuture.completedFuture(null));
+      assertEquals(reader.getHeartbeat(storeName, "instance"), 0L);
+      when(storeClientMock.get(any())).thenReturn(failure);
+      Assert.assertThrows(VeniceException.class, () -> reader.getHeartbeat(storeName, "instance"));
+    }
+  }
+
+  @Test(dataProvider = "legacyOverlapStatuses")
+  public void testMergedVersionStatusExcludesLegacyOnlyPartitionReport(ExecutionStatus obsoleteStatus) {
+    try (PushStatusStoreReader reader = clusterReader()) {
+      PushStatusKey versionKey = PushStatusStoreUtils.getPushKey(storeVersion, Optional.empty());
+      PushStatusKey partitionKey = PushStatusStoreUtils.getPushKey(storeVersion, 0, Optional.empty(), Optional.empty());
+      PushStatusValue legacyVersion = status(new Utf8("legacy"), ExecutionStatus.COMPLETED.getValue());
+      PushStatusValue clusterVersion = status(new Utf8("cluster-only"), ExecutionStatus.COMPLETED.getValue());
+      clusterVersion.instances = new HashMap<>(clusterVersion.instances);
+      clusterVersion.instances.put("legacy", ExecutionStatus.STARTED.getValue());
+      PushStatusValue heartbeat = new PushStatusValue();
+      heartbeat.reportTimestamp = System.currentTimeMillis();
+      Map<PushStatusKey, PushStatusValue> legacy = new HashMap<>();
+      legacy.put(versionKey, legacyVersion);
+      legacy.put(partitionKey, status(new Utf8("legacy"), obsoleteStatus.getValue()));
+      legacy.put(PushStatusStoreUtils.getHeartbeatKey("legacy"), heartbeat);
+      legacy.put(PushStatusStoreUtils.getHeartbeatKey("cluster-only"), heartbeat);
+      when(storeClientMock.get(any()))
+          .thenAnswer(invocation -> CompletableFuture.completedFuture(legacy.get(invocation.getArgument(0))));
+      when(clusterClient.get(any())).thenAnswer(
+          invocation -> CompletableFuture.completedFuture(
+              PushStatusStoreUtils.getClusterPushStatusKey(storeName, versionKey).equals(invocation.getArgument(0))
+                  ? clusterVersion
+                  : null));
+
+      assertEquals(
+          PushMonitorUtils
+              .getDaVinciPushStatusAndDetails(reader, storeName + "_v" + storeVersion, 1, Optional.empty(), 0, 0, false)
+              .getStatus(),
+          ExecutionStatus.COMPLETED);
+    }
+  }
+
+  @Test
+  public void testClusterBatchFallbackAndLegacyFailurePropagation() {
+    try (PushStatusStoreReader reader = clusterReader()) {
+      PushStatusKey key = getServerIncrementalPushKey(storeVersion, 0, incPushVersion, SERVER_INCREMENTAL_PUSH_PREFIX);
+      PushStatusValue legacy = status("legacy", 1);
+      when(storeClientMock.batchGet(anySet()))
+          .thenReturn(CompletableFuture.completedFuture(Collections.singletonMap(key, legacy)));
+      CompletableFuture<Map<PushStatusKey, PushStatusValue>> failure = new CompletableFuture<>();
+      failure.completeExceptionally(new VeniceClientException("cluster batch unavailable"));
+      when(clusterClient.batchGet(anySet())).thenReturn(failure);
+      assertEquals(reader.getPartitionStatuses(storeName, storeVersion, incPushVersion, 1).get(0), legacy.instances);
+      when(clusterClient.batchGet(anySet())).thenReturn(CompletableFuture.completedFuture(Collections.emptyMap()));
+      assertEquals(reader.getPartitionStatuses(storeName, storeVersion, incPushVersion, 1).get(0), legacy.instances);
+      when(storeClientMock.batchGet(anySet())).thenReturn(failure);
+      VeniceException expected = Assert.expectThrows(
+          VeniceException.class,
+          () -> reader.getPartitionStatuses(storeName, storeVersion, incPushVersion, 1));
+      Assert.assertTrue(expected.getMessage().contains("Failed to fetch push statuses"));
+    }
+  }
+
+  @Test
+  public void testBlockedClusterWorkersRejectRepeatedReadsWithoutQueueing() throws Exception {
+    CountDownLatch started = new CountDownLatch(2);
+    CountDownLatch release = new CountDownLatch(1);
+    try (PushStatusStoreReader reader = clusterReader()) {
+      PushStatusValue legacy = status("legacy", 1);
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(legacy));
+      doAnswer(invocation -> {
+        started.countDown();
+        release.await();
+        return storeClientMock;
+      }).when(reader).getClusterVeniceClient("cluster");
+      CompletableFuture<Map<CharSequence, Integer>> result =
+          reader.getPartitionStatusAsync(storeName, storeVersion, 0, Optional.empty(), Optional.empty());
+      CompletableFuture<Map<CharSequence, Integer>> secondResult =
+          reader.getPartitionStatusAsync(storeName, storeVersion, 1, Optional.empty(), Optional.empty());
+      try {
+        Assert.assertTrue(started.await(5, TimeUnit.SECONDS));
+        for (int i = 0; i < 50; i++) {
+          CompletableFuture<Map<CharSequence, Integer>> rejected =
+              reader.getPartitionStatusAsync(storeName, storeVersion, i, Optional.empty(), Optional.empty());
+          Assert.assertTrue(rejected.isDone(), "Saturated cluster workers must fall back without queueing");
+          assertEquals(rejected.get(), legacy.instances);
+        }
+        assertEquals(result.get(5, TimeUnit.SECONDS), legacy.instances);
+        assertEquals(secondResult.get(5, TimeUnit.SECONDS), legacy.instances);
+        verify(reader, times(2)).getClusterVeniceClient("cluster");
+      } finally {
+        release.countDown();
+      }
+    }
+  }
+
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testClusterResolverFailureCannotDiscardLegacyResponse(boolean batch, boolean blocked) throws Exception {
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    try (PushStatusStoreReader reader = clusterReader(store -> {
+      started.countDown();
+      if (blocked) {
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new VeniceException(e);
+        }
+      }
+      throw new IllegalStateException("cluster discovery unavailable");
+    })) {
+      PushStatusValue legacy = status("legacy", 1);
+      PushStatusKey key = getServerIncrementalPushKey(storeVersion, 0, incPushVersion, SERVER_INCREMENTAL_PUSH_PREFIX);
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(legacy));
+      when(storeClientMock.batchGet(anySet()))
+          .thenReturn(CompletableFuture.completedFuture(Collections.singletonMap(key, legacy)));
+      CompletableFuture<Map<CharSequence, Integer>> result = CompletableFuture.supplyAsync(
+          () -> batch
+              ? reader.getPartitionStatuses(storeName, storeVersion, incPushVersion, 1).get(0)
+              : reader.getVersionStatus(storeName, storeVersion, Optional.empty()));
+      try {
+        Assert.assertTrue(started.await(5, TimeUnit.SECONDS));
+        assertEquals(result.get(5, TimeUnit.SECONDS), legacy.instances);
+        verifyNoInteractions(clusterClient);
+      } finally {
+        release.countDown();
+      }
+    }
+  }
+
+  @Test
+  public void testDisabledClusterReadsKeepImmediateLegacyPath() {
+    try (PushStatusStoreReader reader = clusterReader(null)) {
+      PushStatusValue legacy = status("legacy", 1);
+      legacy.reportTimestamp = -1L;
+      PushStatusKey key = getServerIncrementalPushKey(storeVersion, 0, incPushVersion, SERVER_INCREMENTAL_PUSH_PREFIX);
+      when(storeClientMock.get(any())).thenReturn(CompletableFuture.completedFuture(legacy));
+      when(storeClientMock.batchGet(anySet()))
+          .thenReturn(CompletableFuture.completedFuture(Collections.singletonMap(key, legacy)));
+      CompletableFuture<Map<CharSequence, Integer>> result =
+          reader.getPartitionStatusAsync(storeName, storeVersion, 0, Optional.empty(), Optional.empty());
+      Assert.assertTrue(result.isDone());
+      assertEquals(result.join(), legacy.instances);
+      assertEquals(reader.getPartitionStatuses(storeName, storeVersion, incPushVersion, 1).get(0), legacy.instances);
+      assertEquals(reader.getHeartbeat(storeName, "instance"), -1L);
+      verifyNoInteractions(clusterClient);
+    }
   }
 }

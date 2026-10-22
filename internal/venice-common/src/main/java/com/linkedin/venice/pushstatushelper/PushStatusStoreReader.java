@@ -10,6 +10,7 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -22,8 +23,16 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
@@ -45,6 +54,10 @@ public class PushStatusStoreReader implements Closeable {
   private final D2Client d2Client;
   private final String clusterDiscoveryD2ServiceName;
   private final long heartbeatExpirationTimeInSeconds;
+  private final Function<String, String> clusterResolver;
+  private final ScheduledExecutorService clusterReadTimeoutExecutor;
+  private final ExecutorService clusterReadExecutor;
+  private volatile boolean closed;
 
   // if store limit is less than this then batchGet will fail
   private static final int PUSH_STATUS_READER_BATCH_GET_LIMIT = 100;
@@ -53,19 +66,140 @@ public class PushStatusStoreReader implements Closeable {
       D2Client d2Client,
       String clusterDiscoveryD2ServiceName,
       long heartbeatExpirationTimeInSeconds) {
+    this(d2Client, clusterDiscoveryD2ServiceName, heartbeatExpirationTimeInSeconds, null);
+  }
+
+  public PushStatusStoreReader(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      long heartbeatExpirationTimeInSeconds,
+      Function<String, String> clusterResolver) {
     this.d2Client = d2Client;
     this.clusterDiscoveryD2ServiceName = clusterDiscoveryD2ServiceName;
     this.heartbeatExpirationTimeInSeconds = heartbeatExpirationTimeInSeconds;
+    this.clusterResolver = clusterResolver;
+    this.clusterReadTimeoutExecutor =
+        Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("cluster-push-status-read-timeout"));
+    // No backlog is retained when discovery blocks both workers; excess reads use legacy fallback.
+    this.clusterReadExecutor = new ThreadPoolExecutor(
+        2,
+        2,
+        0,
+        TimeUnit.SECONDS,
+        new SynchronousQueue<>(),
+        new DaemonThreadFactory("cluster-push-status-read"));
+  }
+
+  private <T> CompletableFuture<T> readCluster(Supplier<CompletableFuture<T>> request) {
+    CompletableFuture<T> result = new CompletableFuture<>();
+    try {
+      ScheduledFuture<?> timeout = clusterReadTimeoutExecutor.schedule(
+          () -> result.completeExceptionally(new TimeoutException("Cluster push status read timed out")),
+          1,
+          TimeUnit.SECONDS);
+      result.whenComplete((value, error) -> timeout.cancel(false));
+      clusterReadExecutor.execute(() -> {
+        if (result.isDone()) {
+          return;
+        }
+        try {
+          request.get().whenComplete((value, error) -> {
+            if (error == null) {
+              result.complete(value);
+            } else {
+              result.completeExceptionally(error);
+            }
+          });
+        } catch (RuntimeException e) {
+          result.completeExceptionally(e);
+        }
+      });
+    } catch (RuntimeException e) {
+      result.completeExceptionally(e);
+    }
+    return result.exceptionally(error -> {
+      LOGGER.warn("Cluster push status read failed; falling back to the per-store system store", error);
+      return null;
+    });
+  }
+
+  private CompletableFuture<PushStatusValue> get(String storeName, PushStatusKey key) {
+    CompletableFuture<PushStatusValue> legacy = getVeniceClient(storeName).get(key);
+    if (clusterResolver == null) {
+      return legacy;
+    }
+    return getClusterStatus(storeName, key).thenCombine(legacy, PushStatusStoreReader::merge);
+  }
+
+  private CompletableFuture<PushStatusValue> getClusterStatus(String storeName, PushStatusKey key) {
+    return readCluster(() -> {
+      String clusterName = clusterResolver.apply(storeName);
+      return clusterName == null
+          ? CompletableFuture.completedFuture(null)
+          : getClusterVeniceClient(clusterName).get(PushStatusStoreUtils.getClusterPushStatusKey(storeName, key));
+    });
+  }
+
+  private static PushStatusValue merge(PushStatusValue primary, PushStatusValue legacy) {
+    if (primary == null && legacy == null) {
+      return null;
+    }
+    PushStatusValue result = new PushStatusValue();
+    Map<CharSequence, Integer> instances = new HashMap<>();
+    if (primary != null && primary.instances != null) {
+      primary.instances.forEach((instance, status) -> instances.put(instance.toString(), status));
+    }
+    // Legacy remains authoritative during dual writes; cluster updates are best-effort and have no report ordering.
+    if (legacy != null && legacy.instances != null) {
+      legacy.instances.forEach((instance, status) -> instances.put(instance.toString(), status));
+    }
+    result.instances = (primary != null && legacy != null) || (primary != null && primary.instances != null)
+        || (legacy != null && legacy.instances != null) ? instances : null;
+    result.reportTimestamp = primary == null ? null : primary.reportTimestamp;
+    if (legacy != null && legacy.reportTimestamp != null) {
+      result.reportTimestamp = legacy.reportTimestamp;
+    }
+    return result;
+  }
+
+  private CompletableFuture<Map<PushStatusKey, PushStatusValue>> batchGet(String storeName, Set<PushStatusKey> keys) {
+    CompletableFuture<Map<PushStatusKey, PushStatusValue>> legacy = getVeniceClient(storeName).batchGet(keys);
+    if (clusterResolver == null) {
+      return legacy;
+    }
+    return this.<Map<PushStatusKey, PushStatusValue>>readCluster(() -> {
+      String clusterName = clusterResolver.apply(storeName);
+      if (clusterName == null) {
+        return CompletableFuture.completedFuture(null);
+      }
+      Set<PushStatusKey> clusterKeys = keys.stream()
+          .map(key -> PushStatusStoreUtils.getClusterPushStatusKey(storeName, key))
+          .collect(Collectors.toSet());
+      return getClusterVeniceClient(clusterName).batchGet(clusterKeys);
+    }).thenCombine(legacy, (primary, old) -> {
+      if (old == null) {
+        throw new VeniceException("Per-store push status batch read returned null");
+      }
+      Map<PushStatusKey, PushStatusValue> result = new HashMap<>();
+      for (PushStatusKey key: keys) {
+        PushStatusValue value = merge(
+            primary == null ? null : primary.get(PushStatusStoreUtils.getClusterPushStatusKey(storeName, key)),
+            old.get(key));
+        if (value != null) {
+          result.put(key, value);
+        }
+      }
+      return result;
+    });
   }
 
   public Map<CharSequence, Integer> getVersionStatus(
       String storeName,
       int version,
       Optional<String> incrementalPushVersion) {
-    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getPushKey(version, incrementalPushVersion);
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
+      PushStatusValue pushStatusValue = get(storeName, pushStatusKey).get(60, TimeUnit.SECONDS);
       if (pushStatusValue == null) {
         // Don't return empty map yet, because caller cannot differentiate between DaVinci not migrated to new mode and
         // DaVinci writing empty map.
@@ -110,12 +244,11 @@ public class PushStatusStoreReader implements Closeable {
       Optional<String> incrementalPushVersion,
       Optional<String> incrementalPushPrefix) {
     try {
-      AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
       PushStatusKey pushStatusKey =
           PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
 
       // Get the CompletableFuture from the client and transform it
-      return client.get(pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
+      return get(storeName, pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
         if (pushStatusValue == null) {
           return Collections.emptyMap();
         } else {
@@ -156,13 +289,12 @@ public class PushStatusStoreReader implements Closeable {
       Optional<String> incrementalPushPrefix,
       boolean isBatchReporting) {
     try {
-      AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
       PushStatusKey pushStatusKey = isBatchReporting
           ? PushStatusStoreUtils.getPushKey(version, incrementalPushVersion)
           : PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
 
       // Get the CompletableFuture from the client and transform it
-      return client.get(pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
+      return get(storeName, pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
         if (pushStatusValue == null) {
           return Collections.emptyMap();
         } else {
@@ -239,8 +371,6 @@ public class PushStatusStoreReader implements Closeable {
               incrementalPushVersion,
               PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX));
     }
-    // get push status store client
-    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClient = getVeniceClient(storeName);
     List<CompletableFuture<Map<PushStatusKey, PushStatusValue>>> completableFutures = new ArrayList<>();
     Map<PushStatusKey, PushStatusValue> pushStatusMap = new HashMap<>();
     int batchGetLimit = PUSH_STATUS_READER_BATCH_GET_LIMIT;
@@ -254,7 +384,7 @@ public class PushStatusStoreReader implements Closeable {
         int start = i * batchGetLimit;
         int end = Math.min(pushStatusKeys.size(), start + batchGetLimit);
         Set<PushStatusKey> keySet = new HashSet<>(pushStatusKeys.subList(start, end));
-        CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture = storeClient.batchGet(keySet);
+        CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture = batchGet(storeName, keySet);
         completableFutures.add(completableFuture);
       }
       for (CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFuture: completableFutures) {
@@ -292,11 +422,18 @@ public class PushStatusStoreReader implements Closeable {
    * @param instanceName = [hostname + appName]
    */
   public long getHeartbeat(String storeName, String instanceName) {
-    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     try {
-      PushStatusValue pushStatusValue =
-          client.get(pushStatusKey).get(DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+      CompletableFuture<PushStatusValue> heartbeat = getVeniceClient(storeName).get(pushStatusKey);
+      if (clusterResolver != null) {
+        heartbeat = heartbeat.thenCompose(legacy -> {
+          if (legacy != null && legacy.reportTimestamp != null) {
+            return CompletableFuture.completedFuture(legacy);
+          }
+          return getClusterStatus(storeName, pushStatusKey).thenApply(primary -> merge(primary, legacy));
+        });
+      }
+      PushStatusValue pushStatusValue = heartbeat.get(DEFAULT_HEARTBEAT_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS);
       if (pushStatusValue == null) {
         return 0;
       } else {
@@ -326,11 +463,10 @@ public class PushStatusStoreReader implements Closeable {
   }
 
   public Map<CharSequence, Integer> getSupposedlyOngoingIncrementalPushVersions(String storeName, int storeVersion) {
-    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClient = getVeniceClient(storeName);
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusValue pushStatusValue;
     try {
-      pushStatusValue = storeClient.get(pushStatusKey).get(60, TimeUnit.SECONDS);
+      pushStatusValue = get(storeName, pushStatusKey).get(60, TimeUnit.SECONDS);
     } catch (InterruptedException | ExecutionException | VeniceException | TimeoutException e) {
       LOGGER.error("Failed to get ongoing incremental pushes for store:{}.", storeName, e);
       throw new VeniceException(e);
@@ -348,16 +484,35 @@ public class PushStatusStoreReader implements Closeable {
         .computeIfAbsent(storeName, (s) -> ClientFactory.getAndStartSpecificAvroClient(getClientConfig(storeName)));
   }
 
-  ClientConfig getClientConfig(String storeName) {
-    return ClientConfig.defaultGenericClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName))
+  ClientConfig<PushStatusValue> getClientConfig(String storeName) {
+    return createClientConfig(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+  }
+
+  private ClientConfig<PushStatusValue> createClientConfig(String systemStoreName) {
+    return ClientConfig.defaultSpecificClientConfig(systemStoreName, PushStatusValue.class)
         .setD2Client(d2Client)
         .setD2ServiceName(clusterDiscoveryD2ServiceName)
-        .setStatTrackingEnabled(false)
-        .setSpecificValueClass(PushStatusValue.class);
+        .setStatTrackingEnabled(false);
+  }
+
+  AvroSpecificStoreClient<PushStatusKey, PushStatusValue> getClusterVeniceClient(String clusterName) {
+    String systemStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreNameForCluster(clusterName);
+    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = veniceClients.computeIfAbsent(
+        systemStoreName,
+        name -> ClientFactory.getAndStartSpecificAvroClient(createClientConfig(name)));
+    if (closed) {
+      veniceClients.remove(systemStoreName, client);
+      client.close();
+      throw new VeniceException("Push status reader is closed");
+    }
+    return client;
   }
 
   @Override
   public void close() {
+    closed = true;
+    clusterReadTimeoutExecutor.shutdownNow();
+    clusterReadExecutor.shutdownNow();
     veniceClients.forEach((storeName, veniceClient) -> {
       try {
         veniceClient.close();
