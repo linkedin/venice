@@ -5,7 +5,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTION
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
@@ -14,7 +13,6 @@ import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobZstdConfig;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
@@ -37,8 +35,8 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
@@ -199,10 +197,9 @@ public class KafkaInputDictTrainer {
       return dict;
     }
 
-    long startTimeNs = System.nanoTime();
-    // Count control messages against the scan budget inside the split iterator.
+    // Prepare input: Get one split per partition
     Properties splitProps = new Properties();
-    splitProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.CAPPED_SINGLE_SPLIT_PER_PARTITION.name());
+    splitProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION.name());
     VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(jobConf, splitProps);
     Function<String, String> encryptionKeyUrnLookup =
         !reusedConsumerOptional.isPresent() && veniceProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)
@@ -230,11 +227,8 @@ public class KafkaInputDictTrainer {
     KafkaInputMapperKey mapperKey = null;
     KafkaInputMapperValue mapperValue = null;
 
+    int currentPartition = 0;
     long totalSampledRecordCnt = 0;
-    long totalMessagesScanned = 0;
-    byte[] sourceDictionary = sourceVersionCompressor instanceof ZstdWithDictCompressor
-        ? ((ZstdWithDictCompressor) sourceVersionCompressor).getDictionary()
-        : null;
 
     // Reuse the same Kafka Consumer across all partitions avoid log flooding
     PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(() -> {
@@ -254,8 +248,7 @@ public class KafkaInputDictTrainer {
       return PubSubClientsFactory.createConsumerFactory(veniceProperties).create(context.build());
     });
     try {
-      for (KafkaInputSplit split: splits) {
-        long partitionStartNs = System.nanoTime();
+      for (InputSplit split: splits) {
         long currentFilledSize = 0;
         long sampledRecordCnt = 0;
         RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> recordReader =
@@ -294,19 +287,12 @@ public class KafkaInputDictTrainer {
             if (currentFilledSize > maxBytesPerPartition) {
               break;
             }
-            if (trainer.addSample(decompressedValue)) {
-              ++sampledRecordCnt;
-            }
+            trainer.addSample(decompressedValue);
+            ++sampledRecordCnt;
           }
           totalSampledRecordCnt += sampledRecordCnt;
-          long messagesScanned = recordReader.getPos() + 1;
-          totalMessagesScanned += messagesScanned;
-          LOGGER.info(
-              "Dictionary sampling partition: {}, messages scanned: {}, records sampled: {}, elapsed ms: {}",
-              split.getTopicPartition().getPartitionNumber(),
-              messagesScanned,
-              sampledRecordCnt,
-              TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - partitionStartNs));
+          LOGGER.info("Added {} samples into dict from partition: {}", sampledRecordCnt, currentPartition);
+          ++currentPartition;
         } finally {
           recordReader.close();
         }
@@ -322,29 +308,13 @@ public class KafkaInputDictTrainer {
         reusedConsumer.close();
       }
     }
-    LOGGER.info(
-        "Dictionary sampling topic: {}, partitions: {}, messages scanned: {}, records sampled: {}, elapsed ms: {}",
-        sourceTopicName,
-        splits.length,
-        totalMessagesScanned,
-        totalSampledRecordCnt,
-        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNs));
-    if (Thread.currentThread().isInterrupted()) {
-      throw new VeniceException("Dictionary sampling interrupted for source topic: " + sourceTopicName);
+    if (totalSampledRecordCnt == 0) {
+      throw new VeniceException("No record in the source topic: " + sourceTopicName + ", can't train the dict");
     }
-    if (totalSampledRecordCnt >= MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY) {
-      dict = trainer.trainSamples();
-      LOGGER.info("Successfully finished training dict");
-      return dict;
-    }
-    if (sourceDictionary != null && sourceDictionary.length > 0) {
-      LOGGER.info("Insufficient dictionary samples; reusing the source dictionary for topic: {}", sourceTopicName);
-      dict = sourceDictionary;
-      return dict;
-    }
-    String samplingResult =
-        totalSampledRecordCnt == 0 ? "No records sampled" : "Insufficient samples (" + totalSampledRecordCnt + ")";
-    throw new VeniceException(samplingResult + " from source topic: " + sourceTopicName + ", can't train the dict");
+    LOGGER.info("Added total {} records from {} partitions into dict", totalSampledRecordCnt, splits.length);
+    dict = trainer.trainSamples();
+    LOGGER.info("Successfully finished training dict");
+    return dict;
   }
 
 }

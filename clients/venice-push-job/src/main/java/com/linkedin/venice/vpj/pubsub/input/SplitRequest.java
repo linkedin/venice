@@ -20,7 +20,7 @@ public final class SplitRequest {
 
   // Optionals (boxed so null means unset)
   private final Integer maxSplits; // for CAPPED_SPLIT_COUNT
-  private final Long recordsPerSplit; // for FIXED_RECORD_COUNT and CAPPED_SINGLE_SPLIT_PER_PARTITION
+  private final Long recordsPerSplit; // for FIXED_RECORD_COUNT
   private final Long timeWindowInMs; // for TIME_WINDOW
 
   // Pre-fetched positions (batch-fetched by the planner to avoid per-partition network calls)
@@ -122,7 +122,7 @@ public final class SplitRequest {
       return this;
     }
 
-    /** Used when partitionSplitStrategy is FIXED_RECORD_COUNT or CAPPED_SINGLE_SPLIT_PER_PARTITION. */
+    /** Used when partitionSplitStrategy is FIXED_RECORD_COUNT. */
     public Builder recordsPerSplit(long value) {
       this.recordsPerSplit = value;
       return this;
@@ -158,12 +158,6 @@ public final class SplitRequest {
       Objects.requireNonNull(numberOfRecords, "numberOfRecords");
 
       switch (partitionSplitStrategy) {
-        case CAPPED_SINGLE_SPLIT_PER_PARTITION:
-          if (recordsPerSplit == null || recordsPerSplit <= 0) {
-            throw new IllegalArgumentException("recordsPerSplit must be > 0 for capped partition sampling");
-          }
-          break;
-
         case CAPPED_SPLIT_COUNT:
           if (maxSplits == null || maxSplits <= 0) {
             maxSplits = DEFAULT_MAX_SPLITS;

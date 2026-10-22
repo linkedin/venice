@@ -1,7 +1,6 @@
 package com.linkedin.venice.vpj.pubsub.input;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.vpj.pubsub.input.splitter.CappedSingleSplitPerPartitionStrategy;
 import com.linkedin.venice.vpj.pubsub.input.splitter.CappedSplitCountStrategy;
 import com.linkedin.venice.vpj.pubsub.input.splitter.FixedRecordCountSplitStrategy;
 import com.linkedin.venice.vpj.pubsub.input.splitter.PubSubTopicPartitionSplitStrategy;
@@ -44,10 +43,7 @@ public enum PartitionSplitStrategy implements PubSubTopicPartitionSplitStrategy 
    * This strategy returns a single continuous range from the start
    * position to the end position without further segmentation.
    */
-  SINGLE_SPLIT_PER_PARTITION(new SingleSplitPerPartitionStrategy()),
-
-  /** Produces one bounded prefix per partition for dictionary sampling, including empty partitions. */
-  CAPPED_SINGLE_SPLIT_PER_PARTITION(new CappedSingleSplitPerPartitionStrategy());
+  SINGLE_SPLIT_PER_PARTITION(new SingleSplitPerPartitionStrategy());
 
   private final transient PubSubTopicPartitionSplitStrategy delegate;
 

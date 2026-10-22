@@ -21,16 +21,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -42,13 +37,11 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Function;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -61,58 +54,6 @@ import org.testng.annotations.Test;
  */
 
 public class VenicePushJobRepushTest extends VenicePushJobTestBase {
-  @DataProvider
-  public Object[][] dictionaryInterruptions() {
-    return new Object[][] { { true, false, false }, { false, true, false }, { false, false, true },
-        { false, false, false } };
-  }
-
-  @Test(dataProvider = "dictionaryInterruptions")
-  public void testDictionaryInterruptionsAbortWithoutFallback(
-      boolean interruptedBeforeBuild,
-      boolean interruptedCause,
-      boolean interruptedAfterBuild) {
-    try (VenicePushJob pushJob = getSpyVenicePushJob(new Properties(), null)) {
-      PushJobSetting setting = pushJob.getPushJobSetting();
-      setting.isZstdDictCreationRequired = true;
-      setting.storeCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
-      doAnswer(invocation -> {
-        if (interruptedCause) {
-          throw new VeniceException("Dictionary read failed", new RuntimeException(new InterruptedException()));
-        }
-        Thread.currentThread().interrupt();
-        return interruptedAfterBuild ? ByteBuffer.wrap(new byte[] { 1 }) : null;
-      }).when(pushJob).fetchOrBuildCompressionDictionary();
-      if (interruptedBeforeBuild) {
-        Thread.currentThread().interrupt();
-      }
-      try {
-        DictionaryBuildInterruptedException error =
-            Assert.expectThrows(DictionaryBuildInterruptedException.class, pushJob::getCompressionDictionary);
-        Assert.assertTrue(error.getMessage().contains("dictionary build interrupted after"));
-        Assert.assertTrue(Thread.currentThread().isInterrupted());
-        Assert.assertFalse(setting.isZstdDictCreationSuccess);
-        if (interruptedBeforeBuild) {
-          verify(pushJob, never()).fetchOrBuildCompressionDictionary();
-        }
-      } finally {
-        Thread.interrupted();
-      }
-    }
-  }
-
-  @Test
-  public void testOrdinaryDictionaryFailureStillUsesSyntheticFallback() {
-    try (VenicePushJob pushJob = getSpyVenicePushJob(new Properties(), null)) {
-      PushJobSetting setting = pushJob.getPushJobSetting();
-      setting.isZstdDictCreationRequired = true;
-      setting.storeCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
-      doThrow(new VeniceException("Insufficient dictionary samples")).when(pushJob).fetchOrBuildCompressionDictionary();
-      Assert.assertTrue(pushJob.getCompressionDictionary().get().hasRemaining());
-      Assert.assertTrue(setting.isZstdDictCreationSuccess);
-    }
-  }
-
   @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
   public void testSourceDictionaryRetainsConfigAndUsesPublishedFlag(
       Boolean enabled,
