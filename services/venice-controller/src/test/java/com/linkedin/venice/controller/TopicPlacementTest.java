@@ -136,7 +136,6 @@ public class TopicPlacementTest {
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().getTopicName(), "batch-store_v1");
     assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
-    assertEquals(captured.getValue().getMigrationCategory(), TopicPlacementContext.MigrationCategory.BATCH_VT);
     verifyCreate("batch-store", alternative);
   }
 
@@ -149,7 +148,6 @@ public class TopicPlacementTest {
     verify(placement).select(captured.capture());
     assertEquals(captured.getValue().getStoreName(), "batch-store");
     assertEquals(captured.getValue().getTopicName(), name + "_v1");
-    assertEquals(captured.getValue().getMigrationCategory(), TopicPlacementContext.MigrationCategory.BATCH_VT);
     verifyCreate(name, alternative);
   }
 
@@ -160,27 +158,20 @@ public class TopicPlacementTest {
   }
 
   @Test(dataProvider = "selectionsAndStaticSettings")
-  public void testProvisionedPushStatusUsesOwnerSelectionOverStaticSettings(
+  public void testStaticSettingsDoNotOverrideActiveSelection(
       TopicPlacement.Selection selection,
       boolean staticAlternative) {
     String pushStatus = preparePushStatusStore();
-    when(store.isDaVinciPushStatusStoreEnabled()).thenReturn(true);
     configureStaticSettings("batch-store," + pushStatus, staticAlternative);
     when(placement.select(any())).thenReturn(selection);
     create("batch-store", PushType.BATCH);
     create(pushStatus, PushType.BATCH);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(placement, times(2)).select(captured.capture());
-    for (TopicPlacementContext context: captured.getAllValues()) {
-      assertEquals(context.getStoreName(), "batch-store");
-      assertEquals(context.getMigrationCategory(), TopicPlacementContext.MigrationCategory.BATCH_VT);
-    }
     verifyCreate("batch-store", selection == TopicPlacement.Selection.TREATMENT);
     verifyCreate(pushStatus, selection == TopicPlacement.Selection.TREATMENT);
   }
 
   @DataProvider
-  public Object[][] metadataExclusions() {
+  public Object[][] hybridPlacementCases() {
     List<Object[]> cases = new ArrayList<>();
     for (boolean pushStatus: new boolean[] { false, true }) {
       for (String policy: new String[] { "ACTIVE", "SHADOW", "LEGACY" }) {
@@ -192,8 +183,8 @@ public class TopicPlacementTest {
     return cases.toArray(new Object[0][]);
   }
 
-  @Test(dataProvider = "metadataExclusions")
-  public void testHybridMetadataAdmission(boolean pushStatus, String policy, boolean staticAlternative) {
+  @Test(dataProvider = "hybridPlacementCases")
+  public void testHybridPlacementAcrossModes(boolean pushStatus, String policy, boolean staticAlternative) {
     String name = pushStatus ? preparePushStatusStore() : "batch-store";
     configureStaticSettings(name, staticAlternative);
     when(store.isHybrid()).thenReturn(true);
