@@ -1,5 +1,8 @@
 package com.linkedin.venice.pushstatushelper;
 
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.CLUSTER_PUSH_STATUS_STORE_PARTITION_COUNT;
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT;
+
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -34,8 +37,20 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
   }
 
   public VeniceWriter prepareVeniceWriter(String storeName) {
-    return veniceWriters.computeIfAbsent(storeName, s -> {
-      String rtTopic = Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName));
+    return prepareWriter(
+        storeName,
+        VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(storeName),
+        DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT);
+  }
+
+  public VeniceWriter prepareClusterVeniceWriter(String clusterName) {
+    String systemStoreName = VeniceSystemStoreUtils.getDaVinciPushStatusStoreNameForCluster(clusterName);
+    return prepareWriter(systemStoreName, systemStoreName, CLUSTER_PUSH_STATUS_STORE_PARTITION_COUNT);
+  }
+
+  private VeniceWriter prepareWriter(String cacheKey, String systemStoreName, int partitionCount) {
+    return veniceWriters.computeIfAbsent(cacheKey, s -> {
+      String rtTopic = Utils.composeRealTimeTopic(systemStoreName);
       VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
           .setKeyPayloadSerializer(
               new VeniceAvroKafkaSerializer(
@@ -43,7 +58,7 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
           .setValuePayloadSerializer(new VeniceAvroKafkaSerializer(valueSchema))
           .setWriteComputePayloadSerializer(new VeniceAvroKafkaSerializer(updateSchema))
           .setChunkingEnabled(false)
-          .setPartitionCount(1)
+          .setPartitionCount(partitionCount)
           .build();
 
       return writerFactory.createVeniceWriter(options);
