@@ -100,6 +100,7 @@ public class LeaderFollowerPartitionStateModelTest {
     when(storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
     metadataRepo = mock(ReadOnlyStoreRepository.class);
+    when(metadataRepo.getStoreFromCache(anyString())).thenCallRealMethod();
     // Default store mock so waitForVersionToBeAvailable() finds the version immediately
     Store defaultStore = mock(Store.class);
     when(defaultStore.getVersion(storeVersion)).thenReturn(mock(Version.class));

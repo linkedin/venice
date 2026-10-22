@@ -1,6 +1,8 @@
 package com.linkedin.davinci.helix;
 
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -12,22 +14,33 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.customizedstate.CustomizedStateProvider;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
+import org.mockito.stubbing.OngoingStubbing;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -89,6 +102,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
 
     mockNotifier = getNotifier();
     mockReadOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    when(mockReadOnlyStoreRepository.getStoreFromCache(Mockito.anyString())).thenCallRealMethod();
     mockStore = Mockito.mock(Store.class);
     mockSystemStore = Mockito.mock(Store.class);
     mockManager = Mockito.mock(SafeHelixManager.class);
@@ -207,37 +221,194 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     assertEquals(description, "BATCH store", "Case 4: Unknown store");
   }
 
-  /**
-   * Tests that waitForVersionToBeAvailable() returns immediately when the version is already present.
-   */
   @Test
   public void testWaitForVersionToBeAvailableHappyPath() {
-    Version mockVersion = Mockito.mock(Version.class);
-    when(mockStore.getVersion(version)).thenReturn(mockVersion);
-    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
-
-    // Should return immediately without retries
     testStateModel.waitForVersionToBeAvailable();
-    // Verify getStoreOrThrow was called (at least once for the initial check)
-    verify(mockReadOnlyStoreRepository, atLeast(1)).getStoreOrThrow(storeName);
+    verify(mockReadOnlyStoreRepository, atLeast(1)).getStoreFromCache(storeName);
+    verify(mockReadOnlyStoreRepository, never()).refreshOneStore(storeName);
+    verify(mockReadOnlyStoreRepository, never()).refresh();
   }
 
-  /**
-   * Tests that waitForVersionToBeAvailable() retries and succeeds when version appears after a few attempts.
-   */
   @Test(timeOut = 10_000)
   public void testWaitForVersionToBeAvailableRetrySuccess() {
     Version mockVersion = Mockito.mock(Version.class);
+    TestMockTime time = new TestMockTime(0);
     AtomicInteger callCount = new AtomicInteger(0);
     when(mockStore.getVersion(version)).thenAnswer(invocation -> {
       int count = callCount.incrementAndGet();
+      time.setTime(count >= 3 ? 1000 : count * 300L);
       return count >= 3 ? mockVersion : null;
     });
-    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
-
-    testStateModel.waitForVersionToBeAvailable();
-    // Should have retried at least 3 times
+    testStateModel.waitForVersionToBeAvailable(time);
     assertEquals(callCount.get() >= 3, true, "getVersion should have been called at least 3 times");
+    verify(mockReadOnlyStoreRepository, never()).refreshOneStore(storeName);
+  }
+
+  @Test(timeOut = 10_000)
+  public void testWaitForVersionRefreshesOnlyAfterGracePeriod() {
+    TestMockTime time = mockMissingVersionAtTimes(0, 999, 1000);
+    Store refreshedStore = Mockito.mock(Store.class);
+    when(refreshedStore.getVersion(version)).thenReturn(Mockito.mock(Version.class));
+    when(mockReadOnlyStoreRepository.refreshOneStore(storeName)).thenReturn(refreshedStore);
+
+    testStateModel.waitForVersionToBeAvailable(time);
+
+    verify(mockStore, times(3)).getVersion(version);
+    verify(mockReadOnlyStoreRepository).refreshOneStore(storeName);
+    verify(mockReadOnlyStoreRepository, never()).refresh();
+  }
+
+  @DataProvider(name = "refreshMisses")
+  public Object[][] refreshMisses() {
+    return new Object[][] { { null, null }, { Mockito.mock(Store.class), null },
+        { null, new VeniceException("Transient metadata refresh failure") } };
+  }
+
+  @Test(dataProvider = "refreshMisses", timeOut = 10_000)
+  public void testWaitForVersionRateLimitsRefreshRetries(Store firstRefreshedStore, VeniceException refreshFailure) {
+    TestMockTime time = mockMissingVersionAtTimes(1000, 1001, 5999, 6000);
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(10_000L);
+    Store refreshedStore = Mockito.mock(Store.class);
+    when(refreshedStore.getVersion(version)).thenReturn(Mockito.mock(Version.class));
+    OngoingStubbing<Store> refresh = when(mockReadOnlyStoreRepository.refreshOneStore(storeName));
+    if (refreshFailure == null) {
+      refresh.thenReturn(firstRefreshedStore, refreshedStore);
+    } else {
+      refresh.thenThrow(refreshFailure).thenReturn(refreshedStore);
+    }
+
+    testStateModel.waitForVersionToBeAvailable(time);
+
+    verify(mockStore, times(4)).getVersion(version);
+    verify(mockReadOnlyStoreRepository, times(2)).refreshOneStore(storeName);
+    verify(mockReadOnlyStoreRepository, never()).refresh();
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10_000)
+  public void testWaitForVersionRefreshesMissingStore(boolean storeLookupThrows) {
+    TestMockTime time = new TestMockTime(0);
+    when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenAnswer(invocation -> {
+      time.setTime(1000);
+      if (storeLookupThrows) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      return null;
+    });
+    when(mockReadOnlyStoreRepository.refreshOneStore(storeName)).thenReturn(mockStore);
+
+    testStateModel.waitForVersionToBeAvailable(time);
+
+    verify(mockReadOnlyStoreRepository).refreshOneStore(storeName);
+    verify(mockReadOnlyStoreRepository, never()).refresh();
+  }
+
+  @Test
+  public void testWaitForVersionDoesNotRetryUnexpectedRefreshFailure() {
+    TestMockTime time = mockMissingVersionAtTimes(1000);
+    IllegalStateException failure = new IllegalStateException("Unexpected metadata refresh failure");
+    when(mockReadOnlyStoreRepository.refreshOneStore(storeName)).thenThrow(failure);
+
+    VeniceException e =
+        Assert.expectThrows(VeniceException.class, () -> testStateModel.waitForVersionToBeAvailable(time));
+
+    Assert.assertSame(e.getCause(), failure);
+    verify(mockReadOnlyStoreRepository).refreshOneStore(storeName);
+  }
+
+  @DataProvider(name = "blockedRefresh")
+  public Object[][] blockedRefresh() {
+    return new Object[][] { { true, false }, { false, false }, { false, true } };
+  }
+
+  @Test(dataProvider = "blockedRefresh", timeOut = 10_000)
+  public void testWaitForVersionDoesNotBlockOnRefresh(boolean cacheHit, boolean interrupt) throws Exception {
+    TestMockTime time = new TestMockTime(0);
+    AtomicBoolean available = new AtomicBoolean();
+    AtomicBoolean refreshInterrupted = new AtomicBoolean();
+    CountDownLatch refreshStarted = new CountDownLatch(1);
+    CountDownLatch releaseRefresh = new CountDownLatch(1);
+    CountDownLatch refreshFinished = new CountDownLatch(1);
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(1200L);
+    Version cachedVersion = Mockito.mock(Version.class);
+    when(mockStore.getVersion(version)).thenAnswer(invocation -> {
+      time.setTime(1000);
+      return available.get() ? cachedVersion : null;
+    });
+    when(mockReadOnlyStoreRepository.refreshOneStore(storeName)).thenAnswer(invocation -> {
+      available.set(cacheHit);
+      refreshStarted.countDown();
+      try {
+        while (releaseRefresh.getCount() != 0) {
+          try {
+            releaseRefresh.await();
+          } catch (InterruptedException ignored) {
+            refreshInterrupted.set(true);
+            // Model an untimed lock or listener that cannot be interrupted.
+          }
+        }
+        return null;
+      } finally {
+        refreshInterrupted.compareAndSet(false, Thread.currentThread().isInterrupted());
+        refreshFinished.countDown();
+      }
+    });
+    FutureTask<Void> transition = new FutureTask<>(() -> {
+      testStateModel.waitForVersionToBeAvailable(time);
+      return null;
+    });
+    Thread transitionThread = new Thread(transition);
+    transitionThread.start();
+    try {
+      Assert.assertTrue(refreshStarted.await(3, TimeUnit.SECONDS));
+      if (interrupt) {
+        transitionThread.interrupt();
+      }
+      if (cacheHit) {
+        transition.get(3, TimeUnit.SECONDS);
+      } else {
+        ExecutionException e = Assert.expectThrows(ExecutionException.class, () -> transition.get(3, TimeUnit.SECONDS));
+        Assert.assertTrue(e.getCause() instanceof VeniceException);
+        assertEquals(ExceptionUtils.recursiveClassEquals(e, InterruptedException.class), interrupt);
+      }
+      assertEquals(refreshFinished.getCount(), 1L, "Transition must finish while the refresh is still blocked");
+      verify(mockReadOnlyStoreRepository).refreshOneStore(storeName);
+      verify(mockReadOnlyStoreRepository, never()).refresh();
+    } finally {
+      releaseRefresh.countDown();
+      transitionThread.interrupt();
+      transitionThread.join(3000);
+      Assert.assertTrue(refreshFinished.await(3, TimeUnit.SECONDS));
+    }
+    Assert.assertFalse(refreshInterrupted.get(), "Running repository updates must finish without interruption");
+  }
+
+  @Test(timeOut = 10_000)
+  public void testWaitForVersionStopsOnInterruption() {
+    when(mockStore.getVersion(version)).thenAnswer(invocation -> {
+      Thread.currentThread().interrupt();
+      return null;
+    });
+    try {
+      VeniceException e =
+          Assert.expectThrows(VeniceException.class, () -> testStateModel.waitForVersionToBeAvailable());
+      Assert.assertTrue(e.getMessage().contains("did not become available in store repository"));
+      verify(mockStore).getVersion(version);
+      verify(mockReadOnlyStoreRepository, never()).refreshOneStore(storeName);
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  @Test(timeOut = 10_000)
+  public void testWaitForVersionDoesNotRefreshAfterDeadline() {
+    TestMockTime time = mockMissingVersionAtTimes(1000);
+    when(mockStoreConfig.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(200L);
+
+    VeniceException e =
+        Assert.expectThrows(VeniceException.class, () -> testStateModel.waitForVersionToBeAvailable(time));
+
+    Assert.assertTrue(e.getMessage().contains("200 ms"));
+    verify(mockReadOnlyStoreRepository, never()).refreshOneStore(storeName);
   }
 
   /**
@@ -258,5 +429,18 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     Assert.assertTrue(
         e.getMessage().contains(expectedStoreVersion),
         "Exception message should contain store version (" + expectedStoreVersion + "), got: " + e.getMessage());
+    Assert.assertTrue(e.getMessage().contains("200 ms"));
+    verify(mockReadOnlyStoreRepository, never()).refreshOneStore(storeName);
+  }
+
+  private TestMockTime mockMissingVersionAtTimes(long... attemptTimesMs) {
+    TestMockTime time = new TestMockTime(0);
+    AtomicInteger attempts = new AtomicInteger();
+    when(mockStore.getVersion(version)).thenAnswer(invocation -> {
+      int attempt = Math.min(attempts.getAndIncrement(), attemptTimesMs.length - 1);
+      time.setTime(attemptTimesMs[attempt]);
+      return null;
+    });
+    return time;
   }
 }

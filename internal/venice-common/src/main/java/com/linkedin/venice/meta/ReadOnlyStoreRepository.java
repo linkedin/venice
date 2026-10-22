@@ -21,7 +21,26 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    */
   Store getStore(String storeName);
 
+  /**
+   * Returns store metadata or throws if unavailable. Implementations may refresh metadata on a cache miss.
+   * Use {@link #getStoreFromCache(String)} when the lookup must not trigger a refresh.
+   */
   Store getStoreOrThrow(String storeName) throws VeniceNoStoreException;
+
+  /**
+   * Returns cached metadata, or null if absent, without refreshing or waiting for repository locks.
+   * Unlike {@link #getStoreOrThrow(String)}, this lookup must not perform I/O on a cache miss.
+   * The default only converts VeniceNoStoreException to null; it does not prevent refreshes or lock acquisition.
+   * It is suitable only when getStoreOrThrow is already a non-blocking cache lookup.
+   * Other implementations must override it, as the Helix adapter does for regular and shared-system stores.
+   */
+  default Store getStoreFromCache(String storeName) {
+    try {
+      return getStoreOrThrow(storeName);
+    } catch (VeniceNoStoreException e) {
+      return null;
+    }
+  }
 
   /**
    * Returns the raw PubSub encryption-key URN from local metadata, or {@code null} if the store is absent.

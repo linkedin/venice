@@ -17,15 +17,26 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RetryUtils;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.LeaderStandbySMD;
@@ -56,6 +67,16 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   protected final Logger logger = LogManager.getLogger(getClass());
   private static final int RETRY_COUNT = 5;
   private static final int RETRY_DURATION_MS = 1000;
+  private static final long VERSION_METADATA_REFRESH_GRACE_PERIOD_MS = 1000;
+  private static final long VERSION_METADATA_REFRESH_INTERVAL_MS = 5000;
+  // No queued work or caller-runs fallback: interruption-insensitive refreshes must not consume transition workers.
+  private static final ThreadPoolExecutor VERSION_METADATA_REFRESH_EXECUTOR = new ThreadPoolExecutor(
+      0,
+      4,
+      60,
+      TimeUnit.SECONDS,
+      new SynchronousQueue<>(),
+      new DaemonThreadFactory("version-metadata-refresh"));
   private static final int WAIT_PARTITION_ACCESSOR_TIME_OUT_MS = (int) TimeUnit.MINUTES.toMillis(5);
   // The drop partition consumer action may take longer than expected and eventually timeout if:
   // 1. The corresponding ingestion task is stuck and unable to process consumer actions.
@@ -237,18 +258,71 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   /**
    * Waits for the version metadata to become available in the store repository using exponential backoff.
    * During OFFLINE->STANDBY transitions, version info may not have propagated from ZK yet.
+   * After a short grace period for cache propagation, persistent misses trigger a rate-limited refresh of this store
+   * so that unrelated stores' ZK listeners cannot prevent discovery of the version.
+   * Refreshes run on a bounded background pool while the transition continues checking the cache until its deadline.
    * This must be called before the storage engine is created so that the correct partition type
    * (with or without replication metadata) is used.
    */
   protected void waitForVersionToBeAvailable() {
+    waitForVersionToBeAvailable(SystemTime.INSTANCE);
+  }
+
+  void waitForVersionToBeAvailable(Time time) {
     String storeVersion = Version.composeKafkaTopic(storeName, versionNumber);
     long waitTimeMs = storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs();
+    long waitTimeNs = TimeUnit.MILLISECONDS.toNanos(waitTimeMs);
+    long startTimeNs = time.getNanoseconds();
+    long deadlineNs = System.nanoTime() + waitTimeNs;
+    AtomicReference<Future<Store>> refresh = new AtomicReference<>();
+    AtomicLong nextRefreshTimeNs =
+        new AtomicLong(startTimeNs + TimeUnit.MILLISECONDS.toNanos(VERSION_METADATA_REFRESH_GRACE_PERIOD_MS));
     try {
       RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-        Version version = storeRepository.getStoreOrThrow(storeName).getVersion(versionNumber);
-        if (version == null) {
-          throw new VeniceException(storeVersion + " not yet available in store repository");
+        Store store = storeRepository.getStoreFromCache(storeName);
+        if (store != null && store.getVersion(versionNumber) != null) {
+          return;
         }
+        long nowNs = time.getNanoseconds();
+        long remainingNs = Math.min(deadlineNs - System.nanoTime(), waitTimeNs - (nowNs - startTimeNs));
+        if (refresh.get() == null && nowNs - nextRefreshTimeNs.get() >= 0 && remainingNs > 0) {
+          // Failed refreshes consume the same refresh budget as successful reads.
+          nextRefreshTimeNs.set(nowNs + TimeUnit.MILLISECONDS.toNanos(VERSION_METADATA_REFRESH_INTERVAL_MS));
+          try {
+            refresh.set(VERSION_METADATA_REFRESH_EXECUTOR.submit(() -> {
+              LogContext.setLogContext(storeAndServerConfigs.getLogContext());
+              try {
+                return storeRepository.refreshOneStore(storeName);
+              } catch (RuntimeException | Error e) {
+                logger.warn("Version metadata refresh failed for {}", storeVersion, e);
+                throw e;
+              } finally {
+                LogContext.clearLogContext();
+              }
+            }));
+          } catch (RejectedExecutionException e) {
+            throw new VeniceException("Version metadata refresh workers are busy for " + storeVersion, e);
+          }
+        }
+        remainingNs = Math.min(remainingNs, deadlineNs - System.nanoTime());
+        if (refresh.get() != null && remainingNs > 0) {
+          try {
+            store = refresh.get().get(Math.min(remainingNs, TimeUnit.MILLISECONDS.toNanos(200)), TimeUnit.NANOSECONDS);
+            refresh.set(null);
+            if (store != null && store.getVersion(versionNumber) != null) {
+              return;
+            }
+          } catch (TimeoutException e) {
+            throw new VeniceException("Version metadata refresh is still running for " + storeVersion, e);
+          } catch (ExecutionException e) {
+            refresh.set(null);
+            if (e.getCause() instanceof Error) {
+              throw (Error) e.getCause();
+            }
+            throw (Exception) e.getCause();
+          }
+        }
+        throw new VeniceException(storeVersion + " not yet available in store repository");
       },
           Integer.MAX_VALUE,
           Duration.ofMillis(10),
@@ -259,6 +333,11 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       String errorMsg = storeVersion + " did not become available in store repository within " + waitTimeMs + " ms.";
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
+    } finally {
+      if (refresh.get() != null) {
+        // Cache visibility does not imply listener callbacks and watch setup have finished.
+        refresh.get().cancel(false);
+      }
     }
   }
 

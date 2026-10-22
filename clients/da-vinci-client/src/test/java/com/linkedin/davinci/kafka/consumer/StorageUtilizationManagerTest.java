@@ -3,10 +3,14 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.utils.TestUtils.DEFAULT_PUBSUB_CONTEXT_FOR_UNIT_TESTING;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.argThat;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.store.StorageEngine;
@@ -18,6 +22,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -38,6 +43,7 @@ public class StorageUtilizationManagerTest {
   private final static PubSubTopic VERSION_TOPIC = TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 1));
   private final static PubSubTopic REAL_TIME_TOPIC =
       TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName) + Utils.SEPARATE_TOPIC_SUFFIX);
+  private static final String SEPARATE_REAL_TIME_TOPIC = Utils.getSeparateRealTimeTopicName(REAL_TIME_TOPIC.getName());
   private final static int STORE_VERSION = Version.parseVersionFromKafkaTopicName(VERSION_TOPIC.getName());
 
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
@@ -48,6 +54,8 @@ public class StorageUtilizationManagerTest {
   private Version version;
   private StorageUtilizationManager quotaEnforcer;
   private StorageUtilizationManager hybridQuotaEnforcer;
+  private TopicPartitionConsumerFunction pausePartition;
+  private TopicPartitionConsumerFunction resumePartition;
   private PubSubContext pubSubContext;
 
   @BeforeClass
@@ -61,6 +69,10 @@ public class StorageUtilizationManagerTest {
   @BeforeMethod
   public void buildNewQuotaEnforcer() {
     ingestionNotificationDispatcher = mock(IngestionNotificationDispatcher.class);
+    pausePartition = mock(TopicPartitionConsumerFunction.class);
+    when(pausePartition.execute(any(), anyInt())).thenReturn(true);
+    resumePartition = mock(TopicPartitionConsumerFunction.class);
+    when(resumePartition.execute(any(), anyInt())).thenReturn(true);
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
     hybridPartitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
@@ -110,8 +122,8 @@ public class StorageUtilizationManagerTest {
         true,
         false,
         ingestionNotificationDispatcher,
-        (t, p) -> true,
-        (t, p) -> true);
+        pausePartition,
+        resumePartition);
 
     hybridQuotaEnforcer = new StorageUtilizationManager(
         storageEngine,
@@ -123,8 +135,8 @@ public class StorageUtilizationManagerTest {
         true,
         true,
         ingestionNotificationDispatcher,
-        (t, p) -> true,
-        (t, p) -> true);
+        pausePartition,
+        resumePartition);
   }
 
   @Test
@@ -143,6 +155,7 @@ public class StorageUtilizationManagerTest {
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
       verify(ingestionNotificationDispatcher, times(1)).reportQuotaNotViolated(partitionConsumptionState);
     }
+    verifyNoInteractions(resumePartition);
 
     // Trigger quota violation to pause these partitions.
     verify(ingestionNotificationDispatcher, times(0)).reportQuotaViolated(any());
@@ -165,7 +178,140 @@ public class StorageUtilizationManagerTest {
       // Expect a new round of QuotaNotViolate are reported.
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(i);
       verify(ingestionNotificationDispatcher, times(2)).reportQuotaNotViolated(partitionConsumptionState);
+      verify(resumePartition).execute(REAL_TIME_TOPIC.getName(), i);
+      verify(resumePartition).execute(SEPARATE_REAL_TIME_TOPIC, i);
     }
+    verifyNoMoreInteractions(resumePartition);
+
+    clearInvocations(resumePartition);
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(true);
+    quotaEnforcer.handleStoreChanged(store);
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    for (int i = 1; i <= storePartitionCount; i++) {
+      Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
+      Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(i));
+      verify(ingestionNotificationDispatcher, times(2)).reportQuotaViolated(partitionConsumptionStateMap.get(i));
+    }
+    verifyNoInteractions(resumePartition);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testUnrelatedStoreChangesDoNotResumePartitions(boolean hybridQuotaEnabled) {
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(hybridQuotaEnabled);
+    quotaEnforcer.handleStoreChanged(store);
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    clearInvocations(resumePartition, ingestionNotificationDispatcher);
+    when(version.getStatus()).thenReturn(VersionStatus.ONLINE);
+
+    for (int i = 0; i < 100; i++) {
+      quotaEnforcer.handleStoreChanged(store);
+      hybridQuotaEnforcer.handleStoreChanged(store);
+    }
+
+    verifyNoInteractions(resumePartition, ingestionNotificationDispatcher);
+    Assert.assertTrue(quotaEnforcer.isVersionOnline());
+    Assert.assertTrue(hybridQuotaEnforcer.isVersionOnline());
+    Assert.assertEquals(quotaEnforcer.getStoreQuotaInBytes(), storeQuotaInBytes);
+    Assert.assertEquals(hybridQuotaEnforcer.getStoreQuotaInBytes(), storeQuotaInBytes);
+
+    when(store.getStorageQuotaInByte()).thenReturn(newStoreQuotaInBytes);
+    quotaEnforcer.handleStoreChanged(store);
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    verifyNoInteractions(resumePartition);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testQuotaChangesResumeOnlyPausedPartitions(boolean hybridQuotaEnabled) {
+    hybridQuotaEnforcer.enforcePartitionQuota(1, 10);
+    Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    verifyNoInteractions(resumePartition);
+    Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(hybridQuotaEnabled);
+    when(store.getStorageQuotaInByte()).thenReturn(newStoreQuotaInBytes);
+
+    hybridQuotaEnforcer.handleStoreChanged(store);
+
+    verifyHybridResumeRequests(1);
+    Assert.assertFalse(hybridQuotaEnforcer.hasPausedPartitionIngestion());
+  }
+
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDeclinedResumesRemainTrackedUntilRecovery(
+      boolean disableQuota,
+      boolean retryOnStoreChange,
+      boolean declineAllTopics) {
+    hybridQuotaEnforcer.enforcePartitionQuota(1, 10);
+    when(resumePartition.execute(REAL_TIME_TOPIC.getName(), 1)).thenReturn(!declineAllTopics, !declineAllTopics, true);
+    when(resumePartition.execute(SEPARATE_REAL_TIME_TOPIC, 1)).thenReturn(false, false, true);
+    if (disableQuota) {
+      when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(false);
+      hybridQuotaEnforcer.handleStoreChanged(store);
+    } else {
+      hybridQuotaEnforcer.notifyFlushToDisk(hybridPartitionConsumptionStateMap.get(1));
+      hybridQuotaEnforcer.checkAllPartitionsQuota();
+    }
+
+    Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+
+    if (retryOnStoreChange) {
+      hybridQuotaEnforcer.handleStoreChanged(store);
+    } else {
+      hybridQuotaEnforcer.checkAllPartitionsQuota();
+    }
+
+    verify(resumePartition, times(declineAllTopics ? 3 : 1)).execute(REAL_TIME_TOPIC.getName(), 1);
+    verify(resumePartition, times(3)).execute(SEPARATE_REAL_TIME_TOPIC, 1);
+    verifyNoMoreInteractions(resumePartition);
+    Assert.assertFalse(hybridQuotaEnforcer.hasPausedPartitionIngestion());
+  }
+
+  @Test
+  public void testDeclinedPausesAreNotResumed() {
+    when(pausePartition.execute(any(), anyInt())).thenReturn(false);
+    when(pausePartition.execute(REAL_TIME_TOPIC.getName(), 1)).thenReturn(true);
+    hybridQuotaEnforcer.enforcePartitionQuota(1, 10);
+    hybridQuotaEnforcer.enforcePartitionQuota(2, 10);
+    Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+    Assert.assertFalse(hybridQuotaEnforcer.isPartitionPausedIngestion(2));
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(false);
+
+    hybridQuotaEnforcer.handleStoreChanged(store);
+
+    verify(resumePartition).execute(REAL_TIME_TOPIC.getName(), 1);
+    verifyNoMoreInteractions(resumePartition);
+    Assert.assertFalse(hybridQuotaEnforcer.hasPausedPartitionIngestion());
+  }
+
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRemovedPartitionsAreNotResumed(boolean removeQuotaTracking, boolean disableQuota) {
+    hybridQuotaEnforcer.enforcePartitionQuota(1, 10);
+    hybridQuotaEnforcer.enforcePartitionQuota(2, 10);
+    PartitionConsumptionState removedState = hybridPartitionConsumptionStateMap.remove(1);
+    if (removeQuotaTracking) {
+      hybridQuotaEnforcer.removePartition(1);
+      Assert.assertFalse(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+    }
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(!disableQuota);
+    hybridQuotaEnforcer.notifyFlushToDisk(hybridPartitionConsumptionStateMap.get(2));
+
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    hybridQuotaEnforcer.checkAllPartitionsQuota();
+
+    verifyHybridResumeRequests(2);
+    Assert.assertFalse(hybridQuotaEnforcer.hasPausedPartitionIngestion());
+    clearInvocations(resumePartition);
+
+    hybridPartitionConsumptionStateMap.put(1, removedState);
+    hybridQuotaEnforcer.initPartition(1);
+    when(store.getStorageQuotaInByte()).thenReturn(newStoreQuotaInBytes);
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    hybridQuotaEnforcer.checkAllPartitionsQuota();
+
+    verifyNoInteractions(resumePartition);
+    Assert.assertFalse(hybridQuotaEnforcer.hasPausedPartitionIngestion());
   }
 
   @Test
@@ -246,6 +392,12 @@ public class StorageUtilizationManagerTest {
     public boolean matches(PartitionConsumptionState argument) {
       return argument.getPartition() == expectedPartition;
     }
+  }
+
+  private void verifyHybridResumeRequests(int partition) {
+    verify(resumePartition).execute(REAL_TIME_TOPIC.getName(), partition);
+    verify(resumePartition).execute(SEPARATE_REAL_TIME_TOPIC, partition);
+    verifyNoMoreInteractions(resumePartition);
   }
 
   private void addUsageToAllPartitions(int partitionSize) {

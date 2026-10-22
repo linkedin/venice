@@ -65,7 +65,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private final int storeVersion;
   private final int partitionCount;
   private final Map<Integer, StoragePartitionDiskUsage> partitionConsumptionSizeMap;
-  private final Set<Integer> pausedPartitions;
+  // Each consuming topic remains tracked until its own resume callback succeeds.
+  private final Map<Integer, Set<String>> pausedPartitions;
   private final boolean isHybridQuotaEnabledInServer;
   private final boolean isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled;
   private final boolean isSeparateRealtimeTopicEnabled;
@@ -116,7 +117,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     }
     this.partitionCount = partitionCount;
     this.partitionConsumptionSizeMap = new VeniceConcurrentHashMap<>();
-    this.pausedPartitions = VeniceConcurrentHashMap.newKeySet();
+    this.pausedPartitions = new VeniceConcurrentHashMap<>();
     this.storeVersion = Version.parseVersionFromKafkaTopicName(versionTopic);
     this.isHybridQuotaEnabledInServer = isHybridQuotaEnabledInServer;
     this.isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled =
@@ -186,20 +187,24 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       return;
     }
     versionIsOnline = isVersionOnline(version);
-    if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
-      LOGGER.info(
-          "Store: {} changed, updated quota in: versionTopic: {} from: {} to: {} and store quota is {}enabled, "
-              + "so we reset the store quota and resume all partitions.",
-          this.storeName,
-          this.versionTopic,
-          this.storeQuotaInBytes,
-          store.getStorageQuotaInByte(),
-          store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
-      resumeAllPartitions();
-    }
 
     try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
       boolean isHybridQuotaUpdated = isHybridStoreDiskQuotaUpdated(store);
+      if (!isHybridQuotaUpdated && !hasPausedPartitionIngestion()) {
+        return;
+      }
+      if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
+        LOGGER.info(
+            "Store: {} changed, updated quota in: versionTopic: {} from: {} to: {} and store quota is {}enabled, "
+                + "so we reset the store quota and resume quota-paused partitions.",
+            this.storeName,
+            this.versionTopic,
+            this.storeQuotaInBytes,
+            store.getStorageQuotaInByte(),
+            store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
+        resumeAllPartitions();
+      }
+
       boolean oldHybridQuotaEnabledState = isHybridQuotaEnabled();
       setStoreQuota(store);
       boolean isHybridQuotaChangedToDisabled = oldHybridQuotaEnabledState && !isHybridQuotaEnabled();
@@ -207,9 +212,8 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       if (isHybridQuotaChangedToDisabled) {
         // A store is changed from disk quota enabled to disabled, mark all its partitions as not violated.
         reportStoreQuotaNotViolated();
-      } else if (isHybridQuotaUpdated) {
-        // For other cases that disk quota gets updated, recompute all partition quota status and report if there is a
-        // change.
+      } else if (isHybridQuotaEnabled() && (isHybridQuotaUpdated || hasPausedPartitionIngestion())) {
+        // Recompute quota status after quota updates or while paused partitions need recovery.
         checkAllPartitionsQuota();
       }
     }
@@ -220,7 +224,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   public void removePartition(int partition) {
-    partitionConsumptionSizeMap.remove(partition);
+    try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
+      partitionConsumptionSizeMap.remove(partition);
+      pausedPartitions.remove(partition);
+    }
   }
 
   /**
@@ -231,7 +238,9 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    */
   public void checkAllPartitionsQuota() {
     try (AutoCloseableLock ignored = AutoCloseableLock.of(hybridStoreDiskQuotaLock)) {
+      pausedPartitions.keySet().retainAll(partitionConsumptionStateMap.keySet());
       if (!isHybridQuotaEnabled()) {
+        resumeAllPartitions();
         return;
       }
 
@@ -264,12 +273,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
     storagePartitionDiskUsage.add(additionalRecordSizeUsed);
 
-    /**
-     * Check if the current partition violates the partition-level quota.
-     * It's possible to pause an already-paused partition or resume an un-paused partition. The reason that
-     * we don't prevent this is that when a SN gets restarted, the in-memory paused partitions are empty. If
-     * we check if the partition is in paused partitions to decide whether to resume it, we may never resume it.
-     */
+    // Check if the current partition violates the partition-level quota.
     if (isStorageQuotaExceeded(storagePartitionDiskUsage)) {
       ingestionNotificationDispatcher.reportQuotaViolated(pcs);
 
@@ -320,10 +324,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
        */
       ingestionNotificationDispatcher.reportQuotaNotViolated(pcs);
       if (isPartitionPausedIngestion(partition)) {
-        for (String consumingTopic: getConsumingTopics(pcs)) {
-          resumePartition(partition, consumingTopic);
+        resumePartition(partition);
+        if (!isPartitionPausedIngestion(partition)) {
+          LOGGER.info("Quota available for store {} partition {}, resumed this partition.", storeName, partition);
         }
-        LOGGER.info("Quota available for store {} partition {}, resumed this partition.", storeName, partition);
       }
     }
   }
@@ -348,22 +352,34 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     // already owns the consumer; recording it as paused anyway would desynchronize this manager
     // from real consumer state.
     if (pausePartition.execute(consumingTopic, partition)) {
-      this.pausedPartitions.add(partition);
+      this.pausedPartitions.computeIfAbsent(partition, ignored -> VeniceConcurrentHashMap.newKeySet())
+          .add(consumingTopic);
     }
   }
 
-  private void resumePartition(int partition, String consumingTopic) {
-    if (resumePartition.execute(consumingTopic, partition)) {
-      this.pausedPartitions.remove(partition);
+  private void resumePartition(int partition) {
+    if (!partitionConsumptionStateMap.containsKey(partition)) {
+      pausedPartitions.remove(partition);
+      return;
+    }
+    Set<String> pausedTopics = pausedPartitions.get(partition);
+    if (pausedTopics == null) {
+      return;
+    }
+    for (String consumingTopic: new ArrayList<>(pausedTopics)) {
+      if (resumePartition.execute(consumingTopic, partition)) {
+        pausedTopics.remove(consumingTopic);
+      }
+    }
+    if (pausedTopics.isEmpty()) {
+      pausedPartitions.remove(partition, pausedTopics);
     }
   }
 
   private void resumeAllPartitions() {
-    partitionConsumptionStateMap.forEach((key, value) -> {
-      for (String consumingTopic: getConsumingTopics(value)) {
-        resumePartition(key, consumingTopic);
-      }
-    });
+    for (Integer partition: new ArrayList<>(pausedPartitions.keySet())) {
+      resumePartition(partition);
+    }
   }
 
   private boolean isVersionOnline(Version version) {
@@ -391,7 +407,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   protected boolean isPartitionPausedIngestion(int partition) {
-    return pausedPartitions.contains(partition);
+    return pausedPartitions.containsKey(partition);
   }
 
   public boolean hasPausedPartitionIngestion() {
