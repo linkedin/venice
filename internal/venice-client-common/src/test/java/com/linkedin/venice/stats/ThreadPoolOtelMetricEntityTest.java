@@ -24,6 +24,14 @@ public class ThreadPoolOtelMetricEntityTest {
             "Active threads in the thread pool",
             Collections.singleton(VENICE_THREAD_POOL_NAME)));
     map.put(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_DISTRIBUTION,
+        new MetricEntityExpectation(
+            "thread_pool.thread.active_distribution",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Distribution of active thread count sampled on request arrival",
+            Collections.singleton(VENICE_THREAD_POOL_NAME)));
+    map.put(
         ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_MAX_COUNT,
         new MetricEntityExpectation(
             "thread_pool.thread.max_count",

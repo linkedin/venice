@@ -20,7 +20,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.grpc.ServerInterceptor;
 import io.netty.bootstrap.ServerBootstrap;
@@ -60,6 +59,7 @@ public class ListenerService extends AbstractVeniceService {
   private VeniceIngestionMonitorServiceImpl ingestionMonitorService;
   private final boolean isGrpcEnabled;
   private final VeniceServerConfig serverConfig;
+  private final MetricsRepository metricsRepository;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
   private final ThreadPoolExecutor grpcExecutor;
@@ -86,6 +86,7 @@ public class ListenerService extends AbstractVeniceService {
       Optional<KafkaStoreIngestionService> kafkaStoreIngestionService) {
 
     this.serverConfig = serverConfig;
+    this.metricsRepository = metricsRepository;
     this.port = serverConfig.getListenerPort();
     this.isGrpcEnabled = serverConfig.isGrpcEnabled();
     this.grpcPort = serverConfig.getGrpcPort();
@@ -94,13 +95,11 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getRestServiceStorageThreadNum(),
         "StorageExecutionThread",
         serverConfig.getDatabaseLookupQueueCapacity());
-    new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
 
     computeExecutor = createThreadPool(
         serverConfig.getServerComputeThreadNum(),
         "StorageComputeThread",
         serverConfig.getComputeQueueCapacity());
-    new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
     if (sslFactory.isPresent() && serverConfig.getSslHandshakeThreadPoolSize() > 0) {
       this.sslHandshakeExecutor = createThreadPool(
@@ -268,6 +267,7 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig,
         executor,
         computeExecutor,
+        metricsRepository,
         storageEngineRepository,
         metadataRepository,
         schemaRepository,
