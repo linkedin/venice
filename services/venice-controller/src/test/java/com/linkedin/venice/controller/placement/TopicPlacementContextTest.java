@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Map;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -35,6 +36,13 @@ public class TopicPlacementContextTest {
   @Test(dataProvider = "categories")
   public void testMetadataClassification(boolean hybrid, MigrationCategory expected) {
     assertEquals(context(store(hybrid)).getMigrationCategory(), expected);
+  }
+
+  @Test
+  public void testMigrationCategoriesDescribeOnlyIngestionMode() {
+    assertEquals(
+        EnumSet.allOf(MigrationCategory.class),
+        EnumSet.of(MigrationCategory.UNKNOWN, MigrationCategory.BATCH_VT, MigrationCategory.HYBRID_VT));
   }
 
   @DataProvider

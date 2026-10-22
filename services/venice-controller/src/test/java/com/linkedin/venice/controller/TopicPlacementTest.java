@@ -169,6 +169,12 @@ public class TopicPlacementTest {
     when(placement.select(any())).thenReturn(selection);
     create("batch-store", PushType.BATCH);
     create(pushStatus, PushType.BATCH);
+    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
+    verify(placement, times(2)).select(captured.capture());
+    for (TopicPlacementContext context: captured.getAllValues()) {
+      assertEquals(context.getStoreName(), "batch-store");
+      assertEquals(context.getMigrationCategory(), TopicPlacementContext.MigrationCategory.BATCH_VT);
+    }
     verifyCreate("batch-store", selection == TopicPlacement.Selection.TREATMENT);
     verifyCreate(pushStatus, selection == TopicPlacement.Selection.TREATMENT);
   }
