@@ -507,6 +507,10 @@ public final class VenicePushJobConstants {
   /** Sample size to collect for building dictionary: Can be assigned a max of 2GB as {@link ZstdDictTrainer} in ZSTD library takes in sample size as int */
   public static final String COMPRESSION_DICTIONARY_SAMPLE_SIZE = "compression.dictionary.sample.size";
   public static final int DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE = 200 * BYTES_PER_MB; // 200MB
+  /** Source-topic dictionary scan budget, including control messages, divided across partitions with a floor. */
+  public static final String COMPRESSION_DICTIONARY_MAX_MESSAGES = "compression.dictionary.max.messages";
+  public static final long DEFAULT_COMPRESSION_DICTIONARY_MAX_MESSAGES = 1_000_000L;
+  public static final long MIN_COMPRESSION_DICTIONARY_MESSAGES_PER_PARTITION = 1_000L;
   /** Maximum final dictionary size TODO add more details about the current limits */
   public static final String COMPRESSION_DICTIONARY_SIZE_LIMIT = "compression.dictionary.size.limit";
 
