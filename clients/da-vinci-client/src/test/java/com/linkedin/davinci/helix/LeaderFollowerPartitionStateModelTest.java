@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -295,6 +296,12 @@ public class LeaderFollowerPartitionStateModelTest {
     CompletableFuture<Void> unsubscribe = mock(CompletableFuture.class);
     doReturn(unsubscribe).when(storeIngestionService).stopConsumption(storeAndServerConfigs, partition);
     HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    doAnswer(invocation -> {
+      verify(accessor).deleteReplicaStatus(resourceName, partition);
+      doThrow(new VeniceException("Synthetic post-drop withdrawal failure")).when(accessor)
+          .deleteReplicaStatus(anyString(), anyInt());
+      return CompletableFuture.completedFuture(null);
+    }).when(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
     try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
       utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
       when(unsubscribe.get(17, TimeUnit.SECONDS)).thenAnswer(invocation -> {
@@ -316,19 +323,61 @@ public class LeaderFollowerPartitionStateModelTest {
     order.verify(unsubscribe).get(17, TimeUnit.SECONDS);
     order.verify(accessor).deleteReplicaStatus(resourceName, partition);
     order.verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    verify(accessor).deleteReplicaStatus(resourceName, partition);
     verify(stateTransitionStats).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(stateTransitionStats).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+  }
+
+  @Test
+  public void testGracefulDropRecoversFromFailedResetStop() throws Exception {
+    Message message = prepareGracefulDrop();
+    CompletableFuture<Void> resetStop = new CompletableFuture<>();
+    resetStop.completeExceptionally(new VeniceException("Synthetic reset unsubscribe failure"));
+    doReturn(resetStop).when(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+    leaderFollowerPartitionStateModel.reset();
+
+    CompletableFuture<Void> unsubscribe = mock(CompletableFuture.class);
+    doReturn(unsubscribe).when(storeIngestionService).stopConsumption(storeAndServerConfigs, partition);
+    when(unsubscribe.get(17, TimeUnit.SECONDS)).thenReturn(null);
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+      utils.when(() -> Utils.sleep(TimeUnit.SECONDS.toMillis(30))).thenAnswer(invocation -> {
+        verify(unsubscribe).get(17, TimeUnit.SECONDS);
+        verify(accessor).deleteReplicaStatus(resourceName, partition);
+        verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+        return true;
+      });
+      leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, null);
+      utils.verify(() -> Utils.sleep(TimeUnit.SECONDS.toMillis(30)));
+    }
+    InOrder order = inOrder(ingestionBackend, storeIngestionService, unsubscribe, accessor);
+    order.verify(ingestionBackend).stopConsumption(eq(storeAndServerConfigs), eq(partition), anyString());
+    order.verify(storeIngestionService).stopConsumption(storeAndServerConfigs, partition);
+    order.verify(unsubscribe).get(17, TimeUnit.SECONDS);
+    order.verify(accessor).deleteReplicaStatus(resourceName, partition);
+    order.verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    assertTrue(resetStop.isCompletedExceptionally());
   }
 
   @DataProvider
   public Object[][] gracefulDropFailures() {
     return new Object[][] { { "unsubscribe" }, { "timeout" }, { "withdrawal" }, { "interrupt-unsubscribe" },
-        { "interrupt-drain" } };
+        { "interrupt-drain" }, { "interrupt-accessor" }, { "interrupt-retry" }, { "interrupt-withdrawal" } };
   }
 
   @Test(dataProvider = "gracefulDropFailures")
   public void testGracefulDropFailureRetainsStorage(String failureStep) throws Exception {
     Message message = prepareGracefulDrop();
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    if ("interrupt-accessor".equals(failureStep)) {
+      partitionPushStatusAccessorFuture = new CompletableFuture<>();
+      leaderFollowerPartitionStateModel = buildModel(notifier);
+    }
+    if ("interrupt-accessor".equals(failureStep) || "interrupt-retry".equals(failureStep)
+        || "interrupt-withdrawal".equals(failureStep)) {
+      when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(0);
+    }
     CompletableFuture<Void> unsubscribe = mock(CompletableFuture.class);
     doReturn(unsubscribe).when(storeIngestionService).stopConsumption(any(), anyInt());
     when(unsubscribe.get(17, TimeUnit.SECONDS)).thenAnswer(invocation -> {
@@ -339,13 +388,26 @@ public class LeaderFollowerPartitionStateModelTest {
           throw new TimeoutException("Synthetic unsubscribe timeout");
         case "interrupt-unsubscribe":
           throw new InterruptedException("Synthetic unsubscribe interruption");
+        case "interrupt-accessor":
+          Thread.currentThread().interrupt();
+          return null;
         default:
           return null;
       }
     });
     if ("withdrawal".equals(failureStep)) {
-      doThrow(new VeniceException("Synthetic withdrawal failure")).when(partitionPushStatusAccessorFuture.join())
+      doThrow(new VeniceException("Synthetic withdrawal failure")).when(accessor)
           .deleteReplicaStatus(anyString(), anyInt());
+    }
+    if ("interrupt-retry".equals(failureStep)) {
+      doThrow(new VeniceException("Synthetic withdrawal failure")).doNothing()
+          .when(accessor)
+          .deleteReplicaStatus(anyString(), anyInt());
+    } else if ("interrupt-withdrawal".equals(failureStep)) {
+      doAnswer(invocation -> {
+        Thread.currentThread().interrupt();
+        return null;
+      }).when(accessor).deleteReplicaStatus(anyString(), anyInt());
     }
     try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
       utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
@@ -354,11 +416,23 @@ public class LeaderFollowerPartitionStateModelTest {
           Thread.currentThread().interrupt();
           return false;
         });
+      } else if ("interrupt-retry".equals(failureStep)) {
+        utils.when(() -> Utils.sleep(1000)).thenAnswer(invocation -> {
+          Thread.currentThread().interrupt();
+          return false;
+        });
       }
-      expectThrows(
+      VeniceException exception = expectThrows(
           VeniceException.class,
           () -> leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, null));
       assertEquals(Thread.currentThread().isInterrupted(), failureStep.startsWith("interrupt"));
+      if ("interrupt-accessor".equals(failureStep)) {
+        assertTrue(exception.getCause() instanceof InterruptedException);
+        assertFalse(partitionPushStatusAccessorFuture.isDone());
+        verify(accessor, never()).deleteReplicaStatus(anyString(), anyInt());
+      } else if ("interrupt-retry".equals(failureStep)) {
+        verify(accessor).deleteReplicaStatus(resourceName, partition);
+      }
     } finally {
       Thread.interrupted();
     }

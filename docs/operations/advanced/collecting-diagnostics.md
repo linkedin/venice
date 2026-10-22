@@ -52,6 +52,11 @@ For the current version and the selected backup when backup graceful drop is ena
 the ingestion service's stop result, removes Customized State, then waits the full configured grace interval before
 dropping storage. Time spent OFFLINE does not shorten that interval, and a missing STANDBY-to-OFFLINE transition does
 not bypass withdrawal. The stop wait uses the configured stop-consumption timeout.
+A fresh unsubscribe is an intentional retry: a successful service acknowledgement can recover from an earlier failed
+OFFLINE/reset stop, while failure of this attempt prevents deletion.
+The storage-drop path skips another routing-state deletion when this transition already withdrew successfully; no
+lifecycle cache is required. Interruption during accessor initialization or a deletion retry also aborts withdrawal,
+including when the configured grace interval is zero.
 
 Stop/withdrawal failures, timeouts, and interrupted waits abort before storage deletion. Existing ingestion-service
 semantics are unchanged: absent or non-running tasks are treated as already stopped, not as proof that task cleanup

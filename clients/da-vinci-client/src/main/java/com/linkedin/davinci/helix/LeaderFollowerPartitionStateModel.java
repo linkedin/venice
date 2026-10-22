@@ -219,7 +219,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         withdrawRoutingAndDrain(replicaId);
       }
 
-      CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully();
+      CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully(isCurrentOrBackupVersion);
       boolean waitForDropPartition = !dropPartitionFuture.isDone();
       try {
         if (waitForDropPartition) {
@@ -262,6 +262,9 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       getStoreIngestionService().stopConsumption(getStoreAndServerConfigs(), getPartition())
           .get(getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds(), TimeUnit.SECONDS);
       removeCustomizedState();
+      if (Thread.currentThread().isInterrupted()) {
+        throw new VeniceException("Interrupted during routing withdrawal for replica: " + replicaId);
+      }
       long gracefulDropDelayMs =
           TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds());
       if (gracefulDropDelayMs <= 0) {
