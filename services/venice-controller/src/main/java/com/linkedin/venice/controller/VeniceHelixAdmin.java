@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_PUSH_STATUS_STORE_READ_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
@@ -298,6 +300,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -668,10 +671,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         commonConfig.getMetaStoreWriterCloseTimeoutInMS(),
         commonConfig.getMetaStoreWriterCloseConcurrency());
     metaStoreReader = new MetaStoreReader(d2Client, commonConfig.getClusterDiscoveryD2ServiceName());
+    Function<String, String> clusterPushStatusWriteResolver =
+        getPushStatusClusterResolver(CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED);
     pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,
         commonConfig.getClusterDiscoveryD2ServiceName(),
-        commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds());
+        commonConfig.getPushStatusStoreHeartbeatExpirationTimeInSeconds(),
+        getPushStatusClusterResolver(CLUSTER_PUSH_STATUS_STORE_READ_ENABLED));
     pushStatusStoreWriter = Lazy.of(() -> {
       String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getZkSharedStoreName();
       SchemaEntry valueSchemaEntry = zkSharedSchemaRepository.getSupersetOrLatestValueSchema(pushStatusStoreName);
@@ -681,7 +687,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           veniceWriterFactory,
           CONTROLLER_HEARTBEAT_INSTANCE_NAME,
           valueSchemaEntry,
-          updateSchemaEntry);
+          updateSchemaEntry,
+          clusterPushStatusWriteResolver == null ? storeName -> null : clusterPushStatusWriteResolver);
     });
 
     clusterToLiveClusterConfigRepo = new VeniceConcurrentHashMap<>();
@@ -903,6 +910,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pushJobStatusStoreClusterName,
         multiClusterConfigs.isMultiRegion(),
         sslFactory);
+  }
+
+  private Function<String, String> getPushStatusClusterResolver(String configKey) {
+    Set<String> enabledClusters = multiClusterConfigs.getClusters()
+        .stream()
+        .filter(cluster -> multiClusterConfigs.getControllerConfig(cluster).getProps().getBoolean(configKey, false))
+        .collect(Collectors.toSet());
+    if (enabledClusters.isEmpty()) {
+      return null;
+    }
+    return storeName -> {
+      String clusterName = storeConfigRepo.getStoreConfigOrThrow(storeName).getCluster();
+      return enabledClusters.contains(clusterName) ? clusterName : null;
+    };
   }
 
   private Set<RepushCandidateFilter> getRepushCandidateFiltersFromControllerConfig(
@@ -4475,35 +4496,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           cleanUpViewResources(new Properties(), store, deletedVersion.get());
         }
         if (store.isDaVinciPushStatusStoreEnabled() && !isParent()) {
-          ExecutorService executor = Executors.newSingleThreadExecutor();
-          Future<?> future = executor.submit(
-              () -> getPushStatusStoreWriter().deletePushStatus(
-                  storeName,
-                  deletedVersion.get().getNumber(),
-                  Optional.empty(),
-                  deletedVersion.get().getPartitionCount()));
-          try {
-            future.get(PUSH_STATUS_STORE_WRITER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            LOGGER.info("Deleted da-vinci push status of {}_v{}", storeName, versionNumber);
-          } catch (InterruptedException e) {
-            LOGGER.error(
-                "Got interrupted while waiting for the completion of {}_v{} da-vinci push status deletion",
-                storeName,
-                versionNumber,
-                e);
-            future.cancel(true);
-            Thread.currentThread().interrupt();
-          } catch (ExecutionException e) {
-            LOGGER.error("Exception thrown when deleting da-vinci push status of {}_v{}", storeName, versionNumber, e);
-          } catch (TimeoutException e) {
-            LOGGER.error("Timed out when deleting da-vinci push status of {}_v{}", storeName, versionNumber);
-            future.cancel(true);
-          } finally {
-            executor.shutdownNow();
-          }
+          deletePushStatusStoreRecords(clusterName, storeName, deletedVersion.get(), store.isMigrating());
         }
 
-        PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(deletedVersion.get()));
+        PubSubTopic rtTopic = getPubSubTopicRepository().getTopic(Utils.getRealTimeTopicName(deletedVersion.get()));
         if (!store.isHybrid() && getTopicManager().containsTopic(rtTopic)) {
           safeDeleteRTTopic(clusterName, deletedVersion.get());
         }
@@ -4515,6 +4511,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .notifyVersionDeleted(store, deletedVersion.get(), isSourceCluster);
         invokePostStoreVersionDeletionHooks(clusterName, storeName, versionNumber, store.getStoreLifecycleHooks());
       }
+    }
+  }
+
+  void deletePushStatusStoreRecords(String clusterName, String storeName, Version version, boolean isMigrationCleanup) {
+    boolean clusterCleanupEnabled = getMultiClusterConfigs().getControllerConfig(clusterName)
+        .getProps()
+        .getBoolean(CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED, false);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    Future<?> future = executor.submit(
+        () -> getPushStatusStoreWriter()
+            .deletePushStatus(
+                clusterCleanupEnabled ? clusterName : null,
+                storeName,
+                version.getNumber(),
+                Optional.empty(),
+                version.getPartitionCount(),
+                isMigrationCleanup)
+            .get());
+    try {
+      future.get(PUSH_STATUS_STORE_WRITER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      LOGGER.info("Deleted da-vinci push status of {}_v{}", storeName, version.getNumber());
+    } catch (InterruptedException e) {
+      LOGGER.error(
+          "Got interrupted while waiting for the completion of {}_v{} da-vinci push status deletion",
+          storeName,
+          version.getNumber(),
+          e);
+      future.cancel(true);
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException e) {
+      LOGGER.error("Exception thrown when deleting da-vinci push status of {}_v{}", storeName, version.getNumber(), e);
+    } catch (TimeoutException e) {
+      LOGGER.error("Timed out when deleting da-vinci push status of {}_v{}", storeName, version.getNumber());
+      future.cancel(true);
+    } finally {
+      executor.shutdownNow();
     }
   }
 

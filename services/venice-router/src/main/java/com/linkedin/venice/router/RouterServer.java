@@ -2,6 +2,7 @@ package com.linkedin.venice.router;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_PUSH_STATUS_STORE_READ_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.utils.concurrent.BlockingQueueType.LINKED_BLOCKING_QUEUE;
 
@@ -409,7 +410,10 @@ public class RouterServer extends AbstractVeniceService {
     this.pushStatusStoreReader = new PushStatusStoreReader(
         d2Client,
         d2ServiceName,
-        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS);
+        DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS,
+        properties.getBoolean(CLUSTER_PUSH_STATUS_STORE_READ_ENABLED, false)
+            ? storeName -> storeConfigRepository.getStoreConfigOrThrow(storeName).getCluster()
+            : null);
   }
 
   /**
@@ -957,6 +961,9 @@ public class RouterServer extends AbstractVeniceService {
     registry.waitForShutdown();
     LOGGER.info("Other resources managed by local ResourceRegistry have been shutdown completely");
 
+    if (pushStatusStoreReader != null) {
+      pushStatusStoreReader.close();
+    }
     routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
     routersClusterManager.clear();
     dictionaryRetrievalService.stop();

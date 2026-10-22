@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -20,10 +22,13 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.logger.TestLogAppender;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
@@ -36,11 +41,24 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,7 +69,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -264,26 +293,107 @@ public class TestVeniceHelixAdminStoreDeletion {
     verify(fixture.storeRepository, never()).deleteStore(STORE_NAME);
   }
 
-  @DataProvider(name = "migrationCleanupModes")
-  public Object[][] migrationCleanupModes() {
-    return new Object[][] { { false, false }, { false, true }, { true, false }, { true, true } };
-  }
-
-  @Test(dataProvider = "migrationCleanupModes")
-  public void testMigrationCleanupPreservesSharedTopicsAndConfig(boolean abortMigration, boolean alreadyDeleting) {
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testMigrationCleanupPreservesSharedTopicsAndConfig(
+      boolean abortMigration,
+      boolean alreadyDeleting,
+      boolean clusterPushStatusEnabled) {
     DeletionFixture fixture = new DeletionFixture();
     fixture.addHybridVersion(1, STORE_NAME + "_rt_v1");
     fixture.persistedStore.setMigrating(true);
+    fixture.persistedStore.setDaVinciPushStatusStoreEnabled(true);
     fixture.persistedConfig.setDeleting(alreadyDeleting);
+    fixture.persistedConfig.setCluster(abortMigration ? "source-cluster" : "destination-cluster");
     StoreConfig originalConfig = fixture.persistedConfig.cloneStoreConfig();
     PubSubTopic topic = fixture.addTopic(STORE_NAME + "_rt_v1");
+    VeniceHelixAdmin admin = fixture.newAdminForPushStatusCleanup(clusterPushStatusEnabled);
+    VeniceWriter clusterWriter = mock(VeniceWriter.class);
+    doReturn(CompletableFuture.completedFuture(null)).when(clusterWriter).delete(any(), any());
+    VeniceWriterFactory factory = mock(VeniceWriterFactory.class);
+    doAnswer(invocation -> {
+      VeniceWriterOptions options = invocation.getArgument(0);
+      assertEquals(
+          options.getTopicName(),
+          Utils.composeRealTimeTopic(VeniceSystemStoreUtils.getDaVinciPushStatusStoreNameForCluster(CLUSTER_NAME)),
+          "Only the removed cluster may receive tombstones");
+      return clusterWriter;
+    }).when(factory).createVeniceWriter(any());
+    Schema valueSchema = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema();
+    Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    int valueSchemaId = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
+    doCallRealMethod().when(admin).deleteOneStoreVersion(CLUSTER_NAME, STORE_NAME, 1);
+    doReturn(fixture.topicRepository).when(admin).getPubSubTopicRepository();
+    PushMonitor pushMonitor = fixture.resources.getPushMonitor();
+    doReturn(mock(OfflinePushStatus.class)).when(pushMonitor)
+        .getOfflinePushOrThrow(Version.composeKafkaTopic(STORE_NAME, 1));
+    doReturn(new VeniceVersionLifecycleEventManager()).when(fixture.resources).getVeniceVersionLifecycleEventManager();
 
-    fixture.newAdmin().deleteStore(CLUSTER_NAME, STORE_NAME, abortMigration, Store.IGNORE_VERSION, true);
+    try (PushStatusStoreWriter writer = new PushStatusStoreWriter(
+        factory,
+        "cleanup-controller",
+        new SchemaEntry(valueSchemaId, valueSchema),
+        new DerivedSchemaEntry(valueSchemaId, 1, updateSchema),
+        storeName -> fixture.persistedConfig.getCluster())) {
+      doReturn(writer).when(admin).getPushStatusStoreWriter();
+      admin.deleteStore(CLUSTER_NAME, STORE_NAME, abortMigration, Store.IGNORE_VERSION, true);
+      verify(factory, times(clusterPushStatusEnabled ? 1 : 0)).createVeniceWriter(any());
+      if (clusterPushStatusEnabled) {
+        for (PushStatusKey key: Arrays
+            .asList(PushStatusStoreUtils.getPushKey(1), PushStatusStoreUtils.getPushKey(1, 0, Optional.empty()))) {
+          verify(clusterWriter).delete(eq(PushStatusStoreUtils.getClusterPushStatusKey(STORE_NAME, key)), any());
+        }
+      }
+      verify(clusterWriter, times(clusterPushStatusEnabled ? 2 : 0)).delete(any(), any());
+    }
 
     fixture.assertNoRealTimeSweep(topic);
     assertNull(fixture.persistedStore, "Local migrated metadata should still be removed");
     assertEquals(fixture.persistedConfig, originalConfig, "Shared discovery config must survive migration cleanup");
     verify(fixture.configAccessor, never()).deleteConfig(STORE_NAME);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @SuppressWarnings("unchecked")
+  public void testPushStatusCleanupWaitsForAcknowledgementsAndLogsFailures(boolean failDeletion) throws Exception {
+    DeletionFixture fixture = new DeletionFixture();
+    VeniceHelixAdmin admin = fixture.newAdminForPushStatusCleanup(false);
+    PushStatusStoreWriter writer = mock(PushStatusStoreWriter.class);
+    doReturn(writer).when(admin).getPushStatusStoreWriter();
+    CompletableFuture<Void> acknowledgement = new CompletableFuture<>();
+    CompletableFuture<Void> deletion = mock(CompletableFuture.class);
+    CountDownLatch awaitingAcknowledgement = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      awaitingAcknowledgement.countDown();
+      return acknowledgement.get();
+    }).when(deletion).get();
+    doReturn(deletion).when(writer).deletePushStatus(null, STORE_NAME, 1, Optional.empty(), 1, false);
+    Version version = new VersionImpl(STORE_NAME, 1, CREATED_TIME, "push-1", 1, null, null);
+    TestLogAppender appender = new TestLogAppender("push-status-cleanup", PatternLayout.createDefaultLayout());
+    Logger logger = (Logger) LogManager.getLogger(VeniceHelixAdmin.class);
+    appender.start();
+    logger.addAppender(appender);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<?> cleanup =
+          executor.submit(() -> admin.deletePushStatusStoreRecords(CLUSTER_NAME, STORE_NAME, version, false));
+      assertTrue(awaitingAcknowledgement.await(5, TimeUnit.SECONDS));
+      assertFalse(cleanup.isDone(), "Cleanup must wait for all tombstones, not just their submission");
+      if (failDeletion) {
+        acknowledgement.completeExceptionally(new IllegalStateException("tombstone failed"));
+      } else {
+        acknowledgement.complete(null);
+      }
+      cleanup.get(5, TimeUnit.SECONDS);
+      assertEquals(appender.getLog().contains("Deleted da-vinci push status of " + STORE_NAME + "_v1"), !failDeletion);
+      assertEquals(
+          appender.getLog().contains("Exception thrown when deleting da-vinci push status of " + STORE_NAME + "_v1"),
+          failDeletion);
+    } finally {
+      acknowledgement.complete(null);
+      executor.shutdownNow();
+      logger.removeAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test
@@ -581,6 +691,17 @@ public class TestVeniceHelixAdminStoreDeletion {
         return null;
       }).when(admin).deleteOneStoreVersion(eq(CLUSTER_NAME), eq(STORE_NAME), anyInt());
       // Resource cleanup, lifecycle hooks and VT truncation stay mocked; the complete RT deletion path is real.
+      return admin;
+    }
+
+    private VeniceHelixAdmin newAdminForPushStatusCleanup(boolean clusterPushStatusEnabled) {
+      VeniceHelixAdmin admin = newAdmin();
+      VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+      Properties properties = new Properties();
+      properties.setProperty(CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED, Boolean.toString(clusterPushStatusEnabled));
+      doReturn(new VeniceProperties(properties)).when(clusterConfig).getProps();
+      doReturn(clusterConfig).when(configs).getControllerConfig(CLUSTER_NAME);
+      doCallRealMethod().when(admin).deletePushStatusStoreRecords(anyString(), anyString(), any(), anyBoolean());
       return admin;
     }
 
