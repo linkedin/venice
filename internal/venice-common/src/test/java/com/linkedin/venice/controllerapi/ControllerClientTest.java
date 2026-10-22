@@ -21,16 +21,12 @@ import org.testng.annotations.Test;
 public class ControllerClientTest {
   @DataProvider
   public Object[][] boundedQueries() {
-    return new Object[][] { { ControllerRoute.STORE }, { ControllerRoute.GET_ADMIN_TOPIC_METADATA },
-        { ControllerRoute.FUTURE_VERSION } };
+    return new Object[][] { { ControllerRoute.STORE }, { ControllerRoute.GET_ADMIN_TOPIC_METADATA } };
   }
 
   private ControllerResponse boundedQuery(ControllerClient client, ControllerRoute route) {
     if (route == ControllerRoute.STORE) {
       return client.getStoreWithTimeout("store", 1000);
-    }
-    if (route == ControllerRoute.FUTURE_VERSION) {
-      return client.getFutureVersionsWithTimeout("store", 1000);
     }
     return client.getAdminTopicMetadataWithTimeout(Optional.empty(), 1000);
   }

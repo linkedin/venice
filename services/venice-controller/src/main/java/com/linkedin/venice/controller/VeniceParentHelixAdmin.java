@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
-import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
@@ -86,7 +85,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
 import com.linkedin.venice.controllerapi.RegionPushDetailsResponse;
@@ -139,7 +137,6 @@ import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -1702,11 +1699,11 @@ public class VeniceParentHelixAdmin implements Admin {
           try {
             long deadlineNs =
                 deferredSwapRecoveryTimeNs() + TimeUnit.MILLISECONDS.toNanos(DEFERRED_SWAP_RECOVERY_TIMEOUT_MS);
-            boolean childrenCaughtUp = StringUtils.isEmpty(targetSwapRegion)
-                && haveChildRegionsConsumedAdminMessages(clusterName, storeName, deadlineNs, false);
-            currentVersions = getCurrentVersionsForDeferredSwapRecovery(clusterName, storeName, deadlineNs);
-            versionSwapFinalized = childrenCaughtUp && remainingDeferredSwapRecoveryTimeMs(deadlineNs) > 0
-                && tryFinalizeDeferredVersionSwap(clusterName, storeName, currentPushVersion, currentVersions);
+            versionSwapFinalized = StringUtils.isEmpty(targetSwapRegion)
+                && tryFinalizeDeferredVersionSwap(clusterName, storeName, currentPushVersion, deadlineNs);
+            currentVersions = versionSwapFinalized
+                ? Collections.emptyMap()
+                : getCurrentVersionsForDeferredSwapRecovery(clusterName, storeName, deadlineNs);
           } finally {
             releaseAdminMessageLock(clusterName, storeName);
           }
@@ -1906,15 +1903,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return currentVersions;
   }
 
-  private boolean haveChildRegionsConsumedAdminMessages(
-      String clusterName,
-      String storeName,
-      long deadlineNs,
-      boolean verifyPublishedMessages) {
+  private boolean haveChildRegionsConsumedAdminMessages(String clusterName, String storeName, long deadlineNs) {
     // The store admin lock excludes new commands for this store, but a published rollback may still be pending in the
     // parent or a child. The durable generated ID covers both queues, including across leadership changes. Since IDs
     // are allocated cluster-wide, compare cluster checkpoints before reading current versions, not store checkpoints.
-    // Automatic recovery fails closed for allocated-but-unpublished IDs as well.
+    // Recovery fails closed for allocated-but-unpublished IDs as well.
     Long executionId;
     try {
       executionId = getVeniceHelixAdmin().getExecutionIdAccessor().getLastGeneratedExecutionId(clusterName);
@@ -1925,28 +1918,6 @@ public class VeniceParentHelixAdmin implements Admin {
     if (executionId == null || executionId < 0) {
       LOGGER.warn("Missing generated admin execution ID for store {} in cluster {}", storeName, clusterName);
       return false;
-    }
-    if (verifyPublishedMessages) {
-      // Generated IDs alone cannot distinguish an abandoned allocation from a queued rollback. Explicit repair
-      // requires a persisted parent checkpoint at the broker tail, then child checkpoints through that ID.
-      // The store admin lock excludes further commands for this store throughout this check and finalization.
-      try {
-        AdminMetadata metadata = getVeniceHelixAdmin().getAdminTopicMetadata(clusterName, Optional.empty());
-        int timeoutMs = remainingDeferredSwapRecoveryTimeMs(deadlineNs);
-        if (metadata == null || metadata.getExecutionId() < 0 || timeoutMs <= 0
-            || !getTopicManager().isFullyConsumed(
-                new PubSubTopicPartitionImpl(
-                    pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName)),
-                    AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-                metadata.getPosition(),
-                Duration.ofMillis(timeoutMs))) {
-          return false;
-        }
-        executionId = metadata.getExecutionId();
-      } catch (Exception e) {
-        LOGGER.warn("Could not verify published admin messages for store {}", storeName, e);
-        return false;
-      }
     }
     for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
         .entrySet()) {
@@ -2001,8 +1972,13 @@ public class VeniceParentHelixAdmin implements Admin {
       String clusterName,
       String storeName,
       int versionNumber,
-      Map<String, Integer> currentVersions) {
-    if (currentVersions.isEmpty()
+      long deadlineNs) {
+    if (!haveChildRegionsConsumedAdminMessages(clusterName, storeName, deadlineNs)) {
+      return false;
+    }
+    Map<String, Integer> currentVersions =
+        getCurrentVersionsForDeferredSwapRecovery(clusterName, storeName, deadlineNs);
+    if (remainingDeferredSwapRecoveryTimeMs(deadlineNs) <= 0 || currentVersions.isEmpty()
         || !currentVersions.keySet().equals(getVeniceHelixAdmin().getControllerClientMap(clusterName).keySet())
         || !currentVersions.values()
             .stream()
@@ -2441,10 +2417,8 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
-      long deadlineNs = deferredSwapRecoveryTimeNs() + TimeUnit.MILLISECONDS.toNanos(DEFERRED_SWAP_RECOVERY_TIMEOUT_MS);
       // get the future version from the interested regions which will be used to compare after roll forward
-      Map<String, String> futureVersionsBeforeRollForward =
-          getFutureVersionsForDeferredSwapRecovery(clusterName, storeName, regionFilter, deadlineNs);
+      Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
       int futureVersionBeforeRollForward = 0;
       for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
         if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
@@ -2457,10 +2431,6 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (futureVersionBeforeRollForward <= 0) {
-        // Reconciliation needs successful discovery in every region, including regions outside the filter.
-        if (futureVersionsBeforeRollForward.containsValue(String.valueOf(IGNORED_CURRENT_VERSION))) {
-          throw new VeniceException("Roll forward failed without complete future version responses");
-        }
         Store parentStore = getStore(clusterName, storeName);
         Version deferredVersion = parentStore == null
             ? null
@@ -2471,14 +2441,11 @@ public class VeniceParentHelixAdmin implements Admin {
                         && StringUtils.isEmpty(version.getTargetSwapRegion()))
                 .max(Comparator.comparingInt(Version::getNumber))
                 .orElse(null);
+        long deadlineNs =
+            deferredSwapRecoveryTimeNs() + TimeUnit.MILLISECONDS.toNanos(DEFERRED_SWAP_RECOVERY_TIMEOUT_MS);
         if (deferredVersion != null
-            && haveChildRegionsConsumedAdminMessages(clusterName, storeName, deadlineNs, true)) {
-          Map<String, Integer> currentVersions =
-              getCurrentVersionsForDeferredSwapRecovery(clusterName, storeName, deadlineNs);
-          if (remainingDeferredSwapRecoveryTimeMs(deadlineNs) > 0
-              && tryFinalizeDeferredVersionSwap(clusterName, storeName, deferredVersion.getNumber(), currentVersions)) {
-            return;
-          }
+            && tryFinalizeDeferredVersionSwap(clusterName, storeName, deferredVersion.getNumber(), deadlineNs)) {
+          return;
         }
         throw new VeniceException("Roll forward failed without any future version");
       }
@@ -2552,42 +2519,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
-  }
-
-  @VisibleForTesting
-  Map<String, String> getFutureVersionsForDeferredSwapRecovery(
-      String clusterName,
-      String storeName,
-      String regionFilter,
-      long deadlineNs) {
-    Map<String, String> futureVersions = new HashMap<>();
-    List<Map.Entry<String, ControllerClient>> controllerClients =
-        new ArrayList<>(getVeniceHelixAdmin().getControllerClientMap(clusterName).entrySet());
-    // Included regions determine ordinary roll-forward; reconciliation requires successful responses from every region.
-    controllerClients
-        .sort(Comparator.comparing(entry -> !isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)));
-    for (Map.Entry<String, ControllerClient> entry: controllerClients) {
-      int timeoutMs = remainingDeferredSwapRecoveryTimeMs(deadlineNs);
-      if (timeoutMs <= 0) {
-        LOGGER.warn(
-            "Deferred version swap recovery deadline exhausted while reading future version in region {} for store {}",
-            entry.getKey(),
-            storeName);
-        futureVersions.put(entry.getKey(), String.valueOf(IGNORED_CURRENT_VERSION));
-        continue;
-      }
-      MultiStoreStatusResponse response = entry.getValue().getFutureVersionsWithTimeout(storeName, timeoutMs);
-      if (response == null || response.isError() || response.getStoreStatusMap() == null
-          || response.getStoreStatusMap().get(storeName) == null) {
-        LOGGER.warn(
-            "Could not query future version in region " + entry.getKey() + ": "
-                + (response == null ? "missing response" : response.getError()));
-        futureVersions.put(entry.getKey(), String.valueOf(IGNORED_CURRENT_VERSION));
-      } else {
-        futureVersions.put(entry.getKey(), response.getStoreStatusMap().get(storeName));
-      }
-    }
-    return futureVersions;
   }
 
   /**

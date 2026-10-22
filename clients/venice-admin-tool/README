@@ -247,9 +247,6 @@ Commands:
     --request-based-metadata                          Get the store's metadata using request based metadata endpoint via a transport client
                                                       and a server URL.
                                                       Requires: --url --server-url --store
-    --roll-forward-to-future-version                   Roll forward to the future version; use the parent controller URL.
-                                                      Requires: --url --store
-                                                      Optional args: --cluster --regions-filter
     --schemas                                         Show the key and value schemas for a store.
                                                       Requires: --url --store
                                                       Optional args: --cluster
@@ -580,7 +577,6 @@ java -jar venice-admin-tool-all.jar --replicas-of-store --url <url> --store <sto
 java -jar venice-admin-tool-all.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
 java -jar venice-admin-tool-all.jar --replicate-meta-data --url <url> --cluster <cluster> --source-fabric <source-fabric> --dest-fabric <dest-fabric>
 java -jar venice-admin-tool-all.jar --request-based-metadata --url <url> --server-url <server-url> --store <store>
-java -jar venice-admin-tool-all.jar --roll-forward-to-future-version --url <parent-controller-url> --store <store> [--cluster <cluster>] [--regions-filter <comma-separated-regions>]
 java -jar venice-admin-tool-all.jar --schemas --url <url> --store <store> [--cluster <cluster>]
 java -jar venice-admin-tool-all.jar --send-end-of-push --url <url> --store <store> --version <version> [--cluster <cluster>]
 java -jar venice-admin-tool-all.jar --set-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store> --migration-push-strategy <migration-push-strategy>
@@ -599,14 +595,6 @@ java -jar venice-admin-tool-all.jar --update-store-acl --url <url> --store <stor
 java -jar venice-admin-tool-all.jar --wipe-cluster --url <url> --cluster <cluster> --fabric <fabric> [--store <store>] [--version <version>]
 ```
 
-For a completed deferred swap without a target region, `--roll-forward-to-future-version` can also
-reconcile the parent when every child already serves the pending version and reports no future version.
-This repair requires the parent admin checkpoint to reach the broker tail and every child to consume
-that checkpoint; pending rollbacks, incomplete region responses, or an exhausted query budget prevent
-reconciliation. An allocated-but-unpublished execution ID does not prevent this explicit repair.
-The reconciliation reads share a 10-second budget, with single-attempt requests capped at 5 seconds.
-Unrelated cluster backlog can delay repair. A regions filter does not bypass the all-region safety checks.
-
 Summarize the replicas status from the result of command "--replicas-on-storage-node" or "--replicas-of-store":
 1. Get number of ${status} replicas from the result of either commands, ${status} could be ONLINE/BOOTSTRAP/ERROR/OFFLINE
 > output | jq '[.replicas[].status == "${status}"]|length'
@@ -616,3 +604,4 @@ Summarize the replicas status from the result of command "--replicas-on-storage-
 > output | jq '.replicas | group_by(.instance)[]|.[0].instance.nodeId, length'
 4. Get number of ${status} replicas per node from result of "--replicas-of-store"
 > output | jq '[.replicas[]|select(.status=="${status}")] | group_by(.instance)[]|.[0].instance.nodeId, length'
+

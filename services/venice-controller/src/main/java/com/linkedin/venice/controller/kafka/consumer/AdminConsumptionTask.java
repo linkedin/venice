@@ -18,12 +18,10 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
@@ -99,7 +97,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     private GUID producerGUID;
     private int segmentNumber;
     private int sequenceNumber;
-    private boolean segmentEnded;
 
     ProducerInfo(ProducerMetadata producerMetadata) {
       updateProducerMetadata(producerMetadata);
@@ -107,7 +104,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     boolean isIncomingMessageValid(ProducerMetadata incomingProducerMetadata) {
       if (!incomingProducerMetadata.producerGUID.equals(producerGUID)) {
-        return false;
+        // We will assume a new producer is always valid regardless of its state (starts with segment 0 and etc.).
+        // Since we don't have sufficient information here to make any informative decisions and it's rare for both the
+        // execution id and producer id edge case to occur at the same time.
+        updateProducerMetadata(incomingProducerMetadata);
+        return true;
       }
       if (incomingProducerMetadata.segmentNumber != segmentNumber) {
         return false;
@@ -120,29 +121,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return incomingProducerMetadata.messageSequenceNumber <= sequenceNumber;
     }
 
-    boolean isIncomingControlMessageValid(
-        ProducerMetadata incomingProducerMetadata,
-        ControlMessageType controlType,
-        boolean adjacentBrokerPosition) {
-      if (!incomingProducerMetadata.producerGUID.equals(producerGUID)) {
-        // Neither producer may have an unseen operation on either side of the transition.
-        return (segmentEnded || adjacentBrokerPosition) && controlType == ControlMessageType.START_OF_SEGMENT
-            && incomingProducerMetadata.segmentNumber == 0 && incomingProducerMetadata.messageSequenceNumber == 0;
-      }
-      if (incomingProducerMetadata.segmentNumber != segmentNumber) {
-        // A segment reset is continuous only after its predecessor's end was consumed.
-        return segmentEnded && controlType == ControlMessageType.START_OF_SEGMENT
-            && incomingProducerMetadata.segmentNumber == segmentNumber + 1
-            && incomingProducerMetadata.messageSequenceNumber == 0;
-      }
-      return isIncomingMessageValid(incomingProducerMetadata);
-    }
-
     void updateProducerMetadata(ProducerMetadata producerMetadata) {
       this.producerGUID = producerMetadata.producerGUID;
       this.segmentNumber = producerMetadata.segmentNumber;
       this.sequenceNumber = producerMetadata.messageSequenceNumber;
-      this.segmentEnded = false;
     }
 
     @Override
@@ -263,8 +245,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * An in-memory DIV tracker used as a backup to execution id to verify the integrity of admin messages.
    */
   private ProducerInfo producerInfo = null;
-  private PubSubPosition lastProducerPosition;
-  private DefaultPubSubMessage unverifiedControlMessage;
 
   /**
    * During roll-out/roll-back phase of the remote consumption feature for admin topic, child controllers will consume
@@ -432,19 +412,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
           subscribe();
         }
-        if (unverifiedControlMessage != null && (unverifiedControlMessage.getPosition().equals(positionToSkip)
-            || unverifiedControlMessage.getPosition().equals(positionToSkipDIV))) {
-          // Retain the first unverified control so explicit skip commands can still act on it after polling advances.
-          DefaultPubSubMessage record = unverifiedControlMessage;
-          delegateMessage(record);
-          if (unverifiedControlMessage == null) {
-            updateLastPosition(record.getPosition());
-            // Poll again after the approved skip: later unverified controls may already have been discarded.
-            consumer.unSubscribe(adminTopicPartition);
-            consumer.subscribe(adminTopicPartition, record.getPosition());
-            undelegatedRecords.clear();
-          }
-        }
         Iterator<DefaultPubSubMessage> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
@@ -476,7 +443,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           long executionId = UNASSIGNED_VALUE;
           try {
             executionId = delegateMessage(record);
-            if (executionId == lastDelegatedExecutionId && unverifiedControlMessage == null) {
+            if (executionId == lastDelegatedExecutionId) {
               updateLastPosition(record.getPosition());
             }
             undelegatedRecords.remove();
@@ -568,8 +535,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastDelegatedPosition = PubSubSymbolicPosition.EARLIEST;
       lastPersistedPosition = PubSubSymbolicPosition.EARLIEST;
       producerInfo = null;
-      lastProducerPosition = null;
-      unverifiedControlMessage = null;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
@@ -878,17 +843,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return corresponding executionId if applicable.
    */
   private long delegateMessage(DefaultPubSubMessage record) {
-    boolean skipPosition = checkPositionToSkip(record.getPosition(), true);
-    if (skipPosition || !shouldProcessRecord(record)) {
+    if (checkPositionToSkip(record.getPosition(), true) || !shouldProcessRecord(record)) {
       // Return lastDelegatedExecutionId to update the offset without changing the execution id. Skip DIV should/can be
       // used if the skip requires executionId to be reset because this skip here is skipping the message without doing
       // any processing. This may be the case when a message cannot be deserialized properly therefore we don't know
       // what's the right execution id and producer info to set moving forward.
-      if (skipPosition && unverifiedControlMessage != null
-          && unverifiedControlMessage.getPosition().equals(record.getPosition())) {
-        unverifiedControlMessage = null;
-      }
-      updateLastPosition(record.getPosition());
       return lastDelegatedExecutionId;
     }
     KafkaKey kafkaKey = record.getKey();
@@ -900,36 +859,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     if (kafkaKey.isControlMessage()) {
       LOGGER.debug("Received control message: {}", kafkaValue);
-      ControlMessageType controlType = ControlMessageType.valueOf((ControlMessage) kafkaValue.payloadUnion);
-      // An abrupt producer transition needs broker proof that no published record was skipped.
-      // Offset gaps, including broker-internal/transactional records, remain unproven rather than assumed empty.
-      boolean adjacentBrokerPosition = producerInfo != null && !producerInfo.segmentEnded
-          && !producerInfo.producerGUID.equals(kafkaValue.producerMetadata.producerGUID)
-          && controlType == ControlMessageType.START_OF_SEGMENT && lastProducerPosition != null
-          && !lastProducerPosition.isSymbolic()
-          && consumer.positionDifference(adminTopicPartition, record.getPosition(), lastProducerPosition) == 1;
-      if (!checkOffsetToSkipDIV(record.getPosition())
-          && (unverifiedControlMessage != null || (producerInfo != null && !producerInfo
-              .isIncomingControlMessageValid(kafkaValue.producerMetadata, controlType, adjacentBrokerPosition)))) {
-        if (unverifiedControlMessage == null) {
-          LOGGER.warn(
-              "Cannot checkpoint control message with discontinuous producer metadata. Previous producer info: {}"
-                  + " Incoming message producer info: {}. Waiting for an admin operation to establish continuity.",
-              producerInfo,
-              kafkaValue.producerMetadata);
-          failingPosition = record.getPosition();
-          stats.recordFailedAdminConsumption();
-          stats.recordAdminTopicDIVErrorReportCount();
-          unverifiedControlMessage = record;
-        }
-        // Controls cannot prove whether the producer gap contains a missing admin operation.
-        return lastDelegatedExecutionId;
-      }
-      // This also initializes continuity when an inclusive checkpoint replay starts at a control record.
-      updateProducerInfo(record);
-      producerInfo.segmentEnded = controlType == ControlMessageType.END_OF_SEGMENT;
-      // Position persistence still waits for all delegated admin operations to complete.
-      return lastDelegatedExecutionId;
+      return UNASSIGNED_VALUE;
     }
     // check message type
     if (MessageType.PUT != messageType) {
@@ -939,7 +869,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       // we have delegated this record and now skipping it as instructed, so update the last delegated execution id
       // this will also update the last position
       lastDelegatedExecutionId = executionId;
-      updateProducerInfo(record);
       return executionId;
     }
     try {
@@ -1082,18 +1011,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       LOGGER.info(
           "Updated lastDelegatedExecutionId to {} because lastDelegatedExecutionId is currently UNASSIGNED",
           lastDelegatedExecutionId);
-      updateProducerInfo(record);
+      updateProducerInfo(record.getValue().producerMetadata);
       return;
     }
     if (incomingExecutionId == lastDelegatedExecutionId + 1) {
       // Expected behavior
       lastDelegatedExecutionId++;
       LOGGER.info("Updated lastDelegatedExecutionId to {}", lastDelegatedExecutionId);
-      updateProducerInfo(record);
+      updateProducerInfo(record.getValue().producerMetadata);
     } else if (incomingExecutionId <= lastDelegatedExecutionId) {
-      if (unverifiedControlMessage == null) {
-        updateProducerInfo(record);
-      }
+      updateProducerInfo(record.getValue().producerMetadata);
       throw new DuplicateDataException(
           "Skipping message with execution id: " + incomingExecutionId + " because last delegated execution id was: "
               + lastDelegatedExecutionId);
@@ -1105,7 +1032,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       String producerInfoString =
           " Previous producer info: " + (producerInfo == null ? "null" : producerInfo.toString())
               + " Incoming message producer info: " + record.getValue().producerMetadata;
-      if (producerInfo != null && unverifiedControlMessage == null) {
+      if (producerInfo != null) {
         throwException = !producerInfo.isIncomingMessageValid(record.getValue().producerMetadata);
       }
       if (throwException) {
@@ -1118,16 +1045,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         throw new MissingDataException(exceptionString);
       } else {
         LOGGER.info("Ignoring {} Cross-reference with producerInfo passed. {}", exceptionString, producerInfoString);
-        updateProducerInfo(record);
+        updateProducerInfo(record.getValue().producerMetadata);
         lastDelegatedExecutionId = incomingExecutionId;
       }
     }
   }
 
-  private void updateProducerInfo(DefaultPubSubMessage record) {
-    ProducerMetadata producerMetadata = record.getValue().producerMetadata;
-    unverifiedControlMessage = null;
-    lastProducerPosition = record.getPosition();
+  private void updateProducerInfo(ProducerMetadata producerMetadata) {
     if (producerInfo != null) {
       producerInfo.updateProducerMetadata(producerMetadata);
     } else {

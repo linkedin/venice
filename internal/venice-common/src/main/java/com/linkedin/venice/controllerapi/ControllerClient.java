@@ -281,14 +281,6 @@ public class ControllerClient implements Closeable {
     return requestWithTimeout(ControllerRoute.STORE, newParams().add(NAME, storeName), StoreResponse.class, timeoutMs);
   }
 
-  public MultiStoreStatusResponse getFutureVersionsWithTimeout(String storeName, int timeoutMs) {
-    return requestWithTimeout(
-        ControllerRoute.FUTURE_VERSION,
-        newParams().add(NAME, storeName),
-        MultiStoreStatusResponse.class,
-        timeoutMs);
-  }
-
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
     QueryParams params = newParams().add(NAME, storeName);
     fabricName.ifPresent(s -> params.add(FABRIC, s));

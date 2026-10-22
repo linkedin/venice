@@ -377,12 +377,6 @@ public class AdminTool {
         case SET_VERSION:
           applyVersionToStore(cmd);
           break;
-        case ROLL_FORWARD_TO_FUTURE_VERSION:
-          storeName = getRequiredArgument(cmd, Arg.STORE, Command.ROLL_FORWARD_TO_FUTURE_VERSION);
-          response =
-              controllerClient.rollForwardToFutureVersion(storeName, getOptionalArgument(cmd, Arg.REGIONS_FILTER, ""));
-          printSuccess(response);
-          break;
         case SET_OWNER:
           setStoreOwner(cmd);
           break;
