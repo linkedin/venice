@@ -4,6 +4,7 @@ import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
 import static org.apache.hc.core5.http.HttpStatus.SC_OK;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -171,6 +172,74 @@ public class InstanceHealthMonitorTest {
     request.getResultFuture().get(10, TimeUnit.SECONDS);
     assertEquals(monitor.getPendingRequestCounter(instance), 0);
     assertThrows(IllegalStateException.class, () -> monitor.trackHealthBasedOnRequestToInstance(instance));
+  }
+
+  /**
+   * close() can stop the timer after a caller passed the closed check. A rejected schedule must fail the new request
+   * without leaking its pending counter, and a timed-out completion must reset its counter immediately.
+   */
+  @Test
+  public void testTimerRejectionAfterClosedCheck() throws Exception {
+    TimeoutProcessor timer = mock(TimeoutProcessor.class);
+    when(timer.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class)))
+        .thenThrow(new RejectedExecutionException("timer stopped"));
+    try (MockedStatic<TimeoutProcessor> timers = mockStatic(TimeoutProcessor.class)) {
+      timers.when(() -> TimeoutProcessor.createManaged(true, 1)).thenReturn(timer);
+      try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().build())) {
+        // No transport future, so tracking does not schedule a timeout.
+        ChainedCompletableFuture<Integer, Integer> inFlight = monitor.trackHealthBasedOnRequestToInstance(instance);
+        assertEquals(monitor.getPendingRequestCounter(instance), 1);
+
+        assertThrows(
+            IllegalStateException.class,
+            () -> monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>()));
+        assertEquals(monitor.getPendingRequestCounter(instance), 1);
+
+        inFlight.getOriginalFuture().complete(SC_GONE);
+        inFlight.getResultFuture().get(10, TimeUnit.SECONDS);
+        assertEquals(monitor.getPendingRequestCounter(instance), 0);
+      }
+    }
+  }
+
+  /** Requests racing with close() fail only with IllegalStateException, never with RejectedExecutionException. */
+  @Test(timeOut = 60_000)
+  public void testRequestsRacingWithClose() throws Exception {
+    InstanceHealthMonitor monitor = new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().build());
+    int threadCount = 8;
+    CountDownLatch warmedUp = new CountDownLatch(threadCount);
+    AtomicReference<Throwable> unexpected = new AtomicReference<>();
+    Thread[] threads = new Thread[threadCount];
+    for (int i = 0; i < threadCount; i++) {
+      int status = i % 2 == 0 ? SC_OK : SC_GONE;
+      threads[i] = new Thread(() -> {
+        try {
+          for (int n = 0;; n++) {
+            ChainedCompletableFuture<Integer, Integer> request =
+                monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>());
+            request.getOriginalFuture().complete(status);
+            request.getResultFuture().join();
+            if (n == 100) {
+              warmedUp.countDown();
+            }
+          }
+        } catch (IllegalStateException expected) {
+          // Closed.
+        } catch (Throwable t) {
+          unexpected.compareAndSet(null, t);
+        } finally {
+          warmedUp.countDown();
+        }
+      });
+      threads[i].start();
+    }
+    assertTrue(warmedUp.await(30, TimeUnit.SECONDS));
+    monitor.close();
+    for (Thread thread: threads) {
+      thread.join(TimeUnit.SECONDS.toMillis(30));
+      assertFalse(thread.isAlive());
+    }
+    assertEquals(unexpected.get(), null);
   }
 
   @Test
