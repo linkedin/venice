@@ -359,13 +359,13 @@ public class TestDeferredVersionSwapServiceWithSequentialRollout {
     doReturn(scenario.startsWith("degraded")).when(admin).isDegradedModeEnabled(clusterName);
     Map<String, ControllerClient> clients = veniceHelixAdmin.getControllerClientMap(clusterName);
     Map<String, Integer> currentVersions = new HashMap<>();
-    for (String region: clients.keySet()) {
-      StoreInfo child = clients.get(region).getStore("testStore", controllerTimeout).getStore();
+    for (Map.Entry<String, ControllerClient> entry: clients.entrySet()) {
+      StoreInfo child = entry.getValue().getStore("testStore", controllerTimeout).getStore();
       Version online = new VersionImpl("testStore", versionTwo);
       online.setStatus(VersionStatus.ONLINE);
       child.setVersions(Arrays.asList(online));
       child.setCurrentVersion(versionTwo);
-      currentVersions.put(region, versionTwo);
+      currentVersions.put(entry.getKey(), versionTwo);
     }
     doReturn(currentVersions).when(admin).getCurrentVersionsForMultiColos(clusterName, "testStore");
     StoreInfo missing = clients.get(missingRegion).getStore("testStore", controllerTimeout).getStore();
