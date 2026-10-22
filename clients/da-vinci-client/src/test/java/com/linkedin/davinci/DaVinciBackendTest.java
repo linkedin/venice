@@ -2,6 +2,7 @@ package com.linkedin.davinci;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -13,6 +14,7 @@ import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerato
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
@@ -47,6 +49,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -67,28 +70,31 @@ public class DaVinciBackendTest {
   private static final Integer STORE_VERSION = 1;
 
   private DaVinciBackend backend;
+  private ClientConfig clientConfig;
+  private Properties serverProps;
+  private StoreSchemaFetcher mockSchemaFetcher;
   private MockedStatic<ClientFactory> mockClientFactory;
   private MockedConstruction<VeniceMetadataRepositoryBuilder> mockMetadataBuilder;
   private MockedConstruction<SchemaPresenceChecker> mockSchemaPresenceChecker;
 
   @BeforeMethod
   public void setUp() throws Exception {
-    ClientConfig clientConfig = new ClientConfig(STORE_NAME).setVeniceURL("http://localhost:7777")
+    clientConfig = new ClientConfig(STORE_NAME).setVeniceURL("http://localhost:7777")
         .setMetricsRepository(new MetricsRepository());
 
-    Properties serverProps = new Properties();
+    serverProps = new Properties();
     serverProps.setProperty(CLUSTER_NAME, "test-cluster");
     serverProps.setProperty(ZOOKEEPER_ADDRESS, "localhost:2181");
     serverProps.setProperty("kafka.bootstrap.servers", "localhost:9092");
     serverProps.setProperty(INGESTION_USE_DA_VINCI_CLIENT, "true");
-    serverProps.setProperty(DATA_BASE_PATH, "/tmp/test");
+    serverProps.setProperty(DATA_BASE_PATH, "build/DaVinciBackendTest");
     serverProps.setProperty(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, "0");
     VeniceProperties veniceProperties = new VeniceProperties(serverProps);
     VeniceConfigLoader configLoader = new VeniceConfigLoader(veniceProperties);
 
     mockClientFactory = mockStatic(ClientFactory.class);
     SchemaReader mockSchemaReader = mock(SchemaReader.class);
-    StoreSchemaFetcher mockSchemaFetcher = mock(StoreSchemaFetcher.class);
+    mockSchemaFetcher = mock(StoreSchemaFetcher.class);
 
     mockClientFactory.when(() -> ClientFactory.getSchemaReader(any(ClientConfig.class), any()))
         .thenReturn(mockSchemaReader);
@@ -130,6 +136,42 @@ public class DaVinciBackendTest {
     mockClientFactory.close();
     mockMetadataBuilder.close();
     mockSchemaPresenceChecker.close();
+  }
+
+  @Test
+  public void testDualWriteDisabledDoesNotCreateDiscoveryResolver() {
+    try (MockedConstruction<PushStatusClusterResolver> resolvers = mockConstruction(PushStatusClusterResolver.class);
+        DaVinciBackend disabledBackend = createBackend()) {
+      assertTrue(resolvers.constructed().isEmpty());
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testCloseOrConstructionFailureClosesDiscoveryResolver(boolean constructionFails) throws Exception {
+    serverProps.setProperty(CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED, "true");
+    if (constructionFails) {
+      doThrow(new VeniceException("schema fetcher close failed")).when(mockSchemaFetcher).close();
+    }
+    try (MockedConstruction<PushStatusClusterResolver> resolvers = mockConstruction(PushStatusClusterResolver.class)) {
+      if (constructionFails) {
+        assertThrows(VeniceException.class, this::createBackend);
+      } else {
+        DaVinciBackend enabledBackend = createBackend();
+        assertEquals(resolvers.constructed().size(), 1);
+        enabledBackend.close();
+      }
+      assertEquals(resolvers.constructed().size(), 1);
+      verify(resolvers.constructed().get(0)).close();
+    }
+  }
+
+  private DaVinciBackend createBackend() {
+    return new DaVinciBackend(
+        clientConfig,
+        new VeniceConfigLoader(new VeniceProperties(serverProps)),
+        Optional.empty(),
+        mock(ICProvider.class),
+        Optional.empty());
   }
 
   @DataProvider(name = "DvcErrorExecutionStatusAndBoolean")

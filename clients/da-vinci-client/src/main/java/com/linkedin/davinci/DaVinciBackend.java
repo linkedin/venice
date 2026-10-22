@@ -1,5 +1,7 @@
 package com.linkedin.davinci;
 
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_INSTANCE_NAME_SUFFIX;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
@@ -40,7 +42,11 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.D2ServiceDiscovery;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -72,6 +78,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -126,6 +133,7 @@ public class DaVinciBackend implements Closeable {
   private final Map<String, VersionBackend> versionByTopicMap = new VeniceConcurrentHashMap<>();
   private final StorageMetadataService storageMetadataService;
   private final PushStatusStoreWriter pushStatusStoreWriter;
+  private PushStatusClusterResolver pushStatusClusterResolver;
   private final ExecutorService ingestionReportExecutor = Executors.newSingleThreadExecutor();
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Optional<ObjectCacheBackend> cacheBackend;
@@ -289,11 +297,18 @@ public class DaVinciBackend implements Closeable {
       try (StoreSchemaFetcher schemaFetcher = ClientFactory.createStoreSchemaFetcher(pushStatusStoreClientConfig)) {
         SchemaEntry valueSchemaEntry = schemaFetcher.getLatestValueSchemaEntry();
         DerivedSchemaEntry updateSchemaEntry = schemaFetcher.getUpdateSchemaEntry(valueSchemaEntry.getId());
+        if (configLoader.getCombinedProperties().getBoolean(CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED, false)) {
+          pushStatusClusterResolver = createPushStatusClusterResolver(
+              clusterInfoProvider,
+              clientConfig,
+              configLoader.getCombinedProperties().getBoolean(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, false));
+        }
         pushStatusStoreWriter = new PushStatusStoreWriter(
             ingestionService.getVeniceWriterFactory(),
             instanceName,
             valueSchemaEntry,
-            updateSchemaEntry);
+            updateSchemaEntry,
+            pushStatusClusterResolver == null ? storeName -> null : pushStatusClusterResolver);
       }
 
       ingestionService.start();
@@ -362,9 +377,46 @@ public class DaVinciBackend implements Closeable {
               .registerStoreDataChangedListener(objectCacheBackend.getCacheInvalidatingStoreChangeListener()));
       LOGGER.info("Da Vinci backend created successfully");
     } catch (Throwable e) {
+      if (pushStatusClusterResolver != null) {
+        pushStatusClusterResolver.close();
+      }
       String msg = "Unable to create Da Vinci backend";
       LOGGER.error(msg, e);
       throw new VeniceException(msg, e);
+    }
+  }
+
+  @VisibleForTesting
+  static PushStatusClusterResolver createPushStatusClusterResolver(
+      ClusterInfoProvider clusterInfoProvider,
+      ClientConfig clientConfig,
+      boolean requestBasedMetadata) {
+    return new PushStatusClusterResolver(
+        clusterInfoProvider,
+        requestBasedMetadata,
+        (storeName, location) -> discoverPushStatusCluster(clientConfig, storeName, location));
+  }
+
+  @VisibleForTesting
+  static String discoverPushStatusCluster(ClientConfig clientConfig, String storeName, String expectedLocation) {
+    try (TransportClient transport = ClientFactory.getTransportClient(clientConfig)) {
+      if (!(transport instanceof D2TransportClient)) {
+        throw new VeniceException("Request-based push status cluster discovery requires D2 routing");
+      }
+      D2ServiceDiscoveryResponse response =
+          new D2ServiceDiscovery().find((D2TransportClient) transport, storeName, false);
+      if (!expectedLocation.equals(response.getServerD2Service())) {
+        throw new VeniceException(
+            "Discovered server service " + response.getServerD2Service() + " does not match metadata location "
+                + expectedLocation + " for " + storeName);
+      }
+      String clusterName = response.getCluster();
+      if (clusterName == null || clusterName.isEmpty()) {
+        throw new VeniceException("Cannot discover cluster for push status store of " + storeName);
+      }
+      return clusterName;
+    } catch (IOException e) {
+      throw new VeniceException("Cannot close push status discovery transport for " + storeName, e);
     }
   }
 
@@ -442,6 +494,9 @@ public class DaVinciBackend implements Closeable {
   @Override
   public synchronized void close() {
     LOGGER.info("Closing Da Vinci backend");
+    if (pushStatusClusterResolver != null) {
+      pushStatusClusterResolver.close();
+    }
     storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
     cacheBackend.ifPresent(
         objectCacheBackend -> storeRepository
@@ -563,7 +618,8 @@ public class DaVinciBackend implements Closeable {
     return versionByTopicMap;
   }
 
-  PushStatusStoreWriter getPushStatusStoreWriter() {
+  @VisibleForTesting
+  public PushStatusStoreWriter getPushStatusStoreWriter() {
     return pushStatusStoreWriter;
   }
 
