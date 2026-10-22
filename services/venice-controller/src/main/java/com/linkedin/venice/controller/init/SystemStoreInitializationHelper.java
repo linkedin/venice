@@ -209,6 +209,9 @@ public final class SystemStoreInitializationHelper {
         store.getVersions().stream().filter(version -> version.getStatus() == VersionStatus.ONLINE).count();
     if (onlineVersionCount == 0) {
       int partitionCount = multiClusterConfigs.getControllerConfig(clusterName).getMinNumberOfPartitions();
+      if (updateStoreQueryParams != null) {
+        partitionCount = updateStoreQueryParams.getPartitionCount().orElse(partitionCount);
+      }
       int replicationFactor = admin.getReplicationFactor(clusterName, systemStoreName);
       Version version = admin.incrementVersionIdempotent(
           clusterName,

@@ -63,6 +63,7 @@ import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRep
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterPushStatusStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.PerClusterInternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
@@ -749,6 +750,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               true));
     }
     initRoutines.addAll(additionalInitRoutines);
+    if (!isParent()) {
+      initRoutines.add(new ClusterPushStatusStoreInitializationRoutine(multiClusterConfigs, this));
+    }
 
     // Participant stores are not read or written in parent colo. Parent controller skips participant store
     // initialization.

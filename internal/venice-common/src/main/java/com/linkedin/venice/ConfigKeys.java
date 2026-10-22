@@ -2294,6 +2294,11 @@ public class ConfigKeys {
    */
   public static final String PUSH_STATUS_STORE_ENABLED = "push.status.store.enabled";
 
+  public static final String CLUSTER_PUSH_STATUS_STORE_ENABLED = "cluster.push.status.store.enabled";
+  public static final String CLUSTER_PUSH_STATUS_STORE_DUAL_WRITE_ENABLED =
+      "cluster.push.status.store.dual.write.enabled";
+  public static final String CLUSTER_PUSH_STATUS_STORE_READ_ENABLED = "cluster.push.status.store.read.enabled";
+
   // Config to check whether the offline push will also monitor Da Vinci push status.
   public static final String DAVINCI_PUSH_STATUS_SCAN_ENABLED = "davinci.push.status.scan.enabled";
 

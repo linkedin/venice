@@ -1,6 +1,7 @@
 package com.linkedin.venice.common;
 
 import com.linkedin.venice.pushstatus.PushStatusKey;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
@@ -18,6 +19,14 @@ public class PushStatusStoreUtils {
   public static final String ONGOING_INCREMENTAL_PUSH_STATUSES_KEY = "ONGOING_INCREMENTAL_PUSHES";
   // This constant is the heartbeat key name for controller to check system store ingestion health.
   public static final String CONTROLLER_HEARTBEAT_INSTANCE_NAME = "CONTROLLER_HEARTBEAT";
+
+  public static PushStatusKey getClusterPushStatusKey(String storeName, PushStatusKey key) {
+    PushStatusKey clusterKey = new PushStatusKey();
+    clusterKey.messageType = key.messageType;
+    clusterKey.keyStrings = new ArrayList<>(key.keyStrings);
+    clusterKey.keyStrings.add(storeName);
+    return clusterKey;
+  }
 
   public static PushStatusKey getHeartbeatKey(String instanceName) {
     PushStatusKey pushStatusKey = new PushStatusKey();
