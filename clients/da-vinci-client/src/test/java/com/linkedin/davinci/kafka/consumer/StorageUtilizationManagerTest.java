@@ -216,6 +216,33 @@ public class StorageUtilizationManagerTest {
   }
 
   @Test
+  public void testUnchangedDisabledQuotaRetriesDeclinedResume() {
+    hybridQuotaEnforcer.enforcePartitionQuota(1, 10);
+    Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+
+    when(resumePartition.execute(any(), anyInt())).thenReturn(false);
+    when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(false);
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    Assert.assertTrue(hybridQuotaEnforcer.isPartitionPausedIngestion(1));
+    verify(resumePartition, times(storePartitionCount * 2)).execute(any(), anyInt());
+    clearInvocations(resumePartition, ingestionNotificationDispatcher);
+
+    when(resumePartition.execute(any(), anyInt())).thenReturn(true);
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    Assert.assertFalse(hybridQuotaEnforcer.hasPausedPartitionIngestion());
+    for (int i = 1; i <= storePartitionCount; i++) {
+      verify(resumePartition).execute(REAL_TIME_TOPIC.getName(), i);
+      verify(resumePartition).execute(Utils.getSeparateRealTimeTopicName(REAL_TIME_TOPIC.getName()), i);
+    }
+    verifyNoMoreInteractions(resumePartition);
+    verifyNoInteractions(ingestionNotificationDispatcher);
+    clearInvocations(resumePartition);
+
+    hybridQuotaEnforcer.handleStoreChanged(store);
+    verifyNoInteractions(resumePartition, ingestionNotificationDispatcher);
+  }
+
+  @Test
   public void testHybridStoreBatchPushExceededQuota() throws Exception {
     // should not throw exception as the partitions size break write quota
     addUsageToAllPartitions(10);
