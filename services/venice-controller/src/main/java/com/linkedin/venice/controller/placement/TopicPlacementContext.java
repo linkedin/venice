@@ -17,7 +17,7 @@ public final class TopicPlacementContext {
   private final boolean legacyAlternative;
   private final MigrationCategory migrationCategory;
 
-  /** Compatibility constructor: without owner metadata, eligibility is unverified. */
+  /** Compatibility constructor: without owner metadata, the category is UNKNOWN. */
   public TopicPlacementContext(
       String clusterName,
       String storeName,
