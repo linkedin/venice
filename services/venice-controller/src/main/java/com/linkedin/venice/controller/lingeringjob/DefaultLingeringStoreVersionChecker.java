@@ -22,6 +22,10 @@ public class DefaultLingeringStoreVersionChecker implements LingeringStoreVersio
       Admin controllerAdmin,
       Optional<X509Certificate> requesterCert,
       IdentityParser identityParser) {
+    return isBootstrapTimeoutExceeded(store, version, time);
+  }
+
+  public static boolean isBootstrapTimeoutExceeded(Store store, Version version, Time time) {
     final long bootstrapDeadlineMs =
         version.getCreatedTime() + TimeUnit.HOURS.toMillis(store.getBootstrapToOnlineTimeoutInHours());
     return time.getMilliseconds() > bootstrapDeadlineMs;
