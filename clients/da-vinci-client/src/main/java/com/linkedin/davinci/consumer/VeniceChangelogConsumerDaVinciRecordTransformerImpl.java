@@ -529,7 +529,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         }
         pubSubMessages.drainTo(drainedPubSubMessages);
         if (offsetCommitter != null) {
-          offsetCommitter.recordConsumed(drainedPubSubMessages);
+          offsetCommitter.recordConsumed(drainedPubSubMessages, this::isServedTopicPartition);
         }
       } catch (InterruptedException exception) {
         LOGGER.info("Thread was interrupted", exception);
@@ -574,6 +574,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     if (offsetCommitter != null) {
       offsetCommitter.commit();
     }
+  }
+
+  private boolean isServedTopicPartition(PubSubTopicPartition topicPartition) {
+    Integer versionToServe = partitionToVersionToServe.get(topicPartition.getPartitionNumber());
+    return versionToServe != null
+        && versionToServe == Version.parseVersionFromKafkaTopicName(topicPartition.getTopicName());
   }
 
   private void closeOffsetCommitter() {

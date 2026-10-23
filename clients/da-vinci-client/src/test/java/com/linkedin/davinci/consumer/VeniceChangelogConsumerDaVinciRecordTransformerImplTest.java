@@ -1118,6 +1118,52 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   }
 
   @Test
+  public void testOffsetCommitRetiresIdlePartitionTopicAfterVersionSwap() {
+    PubSubConsumerAdapter offsetCommitConsumer = mock(PubSubConsumerAdapter.class);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer =
+        createOffsetCommitConsumer(offsetCommitConsumer, TimeUnit.HOURS.toMillis(1));
+    PubSubTopicImpl topic = new PubSubTopicImpl(Version.composeKafkaTopic(TEST_STORE_NAME, CURRENT_STORE_VERSION));
+    PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(topic, 0);
+    PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(topic, 1);
+    bufferOffsetCommitMessage(consumer, p0, ApacheKafkaOffsetPosition.of(1L));
+    consumer.poll(POLL_TIMEOUT);
+    bufferOffsetCommitMessage(consumer, p0, ApacheKafkaOffsetPosition.of(2L));
+    futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
+    bufferOffsetCommitMessage(consumer, p1, ApacheKafkaOffsetPosition.of(3L));
+    consumer.poll(POLL_TIMEOUT);
+    consumer.commitOffsets();
+    consumer.poll(POLL_TIMEOUT);
+    consumer.commitOffsets();
+
+    Map<PubSubTopicPartition, PubSubPosition> expected = new HashMap<>();
+    expected.put(p0, ApacheKafkaOffsetPosition.of(2L));
+    expected.put(p1, ApacheKafkaOffsetPosition.of(3L));
+    verify(offsetCommitConsumer).commitSync(expected, Duration.ofMillis(1234L));
+    verify(offsetCommitConsumer).commitSync(Collections.singletonMap(p1, expected.get(p1)), Duration.ofMillis(1234L));
+  }
+
+  @Test
+  public void testOffsetCommitIgnoresRecordsBufferedBeforeUnsubscribe() {
+    PubSubConsumerAdapter offsetCommitConsumer = mock(PubSubConsumerAdapter.class);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer =
+        createOffsetCommitConsumer(offsetCommitConsumer, TimeUnit.HOURS.toMillis(1));
+    PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(
+        new PubSubTopicImpl(Version.composeKafkaTopic(TEST_STORE_NAME, CURRENT_STORE_VERSION)),
+        0);
+    bufferOffsetCommitMessage(consumer, p0, ApacheKafkaOffsetPosition.of(1L));
+    consumer.poll(POLL_TIMEOUT);
+    bufferOffsetCommitMessage(consumer, p0, ApacheKafkaOffsetPosition.of(2L));
+    consumer.clearPartitionState(Collections.singleton(0));
+    assertEquals(consumer.poll(POLL_TIMEOUT).size(), 1);
+    consumer.commitOffsets();
+    consumer.commitOffsets();
+
+    verify(offsetCommitConsumer).commitSync(anyMap(), any());
+    verify(offsetCommitConsumer)
+        .commitSync(Collections.singletonMap(p0, ApacheKafkaOffsetPosition.of(1L)), Duration.ofMillis(1234L));
+  }
+
+  @Test
   public void testOffsetCommitConsumerCreationFailureFailsFast() {
     doThrow(new VeniceException("missing bootstrap servers")).when(veniceChangelogConsumerClientFactory)
         .getOffsetCommitPubSubConsumer(any());
@@ -1136,9 +1182,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     changelogClientConfig.setConsumerOffsetCommitEnabled(true)
         .setConsumerOffsetCommitIntervalMs(intervalMs)
         .setConsumerOffsetCommitTimeoutMs(1234L);
-    return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
+    veniceChangelogConsumer = new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
         changelogClientConfig,
         veniceChangelogConsumerClientFactory);
+    recordTransformer = veniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME,
+        CURRENT_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+    futureRecordTransformer = veniceChangelogConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME,
+        FUTURE_STORE_VERSION, keySchema, valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+    onStartVersionIngestionHelper(true, true);
+    return veniceChangelogConsumer;
   }
 
   private void bufferOffsetCommitMessage(

@@ -512,7 +512,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   /**
    * Commits {@code lastConsumedOffset + 1} for every given partition, which is the Kafka convention for the next
    * record to read. Uses {@link KafkaConsumer#commitSync(Map, Duration)}, which works for manually assigned partitions
-   * without joining the consumer group.
+   * without joining the consumer group. Time spent waiting for the consumer lock counts against {@code timeout}.
    */
   @Override
   public void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
@@ -538,9 +538,15 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
           new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber()),
           new OffsetAndMetadata(lastConsumedOffset + 1));
     }
+    long startNs = System.nanoTime();
     try {
       acquireLockWithTimeout(timeout);
-      kafkaConsumer.commitSync(offsetsToCommit, timeout);
+      Duration remaining = timeout.minusNanos(System.nanoTime() - startNs);
+      if (remaining.toMillis() <= 0) {
+        throw new PubSubOpTimeoutException(
+            "No time left to commit positions within " + timeout.toMillis() + " ms after acquiring consumer lock");
+      }
+      kafkaConsumer.commitSync(offsetsToCommit, remaining);
     } catch (PubSubClientException e) {
       throw e;
     } catch (Exception e) {

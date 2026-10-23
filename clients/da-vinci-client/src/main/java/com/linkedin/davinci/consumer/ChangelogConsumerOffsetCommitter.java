@@ -16,6 +16,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -91,13 +92,22 @@ class ChangelogConsumerOffsetCommitter {
   }
 
   /**
-   * Tracks the last consumed position of every message's topic-partition.
+   * Tracks the last consumed position of every message whose topic-partition is current or still tracked, then retires
+   * every tracked topic-partition that is no longer current. Recording before retiring includes records buffered before
+   * a version swap or unsubscribe in the final commit, while records arriving after retirement cannot re-track it.
    */
-  synchronized void recordConsumed(Iterable<? extends PubSubMessage<?, ?, VeniceChangeCoordinate>> messages) {
+  synchronized void recordConsumed(
+      Iterable<? extends PubSubMessage<?, ?, VeniceChangeCoordinate>> messages,
+      Predicate<PubSubTopicPartition> isCurrent) {
     for (PubSubMessage<?, ?, VeniceChangeCoordinate> message: messages) {
-      VeniceChangeCoordinate coordinate = message.getPosition();
-      recordConsumed(message.getTopicPartition(), coordinate == null ? null : coordinate.getPosition());
+      PubSubTopicPartition topicPartition = message.getTopicPartition();
+      if (isCurrent.test(topicPartition)
+          || topicPartition.equals(partitionToTopicPartition.get(topicPartition.getPartitionNumber()))) {
+        VeniceChangeCoordinate coordinate = message.getPosition();
+        recordConsumed(topicPartition, coordinate == null ? null : coordinate.getPosition());
+      }
     }
+    retireIf(entry -> !isCurrent.test(entry.getValue()));
   }
 
   /**
@@ -105,14 +115,7 @@ class ChangelogConsumerOffsetCommitter {
    * all.
    */
   synchronized void removePartitions(Set<Integer> partitions) {
-    Iterator<Map.Entry<Integer, PubSubTopicPartition>> iterator = partitionToTopicPartition.entrySet().iterator();
-    while (iterator.hasNext()) {
-      Map.Entry<Integer, PubSubTopicPartition> entry = iterator.next();
-      if (partitions.isEmpty() || partitions.contains(entry.getKey())) {
-        retire(entry.getValue());
-        iterator.remove();
-      }
-    }
+    retireIf(entry -> partitions.isEmpty() || partitions.contains(entry.getKey()));
   }
 
   /**
@@ -158,6 +161,17 @@ class ChangelogConsumerOffsetCommitter {
     } finally {
       retiringPositions.clear();
       lastCommitTimeMs = time.getMilliseconds();
+    }
+  }
+
+  private void retireIf(Predicate<Map.Entry<Integer, PubSubTopicPartition>> predicate) {
+    Iterator<Map.Entry<Integer, PubSubTopicPartition>> iterator = partitionToTopicPartition.entrySet().iterator();
+    while (iterator.hasNext()) {
+      Map.Entry<Integer, PubSubTopicPartition> entry = iterator.next();
+      if (predicate.test(entry)) {
+        retire(entry.getValue());
+        iterator.remove();
+      }
     }
   }
 

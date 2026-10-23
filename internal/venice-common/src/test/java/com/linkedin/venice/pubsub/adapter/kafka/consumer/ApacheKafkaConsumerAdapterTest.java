@@ -82,6 +82,7 @@ import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.TimeoutException;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -1046,10 +1047,49 @@ public class ApacheKafkaConsumerAdapterTest {
     Map<TopicPartition, OffsetAndMetadata> expected = new HashMap<>();
     expected.put(topicPartition, new OffsetAndMetadata(42L));
     expected.put(new TopicPartition("other", 3), new OffsetAndMetadata(1L));
-    verify(internalKafkaConsumer).commitSync(expected, timeout);
+    ArgumentCaptor<Duration> kafkaTimeout = ArgumentCaptor.forClass(Duration.class);
+    verify(internalKafkaConsumer).commitSync(eq(expected), kafkaTimeout.capture());
+    assertTrue(kafkaTimeout.getValue().toMillis() > 0 && kafkaTimeout.getValue().compareTo(timeout) <= 0);
     // Committing must not create group membership.
     verify(internalKafkaConsumer, never()).subscribe(any(Collection.class));
     verify(internalKafkaConsumer, never()).assign(any());
+  }
+
+  @Test(timeOut = 15_000)
+  public void testCommitSyncDeductsLockWaitFromKafkaTimeout() throws Exception {
+    configureGroupId();
+    Map<PubSubTopicPartition, PubSubPosition> positions =
+        Collections.singletonMap(pubSubTopicPartition, new ApacheKafkaOffsetPosition(1L));
+    CountDownLatch holderEntered = new CountDownLatch(1);
+    CountDownLatch releaseHolder = new CountDownLatch(1);
+    List<Duration> kafkaTimeouts = Collections.synchronizedList(new ArrayList<>());
+    doAnswer(invocation -> {
+      kafkaTimeouts.add(invocation.getArgument(1));
+      if (kafkaTimeouts.size() == 1) {
+        holderEntered.countDown();
+        releaseHolder.await();
+      }
+      return null;
+    }).when(internalKafkaConsumer).commitSync(any(Map.class), any(Duration.class));
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    Future<?> holder = pool.submit(() -> kafkaConsumerAdapter.commitSync(positions, Duration.ofSeconds(10)));
+    assertTrue(holderEntered.await(5, TimeUnit.SECONDS));
+
+    PubSubClientException e = expectThrows(
+        PubSubClientException.class,
+        () -> kafkaConsumerAdapter.commitSync(positions, Duration.ofMillis(200)));
+    assertTrue(e.getCause() instanceof PubSubOpTimeoutException);
+    assertEquals(kafkaTimeouts.size(), 1);
+
+    pool.submit(() -> {
+      Thread.sleep(1000);
+      releaseHolder.countDown();
+      return null;
+    });
+    kafkaConsumerAdapter.commitSync(positions, Duration.ofSeconds(5));
+    holder.get(5, TimeUnit.SECONDS);
+    pool.shutdown();
+    assertTrue(kafkaTimeouts.get(1).toMillis() > 0 && kafkaTimeouts.get(1).toMillis() < 4500, kafkaTimeouts.toString());
   }
 
   @Test
