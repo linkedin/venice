@@ -10,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VenicePushJobSource;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.views.VeniceView;
 import java.time.Duration;
@@ -637,6 +638,47 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    */
   static boolean isKillableSystemPush(String pushId) {
     return isPushIdRePush(pushId) || isPushIdCompliancePush(pushId);
+  }
+
+  /**
+   * Classify what originated a push, for the {@link VenicePushJobSource} metric dimension.
+   *
+   * <p>{@link PushType} cannot answer this: a repush creates a new version from an existing version topic and
+   * is reported as {@link PushType#BATCH}, identical to a push that brought in fresh data from outside Venice.
+   * Only the push id carries the distinction.
+   *
+   * <p>{@link #VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX} is deliberately classified as {@link
+   * VenicePushJobSource#USER}: despite containing {@code re_push}, it marks a regular batch push issued against
+   * a TTL-repush-enabled store, so its data did originate outside Venice. The prefixes are mutually exclusive,
+   * but it is checked first so that intent survives any future prefix change.
+   *
+   * <p>An ETL repush carries no push id prefix at all, so it cannot be recognised from {@code pushId} alone and
+   * is instead signalled by {@code isSourceEtl}. It is evaluated after the prefixes so that an explicitly
+   * marked push, such as a compliance push that happens to read ETL data, keeps the classification its prefix
+   * declares.
+   *
+   * @param pushId the push job id; null or empty is treated as {@link VenicePushJobSource#USER}
+   * @param isSourceEtl whether the push read from the store's ETL output, from the push job's
+   *                    {@code source.etl} config
+   * @return the originating source of the push
+   */
+  static VenicePushJobSource getPushJobSource(String pushId, boolean isSourceEtl) {
+    if (isPushIdRegularPushWithTTLRePush(pushId)) {
+      return VenicePushJobSource.USER;
+    }
+    if (isPushIdTTLRePush(pushId)) {
+      return VenicePushJobSource.TTL_REPUSH;
+    }
+    if (isPushIdRePush(pushId)) {
+      return VenicePushJobSource.REPUSH;
+    }
+    if (isPushIdCompliancePush(pushId)) {
+      return VenicePushJobSource.COMPLIANCE;
+    }
+    if (isSourceEtl) {
+      return VenicePushJobSource.ETL_REPUSH;
+    }
+    return VenicePushJobSource.USER;
   }
 
   /**

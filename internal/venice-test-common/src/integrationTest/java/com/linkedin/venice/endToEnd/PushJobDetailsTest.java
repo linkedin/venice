@@ -46,6 +46,7 @@ import com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
+import com.linkedin.venice.stats.dimensions.VenicePushJobSource;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -245,6 +246,11 @@ public class PushJobDetailsTest {
         .put(
             VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE.getDimensionNameInDefaultFormat(),
             expectedPushType.getDimensionValue())
+        .put(
+            // Every push this test drives is an ordinary user push: none set source.etl and none carry a
+            // repush or compliance push id prefix.
+            VeniceMetricsDimensions.VENICE_PUSH_JOB_SOURCE.getDimensionNameInDefaultFormat(),
+            VenicePushJobSource.USER.getDimensionValue())
         .put(
             VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS.getDimensionNameInDefaultFormat(),
             expectedPushStatus.getDimensionValue())

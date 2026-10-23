@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_DATA_WRITER_SINK;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_DURATION_BUCKET;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_EXECUTION_STATE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_STATUS;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PUSH_JOB_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REGION_NAME;
@@ -18,6 +19,7 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
+import com.linkedin.venice.stats.dimensions.VenicePushJobSource;
 import com.linkedin.venice.stats.dimensions.VenicePushJobStatus;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
@@ -139,33 +141,55 @@ public class PushJobStatusStats extends AbstractVeniceStats {
 
   public void recordBatchPushSuccessSensor(
       String storeName,
+      VenicePushJobSource pushSource,
       PushJobDetailsStatus executionState,
       VenicePushJobDurationBucket durationBucket) {
     batchPushSuccessMetric.record(
         1,
-        pushJobDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SUCCESS, executionState, durationBucket));
+        pushJobDimensions(
+            storeName,
+            PushType.BATCH,
+            pushSource,
+            VenicePushJobStatus.SUCCESS,
+            executionState,
+            durationBucket));
   }
 
   public void recordBatchPushFailureDueToUserErrorSensor(
       String storeName,
+      VenicePushJobSource pushSource,
       PushJobDetailsStatus executionState,
       VenicePushJobDurationBucket durationBucket) {
     batchPushFailureDueToUserErrorMetric.record(
         1,
-        pushJobDimensions(storeName, PushType.BATCH, VenicePushJobStatus.USER_ERROR, executionState, durationBucket));
+        pushJobDimensions(
+            storeName,
+            PushType.BATCH,
+            pushSource,
+            VenicePushJobStatus.USER_ERROR,
+            executionState,
+            durationBucket));
   }
 
   public void recordBatchPushFailureNotDueToUserErrorSensor(
       String storeName,
+      VenicePushJobSource pushSource,
       PushJobDetailsStatus executionState,
       VenicePushJobDurationBucket durationBucket) {
     batchPushFailureDueToNonUserErrorMetric.record(
         1,
-        pushJobDimensions(storeName, PushType.BATCH, VenicePushJobStatus.SYSTEM_ERROR, executionState, durationBucket));
+        pushJobDimensions(
+            storeName,
+            PushType.BATCH,
+            pushSource,
+            VenicePushJobStatus.SYSTEM_ERROR,
+            executionState,
+            durationBucket));
   }
 
   public void recordIncrementalPushSuccessSensor(
       String storeName,
+      VenicePushJobSource pushSource,
       PushJobDetailsStatus executionState,
       VenicePushJobDurationBucket durationBucket) {
     incrementalPushSuccessMetric.record(
@@ -173,6 +197,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         pushJobDimensions(
             storeName,
             PushType.INCREMENTAL,
+            pushSource,
             VenicePushJobStatus.SUCCESS,
             executionState,
             durationBucket));
@@ -180,6 +205,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
 
   public void recordIncrementalPushFailureDueToUserErrorSensor(
       String storeName,
+      VenicePushJobSource pushSource,
       PushJobDetailsStatus executionState,
       VenicePushJobDurationBucket durationBucket) {
     incrementalPushFailureDueToUserErrorMetric.record(
@@ -187,6 +213,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         pushJobDimensions(
             storeName,
             PushType.INCREMENTAL,
+            pushSource,
             VenicePushJobStatus.USER_ERROR,
             executionState,
             durationBucket));
@@ -194,6 +221,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
 
   public void recordIncrementalPushFailureNotDueToUserErrorSensor(
       String storeName,
+      VenicePushJobSource pushSource,
       PushJobDetailsStatus executionState,
       VenicePushJobDurationBucket durationBucket) {
     incrementalPushFailureDueToNonUserErrorMetric.record(
@@ -201,6 +229,7 @@ public class PushJobStatusStats extends AbstractVeniceStats {
         pushJobDimensions(
             storeName,
             PushType.INCREMENTAL,
+            pushSource,
             VenicePushJobStatus.SYSTEM_ERROR,
             executionState,
             durationBucket));
@@ -258,11 +287,13 @@ public class PushJobStatusStats extends AbstractVeniceStats {
   private static Map<VeniceMetricsDimensions, String> pushJobDimensions(
       String storeName,
       PushType pushType,
+      VenicePushJobSource pushSource,
       VenicePushJobStatus status,
       PushJobDetailsStatus executionState,
       VenicePushJobDurationBucket durationBucket) {
     return dimensionMapBuilder().store(storeName)
         .add(VENICE_PUSH_JOB_TYPE, pushType.getDimensionValue())
+        .add(VENICE_PUSH_JOB_SOURCE, pushSource.getDimensionValue())
         .add(VENICE_PUSH_JOB_STATUS, status.getDimensionValue())
         .add(VENICE_PUSH_JOB_DURATION_BUCKET, durationBucket.getDimensionValue())
         .add(VENICE_PUSH_JOB_EXECUTION_STATE, executionState.getDimensionValue())
@@ -279,11 +310,12 @@ public class PushJobStatusStats extends AbstractVeniceStats {
     /** PushJobStatusStats: Push job completions */
     PUSH_JOB_COUNT(
         "push_job.count", MetricType.COUNTER, MetricUnit.NUMBER,
-        "Push job completions, differentiated by push type, status, duration bucket, and execution state",
+        "Push job completions, differentiated by push type, source, status, duration bucket, and execution state",
         setOf(
             VENICE_CLUSTER_NAME,
             VENICE_STORE_NAME,
             VENICE_PUSH_JOB_TYPE,
+            VENICE_PUSH_JOB_SOURCE,
             VENICE_PUSH_JOB_STATUS,
             VENICE_PUSH_JOB_DURATION_BUCKET,
             VENICE_PUSH_JOB_EXECUTION_STATE)
