@@ -169,7 +169,9 @@ public class TopicPlacementTest {
       assertEquals(context.isLegacyAlternative(), staticAlternative);
       assertEquals(
           context.getMigrationCategory(),
-          hybrid ? TopicPlacementContext.MigrationCategory.HYBRID_VT : TopicPlacementContext.MigrationCategory.BATCH_VT);
+          hybrid
+              ? TopicPlacementContext.MigrationCategory.HYBRID_VT
+              : TopicPlacementContext.MigrationCategory.BATCH_VT);
     }
     boolean alternative = shadow ? staticAlternative : selection == TopicPlacement.Selection.TREATMENT;
     verify(manager, never()).containsTopic(any());
