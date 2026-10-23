@@ -209,18 +209,13 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 
   /**
-   * Commits the consumer's current positions back to the underlying pub-sub broker so external
-   * monitoring tools (e.g. Kafka consumer-group lag dashboards) can observe progress. This
-   * is intended for <b>monitoring purposes only</b> — the caller's checkpoint state (e.g. Flink's
-   * {@link VeniceChangeCoordinate} state) remains the source of truth for offsets. A failed commit
-   * must not affect correctness; impls are expected to log and swallow transient broker failures.
+   * Commits the positions of the records this consumer has consumed to the PubSub broker, so that external
+   * consumer-group lag monitoring can track it. This is monitoring-only: the caller's checkpoints (e.g.
+   * {@link VeniceChangeCoordinate}) remain the source of truth, and committed positions are never read back.
    *
-   * <p>To register a Kafka consumer group via this call, the caller must set
-   * {@code pubsub.kafka.consumer.group.id} (or equivalent) on
-   * {@link ChangelogClientConfig#getConsumerProperties()}. Without a configured group id, the
-   * commit is a no-op on the broker side.
-   *
-   * <p>Default is no-op; impls that wrap a Kafka pub-sub consumer override.
+   * <p>Implementations that support it commit periodically from {@link #poll(long)} when
+   * {@link ChangelogClientConfig#setConsumerOffsetCommitEnabled(boolean)} is set; this method forces an immediate
+   * commit. It is a no-op when the feature is disabled and never throws.
    */
   default void commitOffsets() {
     // no-op

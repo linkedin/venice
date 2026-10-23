@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -15,6 +16,9 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import javax.annotation.Nonnull;
@@ -106,17 +110,34 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private boolean includeControlMessages = false;
 
   /**
-   * How often the changelog consumer commits its current Kafka positions back to the broker for
-   * monitoring (consumer-group lag). Defaults to {@code 0} (commits disabled).
+   * Whether the changelog consumer periodically commits the positions of the records it has delivered through
+   * {@link VeniceChangelogConsumer#poll(long)} to the PubSub broker, so that external consumer-group lag monitoring
+   * can track it. Disabled by default.
    *
-   * <p>Commits actually happen only when <b>both</b> are true: this value is positive
-   * <i>and</i> a Kafka {@code group.id} is set on the consumer properties (without a group id,
-   * the underlying Kafka commit is meaningless and is short-circuited by the adapter layer).
-   *
-   * <p>This commit is monitoring-only — the caller's checkpoint state remains the source of truth
-   * for offsets, and the consumer does not read back the committed offset on restart.
+   * <p>The commit is monitoring-only: the caller's checkpoints remain the source of truth, and committed positions are
+   * never read back on restart. A consumer group id must be provided through the consumer properties (for Kafka,
+   * {@code kafka.group.id}). The consumer never joins the group (partitions are assigned, not subscribed), so no
+   * group rebalancing happens. Commit failures are logged and counted but never surface to the caller.
    */
-  private long consumerOffsetCommitIntervalMs = 0L;
+  private boolean consumerOffsetCommitEnabled = false;
+
+  /**
+   * Per-store overrides of {@link #consumerOffsetCommitEnabled}, keyed by store name. When a
+   * {@link VeniceChangelogConsumerClientFactory} creates a consumer for a store listed here, the override takes
+   * precedence over the factory-wide setting.
+   */
+  private Map<String, Boolean> consumerOffsetCommitEnabledStoreOverrides = Collections.emptyMap();
+
+  /**
+   * Minimum interval between two consumed-position commits. Only used when {@link #consumerOffsetCommitEnabled} is set.
+   */
+  private long consumerOffsetCommitIntervalMs = MINUTES.toMillis(1);
+
+  /**
+   * Upper bound on how long a single consumed-position commit may block {@link VeniceChangelogConsumer#poll(long)}.
+   * Only used when {@link #consumerOffsetCommitEnabled} is set.
+   */
+  private long consumerOffsetCommitTimeoutMs = SECONDS.toMillis(5);
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -409,15 +430,56 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public boolean isConsumerOffsetCommitEnabled() {
+    return this.consumerOffsetCommitEnabled;
+  }
+
+  /**
+   * See {@link #consumerOffsetCommitEnabled}.
+   */
+  public ChangelogClientConfig setConsumerOffsetCommitEnabled(boolean consumerOffsetCommitEnabled) {
+    this.consumerOffsetCommitEnabled = consumerOffsetCommitEnabled;
+    return this;
+  }
+
+  public Map<String, Boolean> getConsumerOffsetCommitEnabledStoreOverrides() {
+    return this.consumerOffsetCommitEnabledStoreOverrides;
+  }
+
+  /**
+   * See {@link #consumerOffsetCommitEnabledStoreOverrides}.
+   */
+  public ChangelogClientConfig setConsumerOffsetCommitEnabledStoreOverrides(
+      Map<String, Boolean> consumerOffsetCommitEnabledStoreOverrides) {
+    this.consumerOffsetCommitEnabledStoreOverrides = consumerOffsetCommitEnabledStoreOverrides == null
+        ? Collections.emptyMap()
+        : Collections.unmodifiableMap(new HashMap<>(consumerOffsetCommitEnabledStoreOverrides));
+    return this;
+  }
+
   public long getConsumerOffsetCommitIntervalMs() {
     return this.consumerOffsetCommitIntervalMs;
   }
 
-  /**
-   * @param consumerOffsetCommitIntervalMs interval in milliseconds; non-positive disables commits.
-   */
   public ChangelogClientConfig setConsumerOffsetCommitIntervalMs(long consumerOffsetCommitIntervalMs) {
+    if (consumerOffsetCommitIntervalMs <= 0) {
+      throw new IllegalArgumentException(
+          "consumerOffsetCommitIntervalMs must be positive, got: " + consumerOffsetCommitIntervalMs);
+    }
     this.consumerOffsetCommitIntervalMs = consumerOffsetCommitIntervalMs;
+    return this;
+  }
+
+  public long getConsumerOffsetCommitTimeoutMs() {
+    return this.consumerOffsetCommitTimeoutMs;
+  }
+
+  public ChangelogClientConfig setConsumerOffsetCommitTimeoutMs(long consumerOffsetCommitTimeoutMs) {
+    if (consumerOffsetCommitTimeoutMs <= 0) {
+      throw new IllegalArgumentException(
+          "consumerOffsetCommitTimeoutMs must be positive, got: " + consumerOffsetCommitTimeoutMs);
+    }
+    this.consumerOffsetCommitTimeoutMs = consumerOffsetCommitTimeoutMs;
     return this;
   }
 
@@ -452,7 +514,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setConsumerOffsetCommitEnabled(config.isConsumerOffsetCommitEnabled())
+        .setConsumerOffsetCommitEnabledStoreOverrides(config.getConsumerOffsetCommitEnabledStoreOverrides())
         .setConsumerOffsetCommitIntervalMs(config.getConsumerOffsetCommitIntervalMs())
+        .setConsumerOffsetCommitTimeoutMs(config.getConsumerOffsetCommitTimeoutMs())
         .setBackgroundReporterThreadSleepIntervalInSeconds(config.getBackgroundReporterThreadSleepIntervalInSeconds());
     return newConfig;
   }

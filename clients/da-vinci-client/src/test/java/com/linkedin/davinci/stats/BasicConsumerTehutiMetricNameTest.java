@@ -28,6 +28,10 @@ public class BasicConsumerTehutiMetricNameTest {
         BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_SUCCESS_COUNT,
         "chunked_record_success_count");
     map.put(BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT, "chunked_record_fail_count");
+    map.put(
+        BasicConsumerStats.BasicConsumerTehutiMetricName.OFFSET_COMMIT_SUCCESS_COUNT,
+        "offset_commit_success_count");
+    map.put(BasicConsumerStats.BasicConsumerTehutiMetricName.OFFSET_COMMIT_FAIL_COUNT, "offset_commit_fail_count");
     return map;
   }
 }

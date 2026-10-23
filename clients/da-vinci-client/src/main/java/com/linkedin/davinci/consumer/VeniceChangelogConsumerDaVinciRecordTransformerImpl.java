@@ -23,6 +23,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -31,6 +32,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -105,6 +107,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeControlMessages;
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
+  /**
+   * Commit-only PubSub consumer and committer used for external lag monitoring; null unless
+   * {@link ChangelogClientConfig#isConsumerOffsetCommitEnabled()} is set. Records are ingested by DaVinci's shared
+   * consumers, so commits go through this dedicated consumer, which never subscribes or polls.
+   */
+  private final PubSubConsumerAdapter offsetCommitPubSubConsumer;
+  private final ChangelogConsumerOffsetCommitter offsetCommitter;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
 
@@ -198,6 +207,20 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
+    if (changelogClientConfig.isConsumerOffsetCommitEnabled()) {
+      this.offsetCommitPubSubConsumer =
+          veniceChangelogConsumerClientFactory.getOffsetCommitPubSubConsumer(changelogClientConfig);
+      this.offsetCommitter = new ChangelogConsumerOffsetCommitter(
+          offsetCommitPubSubConsumer,
+          changelogClientConfig.getConsumerOffsetCommitIntervalMs(),
+          changelogClientConfig.getConsumerOffsetCommitTimeoutMs(),
+          new SystemTime(),
+          changeCaptureStats,
+          changelogClientConfig.getConsumerName());
+    } else {
+      this.offsetCommitPubSubConsumer = null;
+      this.offsetCommitter = null;
+    }
   }
 
   private synchronized void startDaVinciClient() {
@@ -371,6 +394,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       pubSubMessages.clear();
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
       clearPartitionState(Collections.emptySet());
+      closeOffsetCommitter();
       LOGGER.info("Closed VeniceChangelogConsumer with name: {}", changelogClientConfig.getConsumerName());
     }
   }
@@ -504,6 +528,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           return Collections.emptyList();
         }
         pubSubMessages.drainTo(drainedPubSubMessages);
+        if (offsetCommitter != null) {
+          offsetCommitter.recordConsumed(drainedPubSubMessages);
+        }
       } catch (InterruptedException exception) {
         LOGGER.info("Thread was interrupted", exception);
         // Restore the interrupt status
@@ -527,6 +554,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         changeCaptureStats.emitPollCountMetrics(SUCCESS);
       }
 
+      if (offsetCommitter != null) {
+        offsetCommitter.maybeCommit();
+      }
+
       return drainedPubSubMessages;
     } catch (Exception exception) {
       if (changeCaptureStats != null) {
@@ -535,6 +566,25 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       LOGGER.error("Encountered an exception when polling records for store: {}", storeName, exception);
       throw exception;
+    }
+  }
+
+  @Override
+  public void commitOffsets() {
+    if (offsetCommitter != null) {
+      offsetCommitter.commit();
+    }
+  }
+
+  private void closeOffsetCommitter() {
+    if (offsetCommitter == null) {
+      return;
+    }
+    offsetCommitter.commit();
+    try {
+      offsetCommitPubSubConsumer.close();
+    } catch (Exception e) {
+      LOGGER.warn("Failed to close the offset commit PubSub consumer for store: {}", storeName, e);
     }
   }
 
@@ -1023,6 +1073,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         currentVersionLastHeartbeat.remove(partition);
         eopReceivedPartitions.remove(partition);
       }
+    }
+    if (offsetCommitter != null) {
+      offsetCommitter.removePartitions(partitions);
     }
   }
 

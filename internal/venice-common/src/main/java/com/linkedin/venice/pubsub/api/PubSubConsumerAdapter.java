@@ -160,19 +160,23 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   Set<PubSubTopicPartition> getAssignment();
 
   /**
-   * Commits the consumer's current positions for all assigned partitions to the underlying pub-sub
-   * broker. This is intended for <b>monitoring purposes only</b> — the caller's checkpoint state
-   * remains the source of truth for offsets, and a failed commit must not affect correctness.
+   * Synchronously commits consumed positions to the PubSub broker under the consumer group configured for this
+   * consumer, so that external consumer-group lag monitoring can track it.
    *
-   * <p>For Kafka-backed implementations this surfaces the consumer in broker-side consumer-group
-   * tracking so external tools can compute lag. Backends that do not have a notion of
-   * consumer-group offset tracking are free to leave this as a no-op.
+   * <p>Each entry maps a topic-partition to the position of the <b>last record the caller consumed</b> from it.
+   * Implementations translate that into the broker's commit semantics (for example, Kafka commits the position of
+   * the next record to read). Partitions do not need to be currently assigned to this consumer, and committing must
+   * not make the consumer join the consumer group.
    *
-   * <p>This method must not throw — implementations should log and swallow transient broker
-   * failures.
+   * @param lastConsumedPositions the position of the last consumed record per topic-partition; symbolic positions
+   *                              are not allowed
+   * @param timeout the maximum time to block
+   * @throws UnsupportedOperationException if the implementation does not support committing positions
+   * @throws PubSubClientException if the commit fails, including when no
+   *         consumer group is configured
    */
-  default void commitSync() {
-    // no-op default; backends with consumer-group semantics override
+  default void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    throw new UnsupportedOperationException(getClass().getSimpleName() + " does not support committing positions");
   }
 
   /**

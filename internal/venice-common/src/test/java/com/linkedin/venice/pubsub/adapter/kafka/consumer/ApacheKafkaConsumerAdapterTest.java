@@ -73,6 +73,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
@@ -1023,35 +1024,79 @@ public class ApacheKafkaConsumerAdapterTest {
     expectThrows(ArithmeticException.class, () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 1));
   }
 
-  @Test
-  public void testCommitSyncDelegatesToKafkaConsumerWhenGroupIdConfigured() {
+  private void configureGroupId() {
     Properties consumerProperties = new Properties();
     consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
     when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
-
-    kafkaConsumerAdapter.commitSync();
-    verify(internalKafkaConsumer).commitSync();
   }
 
   @Test
-  public void testCommitSyncShortCircuitsWhenNoGroupId() {
-    // Default mock returns null for getConsumerProperties — should silently no-op so existing
-    // users who don't opt into broker-side monitoring don't see log spam every poll cycle.
-    kafkaConsumerAdapter.commitSync();
-    verify(internalKafkaConsumer, never()).commitSync();
+  public void testCommitSyncCommitsNextOffsetToReadWithTimeout() {
+    configureGroupId();
+    PubSubTopicPartition otherPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("other"), 3);
+    Map<PubSubTopicPartition, PubSubPosition> positions = new HashMap<>();
+    positions.put(pubSubTopicPartition, new ApacheKafkaOffsetPosition(41L));
+    positions.put(otherPartition, new ApacheKafkaOffsetPosition(0L));
+    Duration timeout = Duration.ofSeconds(7);
+
+    kafkaConsumerAdapter.commitSync(positions, timeout);
+
+    Map<TopicPartition, OffsetAndMetadata> expected = new HashMap<>();
+    expected.put(topicPartition, new OffsetAndMetadata(42L));
+    expected.put(new TopicPartition("other", 3), new OffsetAndMetadata(1L));
+    verify(internalKafkaConsumer).commitSync(expected, timeout);
+    // Committing must not create group membership.
+    verify(internalKafkaConsumer, never()).subscribe(any(Collection.class));
+    verify(internalKafkaConsumer, never()).assign(any());
   }
 
   @Test
-  public void testCommitSyncSwallowsExceptions() {
-    Properties consumerProperties = new Properties();
-    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
-    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
-    // Real broker failures (rebalance, broker down, etc.) must be swallowed; commit is
-    // monitoring-only and must never affect correctness.
-    doThrow(new IllegalStateException("simulated broker failure")).when(internalKafkaConsumer).commitSync();
-
-    kafkaConsumerAdapter.commitSync();
-    verify(internalKafkaConsumer).commitSync();
+  public void testCommitSyncThrowsWhenNoGroupId() {
+    Map<PubSubTopicPartition, PubSubPosition> positions =
+        Collections.singletonMap(pubSubTopicPartition, new ApacheKafkaOffsetPosition(1L));
+    expectThrows(PubSubClientException.class, () -> kafkaConsumerAdapter.commitSync(positions, Duration.ofSeconds(1)));
+    verify(internalKafkaConsumer, never()).commitSync(any(Map.class), any(Duration.class));
   }
 
+  @Test
+  public void testCommitSyncEmptyPositionsIsNoOp() {
+    configureGroupId();
+    kafkaConsumerAdapter.commitSync(Collections.emptyMap(), Duration.ofSeconds(1));
+    verify(internalKafkaConsumer, never()).commitSync(any(Map.class), any(Duration.class));
+  }
+
+  @Test
+  public void testCommitSyncRejectsSymbolicAndNullPositions() {
+    configureGroupId();
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> kafkaConsumerAdapter.commitSync(
+            Collections.singletonMap(pubSubTopicPartition, PubSubSymbolicPosition.LATEST),
+            Duration.ofSeconds(1)));
+    expectThrows(
+        IllegalArgumentException.class,
+        () -> kafkaConsumerAdapter
+            .commitSync(Collections.singletonMap(pubSubTopicPartition, null), Duration.ofSeconds(1)));
+    expectThrows(NullPointerException.class, () -> kafkaConsumerAdapter.commitSync(null, Duration.ofSeconds(1)));
+    verify(internalKafkaConsumer, never()).commitSync(any(Map.class), any(Duration.class));
+  }
+
+  @Test
+  public void testCommitSyncWrapsFailuresAndReleasesLock() {
+    configureGroupId();
+    Map<PubSubTopicPartition, PubSubPosition> positions =
+        Collections.singletonMap(pubSubTopicPartition, new ApacheKafkaOffsetPosition(5L));
+    doThrow(new IllegalStateException("simulated broker failure")).when(internalKafkaConsumer)
+        .commitSync(any(Map.class), any(Duration.class));
+
+    PubSubClientException e = expectThrows(
+        PubSubClientException.class,
+        () -> kafkaConsumerAdapter.commitSync(positions, Duration.ofSeconds(1)));
+    assertTrue(e.getCause() instanceof IllegalStateException);
+
+    // The lock must have been released so subsequent operations are not blocked.
+    doNothing().when(internalKafkaConsumer).commitSync(any(Map.class), any(Duration.class));
+    kafkaConsumerAdapter.commitSync(positions, Duration.ofMillis(100));
+    verify(internalKafkaConsumer, times(2)).commitSync(any(Map.class), any(Duration.class));
+  }
 }

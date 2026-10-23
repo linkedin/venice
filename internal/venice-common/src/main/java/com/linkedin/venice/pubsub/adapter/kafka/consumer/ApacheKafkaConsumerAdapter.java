@@ -46,6 +46,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -509,35 +510,44 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   /**
-   * Commits the positions returned by the last {@link KafkaConsumer#poll(Duration)} for all
-   * assigned partitions to the broker. Monitoring-only — the caller still owns offset state.
-   * Failures are logged and swallowed so a transient broker hiccup doesn't fail the caller.
-   *
-   * <p>If {@code group.id} is not configured the call is a silent no-op — committing without a
-   * group id is meaningless and the underlying Kafka consumer would throw
-   * {@code IllegalStateException}, which would be repeated at every poll cycle and flood logs.
-   * Callers opt in to broker-side monitoring by setting {@code group.id} on the consumer config.
-   *
-   * <p>The try/catch wraps {@link #acquireLockWithTimeout()} too so a lock-acquisition failure
-   * (timeout, interrupt) doesn't propagate either — this whole code path must obey the
-   * "must not throw" contract.
+   * Commits {@code lastConsumedOffset + 1} for every given partition, which is the Kafka convention for the next
+   * record to read. Uses {@link KafkaConsumer#commitSync(Map, Duration)}, which works for manually assigned partitions
+   * without joining the consumer group.
    */
   @Override
-  public void commitSync() {
+  public void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    Objects.requireNonNull(lastConsumedPositions, "lastConsumedPositions cannot be null");
     Properties props = config.getConsumerProperties();
     if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
+      throw new PubSubClientException(
+          "Cannot commit positions because " + ConsumerConfig.GROUP_ID_CONFIG + " is not configured");
+    }
+    if (lastConsumedPositions.isEmpty()) {
       return;
     }
+    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>(lastConsumedPositions.size());
+    for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: lastConsumedPositions.entrySet()) {
+      PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+      PubSubPosition position = entry.getValue();
+      if (position == null || position.isSymbolic()) {
+        throw new IllegalArgumentException(
+            "Cannot commit symbolic or null position: " + position + " for " + pubSubTopicPartition);
+      }
+      long lastConsumedOffset = position instanceof ApacheKafkaOffsetPosition
+          ? ((ApacheKafkaOffsetPosition) position).getInternalOffset()
+          : position.getNumericOffset();
+      offsetsToCommit.put(
+          new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber()),
+          new OffsetAndMetadata(lastConsumedOffset + 1));
+    }
     try {
-      acquireLockWithTimeout();
-      kafkaConsumer.commitSync();
+      acquireLockWithTimeout(timeout);
+      kafkaConsumer.commitSync(offsetsToCommit, timeout);
+    } catch (PubSubClientException e) {
+      throw e;
     } catch (Exception e) {
-      // Monitoring-only path — never propagate to the caller. Log with stack so a real broker
-      // failure is debuggable; we already short-circuited the common "no group.id" case above.
-      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+      throw new PubSubClientException("Failed to commit positions for " + offsetsToCommit.keySet(), e);
     } finally {
-      // releaseLock() is safe even if acquireLockWithTimeout() threw — it checks
-      // consumerLock.isHeldByCurrentThread() before unlocking.
       releaseLock();
     }
   }

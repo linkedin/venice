@@ -1,8 +1,11 @@
 package com.linkedin.davinci.consumer;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
@@ -178,5 +181,43 @@ public class ChangelogClientConfigTest {
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testBackgroundReporterThreadSleepIntervalRejectsNegative() {
     new ChangelogClientConfig(GLOBAL_STORE).setBackgroundReporterThreadSleepIntervalInSeconds(-1);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testConsumerOffsetCommitConfigsDefaultsAndClone() {
+    ChangelogClientConfig global = new ChangelogClientConfig(GLOBAL_STORE);
+    Assert.assertFalse(global.isConsumerOffsetCommitEnabled());
+    Assert.assertEquals(global.getConsumerOffsetCommitIntervalMs(), TimeUnit.MINUTES.toMillis(1));
+    Assert.assertEquals(global.getConsumerOffsetCommitTimeoutMs(), TimeUnit.SECONDS.toMillis(5));
+    Assert.assertTrue(global.getConsumerOffsetCommitEnabledStoreOverrides().isEmpty());
+
+    Map<String, Boolean> overrides = new HashMap<>();
+    overrides.put("store_A", true);
+    global.setConsumerOffsetCommitEnabled(true)
+        .setConsumerOffsetCommitIntervalMs(1234L)
+        .setConsumerOffsetCommitTimeoutMs(567L)
+        .setConsumerOffsetCommitEnabledStoreOverrides(overrides);
+    // The config keeps its own copy of the overrides.
+    overrides.put("store_B", false);
+
+    ChangelogClientConfig clone = ChangelogClientConfig.cloneConfig(global);
+    Assert.assertTrue(clone.isConsumerOffsetCommitEnabled());
+    Assert.assertEquals(clone.getConsumerOffsetCommitIntervalMs(), 1234L);
+    Assert.assertEquals(clone.getConsumerOffsetCommitTimeoutMs(), 567L);
+    Assert
+        .assertEquals(clone.getConsumerOffsetCommitEnabledStoreOverrides(), Collections.singletonMap("store_A", true));
+
+    global.setConsumerOffsetCommitEnabledStoreOverrides(null);
+    Assert.assertTrue(global.getConsumerOffsetCommitEnabledStoreOverrides().isEmpty());
+  }
+
+  @Test
+  public void testConsumerOffsetCommitConfigsRejectNonPositiveValues() {
+    ChangelogClientConfig config = new ChangelogClientConfig(GLOBAL_STORE);
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setConsumerOffsetCommitIntervalMs(0));
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setConsumerOffsetCommitIntervalMs(-1));
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setConsumerOffsetCommitTimeoutMs(0));
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setConsumerOffsetCommitTimeoutMs(-1));
   }
 }

@@ -166,6 +166,44 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Assert.assertNotSame(consumer1, consumer2);
   }
 
+  @DataProvider(name = "offsetCommitOverrideCases")
+  public Object[][] offsetCommitOverrideCases() {
+    // globalEnabled, storeOverride (null means no override), expectedEnabled
+    return new Object[][] { { false, null, false }, { true, null, true }, { false, true, true },
+        { true, false, false } };
+  }
+
+  @Test(dataProvider = "offsetCommitOverrideCases")
+  public void testConsumerOffsetCommitStoreOverride(boolean globalEnabled, Boolean storeOverride, boolean expected) {
+    Properties consumerProperties = new Properties();
+    consumerProperties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "http://www.fooAddress.linkedin.com:16337");
+    SchemaReader mockSchemaReader = Mockito.mock(SchemaReader.class);
+    Mockito.when(mockSchemaReader.getKeySchema()).thenReturn(TestKeyRecord.SCHEMA$);
+    Map<String, Boolean> overrides = new HashMap<>();
+    if (storeOverride != null) {
+      overrides.put(STORE_NAME, storeOverride);
+    }
+    overrides.put("some_other_store", !globalEnabled);
+
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setSchemaReader(mockSchemaReader)
+            .setConsumerOffsetCommitEnabled(globalEnabled)
+            .setConsumerOffsetCommitEnabledStoreOverrides(overrides);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
+    D2ControllerClient mockControllerClient = Mockito.mock(D2ControllerClient.class);
+    veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
+    veniceChangelogConsumerClientFactory.setConsumer(Mockito.mock(PubSubConsumerAdapter.class));
+    setUpMockStoreResponse(mockControllerClient, STORE_NAME);
+
+    VeniceChangelogConsumerImpl consumer =
+        (VeniceChangelogConsumerImpl) veniceChangelogConsumerClientFactory.getChangelogConsumer(STORE_NAME);
+    Assert.assertEquals(consumer.offsetCommitter != null, expected);
+    // The factory-wide config is not mutated by per-store overrides.
+    Assert.assertEquals(globalChangelogClientConfig.isConsumerOffsetCommitEnabled(), globalEnabled);
+  }
+
   @Test
   public void testChangelogConsumerWithViewName() {
     ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig();

@@ -194,6 +194,11 @@ public class VeniceChangelogConsumerClientFactory {
   private ChangelogClientConfig getNewStoreChangelogClientConfig(String storeName) {
     ChangelogClientConfig newStoreChangelogClientConfig =
         ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setStoreName(storeName);
+    Boolean offsetCommitEnabledOverride =
+        (Boolean) globalChangelogClientConfig.getConsumerOffsetCommitEnabledStoreOverrides().get(storeName);
+    if (offsetCommitEnabledOverride != null) {
+      newStoreChangelogClientConfig.setConsumerOffsetCommitEnabled(offsetCommitEnabledOverride);
+    }
     newStoreChangelogClientConfig.getInnerClientConfig().setMetricsRepository(metricsRepository);
 
     D2ControllerClient d2ControllerClient;
@@ -245,6 +250,17 @@ public class VeniceChangelogConsumerClientFactory {
         .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
         .build();
     return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
+  }
+
+  /**
+   * Creates a PubSub consumer that is only used to commit consumed positions on behalf of a changelog consumer that
+   * does not own a PubSub consumer. It never subscribes or polls.
+   */
+  PubSubConsumerAdapter getOffsetCommitPubSubConsumer(ChangelogClientConfig changelogClientConfig) {
+    return getPubSubConsumer(
+        changelogClientConfig,
+        pubSubMessageDeserializer,
+        changelogClientConfig.getConsumerName() + "-offset-commit");
   }
 
   /**

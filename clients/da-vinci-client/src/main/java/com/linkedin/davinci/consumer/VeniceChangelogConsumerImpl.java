@@ -170,12 +170,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected Time time;
 
   /**
-   * Interval in milliseconds between monitoring-only offset commits to the underlying broker.
-   * Zero or negative disables periodic commits. Configured via
-   * {@link ChangelogClientConfig#setConsumerOffsetCommitIntervalMs(long)}.
+   * Commits consumed positions for external lag monitoring; null unless
+   * {@link ChangelogClientConfig#isConsumerOffsetCommitEnabled()} is set.
    */
-  protected final long consumerOffsetCommitIntervalMs;
-  protected volatile long lastCommitTimeMs = 0L;
+  protected final ChangelogConsumerOffsetCommitter offsetCommitter;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -206,7 +204,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.totalRegionCount = changelogClientConfig.getTotalRegionCount();
     this.clientRegionName = changelogClientConfig.getClientRegionName();
     this.versionSwapTimeoutInMs = changelogClientConfig.getVersionSwapTimeoutInMs();
-    this.consumerOffsetCommitIntervalMs = changelogClientConfig.getConsumerOffsetCommitIntervalMs();
     this.time = new SystemTime();
     this.onGoingVersionSwapSignal.set(new CountDownLatch(0));
     if (versionSwapByControlMessage) {
@@ -280,6 +277,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     } else {
       changeCaptureStats = null;
     }
+    this.offsetCommitter = changelogClientConfig.isConsumerOffsetCommitEnabled()
+        ? new ChangelogConsumerOffsetCommitter(
+            pubSubConsumer,
+            changelogClientConfig.getConsumerOffsetCommitIntervalMs(),
+            changelogClientConfig.getConsumerOffsetCommitTimeoutMs(),
+            time,
+            changeCaptureStats,
+            changelogClientConfig.getConsumerName())
+        : null;
     heartbeatReporterThread = new HeartbeatReporterThread();
     this.changelogClientConfig = ChangelogClientConfig.cloneConfig(changelogClientConfig);
     SchemaReader schemaReader = changelogClientConfig.getSchemaReader();
@@ -828,6 +834,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
+      if (offsetCommitter != null) {
+        offsetCommitter.removePartitions(partitions);
+      }
       if (versionSwapMessageState != null && !isForVersionSwap) {
         versionSwapMessageState.handleUnsubscribe(partitions);
       }
@@ -859,41 +868,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return internalPoll(timeoutInMs);
   }
 
-  /**
-   * Commits current consumer positions back to the broker for monitoring (consumer-group
-   * lag). See {@link VeniceChangelogConsumer#commitOffsets()} for semantics. Safe to call without
-   * a configured Kafka {@code group.id}; the underlying adapter logs and skips in that case.
-   *
-   * <p>Defensive try/catch as a second safety layer: this method is in the {@code poll()} hot
-   * path and the contract is "monitoring-only, must not affect correctness". Any unexpected
-   * runtime from a {@link PubSubConsumerAdapter} implementation gets logged and swallowed here
-   * rather than bubbling out of {@link #poll(long)}.
-   */
   @Override
   public void commitOffsets() {
-    try {
-      pubSubConsumer.commitSync();
-    } catch (Exception e) {
-      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
-    }
-  }
-
-  /**
-   * Invoked from {@link #poll(long)} to commit positions at most once per configured interval.
-   * Cadence-bounded so the commit cost doesn't grow with poll frequency.
-   *
-   * <p>The post-commit timestamp (not the pre-commit one) is recorded as
-   * {@code lastCommitTimeMs} so a slow {@code commitSync} (e.g. broker hiccup) doesn't cause the
-   * next poll to immediately re-commit.
-   */
-  private void maybeCommitOffsets() {
-    if (consumerOffsetCommitIntervalMs <= 0) {
-      return;
-    }
-    long now = System.currentTimeMillis();
-    if (now - lastCommitTimeMs >= consumerOffsetCommitIntervalMs) {
-      commitOffsets();
-      lastCommitTimeMs = System.currentTimeMillis();
+    if (offsetCommitter != null) {
+      offsetCommitter.commit();
     }
   }
 
@@ -975,6 +953,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           List<DefaultPubSubMessage> messageList = entry.getValue();
           for (DefaultPubSubMessage message: messageList) {
             maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
+            if (offsetCommitter != null) {
+              offsetCommitter.recordConsumed(pubSubTopicPartition, message.getPosition());
+            }
             if (message.getKey().isGlobalRtDiv()) {
               /*
                * Global RT DIV messages carry a GlobalRtDivState payload (DIV metadata) rather than user data. Only
@@ -1094,7 +1075,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(long timeoutInMs) {
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> result = internalPoll(timeoutInMs, false);
-    maybeCommitOffsets();
+    if (offsetCommitter != null) {
+      offsetCommitter.maybeCommit();
+    }
     return result;
   }
 
@@ -1328,6 +1311,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     subscriptionLock.writeLock().lock();
     try {
       this.unsubscribeAll();
+      commitOffsets();
       pubSubConsumer.close();
       heartbeatReporterThread.interrupt();
       seekExecutorService.shutdown();

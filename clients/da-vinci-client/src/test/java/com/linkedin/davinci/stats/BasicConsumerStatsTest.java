@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.HEART_BEAT_DELAY;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.OFFSET_COMMIT_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.POLL_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.VERSION_SWAP_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT;
@@ -10,6 +11,8 @@ import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsum
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.MAXIMUM_CONSUMING_VERSION;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.MAX_PARTITION_LAG;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.MINIMUM_CONSUMING_VERSION;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.OFFSET_COMMIT_FAIL_COUNT;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.OFFSET_COMMIT_SUCCESS_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_FAIL_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_SUCCESS_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT;
@@ -166,6 +169,22 @@ public class BasicConsumerStatsTest {
         CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(),
         1,
         responseStatusCategory);
+  }
+
+  @Test
+  public void testEmitOffsetCommitSuccessCountMetrics() {
+    consumerStats.emitOffsetCommitCountMetrics(SUCCESS);
+
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + OFFSET_COMMIT_SUCCESS_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, OFFSET_COMMIT_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+  }
+
+  @Test
+  public void testEmitOffsetCommitFailCountMetrics() {
+    consumerStats.emitOffsetCommitCountMetrics(FAIL);
+
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + OFFSET_COMMIT_FAIL_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, OFFSET_COMMIT_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
   private void validateTehutiMetric(String metricName, double expectedValue) {
