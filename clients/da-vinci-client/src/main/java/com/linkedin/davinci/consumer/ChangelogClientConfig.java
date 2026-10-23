@@ -105,6 +105,19 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   private boolean includeControlMessages = false;
 
+  /**
+   * How often the changelog consumer commits its current Kafka positions back to the broker for
+   * monitoring (consumer-group lag). Defaults to {@code 0} (commits disabled).
+   *
+   * <p>Commits actually happen only when <b>both</b> are true: this value is positive
+   * <i>and</i> a Kafka {@code group.id} is set on the consumer properties (without a group id,
+   * the underlying Kafka commit is meaningless and is short-circuited by the adapter layer).
+   *
+   * <p>This commit is monitoring-only — the caller's checkpoint state remains the source of truth
+   * for offsets, and the consumer does not read back the committed offset on restart.
+   */
+  private long consumerOffsetCommitIntervalMs = 0L;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -396,6 +409,18 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public long getConsumerOffsetCommitIntervalMs() {
+    return this.consumerOffsetCommitIntervalMs;
+  }
+
+  /**
+   * @param consumerOffsetCommitIntervalMs interval in milliseconds; non-positive disables commits.
+   */
+  public ChangelogClientConfig setConsumerOffsetCommitIntervalMs(long consumerOffsetCommitIntervalMs) {
+    this.consumerOffsetCommitIntervalMs = consumerOffsetCommitIntervalMs;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -427,6 +452,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setConsumerOffsetCommitIntervalMs(config.getConsumerOffsetCommitIntervalMs())
         .setBackgroundReporterThreadSleepIntervalInSeconds(config.getBackgroundReporterThreadSleepIntervalInSeconds());
     return newConfig;
   }
