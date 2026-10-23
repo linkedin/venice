@@ -209,6 +209,19 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 
   /**
+   * Commits the positions of the records this consumer has consumed to the PubSub broker, so that external
+   * consumer-group lag monitoring can track it. This is monitoring-only: the caller's checkpoints (e.g.
+   * {@link VeniceChangeCoordinate}) remain the source of truth, and committed positions are never read back.
+   *
+   * <p>Implementations that support it commit periodically from {@link #poll(long)} when
+   * {@link ChangelogClientConfig#setConsumerOffsetCommitEnabled(boolean)} is set; this method forces an immediate
+   * commit. It is a no-op when the feature is disabled and never throws.
+   */
+  default void commitOffsets() {
+    // no-op
+  }
+
+  /**
    * Checks whether all subscribed partitions are caught up during bootstrap. If a partition's (currentTimestamp - latestMessageTimestamp)
    * is smaller or equal to 1 min, we consider this partition is caught up.
    * @return True if all subscribed partitions have caught up.

@@ -53,6 +53,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> offsetCommitSuccessCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> offsetCommitFailCountMetric;
 
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
@@ -157,6 +159,24 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
+    offsetCommitSuccessCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.OFFSET_COMMIT_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.OFFSET_COMMIT_SUCCESS_COUNT,
+        Collections.singletonList(new Rate()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
+    offsetCommitFailCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.OFFSET_COMMIT_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.OFFSET_COMMIT_FAIL_COUNT,
+        Collections.singletonList(new Rate()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
     /*
      * Record default value for version swap metrics so the UP_DOWN_COUNTER in OTEL will emit a default 0.
      * If you don't do this, the OTEL metric will return no data upon query time until a value is recorded.
@@ -205,6 +225,14 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     }
   }
 
+  public void emitOffsetCommitCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
+    if (responseStatusCategory == SUCCESS) {
+      offsetCommitSuccessCountMetric.record(1, responseStatusCategory);
+    } else {
+      offsetCommitFailCountMetric.record(1, responseStatusCategory);
+    }
+  }
+
   @VisibleForTesting
   public Attributes getBaseAttributes() {
     return baseAttributes;
@@ -216,7 +244,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
     MAX_PARTITION_LAG, RECORDS_CONSUMED, MINIMUM_CONSUMING_VERSION, MAXIMUM_CONSUMING_VERSION, POLL_SUCCESS_COUNT,
     POLL_FAIL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
-    CHUNKED_RECORD_FAIL_COUNT
+    CHUNKED_RECORD_FAIL_COUNT, OFFSET_COMMIT_SUCCESS_COUNT, OFFSET_COMMIT_FAIL_COUNT
   }
 
   public enum BasicConsumerMetricEntity implements ModuleMetricEntityInterface {
@@ -259,6 +287,13 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      */
     CHUNKED_RECORD_COUNT(
         MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of chunked records consumed",
+        setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    ),
+    /**
+     * Measures the count of consumed-position commits to the PubSub broker
+     */
+    OFFSET_COMMIT_COUNT(
+        MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of consumed-position commits to the PubSub broker",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     );
 

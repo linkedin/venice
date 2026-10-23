@@ -71,6 +71,14 @@ public class BasicConsumerMetricEntityTest {
             MetricUnit.NUMBER,
             "Measures the count of chunked records consumed",
             setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    map.put(
+        BasicConsumerStats.BasicConsumerMetricEntity.OFFSET_COMMIT_COUNT,
+        new MetricEntityExpectation(
+            "offset_commit_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Measures the count of consumed-position commits to the PubSub broker",
+            setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     return map;
   }
 }

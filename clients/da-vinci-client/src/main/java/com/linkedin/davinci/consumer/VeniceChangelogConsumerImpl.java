@@ -169,6 +169,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected volatile VersionSwapMessageState versionSwapMessageState = null;
   protected Time time;
 
+  /**
+   * Commits consumed positions for external lag monitoring; null unless
+   * {@link ChangelogClientConfig#isConsumerOffsetCommitEnabled()} is set.
+   */
+  protected final ChangelogConsumerOffsetCommitter offsetCommitter;
+
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
@@ -271,6 +277,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     } else {
       changeCaptureStats = null;
     }
+    this.offsetCommitter = changelogClientConfig.isConsumerOffsetCommitEnabled()
+        ? new ChangelogConsumerOffsetCommitter(
+            pubSubConsumer,
+            changelogClientConfig.getConsumerOffsetCommitIntervalMs(),
+            changelogClientConfig.getConsumerOffsetCommitTimeoutMs(),
+            time,
+            changeCaptureStats,
+            changelogClientConfig.getConsumerName())
+        : null;
     heartbeatReporterThread = new HeartbeatReporterThread();
     this.changelogClientConfig = ChangelogClientConfig.cloneConfig(changelogClientConfig);
     SchemaReader schemaReader = changelogClientConfig.getSchemaReader();
@@ -819,6 +834,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
+      if (offsetCommitter != null) {
+        offsetCommitter.removePartitions(partitions);
+      }
       if (versionSwapMessageState != null && !isForVersionSwap) {
         versionSwapMessageState.handleUnsubscribe(partitions);
       }
@@ -848,6 +866,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     return internalPoll(timeoutInMs);
+  }
+
+  @Override
+  public void commitOffsets() {
+    if (offsetCommitter != null) {
+      offsetCommitter.commit();
+    }
   }
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
@@ -928,6 +953,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           List<DefaultPubSubMessage> messageList = entry.getValue();
           for (DefaultPubSubMessage message: messageList) {
             maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
+            if (offsetCommitter != null) {
+              offsetCommitter.recordConsumed(pubSubTopicPartition, message.getPosition());
+            }
             if (message.getKey().isGlobalRtDiv()) {
               /*
                * Global RT DIV messages carry a GlobalRtDivState payload (DIV metadata) rather than user data. Only
@@ -1046,7 +1074,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(long timeoutInMs) {
-    return internalPoll(timeoutInMs, false);
+    Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> result = internalPoll(timeoutInMs, false);
+    if (offsetCommitter != null) {
+      offsetCommitter.maybeCommit();
+    }
+    return result;
   }
 
   /**
@@ -1279,6 +1311,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     subscriptionLock.writeLock().lock();
     try {
       this.unsubscribeAll();
+      commitOffsets();
       pubSubConsumer.close();
       heartbeatReporterThread.interrupt();
       seekExecutorService.shutdown();

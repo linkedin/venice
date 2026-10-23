@@ -35,15 +35,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -501,6 +504,53 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       if (pubSubMessageDeserializer != null) {
         pubSubMessageDeserializer.close();
       }
+    } finally {
+      releaseLock();
+    }
+  }
+
+  /**
+   * Commits {@code lastConsumedOffset + 1} for every given partition, which is the Kafka convention for the next
+   * record to read. Uses {@link KafkaConsumer#commitSync(Map, Duration)}, which works for manually assigned partitions
+   * without joining the consumer group. Time spent waiting for the consumer lock counts against {@code timeout}.
+   */
+  @Override
+  public void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    Objects.requireNonNull(lastConsumedPositions, "lastConsumedPositions cannot be null");
+    Properties props = config.getConsumerProperties();
+    if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
+      throw new PubSubClientException(
+          "Cannot commit positions because " + ConsumerConfig.GROUP_ID_CONFIG + " is not configured");
+    }
+    if (lastConsumedPositions.isEmpty()) {
+      return;
+    }
+    Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>(lastConsumedPositions.size());
+    for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: lastConsumedPositions.entrySet()) {
+      PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+      PubSubPosition position = entry.getValue();
+      if (position == null || position.isSymbolic()) {
+        throw new IllegalArgumentException(
+            "Cannot commit symbolic or null position: " + position + " for " + pubSubTopicPartition);
+      }
+      long lastConsumedOffset = position.getNumericOffset();
+      offsetsToCommit.put(
+          new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber()),
+          new OffsetAndMetadata(lastConsumedOffset + 1));
+    }
+    long startNs = System.nanoTime();
+    try {
+      acquireLockWithTimeout(timeout);
+      Duration remaining = timeout.minusNanos(System.nanoTime() - startNs);
+      if (remaining.toMillis() <= 0) {
+        throw new PubSubOpTimeoutException(
+            "No time left to commit positions within " + timeout.toMillis() + " ms after acquiring consumer lock");
+      }
+      kafkaConsumer.commitSync(offsetsToCommit, remaining);
+    } catch (PubSubClientException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new PubSubClientException("Failed to commit positions for " + offsetsToCommit.keySet(), e);
     } finally {
       releaseLock();
     }

@@ -160,6 +160,25 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   Set<PubSubTopicPartition> getAssignment();
 
   /**
+   * Synchronously commits consumed positions to the PubSub broker under the consumer group configured for this
+   * consumer, so that external consumer-group lag monitoring can track it.
+   *
+   * <p>Each entry maps a topic-partition to the position of the <b>last record the caller consumed</b> from it.
+   * Implementations translate that into the broker's commit semantics (for example, Kafka commits the position of
+   * the next record to read). Partitions do not need to be currently assigned to this consumer, and committing must
+   * not make the consumer join the consumer group.
+   *
+   * @param lastConsumedPositions the position of the last consumed record per topic-partition; symbolic positions
+   *                              are not allowed
+   * @param timeout the maximum time to block
+   * @throws UnsupportedOperationException if the implementation does not support committing positions
+   * @throws PubSubClientException if the commit fails, including when no consumer group is configured
+   */
+  default void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    throw new UnsupportedOperationException(getClass().getSimpleName() + " does not support committing positions");
+  }
+
+  /**
    * Retrieves the consuming offset lag for a PubSub topic partition. The offset lag represents the difference
    * between the last consumed message offset and the latest available message offset for the partition.
    *
