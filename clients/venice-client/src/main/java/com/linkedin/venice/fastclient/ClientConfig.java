@@ -8,7 +8,6 @@ import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
@@ -99,7 +98,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   private boolean projectionFieldValidation;
   private Set<String> harClusters;
-  private final InstanceHealthMonitor instanceHealthMonitor;
+  private final InstanceHealthMonitorConfig instanceHealthMonitorConfig;
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
   private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
@@ -221,11 +220,13 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.projectionFieldValidation = builder.projectionFieldValidation;
     this.longTailRetryBudgetEnforcementWindowInMs = builder.longTailRetryBudgetEnforcementWindowInMs;
     this.harClusters = builder.harClusters;
-    if (builder.instanceHealthMonitor == null) {
-      this.instanceHealthMonitor =
-          new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().setClient(this.r2Client).build());
+    if (builder.instanceHealthMonitorConfig == null) {
+      this.instanceHealthMonitorConfig = InstanceHealthMonitorConfig.builder().setClient(this.r2Client).build();
+    } else if (builder.instanceHealthMonitorConfig.getClient() == null) {
+      this.instanceHealthMonitorConfig =
+          builder.instanceHealthMonitorConfig.toBuilder().setClient(this.r2Client).build();
     } else {
-      this.instanceHealthMonitor = builder.instanceHealthMonitor;
+      this.instanceHealthMonitorConfig = builder.instanceHealthMonitorConfig;
     }
     this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
         builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
@@ -393,8 +394,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this;
   }
 
-  public InstanceHealthMonitor getInstanceHealthMonitor() {
-    return instanceHealthMonitor;
+  /**
+   * Settings for the health monitor that each Fast Client creates for itself. The monitor is created with the store
+   * metadata and closed when the client is closed; it is never shared between clients.
+   */
+  public InstanceHealthMonitorConfig getInstanceHealthMonitorConfig() {
+    return instanceHealthMonitorConfig;
   }
 
   public boolean isRetryBudgetEnabled() {
@@ -502,7 +507,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private Set<String> harClusters = Collections.EMPTY_SET;
 
-    private InstanceHealthMonitor instanceHealthMonitor;
+    private InstanceHealthMonitorConfig instanceHealthMonitorConfig;
 
     private boolean retryBudgetEnabled = true;
 
@@ -686,8 +691,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setInstanceHealthMonitor(InstanceHealthMonitor instanceHealthMonitor) {
-      this.instanceHealthMonitor = instanceHealthMonitor;
+    /**
+     * Settings for the client's own health monitor. If the config has no R2 client, the client's R2 client is used.
+     */
+    public ClientConfigBuilder<K, V, T> setInstanceHealthMonitorConfig(
+        InstanceHealthMonitorConfig instanceHealthMonitorConfig) {
+      this.instanceHealthMonitorConfig = instanceHealthMonitorConfig;
       return this;
     }
 
@@ -807,7 +816,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setProjectionFieldValidationEnabled(projectionFieldValidation)
           .setLongTailRetryBudgetEnforcementWindowInMs(longTailRetryBudgetEnforcementWindowInMs)
           .setHARClusters(harClusters)
-          .setInstanceHealthMonitor(instanceHealthMonitor)
+          .setInstanceHealthMonitorConfig(instanceHealthMonitorConfig)
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
           .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)

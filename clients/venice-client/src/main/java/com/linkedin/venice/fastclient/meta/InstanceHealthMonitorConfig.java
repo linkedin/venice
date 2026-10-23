@@ -82,6 +82,23 @@ public class InstanceHealthMonitorConfig {
     return new Builder();
   }
 
+  /**
+   * @return a builder pre-populated with every setting of this config.
+   */
+  public Builder toBuilder() {
+    return new Builder().setRoutingRequestDefaultTimeoutMS(routingRequestDefaultTimeoutMS)
+        .setRoutingTimedOutRequestCounterResetDelayMS(routingTimedOutRequestCounterResetDelayMS)
+        .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
+        .setHeartBeatIntervalSeconds(heartBeatIntervalSeconds)
+        .setHeartBeatRequestTimeoutMS(heartBeatRequestTimeoutMS)
+        .setLoadControllerWindowSizeInSec(loadControllerWindowSizeInSec)
+        .setLoadControllerRejectionRatioUpdateIntervalInSec(loadControllerRejectionRatioUpdateIntervalInSec)
+        .setLoadControllerMaxRejectionRatio(loadControllerMaxRejectionRatio)
+        .setLoadControllerAcceptMultiplier(loadControllerAcceptMultiplier)
+        .setLoadControllerEnabled(loadControllerEnabled)
+        .setClient(client);
+  }
+
   public static class Builder {
     /**
      * Default timeout is 1s and the underlying transport client doesn't support request-level timeout properly.

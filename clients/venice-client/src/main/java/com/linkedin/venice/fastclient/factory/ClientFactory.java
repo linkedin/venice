@@ -22,14 +22,14 @@ import com.linkedin.venice.fastclient.StatsAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(ClientConfig clientConfig) {
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
-
-    return getAndStartGenericStoreClient(storeMetadata, clientConfig);
+    return closeMetadataOnFailure(storeMetadata, () -> getAndStartGenericStoreClient(storeMetadata, clientConfig));
   }
 
   /**
@@ -44,7 +44,7 @@ public class ClientFactory {
    */
   public static <K, V> AvroGenericStoreClient<K, V> getGenericStoreClient(ClientConfig clientConfig) {
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
-    return buildGenericStoreClient(storeMetadata, clientConfig);
+    return closeMetadataOnFailure(storeMetadata, () -> buildGenericStoreClient(storeMetadata, clientConfig));
   }
 
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(
@@ -55,8 +55,23 @@ public class ClientFactory {
      * the lifecycle of the metadata instance.
      */
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
+    return closeMetadataOnFailure(storeMetadata, () -> getAndStartSpecificStoreClient(storeMetadata, clientConfig));
+  }
 
-    return getAndStartSpecificStoreClient(storeMetadata, clientConfig);
+  /**
+   * The metadata (and the health monitor it owns) was created here, so close it if no client is returned to own it.
+   */
+  private static <C> C closeMetadataOnFailure(StoreMetadata storeMetadata, Supplier<C> clientSupplier) {
+    try {
+      return clientSupplier.get();
+    } catch (RuntimeException | Error e) {
+      try {
+        storeMetadata.close();
+      } catch (Throwable closeFailure) {
+        e.addSuppressed(closeFailure);
+      }
+      throw e;
+    }
   }
 
   private static StoreMetadata constructStoreMetadataReader(ClientConfig clientConfig) {

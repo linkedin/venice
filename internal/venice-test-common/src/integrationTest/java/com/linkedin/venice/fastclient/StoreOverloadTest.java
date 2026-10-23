@@ -5,7 +5,6 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
@@ -29,9 +28,8 @@ public class StoreOverloadTest extends AbstractClientEndToEndSetup {
             .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(1)
             .setStoreLoadControllerWindowSizeInSec(3)
             .setR2Client(r2Client)
-            .setInstanceHealthMonitor(
-                new InstanceHealthMonitor(
-                    new InstanceHealthMonitorConfig.Builder().setRoutingRequestDefaultTimeoutMS(10000).build()));
+            .setInstanceHealthMonitorConfig(
+                new InstanceHealthMonitorConfig.Builder().setRoutingRequestDefaultTimeoutMS(10000).build());
 
     // Update the store quota to be minimal
     veniceCluster.useControllerClient(
