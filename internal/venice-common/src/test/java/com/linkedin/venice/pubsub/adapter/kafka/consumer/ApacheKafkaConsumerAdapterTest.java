@@ -1034,9 +1034,11 @@ public class ApacheKafkaConsumerAdapterTest {
   public void testCommitSyncCommitsNextOffsetToReadWithTimeout() {
     configureGroupId();
     PubSubTopicPartition otherPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("other"), 3);
+    PubSubPosition numericPosition = mock(PubSubPosition.class);
+    when(numericPosition.getNumericOffset()).thenReturn(0L);
     Map<PubSubTopicPartition, PubSubPosition> positions = new HashMap<>();
     positions.put(pubSubTopicPartition, new ApacheKafkaOffsetPosition(41L));
-    positions.put(otherPartition, new ApacheKafkaOffsetPosition(0L));
+    positions.put(otherPartition, numericPosition);
     Duration timeout = Duration.ofSeconds(7);
 
     kafkaConsumerAdapter.commitSync(positions, timeout);

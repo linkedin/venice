@@ -533,9 +533,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         throw new IllegalArgumentException(
             "Cannot commit symbolic or null position: " + position + " for " + pubSubTopicPartition);
       }
-      long lastConsumedOffset = position instanceof ApacheKafkaOffsetPosition
-          ? ((ApacheKafkaOffsetPosition) position).getInternalOffset()
-          : position.getNumericOffset();
+      long lastConsumedOffset = position.getNumericOffset();
       offsetsToCommit.put(
           new TopicPartition(pubSubTopicPartition.getTopicName(), pubSubTopicPartition.getPartitionNumber()),
           new OffsetAndMetadata(lastConsumedOffset + 1));

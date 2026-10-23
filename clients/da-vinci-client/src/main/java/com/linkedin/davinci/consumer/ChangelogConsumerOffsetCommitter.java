@@ -140,7 +140,6 @@ class ChangelogConsumerOffsetCommitter {
     } catch (UnsupportedOperationException e) {
       disabled = true;
       latestPositions.clear();
-      retiringPositions.clear();
       partitionToTopicPartition.clear();
       LOGGER.warn(
           "Consumer: {} disabled consumed position commits because the PubSub consumer does not support them.",
@@ -160,18 +159,6 @@ class ChangelogConsumerOffsetCommitter {
       retiringPositions.clear();
       lastCommitTimeMs = time.getMilliseconds();
     }
-  }
-
-  synchronized boolean isDisabled() {
-    return disabled;
-  }
-
-  synchronized Map<PubSubTopicPartition, PubSubPosition> getLatestPositions() {
-    return new HashMap<>(latestPositions);
-  }
-
-  synchronized Map<PubSubTopicPartition, PubSubPosition> getRetiringPositions() {
-    return new HashMap<>(retiringPositions);
   }
 
   private void retire(PubSubTopicPartition topicPartition) {

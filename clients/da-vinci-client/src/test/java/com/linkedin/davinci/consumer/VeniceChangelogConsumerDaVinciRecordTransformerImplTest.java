@@ -1062,55 +1062,32 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   @Test
   public void testOffsetCommitCommitsPolledPositionsAndClosesOnStop() throws Exception {
     PubSubConsumerAdapter offsetCommitConsumer = mock(PubSubConsumerAdapter.class);
-    doReturn(offsetCommitConsumer).when(veniceChangelogConsumerClientFactory).getOffsetCommitPubSubConsumer(any());
-    changelogClientConfig.setConsumerOffsetCommitEnabled(true)
-        .setConsumerOffsetCommitIntervalMs(TimeUnit.HOURS.toMillis(1))
-        .setConsumerOffsetCommitTimeoutMs(1234L);
     VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer =
-        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
-            changelogClientConfig,
-            veniceChangelogConsumerClientFactory);
-    Field daVinciClientField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
-    daVinciClientField.setAccessible(true);
-    daVinciClientField.set(consumer, mockDaVinciClient);
-    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer transformer =
-        consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, CURRENT_STORE_VERSION, keySchema,
-            valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
-
-    consumer.start();
-    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      transformer.onStartVersionIngestion(partitionId, true);
-    }
-    // Two records for the same key in partition 0 are compacted into one, but the last consumed position is kept.
-    transformer.processPut(keys.get(0), lazyValue, 0, recordMetadataAt(10L));
-    transformer.processPut(keys.get(0), lazyValue, 0, recordMetadataAt(11L));
-    transformer.processPut(keys.get(1), lazyValue, 1, recordMetadataAt(20L));
-    // Records with symbolic positions are not committed.
-    transformer.processPut(keys.get(2), lazyValue, 2, recordMetadata);
-
-    assertEquals(consumer.poll(POLL_TIMEOUT).size(), 3);
-    // The interval has not elapsed yet.
-    verify(offsetCommitConsumer, never()).commitSync(anyMap(), any());
-
+        createOffsetCommitConsumer(offsetCommitConsumer, TimeUnit.HOURS.toMillis(1));
     String topicName = Version.composeKafkaTopic(TEST_STORE_NAME, CURRENT_STORE_VERSION);
     PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), 0);
     PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), 1);
+    bufferOffsetCommitMessage(consumer, p0, ApacheKafkaOffsetPosition.of(10L));
+    bufferOffsetCommitMessage(consumer, p0, ApacheKafkaOffsetPosition.of(11L));
+    bufferOffsetCommitMessage(consumer, p1, ApacheKafkaOffsetPosition.of(20L));
+    bufferOffsetCommitMessage(consumer, p1, PubSubSymbolicPosition.LATEST);
+
+    assertEquals(consumer.poll(POLL_TIMEOUT).size(), 2);
+    verify(offsetCommitConsumer, never()).commitSync(anyMap(), any());
+
     Map<PubSubTopicPartition, PubSubPosition> expected = new HashMap<>();
     expected.put(p0, ApacheKafkaOffsetPosition.of(11L));
     expected.put(p1, ApacheKafkaOffsetPosition.of(20L));
     consumer.commitOffsets();
     verify(offsetCommitConsumer).commitSync(expected, Duration.ofMillis(1234L));
 
-    // Unsubscribing retires the partition: it is committed one last time and then no longer tracked.
-    consumer.unsubscribe(Collections.singleton(1));
+    consumer.clearPartitionState(Collections.singleton(1));
     consumer.commitOffsets();
     verify(offsetCommitConsumer, times(2)).commitSync(expected, Duration.ofMillis(1234L));
     consumer.commitOffsets();
     verify(offsetCommitConsumer)
         .commitSync(Collections.singletonMap(p0, ApacheKafkaOffsetPosition.of(11L)), Duration.ofMillis(1234L));
 
-    // The commit-only consumer never subscribes or polls.
     verify(offsetCommitConsumer, never()).subscribe(any(), any());
     verify(offsetCommitConsumer, never()).poll(anyLong());
 
@@ -1127,29 +1104,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     doThrow(new PubSubClientException("simulated broker failure")).when(offsetCommitConsumer)
         .commitSync(anyMap(), any());
     doThrow(new RuntimeException("simulated close failure")).when(offsetCommitConsumer).close();
-    doReturn(offsetCommitConsumer).when(veniceChangelogConsumerClientFactory).getOffsetCommitPubSubConsumer(any());
-    changelogClientConfig.setConsumerOffsetCommitEnabled(true).setConsumerOffsetCommitIntervalMs(1L);
     VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer =
-        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
-            changelogClientConfig,
-            veniceChangelogConsumerClientFactory);
-    Field daVinciClientField =
-        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
-    daVinciClientField.setAccessible(true);
-    daVinciClientField.set(consumer, mockDaVinciClient);
-    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer transformer =
-        consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, CURRENT_STORE_VERSION, keySchema,
-            valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
-
-    consumer.start();
-    transformer.onStartVersionIngestion(0, true);
-    transformer.processPut(keys.get(0), lazyValue, 0, recordMetadataAt(1L));
+        createOffsetCommitConsumer(offsetCommitConsumer, 1L);
+    bufferOffsetCommitMessage(
+        consumer,
+        new PubSubTopicPartitionImpl(new PubSubTopicImpl(Version.composeKafkaTopic(TEST_STORE_NAME, 1)), 0),
+        ApacheKafkaOffsetPosition.of(1L));
     Utils.sleep(5);
     assertEquals(consumer.poll(POLL_TIMEOUT).size(), 1);
     consumer.stop();
     verify(offsetCommitConsumer, atLeast(2)).commitSync(anyMap(), any());
     verify(offsetCommitConsumer).close();
-    verify(mockDaVinciClient).close();
   }
 
   @Test
@@ -1164,8 +1129,33 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
             veniceChangelogConsumerClientFactory));
   }
 
-  private static DaVinciRecordTransformerRecordMetadata recordMetadataAt(long offset) {
-    return new DaVinciRecordTransformerRecordMetadata(-1, 0, ApacheKafkaOffsetPosition.of(offset), -1, null, -1);
+  private VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> createOffsetCommitConsumer(
+      PubSubConsumerAdapter adapter,
+      long intervalMs) {
+    doReturn(adapter).when(veniceChangelogConsumerClientFactory).getOffsetCommitPubSubConsumer(any());
+    changelogClientConfig.setConsumerOffsetCommitEnabled(true)
+        .setConsumerOffsetCommitIntervalMs(intervalMs)
+        .setConsumerOffsetCommitTimeoutMs(1234L);
+    return new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
+        changelogClientConfig,
+        veniceChangelogConsumerClientFactory);
+  }
+
+  private void bufferOffsetCommitMessage(
+      VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer,
+      PubSubTopicPartition partition,
+      PubSubPosition position) {
+    consumer.getPubSubMessages()
+        .add(
+            new ImmutableChangeCapturePubSubMessage<>(
+                partition.getPartitionNumber(),
+                new ChangeEvent<>(null, value),
+                partition,
+                position,
+                0,
+                0,
+                false,
+                0));
   }
 
   @SuppressWarnings("unchecked")

@@ -172,8 +172,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    *                              are not allowed
    * @param timeout the maximum time to block
    * @throws UnsupportedOperationException if the implementation does not support committing positions
-   * @throws PubSubClientException if the commit fails, including when no
-   *         consumer group is configured
+   * @throws PubSubClientException if the commit fails, including when no consumer group is configured
    */
   default void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
     throw new UnsupportedOperationException(getClass().getSimpleName() + " does not support committing positions");
