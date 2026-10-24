@@ -115,6 +115,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -273,6 +274,11 @@ public class ControllerClient implements Closeable {
   public StoreResponse getStore(String storeName, int timeoutMs) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null, null);
+  }
+
+  /** Single attempt, with one budget shared by leader discovery and the store query. */
+  public StoreResponse getStoreWithTimeout(String storeName, int timeoutMs) {
+    return requestWithTimeout(ControllerRoute.STORE, newParams().add(NAME, storeName), StoreResponse.class, timeoutMs);
   }
 
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
@@ -1616,6 +1622,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 
+  /** Single attempt, including leader discovery in the supplied budget. */
+  public AdminTopicMetadataResponse getAdminTopicMetadataWithTimeout(Optional<String> storeName, int timeoutMs) {
+    return requestWithTimeout(
+        ControllerRoute.GET_ADMIN_TOPIC_METADATA,
+        newParams().add(NAME, storeName),
+        AdminTopicMetadataResponse.class,
+        timeoutMs);
+  }
+
   public AdminTopicMetadataResponse updateAdminTopicMetadata(
       long executionId,
       Optional<String> storeName,
@@ -1723,6 +1738,46 @@ public class ControllerClient implements Closeable {
 
   protected static String encodeQueryParams(QueryParams params) {
     return URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
+  }
+
+  protected long requestTimeNs() {
+    return System.nanoTime();
+  }
+
+  protected int remainingRequestTimeMs(long deadlineNs) throws TimeoutException {
+    long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - requestTimeNs());
+    if (remainingMs <= 0 || Thread.currentThread().isInterrupted()) {
+      throw new TimeoutException("Controller query budget exhausted or interrupted");
+    }
+    return (int) Math.min(Integer.MAX_VALUE, remainingMs);
+  }
+
+  protected String discoverLeaderController(ControllerTransport transport, long deadlineNs) throws Exception {
+    List<String> urls = new ArrayList<>(controllerDiscoveryUrls);
+    Collections.shuffle(urls);
+    return transport
+        .request(
+            urls.get(0),
+            ControllerRoute.LEADER_CONTROLLER,
+            newParams(),
+            LeaderControllerResponse.class,
+            remainingRequestTimeMs(deadlineNs),
+            null)
+        .getUrl();
+  }
+
+  private <T extends ControllerResponse> T requestWithTimeout(
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs) {
+    long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+    try (ControllerTransport transport = getNewControllerTransport()) {
+      String leader = discoverLeaderController(transport, deadlineNs);
+      return transport.request(leader, route, params, responseType, remainingRequestTimeMs(deadlineNs), null);
+    } catch (Exception e) {
+      return makeErrorResponse("Single-attempt controller query failed for " + route.getPath(), e, responseType);
+    }
   }
 
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {

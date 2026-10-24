@@ -79,6 +79,7 @@ import com.linkedin.venice.controller.storeconfig.StoreConfigUpdater;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.versionlifecycle.VersionLifecyclePolicy;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -234,6 +235,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
   private static final int ROLL_FORWARD_REQUEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int CONTROLLER_STORE_POLL_TIMEOUT = 5 * Time.MS_PER_SECOND;
+  private static final int DEFERRED_SWAP_RECOVERY_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private static final int ROLLBACK_STATUS_POLL_MAX_ATTEMPTS = 15;
   private static final Duration ROLLBACK_STATUS_POLL_MAX_DURATION = Duration.ofMinutes(2);
 
@@ -1689,12 +1691,22 @@ public class VeniceParentHelixAdmin implements Admin {
             storeName);
       } else {
         String msg;
+        boolean versionSwapFinalized = false;
         if (version.isVersionSwapDeferred() && version.getStatus() == PUSHED) {
-          // The blocking version finished its push but is mid deferred (colo-by-colo) version swap:
-          // PUSHED on the parent (push complete but swap not yet done) and not yet current in every region.
-          // Surface the per-region status so operators do not mistake this for an in-flight concurrent push.
-          Map<String, Integer> currentVersions = getCurrentVersionsForMultiColos(clusterName, storeName);
           String targetSwapRegion = version.getTargetSwapRegion();
+          Map<String, Integer> currentVersions;
+          acquireAdminMessageLock(clusterName, storeName);
+          try {
+            long deadlineNs =
+                deferredSwapRecoveryTimeNs() + TimeUnit.MILLISECONDS.toNanos(DEFERRED_SWAP_RECOVERY_TIMEOUT_MS);
+            versionSwapFinalized = StringUtils.isEmpty(targetSwapRegion)
+                && tryFinalizeDeferredVersionSwap(clusterName, storeName, currentPushVersion, deadlineNs);
+            currentVersions = versionSwapFinalized
+                ? Collections.emptyMap()
+                : getCurrentVersionsForDeferredSwapRecovery(clusterName, storeName, deadlineNs);
+          } finally {
+            releaseAdminMessageLock(clusterName, storeName);
+          }
           msg = ". Version " + version.getNumber() + " of store " + storeName
               + " has completed its push and is waiting on deferred version swap (colo-by-colo roll-forward);"
               + " current version per region: " + currentVersions
@@ -1705,10 +1717,12 @@ public class VeniceParentHelixAdmin implements Admin {
               + ", pushJobId " + existingPushJobId + ", topic " + currentPushTopic.get()
               + ") is still in progress and must complete or be terminated before another push can be started.";
         }
-        VeniceException e = new ConcurrentBatchPushException(
-            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
-        e.setStackTrace(EMPTY_STACK_TRACE);
-        throw e;
+        if (!versionSwapFinalized) {
+          VeniceException e = new ConcurrentBatchPushException(
+              "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + msg);
+          e.setStackTrace(EMPTY_STACK_TRACE);
+          throw e;
+        }
       }
     }
 
@@ -1842,6 +1856,155 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  @VisibleForTesting
+  long deferredSwapRecoveryTimeNs() {
+    return System.nanoTime();
+  }
+
+  private int remainingDeferredSwapRecoveryTimeMs(long deadlineNs) {
+    return (int) Math.max(
+        0,
+        Math.min(
+            CONTROLLER_STORE_POLL_TIMEOUT,
+            TimeUnit.NANOSECONDS.toMillis(deadlineNs - deferredSwapRecoveryTimeNs())));
+  }
+
+  @VisibleForTesting
+  Map<String, Integer> getCurrentVersionsForDeferredSwapRecovery(
+      String clusterName,
+      String storeName,
+      long deadlineNs) {
+    Map<String, Integer> currentVersions = new HashMap<>();
+    for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
+        .entrySet()) {
+      int timeoutMs = remainingDeferredSwapRecoveryTimeMs(deadlineNs);
+      if (timeoutMs <= 0) {
+        LOGGER
+            .warn("Deferred version swap recovery deadline exhausted while reading current versions for {}", storeName);
+        break;
+      }
+      try {
+        StoreResponse response = entry.getValue().getStoreWithTimeout(storeName, timeoutMs);
+        if (response != null && !response.isError() && response.getStore() != null) {
+          currentVersions.put(entry.getKey(), response.getStore().getCurrentVersion());
+        } else {
+          LOGGER.warn(
+              "Missing or failed current-version response in region {} for store {}: {}",
+              entry.getKey(),
+              storeName,
+              response == null ? "missing response" : response.getError());
+        }
+      } catch (Exception e) {
+        LOGGER.warn("Could not read current version in region {} for store {}", entry.getKey(), storeName, e);
+      }
+    }
+    return currentVersions;
+  }
+
+  private boolean haveChildRegionsConsumedAdminMessages(String clusterName, String storeName, long deadlineNs) {
+    // The store admin lock excludes new commands for this store, but a published rollback may still be pending in the
+    // parent or a child. The durable generated ID covers both queues, including across leadership changes. Since IDs
+    // are allocated cluster-wide, compare cluster checkpoints before reading current versions, not store checkpoints.
+    // Recovery fails closed for allocated-but-unpublished IDs as well.
+    Long executionId;
+    try {
+      executionId = getVeniceHelixAdmin().getExecutionIdAccessor().getLastGeneratedExecutionId(clusterName);
+    } catch (Exception e) {
+      LOGGER.warn("Could not read generated admin execution ID for store {} in cluster {}", storeName, clusterName, e);
+      return false;
+    }
+    if (executionId == null || executionId < 0) {
+      LOGGER.warn("Missing generated admin execution ID for store {} in cluster {}", storeName, clusterName);
+      return false;
+    }
+    for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
+        .entrySet()) {
+      try {
+        int timeoutMs = remainingDeferredSwapRecoveryTimeMs(deadlineNs);
+        if (timeoutMs <= 0) {
+          return false;
+        }
+        AdminTopicMetadataResponse response =
+            entry.getValue().getAdminTopicMetadataWithTimeout(Optional.empty(), timeoutMs);
+        if (response == null || response.isError() || response.getExecutionId() < 0) {
+          String checkpointError;
+          if (response == null) {
+            checkpointError = "missing response";
+          } else if (response.isError()) {
+            checkpointError = response.getError();
+          } else {
+            checkpointError = "missing execution ID";
+          }
+          LOGGER.warn(
+              "Could not read child admin checkpoint for store {} in cluster {} region {}: {}",
+              storeName,
+              clusterName,
+              entry.getKey(),
+              checkpointError);
+          return false;
+        }
+        if (response.getExecutionId() < executionId) {
+          LOGGER.info(
+              "Deferring version swap recovery for store {} in cluster {}: region {} admin checkpoint {} is behind required ID {}",
+              storeName,
+              clusterName,
+              entry.getKey(),
+              response.getExecutionId(),
+              executionId);
+          return false;
+        }
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Could not verify child admin consumption for store {} in cluster {} region {}",
+            storeName,
+            clusterName,
+            entry.getKey(),
+            e);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean tryFinalizeDeferredVersionSwap(
+      String clusterName,
+      String storeName,
+      int versionNumber,
+      long deadlineNs) {
+    if (!haveChildRegionsConsumedAdminMessages(clusterName, storeName, deadlineNs)) {
+      return false;
+    }
+    Map<String, Integer> currentVersions =
+        getCurrentVersionsForDeferredSwapRecovery(clusterName, storeName, deadlineNs);
+    if (remainingDeferredSwapRecoveryTimeMs(deadlineNs) <= 0 || currentVersions.isEmpty()
+        || !currentVersions.keySet().equals(getVeniceHelixAdmin().getControllerClientMap(clusterName).keySet())
+        || !currentVersions.values()
+            .stream()
+            .allMatch(currentVersion -> Integer.valueOf(versionNumber).equals(currentVersion))) {
+      return false;
+    }
+
+    HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+      Store parentStore = repository.getStore(storeName);
+      Version parentVersion = parentStore.getVersion(versionNumber);
+      if (parentVersion == null || !parentVersion.isVersionSwapDeferred()
+          || StringUtils.isNotEmpty(parentVersion.getTargetSwapRegion()) || parentVersion.getStatus() != PUSHED
+          || parentStore.getCurrentVersion() > versionNumber) {
+        return false;
+      }
+      parentStore.updateVersionStatus(versionNumber, ONLINE);
+      parentStore.setCurrentVersion(versionNumber);
+      repository.updateStore(parentStore);
+      LOGGER.info(
+          "Finalized deferred version swap for store {} version {} after all regions reported it as current",
+          storeName,
+          versionNumber);
+      return true;
+    }
   }
 
   @VisibleForTesting
@@ -2268,6 +2431,22 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (futureVersionBeforeRollForward <= 0) {
+        Store parentStore = getStore(clusterName, storeName);
+        Version deferredVersion = parentStore == null
+            ? null
+            : parentStore.getVersions()
+                .stream()
+                .filter(
+                    version -> version.isVersionSwapDeferred() && version.getStatus() == PUSHED
+                        && StringUtils.isEmpty(version.getTargetSwapRegion()))
+                .max(Comparator.comparingInt(Version::getNumber))
+                .orElse(null);
+        long deadlineNs =
+            deferredSwapRecoveryTimeNs() + TimeUnit.MILLISECONDS.toNanos(DEFERRED_SWAP_RECOVERY_TIMEOUT_MS);
+        if (deferredVersion != null
+            && tryFinalizeDeferredVersionSwap(clusterName, storeName, deferredVersion.getNumber(), deadlineNs)) {
+          return;
+        }
         throw new VeniceException("Roll forward failed without any future version");
       }
 
