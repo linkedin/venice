@@ -40,6 +40,14 @@ push. Users may turn off this automation and perform validations and chain it wi
 push to achieve the same effect as full push in terms of data integrity, but the store versions across different regions
 might be not the same depending on the exact setup.
 
+With deferred version swap in clusters where degraded mode is disabled, a reachable child controller that has not
+created the new version yet is allowed to catch up until the store's bootstrap-to-online timeout, measured from the
+parent version's creation time (24 hours by default). Failed requests and missing versions the child has already created
+retain a five-poll limit, bounded by the same deadline. Exhausted retries remain failed across polls until the target
+version is fetched or terminal-push cleanup. Clusters with degraded mode enabled retain five-poll handling for all
+missing versions, including healthy regions, to preserve intentional region exclusions without introducing new version
+metadata.
+
 ## Usage
 
 The Push Job is designed to require as few configs as possible. The following mandatory configs should be unique to each
