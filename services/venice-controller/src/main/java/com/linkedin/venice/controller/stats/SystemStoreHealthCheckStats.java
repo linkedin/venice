@@ -26,7 +26,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 
 /**
- * This class is the metric class for {@link com.linkedin.venice.controller.systemstore.SystemStoreRepairService}
+ * This class is the metric class for {@link com.linkedin.venice.controller.systemstore.SystemStoreRepairService}.
+ * OTel reports the counts that {@link #setMeasured} published for this controller's last completed round as the
+ * cluster's leader; Tehuti keeps reporting the raw counters.
  */
 public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
   private final Sensor badMetaSystemStoreCountSensor;
@@ -37,6 +39,8 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
   private final AtomicLong badPushStatusSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong notRepairableSystemStoreCounter = new AtomicLong(0);
   private final AtomicLong systemStoreHealthCheckErrorCounter = new AtomicLong(0);
+  /** Null while this controller has no completed round to report. */
+  private volatile RoundCounts publishedRound;
 
   public SystemStoreHealthCheckStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -68,20 +72,20 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
     Attributes baseAttributes = otelData.getBaseAttributes();
 
-    // OTel async gauge. The liveStateResolver returns the backing AtomicLong for each mapped
-    // VeniceSystemStoreType value (null for any future enum additions, which skips emission); the
-    // valueResolver reads the current count.
+    // OTel async gauge. The liveStateResolver returns the published round for each mapped VeniceSystemStoreType value
+    // (null while there is none or for any future enum additions, which skips emission); the valueResolver reads that
+    // type's count from it.
     AsyncMetricEntityStateOneEnum.create(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNHEALTHY_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         VeniceSystemStoreType.class,
+        getMetricScope(),
         type -> {
           switch (type) {
             case META_STORE:
-              return badMetaSystemStoreCounter;
             case DAVINCI_PUSH_STATUS_STORE:
-              return badPushStatusSystemStoreCounter;
+              return publishedRound;
             default:
               /*
                * Return null (skip emission) rather than throw — throwing on every collection cycle
@@ -91,21 +95,36 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
               return null;
           }
         },
-        (counter, type) -> counter.get());
+        (round, type) -> type == VeniceSystemStoreType.META_STORE
+            ? round.badMetaSystemStores
+            : round.badPushStatusSystemStores);
 
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_UNREPAIRABLE_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         baseAttributes,
-        notRepairableSystemStoreCounter::get);
+        getMetricScope(),
+        () -> publishedRound,
+        round -> round.notRepairableSystemStores);
 
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         SystemStoreHealthCheckOtelMetricEntity.SYSTEM_STORE_HEALTH_CHECK_ERROR_COUNT.getMetricEntity(),
         otelRepository,
         baseDimensionsMap,
         baseAttributes,
-        systemStoreHealthCheckErrorCounter::get);
+        getMetricScope(),
+        () -> publishedRound,
+        round -> round.healthCheckErrors);
+  }
+
+  /**
+   * {@code true} publishes the current counters as this controller's last completed round as the cluster's leader,
+   * which OTel reports until the next call, so a round in progress never exports a mix of old and new counts.
+   * {@code false} stops OTel reporting.
+   */
+  public void setMeasured(boolean measured) {
+    this.publishedRound = measured ? new RoundCounts(this) : null;
   }
 
   public AtomicLong getBadMetaSystemStoreCounter() {
@@ -122,6 +141,21 @@ public class SystemStoreHealthCheckStats extends AbstractVeniceStats {
 
   public AtomicLong getSystemStoreHealthCheckErrorCounter() {
     return systemStoreHealthCheckErrorCounter;
+  }
+
+  /** The counters as of a completed round. */
+  private static final class RoundCounts {
+    private final long badMetaSystemStores;
+    private final long badPushStatusSystemStores;
+    private final long notRepairableSystemStores;
+    private final long healthCheckErrors;
+
+    private RoundCounts(SystemStoreHealthCheckStats stats) {
+      this.badMetaSystemStores = stats.badMetaSystemStoreCounter.get();
+      this.badPushStatusSystemStores = stats.badPushStatusSystemStoreCounter.get();
+      this.notRepairableSystemStores = stats.notRepairableSystemStoreCounter.get();
+      this.healthCheckErrors = stats.systemStoreHealthCheckErrorCounter.get();
+    }
   }
 
   enum SystemStoreHealthCheckTehutiMetricNameEnum implements TehutiMetricNameEnum {

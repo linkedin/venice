@@ -8,6 +8,7 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static org.mockito.Mockito.atLeast;
@@ -79,6 +80,10 @@ public class RetryManagerTest {
           0.1d,
           mockClock,
           scheduler);
+      // No token bucket exists before the first budget computation.
+      Assert
+          .assertEquals(metricsRepository.getMetric(".test-retry-manager--retry_limit_per_seconds.Gauge").value(), -1d);
+      Assert.assertEquals(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge").value(), -1d);
       doReturn(start + 1000).when(mockClock).millis();
       for (int i = 0; i < 50; i++) {
         retryManager.recordRequest();
@@ -185,6 +190,27 @@ public class RetryManagerTest {
     RetryManagerStats retryStats =
         new RetryManagerStats(metricsRepository, "test-retry-manager", "test-store", SINGLE_GET, retryManager);
 
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test-store")
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+        .put(
+            VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(),
+            RequestRetryType.LONG_TAIL_RETRY.getDimensionValue())
+        .build();
+    inMemoryMetricReader.forceFlush();
+    Assert.assertNull(
+        getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity().getMetricName(),
+            ClientType.FAST_CLIENT.getMetricsPrefix(),
+            expectedAttributes));
+    Assert.assertNull(
+        getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity().getMetricName(),
+            ClientType.FAST_CLIENT.getMetricsPrefix(),
+            expectedAttributes));
+
     doReturn(start + 1000).when(mockClock).millis();
 
     // Record requests to initialize token bucket
@@ -196,15 +222,6 @@ public class RetryManagerTest {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertNotNull(retryManager.getRetryTokenBucket()));
-
-    // Expected attributes for OTel metrics
-    Attributes expectedAttributes = Attributes.builder()
-        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test-store")
-        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(
-            VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(),
-            RequestRetryType.LONG_TAIL_RETRY.getDimensionValue())
-        .build();
 
     // Force OTel metric collection
     inMemoryMetricReader.forceFlush();
@@ -252,5 +269,61 @@ public class RetryManagerTest {
         expectedAttributes,
         RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity().getMetricName(),
         ClientType.FAST_CLIENT.getMetricsPrefix());
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_IN_MS)
+  public void testCloseStopsOtelGaugesButKeepsTehutiSensors() {
+    Clock mockClock = mock(Clock.class);
+    long start = System.currentTimeMillis();
+    doReturn(start).when(mockClock).millis();
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
+        ClientType.FAST_CLIENT,
+        Arrays.asList(
+            RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity(),
+            RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity(),
+            RETRY_RATE_LIMIT_REJECTION_COUNT.getMetricEntity()),
+        true,
+        inMemoryMetricReader);
+    RetryManager retryManager = new RetryManager(
+        metricsRepository,
+        "test-retry-manager",
+        "test-store",
+        SINGLE_GET,
+        1000,
+        0.1d,
+        mockClock,
+        scheduler);
+    doReturn(start + 1000).when(mockClock).millis();
+    for (int i = 0; i < 50; i++) {
+      retryManager.recordRequest();
+    }
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertNotNull(retryManager.getRetryTokenBucket()));
+    Attributes attributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), "test-store")
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+        .put(
+            VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(),
+            RequestRetryType.LONG_TAIL_RETRY.getDimensionValue())
+        .build();
+    String remainingTokens = RETRY_RATE_LIMIT_REMAINING_TOKENS.getMetricEntity().getMetricName();
+    String targetTokens = RETRY_RATE_LIMIT_TARGET_TOKENS.getMetricEntity().getMetricName();
+    String prefix = ClientType.FAST_CLIENT.getMetricsPrefix();
+    validateLongPointDataFromGauge(inMemoryMetricReader, 25L, attributes, remainingTokens, prefix);
+
+    retryManager.close();
+
+    Assert.assertNull(
+        getLongPointDataFromGaugeIfPresent(
+            inMemoryMetricReader.collectAllMetrics(),
+            remainingTokens,
+            prefix,
+            attributes));
+    Assert.assertNull(
+        getLongPointDataFromGaugeIfPresent(inMemoryMetricReader.collectAllMetrics(), targetTokens, prefix, attributes));
+    Assert.assertNotNull(metricsRepository.getMetric(".test-retry-manager--retries_remaining.Gauge"));
   }
 }

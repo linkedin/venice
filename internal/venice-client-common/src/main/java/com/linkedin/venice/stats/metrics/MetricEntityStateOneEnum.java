@@ -57,7 +57,6 @@ public class MetricEntityStateOneEnum<E extends Enum<E> & VeniceDimensionInterfa
     validateRequiredDimensions(metricEntity, null, baseDimensionsMap, enumTypeClass);
     this.enumTypeClass = enumTypeClass;
     this.metricAttributesDataEnumMap = createMetricAttributesDataEnumMap();
-    registerObservableCounterIfNeeded();
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */

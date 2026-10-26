@@ -11,7 +11,8 @@ import io.opentelemetry.api.metrics.ObservableLongMeasurement;
 import io.tehuti.metrics.MeasurableStat;
 import java.util.List;
 import java.util.Map;
-import java.util.function.LongSupplier;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.ObjDoubleConsumer;
 import java.util.function.ObjLongConsumer;
 
@@ -27,6 +28,11 @@ import java.util.function.ObjLongConsumer;
  */
 public abstract class MetricEntityState extends AsyncMetricEntityState {
   private final boolean isObservableCounter;
+  /** Whether {@link #startObservableCounter} registered this observable counter's instrument. */
+  private volatile boolean started;
+  /** When this observable counter first reported after it closed; 0 until then. See {@link #isRetirementDue}. */
+  private final AtomicLong firstReportAfterCloseMs = new AtomicLong();
+  private final AtomicBoolean retired = new AtomicBoolean();
   /** define both long and double consumer to avoid unnecessary conversions **/
   private final ObjDoubleConsumer<MetricAttributesData> otelDoubleRecordingStrategy;
   private final ObjLongConsumer<MetricAttributesData> otelLongRecordingStrategy;
@@ -44,9 +50,7 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
         baseDimensionsMap,
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
-        tehutiMetricStats,
-        (LongSupplier) null,
-        null);
+        tehutiMetricStats);
     MetricType metricType = metricEntity.getMetricType();
     this.isObservableCounter = metricType.isObservableCounterType();
     this.otelDoubleRecordingStrategy = createOtelDoubleRecordingStrategy(metricType);
@@ -61,25 +65,33 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
   protected abstract Iterable<MetricAttributesData> getAllMetricAttributesData();
 
   /**
-   * Registers the Observable Counter with the OTel repository if this metric uses async recording.
-   * Supports both ASYNC_COUNTER_FOR_HIGH_PERF_CASES and ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES.
-   * This must be called by subclasses after their constructor completes and the metricAttributesData map is initialized.
+   * Starts OTel reporting for an observable counter (ASYNC_COUNTER_FOR_HIGH_PERF_CASES or
+   * ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES). {@link MetricScope#register} calls it, so a counter reports only while
+   * a scope owns it and stops when that scope closes. Does nothing for other types, once started, or once closed.
    */
-  protected final void registerObservableCounterIfNeeded() {
-    if (!isObservableCounter || !emitOpenTelemetryMetrics() || getOtelRepository() == null) {
+  final void startObservableCounter() {
+    if (!isObservableCounter) {
       return;
     }
-    switch (getMetricEntity().getMetricType()) {
-      case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
-        setOtelMetric(getOtelRepository().registerObservableLongCounter(getMetricEntity(), this::reportToMeasurement));
-        break;
-      case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
-        setOtelMetric(
-            getOtelRepository().registerObservableLongUpDownCounter(getMetricEntity(), this::reportToMeasurement));
-        break;
-      default:
-        throw new IllegalStateException(
-            "Unexpected metric type for observable counter registration: " + getMetricEntity().getMetricType());
+    synchronized (this) {
+      if (started || isClosed() || !emitOpenTelemetryMetrics() || getOtelRepository() == null) {
+        return;
+      }
+      switch (getMetricEntity().getMetricType()) {
+        case ASYNC_COUNTER_FOR_HIGH_PERF_CASES:
+          setOtelMetric(
+              getOtelRepository().registerObservableLongCounter(getMetricEntity(), this::reportToMeasurement));
+          break;
+        case ASYNC_UP_DOWN_COUNTER_FOR_HIGH_PERF_CASES:
+          setOtelMetric(
+              getOtelRepository().registerObservableLongUpDownCounter(getMetricEntity(), this::reportToMeasurement));
+          break;
+        default:
+          throw new IllegalStateException(
+              "Unexpected metric type for observable counter registration: " + getMetricEntity().getMetricType());
+      }
+      // Set after the instrument is stored, so a callback that sees it can close the instrument.
+      started = true;
     }
   }
 
@@ -94,16 +106,29 @@ public abstract class MetricEntityState extends AsyncMetricEntityState {
    * counter values when traffic varied between collection intervals.
    */
   private void reportToMeasurement(ObservableLongMeasurement measurement) {
+    // Read before reporting so that the report that retires the counter still carries its final totals.
+    boolean retire = isClosed() && started && isRetirementDue();
     Iterable<MetricAttributesData> allData = getAllMetricAttributesData();
-    if (allData == null) {
-      return;
-    }
-
-    for (MetricAttributesData holder: allData) {
-      if (holder.hasAdder()) {
-        measurement.record(holder.sum(), holder.getAttributes());
+    if (allData != null) {
+      for (MetricAttributesData holder: allData) {
+        if (holder.hasAdder()) {
+          measurement.record(holder.sum(), holder.getAttributes());
+        }
       }
     }
+    if (retire && retired.compareAndSet(false, true)) {
+      closeOtelInstrument();
+    }
+  }
+
+  /**
+   * Whether this closed counter may stop reporting: the callback can't tell which reader is collecting, so the final
+   * totals keep reporting until the retirement delay has passed since the first report after close.
+   */
+  private boolean isRetirementDue() {
+    long nowMs = System.currentTimeMillis();
+    firstReportAfterCloseMs.compareAndSet(0, nowMs);
+    return nowMs - firstReportAfterCloseMs.get() >= otelRepository.getObservableCounterRetireDelayMs();
   }
 
   /** Returns whether this metric entity state is for an Observable Counter */

@@ -3,6 +3,8 @@ package com.linkedin.venice.stats.metrics;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.LiveStateResolver;
+import com.linkedin.venice.stats.metrics.AsyncMetricResolvers.ValueResolver;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.metrics.MeasurableStat;
@@ -14,8 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.DoubleSupplier;
-import java.util.function.LongSupplier;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 /**
@@ -42,7 +43,7 @@ import java.util.function.LongSupplier;
  *       different Tehuti sensor.</li>
  * </ul>
  */
-public abstract class AsyncMetricEntityState {
+public abstract class AsyncMetricEntityState implements AutoCloseable {
   private final boolean emitOpenTelemetryMetrics;
   private final boolean emitTehutiMetrics;
   protected final VeniceOpenTelemetryMetricsRepository otelRepository;
@@ -53,6 +54,7 @@ public abstract class AsyncMetricEntityState {
   protected Object otelMetric = null;
   /** Respective tehuti metric */
   protected Sensor tehutiSensor = null;
+  private final AtomicBoolean closed = new AtomicBoolean(false);
 
   public AsyncMetricEntityState(
       MetricEntity metricEntity,
@@ -60,51 +62,35 @@ public abstract class AsyncMetricEntityState {
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
-      List<MeasurableStat> tehutiMetricStats,
-      LongSupplier asyncCallback,
-      Attributes asyncAttributes) {
+      List<MeasurableStat> tehutiMetricStats) {
     this(
         metricEntity,
         otelRepository,
         baseDimensionsMap,
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
-        tehutiMetricStats);
-    validateAsyncCallback(asyncCallback);
+        tehutiMetricStats,
+        false);
+    validateAsyncCallback(false);
     if (emitOpenTelemetryMetrics()) {
-      if (asyncCallback != null) {
-        // Async gauge path: register a multi-emit observable gauge with a single-record callback.
-        setOtelMetric(otelRepository.registerObservableLongGauge(this.metricEntity, measurement -> {
-          long v;
-          try {
-            v = asyncCallback.getAsLong();
-          } catch (Exception e) {
-            otelRepository.recordFailureMetric(this.metricEntity, e);
-            return;
-          }
-          measurement.record(v, asyncAttributes);
-        }));
-      } else {
-        // Sync / observable-counter path: MetricEntityState delegates here with a null callback so
-        // the correct non-async instrument (LongCounter, DoubleHistogram, LongGauge, ...) is
-        // created via {@link VeniceOpenTelemetryMetricsRepository#createInstrument(MetricEntity)}.
-        // Observable counters return null from that method and are registered later by
-        // {@link MetricEntityState#registerObservableCounterIfNeeded()}.
-        setOtelMetric(otelRepository.createInstrument(this.metricEntity));
-      }
+      // Observable counters return null from createInstrument() and are registered when a MetricScope registers
+      // them (MetricEntityState#startObservableCounter()).
+      setOtelMetric(otelRepository.createInstrument(this.metricEntity));
     }
     registerTehutiSensor(registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
   }
 
-  /** Constructor for {@link MetricType#ASYNC_DOUBLE_GAUGE} metrics that use a {@link DoubleSupplier} callback. */
-  public AsyncMetricEntityState(
+  /** Package-private so async gauges are only created through {@link AsyncMetricEntityStateBase#createWithState}. */
+  <S> AsyncMetricEntityState(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
-      DoubleSupplier asyncDoubleCallback,
+      MetricScope scope,
+      LiveStateResolver<S> liveStateResolver,
+      ValueResolver<S> valueResolver,
       Attributes asyncAttributes) {
     this(
         metricEntity,
@@ -112,19 +98,21 @@ public abstract class AsyncMetricEntityState {
         baseDimensionsMap,
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
-        tehutiMetricStats);
-    validateAsyncCallback(asyncDoubleCallback != null);
+        tehutiMetricStats,
+        false);
+    validateAsyncCallback(liveStateResolver != null && valueResolver != null);
+    if (metricEntity.getMetricType() != MetricType.ASYNC_GAUGE
+        && metricEntity.getMetricType() != MetricType.ASYNC_DOUBLE_GAUGE) {
+      throw new IllegalArgumentException(
+          "State-based async gauges require ASYNC_GAUGE or ASYNC_DOUBLE_GAUGE for metric: "
+              + metricEntity.getMetricName());
+    }
     if (emitOpenTelemetryMetrics()) {
-      setOtelMetric(otelRepository.registerObservableDoubleGauge(this.metricEntity, measurement -> {
-        double v;
-        try {
-          v = asyncDoubleCallback.getAsDouble();
-        } catch (Exception e) {
-          otelRepository.recordFailureMetric(this.metricEntity, e);
-          return;
-        }
-        measurement.record(v, asyncAttributes);
-      }));
+      setOtelMetric(
+          otelRepository.registerObservableGauge(
+              this.metricEntity,
+              scope,
+              observation -> observation.observe(asyncAttributes, liveStateResolver, valueResolver)));
     }
     registerTehutiSensor(registerTehutiSensorFn, tehutiMetricNameEnum, tehutiMetricStats);
   }
@@ -136,7 +124,8 @@ public abstract class AsyncMetricEntityState {
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
-      List<MeasurableStat> tehutiMetricStats) {
+      List<MeasurableStat> tehutiMetricStats,
+      boolean ignored) {
     this.metricEntity = metricEntity;
     this.emitOpenTelemetryMetrics = otelRepository != null && otelRepository.emitOpenTelemetryMetrics();
     this.emitTehutiMetrics =
@@ -176,15 +165,10 @@ public abstract class AsyncMetricEntityState {
     Sensor register(String sensorName, MeasurableStat... stats);
   }
 
-  /** {@link LongSupplier} overload; delegates to the boolean variant. */
-  private void validateAsyncCallback(LongSupplier asyncCallback) {
-    validateAsyncCallback(asyncCallback != null);
-  }
-
   /**
    * Validates that async callback presence is consistent with the metric type.
    *
-   * @param hasAsyncCallback whether an async callback (LongSupplier or DoubleSupplier) was provided
+   * @param hasAsyncCallback whether an async gauge callback was provided
    */
   private void validateAsyncCallback(boolean hasAsyncCallback) {
     if (hasAsyncCallback && !metricEntity.getMetricType().isAsyncMetric()) {
@@ -397,5 +381,34 @@ public abstract class AsyncMetricEntityState {
 
   public Object getOtelMetric() {
     return otelMetric;
+  }
+
+  /**
+   * Stops OTel reporting. Gauges stop at once. Observable counters keep reporting their final totals through the next
+   * collection, or for one export interval when there may be several metric readers, then retire from their own
+   * callback, so increments since the previous export are kept.
+   */
+  @Override
+  public void close() {
+    if (closed.compareAndSet(false, true) && !metricEntity.getMetricType().isObservableCounterType()) {
+      closeOtelInstrument();
+    }
+  }
+
+  final boolean isClosed() {
+    return closed.get();
+  }
+
+  /** Unregisters the observable instrument, if any, so the SDK stops invoking its callback. */
+  final void closeOtelInstrument() {
+    if (!emitOpenTelemetryMetrics() || otelRepository == null || otelMetric == null) {
+      return;
+    }
+    MetricType metricType = metricEntity.getMetricType();
+    if (metricType.isObservableCounterType() || metricType == MetricType.ASYNC_GAUGE
+        || metricType == MetricType.ASYNC_DOUBLE_GAUGE) {
+      otelRepository.closeObservableInstrument(metricEntity, otelMetric);
+      otelMetric = null;
+    }
   }
 }

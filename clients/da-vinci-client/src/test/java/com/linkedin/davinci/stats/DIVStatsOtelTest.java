@@ -11,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -38,6 +39,7 @@ import java.util.Collection;
 import java.util.Collections;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -488,6 +490,53 @@ public class DIVStatsOtelTest {
     // This proves: (1) no NPE after deletion, (2) recording succeeds after re-creation,
     // (3) version classification works (CURRENT, not BACKUP — proving versionInfoMap repopulated).
     validateCounter(OTEL_PRODUCER_FAILURE_COUNT, 2, buildRoleOnlyAttributes(TEST_STORE_NAME, VersionRole.CURRENT));
+  }
+
+  @Test(dataProvider = "messageCountRetirementScenarios")
+  public void testClosingStoreStatsRetiresMessageCountAfterFinalReport(boolean closeByStoreDeletion) {
+    setUpStoreVersions(TEST_STORE_NAME);
+    Attributes attributes = buildMessageAttributes(TEST_STORE_NAME, VersionRole.CURRENT, VeniceDIVResult.SUCCESS);
+    StoreIngestionTask currentVersionTask = mock(StoreIngestionTask.class);
+    StoreIngestionTask futureVersionTask = mock(StoreIngestionTask.class);
+    if (!closeByStoreDeletion) {
+      stats.setIngestionTask(TEST_STORE_NAME, currentVersionTask);
+      stats.setIngestionTask(TEST_STORE_NAME, futureVersionTask);
+    }
+    stats.recordSuccessMsg(TEST_STORE_NAME, 1);
+    validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
+
+    if (closeByStoreDeletion) {
+      stats.handleStoreDeleted(TEST_STORE_NAME);
+    } else {
+      stats.removeIngestionTask(TEST_STORE_NAME, currentVersionTask);
+      validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
+      validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
+      stats.removeIngestionTask(TEST_STORE_NAME, futureVersionTask);
+    }
+
+    validateAsyncCounter(OTEL_MESSAGE_COUNT, 1, attributes);
+    assertNoMessageCount(attributes);
+  }
+
+  @DataProvider(name = "messageCountRetirementScenarios")
+  public Object[][] messageCountRetirementScenarios() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test
+  public void testIngestionTaskAttachAndDetachNeverThrow() {
+    // The metadata repository has no such store, so resolving its versions fails inside setIngestionTask.
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    stats.setIngestionTask("unknown-store", task);
+    stats.removeIngestionTask("unknown-store", task);
+  }
+
+  private void assertNoMessageCount(Attributes attributes) {
+    OpenTelemetryDataTestUtils.assertNoLongSumDataForAttributes(
+        inMemoryMetricReader.collectAllMetrics(),
+        OTEL_MESSAGE_COUNT,
+        TEST_METRIC_PREFIX,
+        attributes);
   }
 
   // --- Helper methods ---

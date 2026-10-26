@@ -96,13 +96,11 @@ public class NativeMetadataRepositoryStatsOtelTest {
   }
 
   @Test
-  public void testRemovedStoreReportsNaN() {
+  public void testRemovedStoreEmitsNothing() {
     stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
     validateGauge(500, "store-a");
 
     stats.removeCacheTimestamp("store-a");
-    // After removal, callback returns NaN (no data). Validate directly since the
-    // tolerance-based helper doesn't support NaN comparison (NaN != NaN in IEEE 754).
     validateGaugeAbsent("store-a");
   }
 
@@ -116,21 +114,22 @@ public class NativeMetadataRepositoryStatsOtelTest {
   }
 
   @Test
-  public void testReAddAfterRemoveReusesCallback() {
-    // First registration: gauge reports a real value.
+  public void testReAddAfterRemoveRegistersGaugeUnderCurrentCluster() {
     stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 500);
     validateGauge(500, "store-a");
 
-    // Removal: callback returns NaN (timestamp absent), no data point emitted.
+    // Removal closes the store's gauge, so re-adding registers a new one under the cluster given now.
     stats.removeCacheTimestamp("store-a");
     validateGaugeAbsent("store-a");
-
-    // Re-add: the existing OTel callback (registered on the first updateCacheTimestamp)
-    // is reused — computeIfAbsent on otelPerStore is a no-op the second time. The gauge
-    // resumes reporting because the callback re-reads from metadataCacheTimestampMapInMs
-    // dynamically each cycle.
-    stats.updateCacheTimestamp("store-a", TEST_CLUSTER_NAME, 700);
-    validateGauge(300, "store-a");
+    stats.updateCacheTimestamp("store-a", "other-cluster", 700);
+    OpenTelemetryDataTestUtils.validateDoublePointDataFromGauge(
+        inMemoryMetricReader,
+        300,
+        0.01,
+        buildAttributes("store-a", "other-cluster"),
+        METRIC_NAME,
+        TEST_METRIC_PREFIX);
+    validateGaugeAbsent("store-a");
   }
 
   @Test
@@ -154,10 +153,7 @@ public class NativeMetadataRepositoryStatsOtelTest {
     stats.removeCacheTimestamp("store-a");
   }
 
-  /**
-   * Verifies that a removed store emits no OTel data point. The callback returns NaN
-   * which the OTel SDK drops entirely — the metric data point disappears from collection.
-   */
+  /** Verifies that the store emits no OTel data point under the test cluster. */
   private void validateGaugeAbsent(String storeName) {
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     String fullMetricName = "venice." + TEST_METRIC_PREFIX + "." + METRIC_NAME;
@@ -179,8 +175,12 @@ public class NativeMetadataRepositoryStatsOtelTest {
   }
 
   private static Attributes buildAttributes(String storeName) {
+    return buildAttributes(storeName, TEST_CLUSTER_NAME);
+  }
+
+  private static Attributes buildAttributes(String storeName, String clusterName) {
     return Attributes.builder()
-        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .build();
   }

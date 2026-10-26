@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 import static com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatOtelMetricEntity.INGESTION_HEARTBEAT_DELAY;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats.StoreOtelStats;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils;
 import com.linkedin.davinci.stats.OtelVersionedStatsUtils.VersionInfo;
 import com.linkedin.venice.server.VersionRole;
@@ -26,7 +27,7 @@ import java.util.Map;
  * OpenTelemetry metrics for heartbeat monitoring.
  * Note: Tehuti metrics are managed separately in {@link HeartbeatStatReporter}.
  */
-public class HeartbeatOtelStats {
+public class HeartbeatOtelStats implements StoreOtelStats {
   private final boolean emitOtelMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;

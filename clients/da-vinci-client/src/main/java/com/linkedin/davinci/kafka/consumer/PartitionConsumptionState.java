@@ -101,7 +101,7 @@ public class PartitionConsumptionState {
   private volatile boolean completionReported;
   private boolean isSubscribed;
   private boolean isDataRecoveryCompleted;
-  private LeaderFollowerStateType leaderFollowerState;
+  private volatile LeaderFollowerStateType leaderFollowerState;
 
   /**
    * The VT produce future should be read/set by the same consumer thread during normal operation. Making it volatile
@@ -194,7 +194,7 @@ public class PartitionConsumptionState {
    * Null when HLL tracking is disabled. Set via {@link #initializeUniqueKeyCountHll(int)}
    * or {@link #restoreUniqueKeyCountHll(int)}.
    */
-  private HllSketch uniqueIngestedKeyCountHll;
+  private volatile HllSketch uniqueIngestedKeyCountHll;
 
   /**
    * An in-memory state to track whether the leader consumer is consuming from remote or not; it will be updated with

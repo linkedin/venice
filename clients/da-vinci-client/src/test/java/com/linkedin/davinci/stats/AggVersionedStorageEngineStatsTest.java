@@ -262,9 +262,61 @@ public class AggVersionedStorageEngineStatsTest {
     }
   }
 
+  @Test
+  public void testRemoveStorageEngineStopsOnlyThatVersionsOtelGauges() {
+    InMemoryMetricReader reader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository veniceRepo = createOtelMetricsRepository(reader)) {
+      OtelTestContext ctx = createOtelTestContext(veniceRepo);
+      Version currentVersion = new VersionImpl(ctx.storeName, 1, "push1");
+      currentVersion.setStatus(VersionStatus.ONLINE);
+      Version futureVersion = new VersionImpl(ctx.storeName, 2, "push2");
+      futureVersion.setStatus(VersionStatus.STARTED);
+      doReturn(Arrays.asList(currentVersion, futureVersion)).when(ctx.mockStore).getVersions();
+      doReturn(1).when(ctx.mockStore).getCurrentVersion();
+      ctx.stats.handleStoreChanged(ctx.mockStore);
+
+      String futureTopic = Version.composeKafkaTopic(ctx.storeName, 2);
+      ctx.stats.setStorageEngine(ctx.topicName, mockStorageEngine(5000L));
+      ctx.stats.setStorageEngine(futureTopic, mockStorageEngine(7000L));
+      String diskMetric = StorageEngineOtelMetricEntity.DISK_USAGE.getMetricEntity().getMetricName();
+      Attributes currentAttrs = buildDiskUsageDataAttrs(ctx.clusterName, ctx.storeName, VersionRole.CURRENT);
+      Attributes futureAttrs = buildDiskUsageDataAttrs(ctx.clusterName, ctx.storeName, VersionRole.FUTURE);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 5000, currentAttrs, diskMetric, OTEL_PREFIX);
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 7000, futureAttrs, diskMetric, OTEL_PREFIX);
+
+      // The current version's storage engine leaves this host while the version still exists.
+      ctx.stats.removeStorageEngine(ctx.topicName);
+
+      Collection<MetricData> metrics = reader.collectAllMetrics();
+      Assert.assertNull(
+          OpenTelemetryDataTestUtils
+              .getLongPointDataFromGaugeIfPresent(metrics, diskMetric, OTEL_PREFIX, currentAttrs));
+      Assert.assertNotNull(
+          OpenTelemetryDataTestUtils.getLongPointDataFromGaugeIfPresent(metrics, diskMetric, OTEL_PREFIX, futureAttrs));
+      // Tehuti keeps reading the engine.
+      assertEquals(ctx.stats.getStats(ctx.storeName, 1).getDiskUsageInBytes(), 5000L);
+
+      // With no engine left nothing is reported, and an engine coming back reports again.
+      ctx.stats.removeStorageEngine(futureTopic);
+      Assert.assertNull(
+          OpenTelemetryDataTestUtils
+              .getLongPointDataFromGaugeIfPresent(reader.collectAllMetrics(), diskMetric, OTEL_PREFIX, futureAttrs));
+      ctx.stats.setStorageEngine(futureTopic, mockStorageEngine(7000L));
+      OpenTelemetryDataTestUtils.validateLongPointDataFromGauge(reader, 7000, futureAttrs, diskMetric, OTEL_PREFIX);
+    }
+  }
+
   // --- OTel test helpers ---
 
   private static final String OTEL_PREFIX = "server";
+
+  private static StorageEngine mockStorageEngine(long diskUsageInBytes) {
+    StorageEngineStats engineStats = mock(StorageEngineStats.class);
+    doReturn(diskUsageInBytes).when(engineStats).getStoreSizeInBytes();
+    StorageEngine engine = mock(StorageEngine.class);
+    doReturn(engineStats).when(engine).getStats();
+    return engine;
+  }
 
   private static VeniceMetricsRepository createOtelMetricsRepository(InMemoryMetricReader reader) {
     return new VeniceMetricsRepository(

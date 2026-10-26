@@ -9,15 +9,20 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.server.VersionRole;
 import com.linkedin.venice.stats.dimensions.QuotaRequestOutcome;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.tehuti.Metric;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
@@ -45,6 +50,7 @@ public class ServerReadQuotaUsageStatsOtelTest {
             .setMetricEntities(SERVER_METRIC_ENTITIES)
             .setEmitOtelMetrics(true)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
   }
 
@@ -265,8 +271,27 @@ public class ServerReadQuotaUsageStatsOtelTest {
   }
 
   @Test
-  public void testUsageRatioReturnsZeroWhenNoVersion() {
-    createStats(); // No current version set (defaults to 0) => ratio returns NaN => OTel reports 0.0
+  public void testUsageRatioOmitsPointWhenNoVersion() {
+    createStats();
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    boolean hasRatioPoint = metricsData.stream()
+        .anyMatch(
+            md -> md.getName().equals(fullMetricName("read.quota.usage_ratio"))
+                && md.getData().getPoints().stream().anyMatch(p -> p.getAttributes().equals(buildBaseAttributes())));
+    assertFalse(hasRatioPoint, "Unavailable usage ratio should not emit an OTel point");
+    Metric tehutiRatioMetric = metricsRepository.getMetric(
+        AbstractVeniceStats.getSensorFullName(
+            TEST_STORE_NAME,
+            ServerReadQuotaUsageStats.TehutiMetricName.QUOTA_REQUESTED_USAGE_RATIO.getMetricName()) + ".Gauge");
+    assertNotNull(tehutiRatioMetric);
+    assertTrue(Double.isNaN(tehutiRatioMetric.value()), "Tehuti should preserve the unavailable ratio as NaN");
+  }
+
+  @Test
+  public void testUsageRatioEmitsGenuineZero() {
+    ServerReadQuotaUsageStats stats = createStats();
+    stats.updateVersionInfo(1, 0);
+    stats.setNodeQuotaResponsibility(1, 1000);
     OpenTelemetryDataTestUtils.validateDoublePointDataFromGauge(
         inMemoryMetricReader,
         0.0,
@@ -333,6 +358,53 @@ public class ServerReadQuotaUsageStatsOtelTest {
         "read.quota.request.count",
         buildAttributes(VersionRole.CURRENT, QuotaRequestOutcome.REJECTED),
         1L);
+  }
+
+  @Test
+  public void testAggregateRemovesStatsWhenStoreLeavesHost() {
+    AggServerQuotaUsageStats aggStats = new AggServerQuotaUsageStats(TEST_CLUSTER_NAME, metricsRepository);
+    Attributes allowedCurrent = buildAttributes(VersionRole.CURRENT, QuotaRequestOutcome.ALLOWED);
+    String ratioMetricName = AbstractVeniceStats.getSensorFullName(
+        TEST_STORE_NAME,
+        ServerReadQuotaUsageStats.TehutiMetricName.QUOTA_REQUESTED_USAGE_RATIO.getMetricName()) + ".Gauge";
+    aggStats.updateVersionInfo(TEST_STORE_NAME, 1, 0);
+    aggStats.setNodeQuotaResponsibility(TEST_STORE_NAME, 1, 1000);
+    aggStats.recordAllowed(TEST_STORE_NAME, 1, 100);
+    assertCounterValue(inMemoryMetricReader.collectAllMetrics(), "read.quota.request.count", allowedCurrent, 1L);
+    Metric originalRatioMetric = metricsRepository.getMetric(ratioMetricName);
+    assertNotNull(originalRatioMetric);
+
+    aggStats.removeStore(TEST_STORE_NAME);
+
+    assertNull(aggStats.getNullableStoreStats(TEST_STORE_NAME));
+    assertNull(metricsRepository.getMetric(ratioMetricName), "removeStore should unregister the old Tehuti sensors");
+    // Closed counters report their final totals at the next collection, then stop.
+    assertCounterValue(inMemoryMetricReader.collectAllMetrics(), "read.quota.request.count", allowedCurrent, 1L);
+    assertFalse(
+        inMemoryMetricReader.collectAllMetrics()
+            .stream()
+            .anyMatch(
+                md -> md.getName().equals(fullMetricName("read.quota.request.count"))
+                    && md.getData().getPoints().stream().anyMatch(p -> p.getAttributes().equals(allowedCurrent))),
+        "Closed per-store counters must stop reporting after their final report");
+
+    aggStats.updateVersionInfo(TEST_STORE_NAME, 1, 0);
+    aggStats.setNodeQuotaResponsibility(TEST_STORE_NAME, 1, 1000);
+    aggStats.recordAllowed(TEST_STORE_NAME, 1, 300);
+    Metric recreatedRatioMetric = metricsRepository.getMetric(ratioMetricName);
+    assertNotNull(recreatedRatioMetric);
+    assertNotSame(recreatedRatioMetric, originalRatioMetric, "Recreated stats should register fresh Tehuti sensors");
+    assertEquals(recreatedRatioMetric.value(), (300.0 / 30.0) / 1000.0, 0.001);
+    Collection<MetricData> recreatedMetrics = inMemoryMetricReader.collectAllMetrics();
+    assertCounterValue(recreatedMetrics, "read.quota.request.count", allowedCurrent, 1L);
+    assertCounterValue(recreatedMetrics, "read.quota.key.count", allowedCurrent, 300L);
+    OpenTelemetryDataTestUtils.validateDoublePointDataFromGauge(
+        inMemoryMetricReader,
+        (300.0 / 30.0) / 1000.0,
+        0.001,
+        buildBaseAttributes(),
+        "read.quota.usage_ratio",
+        TEST_METRIC_PREFIX);
   }
 
   @Test

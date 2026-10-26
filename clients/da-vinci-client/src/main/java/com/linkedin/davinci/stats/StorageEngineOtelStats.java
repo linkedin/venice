@@ -17,9 +17,9 @@ import com.linkedin.venice.stats.dimensions.VeniceRecordType;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.Closeable;
 import java.util.Map;
 
 
@@ -37,7 +37,7 @@ import java.util.Map;
  * <p>Tehuti metrics are managed separately by
  * {@link AggVersionedStorageEngineStats.StorageEngineStatsReporter}.
  */
-public class StorageEngineOtelStats implements Closeable {
+public class StorageEngineOtelStats implements AbstractVeniceAggVersionedStats.StoreOtelStats {
   private final boolean emitOtelMetrics;
 
   /**
@@ -54,6 +54,7 @@ public class StorageEngineOtelStats implements Closeable {
    * {@link #onVersionRemoved(int)} when versions are cleaned up.
    */
   private final Map<Integer, StorageEngineStatsWrapper> wrappersByVersion = new VeniceConcurrentHashMap<>();
+  private final MetricScope metricScope = new MetricScope();
 
   /** Disk usage ASYNC_GAUGE with VeniceRecordType and VersionRole dimensions */
   private final AsyncMetricEntityStateTwoEnums<VeniceRecordType, VersionRole> diskUsageMetrics;
@@ -88,6 +89,7 @@ public class StorageEngineOtelStats implements Closeable {
           baseDimensionsMap,
           VeniceRecordType.class,
           VersionRole.class,
+          metricScope,
           (recordType, role) -> getWrapperForRole(role),
           (wrapper, recordType, role) -> diskUsage(wrapper, recordType));
 
@@ -96,6 +98,7 @@ public class StorageEngineOtelStats implements Closeable {
           otelRepository,
           baseDimensionsMap,
           VersionRole.class,
+          metricScope,
           role -> getWrapperForRole(role),
           (wrapper, role) -> wrapper.getKeyCountEstimate());
 
@@ -135,13 +138,15 @@ public class StorageEngineOtelStats implements Closeable {
   }
 
   /**
-   * Removes a version's wrapper when the version is cleaned up.
+   * Removes a version's wrapper when the version is cleaned up or its storage engine leaves this host. Returns true
+   * when no version of this store has a storage engine here anymore.
    */
-  public void onVersionRemoved(int version) {
+  public boolean onVersionRemoved(int version) {
     if (!emitOtelMetrics) {
-      return;
+      return true;
     }
     wrappersByVersion.remove(version);
+    return wrappersByVersion.isEmpty();
   }
 
   /**
@@ -188,13 +193,12 @@ public class StorageEngineOtelStats implements Closeable {
   }
 
   /**
-   * Clears internal wrapper references. On subsequent collections each async-gauge's
-   * {@code liveStateResolver} will return {@code null} for every role and no data points will be
-   * emitted. The SDK instruments themselves are NOT deregistered — they remain registered and
-   * are polled until the SDK is shut down.
+   * Clears internal wrapper references and closes this store's async-gauge callbacks, so no data
+   * points are emitted or polled for it afterwards.
    */
   @Override
   public void close() {
+    metricScope.close();
     wrappersByVersion.clear();
   }
 }

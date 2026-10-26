@@ -20,6 +20,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
@@ -34,6 +35,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -41,6 +43,7 @@ import java.util.stream.IntStream;
 public class FastClientStats extends ClientStats {
   private final String storeName;
   private final boolean storeLoadControllerEnabled;
+  private final BooleanSupplier isReporting;
 
   private volatile MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
   private volatile MetricEntityStateOneEnum<RejectionReason> rejectedRequestCountByLoadController;
@@ -57,10 +60,11 @@ public class FastClientStats extends ClientStats {
   private volatile MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
   private volatile MetricEntityStateOneEnum<RequestRetryType> errorRetry;
   private volatile MetricEntityStateBase retryRequestWin;
-  private volatile AsyncMetricEntityStateBase metadataStalenessHighWatermark;
+  /** Owns the metadata staleness gauge, which each cluster change re-creates with the new cluster's dimensions. */
+  private volatile MetricScope metadataStalenessScope;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> retryFanoutSize;
   private volatile MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
-  private long cacheTimeStampInMs = 0;
+  private volatile long cacheTimeStampInMs = 0;
 
   /**
    * Preserves registration of all optional feature metrics for callers without client feature flags.
@@ -83,8 +87,33 @@ public class FastClientStats extends ClientStats {
       RequestType requestType,
       boolean dualReadEnabled,
       boolean storeLoadControllerEnabled) {
+    return getClientStats(
+        metricsRepository,
+        statsPrefix,
+        storeName,
+        requestType,
+        dualReadEnabled,
+        storeLoadControllerEnabled,
+        () -> true);
+  }
+
+  /** Same as above; the OTel metadata staleness gauge reports only while {@code isReporting} returns true. */
+  public static FastClientStats getClientStats(
+      MetricsRepository metricsRepository,
+      String statsPrefix,
+      String storeName,
+      RequestType requestType,
+      boolean dualReadEnabled,
+      boolean storeLoadControllerEnabled,
+      BooleanSupplier isReporting) {
     String metricName = statsPrefix.isEmpty() ? storeName : statsPrefix + "." + storeName;
-    return new FastClientStats(metricsRepository, metricName, requestType, dualReadEnabled, storeLoadControllerEnabled);
+    return new FastClientStats(
+        metricsRepository,
+        metricName,
+        requestType,
+        dualReadEnabled,
+        storeLoadControllerEnabled,
+        isReporting);
   }
 
   private FastClientStats(
@@ -92,11 +121,13 @@ public class FastClientStats extends ClientStats {
       String storeName,
       RequestType requestType,
       boolean dualReadEnabled,
-      boolean storeLoadControllerEnabled) {
+      boolean storeLoadControllerEnabled,
+      BooleanSupplier isReporting) {
     super(metricsRepository, storeName, requestType, FAST_CLIENT);
 
     this.storeName = storeName;
     this.storeLoadControllerEnabled = storeLoadControllerEnabled;
+    this.isReporting = isReporting;
 
     buildFastClientOtelStats();
 
@@ -233,13 +264,15 @@ public class FastClientStats extends ClientStats {
       metadataStalenessAttrs = metadataStalenessSetup.getBaseAttributes();
     }
 
-    // Close the previous observable gauge (if any) before re-registering.
-    AsyncMetricEntityStateBase previousStaleness = this.metadataStalenessHighWatermark;
-    if (previousStaleness != null) {
-      otelRepository
-          .closeObservableInstrument(METADATA_STALENESS_DURATION.getMetricEntity(), previousStaleness.getOtelMetric());
+    // Retiring the previous gauge's own scope unregisters that gauge and drops it from this object's scope, which lives
+    // as long as the client config, so cluster changes retain nothing.
+    MetricScope previousStalenessScope = this.metadataStalenessScope;
+    if (previousStalenessScope != null) {
+      getMetricScope().retire(previousStalenessScope);
     }
-    this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
+    MetricScope stalenessScope = getMetricScope().register(new MetricScope());
+    this.metadataStalenessScope = stalenessScope;
+    AsyncMetricEntityStateBase.createWithState(
         METADATA_STALENESS_DURATION.getMetricEntity(),
         otelRepository,
         (sensorName, stats) -> registerSensor(sensorName, stats),
@@ -252,7 +285,22 @@ public class FastClientStats extends ClientStats {
                 FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS.getMetricName())),
         metadataStalenessDims,
         metadataStalenessAttrs,
-        () -> this.cacheTimeStampInMs == 0 ? 0 : (System.currentTimeMillis() - this.cacheTimeStampInMs));
+        stalenessScope,
+        () -> {
+          // Only the stats that the metadata refresh updates get a timestamp. The other request types' gauges share its
+          // attributes, so they emit nothing rather than a 0 that could replace its value.
+          long cacheTimestampMs = this.cacheTimeStampInMs;
+          if (!isReporting.getAsBoolean() || cacheTimestampMs == 0) {
+            return null;
+          }
+          return System.currentTimeMillis() - cacheTimestampMs;
+        },
+        Long::longValue);
+  }
+
+  /** Visible for testing. */
+  MetricScope getMetadataStalenessScope() {
+    return metadataStalenessScope;
   }
 
   @Override

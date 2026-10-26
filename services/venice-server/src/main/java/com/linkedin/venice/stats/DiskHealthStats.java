@@ -11,7 +11,6 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Collections;
 import java.util.Map;
-import java.util.function.LongSupplier;
 
 
 /**
@@ -40,16 +39,19 @@ public class DiskHealthStats extends AbstractVeniceStats {
     Map<VeniceMetricsDimensions, String> baseDimensionsMap = otelData.getBaseDimensionsMap();
     Attributes baseAttributes = otelData.getBaseAttributes();
 
-    LongSupplier healthCallback = () -> diskHealthCheckService.isDiskHealthy() ? 1 : 0;
-    AsyncMetricEntityStateBase.create(
+    AsyncMetricEntityStateBase.createWithState(
         DISK_HEALTH_STATUS.getMetricEntity(),
         otelData.getOtelRepository(),
         this::registerSensorIfAbsent,
         TehutiMetricName.DISK_HEALTHY,
         Collections.singletonList(
-            new AsyncGauge((ig, ig2) -> healthCallback.getAsLong(), TehutiMetricName.DISK_HEALTHY.getMetricName())),
+            new AsyncGauge(
+                (ig, ig2) -> diskHealthCheckService.isDiskHealthy() ? 1 : 0,
+                TehutiMetricName.DISK_HEALTHY.getMetricName())),
         baseDimensionsMap,
         baseAttributes,
-        healthCallback);
+        getMetricScope(),
+        () -> diskHealthCheckService.isDiskHealthy() ? 1L : 0L,
+        Long::longValue);
   }
 }

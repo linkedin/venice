@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TO
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityState.TehutiSensorRegistrationFunction;
 import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricScope;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MeasurableStat;
@@ -24,7 +25,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 
-public class AbstractVeniceStats {
+public class AbstractVeniceStats implements AutoCloseable {
   public static final String DELIMITER = "--";
 
   private final MetricsRepository metricsRepository;
@@ -32,6 +33,7 @@ public class AbstractVeniceStats {
   private final Map<String, Sensor> sensors;
   private final boolean isTotalStats;
   private final boolean isTehutiMetricsEnabled;
+  private final MetricScope metricScope = new MetricScope();
   /** A dummy sensor to return when Tehuti metrics are disabled */
   private final Sensor noopSensor;
 
@@ -61,6 +63,11 @@ public class AbstractVeniceStats {
 
   protected final boolean isTotalStats() {
     return isTotalStats;
+  }
+
+  /** Scope for this object's metric states; pass it to the async gauge factories. {@link #close()} closes it. */
+  protected final MetricScope getMetricScope() {
+    return metricScope;
   }
 
   public final String getName() {
@@ -192,6 +199,21 @@ public class AbstractVeniceStats {
       metricsRepository.removeSensor(sensor.name());
     }
     sensors.clear();
+  }
+
+  /**
+   * Stops this object's OTel metric states but keeps its Tehuti sensors, which other stats objects with the same
+   * name in the same repository may share.
+   */
+  public void closeOtelMetrics() {
+    metricScope.close();
+  }
+
+  /** Closes this object's metric states and unregisters its Tehuti sensors. */
+  @Override
+  public void close() {
+    closeOtelMetrics();
+    unregisterAllSensors();
   }
 
   protected Sensor registerSensorWithAggregate(String sensorName, Supplier<MeasurableStat[]> stats) {

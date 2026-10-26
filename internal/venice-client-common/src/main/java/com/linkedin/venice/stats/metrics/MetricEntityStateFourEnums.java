@@ -79,7 +79,6 @@ public class MetricEntityStateFourEnums<E1 extends Enum<E1> & VeniceDimensionInt
     this.enumTypeClass3 = enumTypeClass3;
     this.enumTypeClass4 = enumTypeClass4;
     this.metricAttributesDataEnumMap = createMetricAttributesDataEnumMap();
-    registerObservableCounterIfNeeded();
   }
 
   /** Factory method with named parameters to ensure the passed in enumTypeClass are in the same order as E */
