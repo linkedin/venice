@@ -1,40 +1,74 @@
 package com.linkedin.venice.producer;
 
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_CALLBACK_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_COUNT;
+import static com.linkedin.venice.ConfigKeys.CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -55,6 +89,10 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
   private static final String KEY_SCHEMA_STR = "\"int\"";
   private static final Schema KEY_SCHEMA = Schema.parse(KEY_SCHEMA_STR);
   private static final int PARTITION_COUNT = 4;
+  private static final Schema UPDATE_SCHEMA = WriteComputeSchemaConverter.getInstance()
+      .convertFromValueRecordSchema(
+          Schema.parse(
+              "{\"type\":\"record\",\"name\":\"HookTestValue\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"default\":\"\"}]}"));
 
   private VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter;
   private SchemaReader mockSchemaReader;
@@ -99,6 +137,8 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     TestableVeniceProducer producer = createProducer(workerCount, 10000);
 
     try {
+      assertNull(producer.capturedWriterOptions.getWriterHook(), "Legacy configuration must remain hook-free");
+      assertTrue(producer.legacyConfigureInvoked);
       List<CompletableFuture<DurableWrite>> futures = new ArrayList<>();
       for (int i = 0; i < recordCount; i++) {
         futures.add(producer.asyncPut(0, "value-" + i));
@@ -432,14 +472,237 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     }
   }
 
-  private TestableVeniceProducer createProducer(int workerCount, int queueCapacity) {
-    Properties props = new Properties();
-    props.setProperty("client.producer.worker.count", String.valueOf(workerCount));
-    props.setProperty("client.producer.worker.queue.capacity", String.valueOf(queueCapacity));
-    props.setProperty("client.producer.callback.thread.count", "0");
+  @DataProvider(name = "writerHookExecutionModes")
+  public Object[][] writerHookExecutionModes() {
+    return new Object[][] { { 0, null }, { 0, 0L }, { 0, 1000L }, { 2, null }, { 2, 0L }, { 2, 1000L } };
+  }
 
+  @Test(dataProvider = "writerHookExecutionModes", timeOut = 30000)
+  public void testWriterHookUsesSerializedSizesAndLogicalTimestamps(int workerCount, Long logicalTimestamp)
+      throws Exception {
+    List<KafkaMessageEnvelope> messages = Collections.synchronizedList(new ArrayList<>());
+    PubSubProducerAdapter adapter = createPubSubProducer((message, callback) -> {
+      messages.add(message);
+      callback.onCompletion(null, null);
+    });
+    VeniceWriterHook writerHook = mock(VeniceWriterHook.class);
+
+    try (TestableVeniceProducer producer = createRealWriterProducer(adapter, workerCount, 0, writerHook)) {
+      assertSame(producer.capturedWriterOptions.getWriterHook(), writerHook);
+      assertTrue(producer.legacyConfigureInvoked, "Hook-aware configuration must preserve legacy override dispatch");
+
+      Consumer<UpdateBuilder> updateFunction = builder -> builder.setNewFieldValue("name", "new-value");
+      List<CompletableFuture<DurableWrite>> writes = Arrays.asList(
+          logicalTimestamp == null ? producer.asyncPut(1, "value") : producer.asyncPut(logicalTimestamp, 1, "value"),
+          logicalTimestamp == null ? producer.asyncDelete(1) : producer.asyncDelete(logicalTimestamp, 1),
+          logicalTimestamp == null
+              ? producer.asyncUpdate(1, updateFunction)
+              : producer.asyncUpdate(logicalTimestamp, 1, updateFunction));
+      for (CompletableFuture<DurableWrite> write: writes) {
+        write.get(5, TimeUnit.SECONDS);
+      }
+
+      UpdateBuilder expectedUpdate = new UpdateBuilderImpl(UPDATE_SCHEMA);
+      updateFunction.accept(expectedUpdate);
+      int keySize = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KEY_SCHEMA).serialize(1).length;
+      int valueSize = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(Schema.create(Schema.Type.STRING))
+          .serialize("value").length;
+      int updateSize = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(UPDATE_SCHEMA)
+          .serialize(expectedUpdate.build()).length;
+      verify(writerHook).onBeforeProduce(VeniceWriterHook.OperationType.PUT, keySize, valueSize);
+      verify(writerHook).onBeforeProduce(VeniceWriterHook.OperationType.DELETE, keySize, 0);
+      verify(writerHook).onBeforeProduce(VeniceWriterHook.OperationType.UPDATE, keySize, updateSize);
+      verifyNoMoreInteractions(writerHook);
+
+      assertEquals(messages.size(), 3);
+      assertEquals(messages.get(0).messageType, MessageType.PUT.getValue());
+      assertEquals(messages.get(1).messageType, MessageType.DELETE.getValue());
+      assertEquals(messages.get(2).messageType, MessageType.UPDATE.getValue());
+      long expectedTimestamp = logicalTimestamp == null ? APP_DEFAULT_LOGICAL_TS : logicalTimestamp;
+      for (KafkaMessageEnvelope message: messages) {
+        assertEquals(message.producerMetadata.logicalTimestamp, expectedTimestamp);
+      }
+    }
+  }
+
+  @DataProvider(name = "writerHookThreadModes")
+  public Object[][] writerHookThreadModes() {
+    return new Object[][] { { 0, 0 }, { 0, 1 }, { 2, 0 }, { 2, 1 } };
+  }
+
+  @Test(dataProvider = "writerHookThreadModes", timeOut = 30000)
+  public void testBlockingHookDefersSubmissionAndDurabilityWaitsForBrokerAck(int workerCount, int callbackThreadCount)
+      throws Exception {
+    CountDownLatch hookEntered = new CountDownLatch(1);
+    CountDownLatch releaseHook = new CountDownLatch(1);
+    AtomicReference<Thread> hookThread = new AtomicReference<>();
+    AtomicReference<Thread> callerThread = new AtomicReference<>();
+    BlockingQueue<PubSubProducerCallback> acknowledgments = new LinkedBlockingQueue<>();
+    PubSubProducerAdapter adapter = createPubSubProducer((message, callback) -> acknowledgments.add(callback));
+    VeniceWriterHook writerHook = (operation, keySize, valueSize) -> {
+      hookThread.set(Thread.currentThread());
+      hookEntered.countDown();
+      try {
+        if (!releaseHook.await(10, TimeUnit.SECONDS)) {
+          throw new VeniceException("Timed out waiting to release writer hook");
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Interrupted while waiting to release writer hook", e);
+      }
+    };
+
+    try (TestableVeniceProducer producer =
+        createRealWriterProducer(adapter, workerCount, callbackThreadCount, writerHook)) {
+      ExecutorService submitter = Executors.newSingleThreadExecutor(new DaemonThreadFactory("hook-test-submitter"));
+      try {
+        CompletableFuture<CompletableFuture<DurableWrite>> submission = CompletableFuture.supplyAsync(() -> {
+          callerThread.set(Thread.currentThread());
+          return producer.asyncPut(1, "value");
+        }, submitter);
+
+        assertTrue(hookEntered.await(5, TimeUnit.SECONDS));
+        verify(adapter, never()).sendMessage(any(), any(), any(), any(), any(), any());
+        if (workerCount == 0) {
+          assertSame(hookThread.get(), callerThread.get());
+          assertFalse(submission.isDone(), "Worker-zero submission must block inline in the hook");
+        } else {
+          assertNotSame(hookThread.get(), callerThread.get());
+          assertFalse(submission.get(5, TimeUnit.SECONDS).isDone());
+        }
+
+        releaseHook.countDown();
+        CompletableFuture<DurableWrite> durableWrite = submission.get(5, TimeUnit.SECONDS);
+        PubSubProducerCallback acknowledgment = acknowledgments.poll(5, TimeUnit.SECONDS);
+        assertNotNull(acknowledgment, "Releasing the hook must allow broker submission");
+        assertFalse(durableWrite.isDone(), "Hook completion alone must not complete durability");
+        CompletableFuture<Thread> completionThread = durableWrite.thenApply(ignored -> Thread.currentThread());
+        acknowledgment.onCompletion(null, null);
+        durableWrite.get(5, TimeUnit.SECONDS);
+        if (callbackThreadCount == 0) {
+          assertSame(completionThread.get(5, TimeUnit.SECONDS), Thread.currentThread());
+        } else {
+          assertNotSame(completionThread.get(5, TimeUnit.SECONDS), Thread.currentThread());
+        }
+      } finally {
+        releaseHook.countDown();
+        submitter.shutdownNow();
+        assertTrue(submitter.awaitTermination(5, TimeUnit.SECONDS), "The submitting thread must terminate");
+      }
+    }
+  }
+
+  @Test(dataProvider = "writerHookThreadModes", timeOut = 30000)
+  public void testWriterHookFailureCompletesFutureWithoutSubmission(int workerCount, int callbackThreadCount)
+      throws Exception {
+    IllegalStateException hookFailure = new IllegalStateException("hook failure");
+    VeniceWriterHook writerHook = (operation, keySize, valueSize) -> {
+      throw hookFailure;
+    };
+    PubSubProducerAdapter adapter = createPubSubProducer((message, callback) -> callback.onCompletion(null, null));
+
+    try (TestableVeniceProducer producer =
+        createRealWriterProducer(adapter, workerCount, callbackThreadCount, writerHook)) {
+      List<CompletableFuture<DurableWrite>> writes = Arrays.asList(
+          producer.asyncPut(1, "value"),
+          producer.asyncDelete(1),
+          producer.asyncUpdate(1, builder -> builder.setNewFieldValue("name", "new-value")));
+      for (CompletableFuture<DurableWrite> write: writes) {
+        VeniceException failure = assertWriteRejected(write, "Write operation failed: hook failure");
+        assertSame(failure.getCause(), hookFailure);
+      }
+      verify(adapter, never()).sendMessage(any(), any(), any(), any(), any(), any());
+    }
+  }
+
+  @Test(dataProvider = "writerHookThreadModes", timeOut = 30000)
+  public void testRejectedWritesDoNotInvokeWriterHook(int workerCount, int callbackThreadCount) throws Exception {
+    VeniceWriterHook writerHook = mock(VeniceWriterHook.class);
+    PubSubProducerAdapter adapter = createPubSubProducer((message, callback) -> callback.onCompletion(null, null));
+
+    try (TestableVeniceProducer producer =
+        createRealWriterProducer(adapter, workerCount, callbackThreadCount, writerHook)) {
+      assertWriteRejected(producer.asyncPut(-1, 1, "value"), "Logical time must be a non-negative value");
+      assertWriteRejected(producer.asyncDelete(-1, 1), "Logical time must be a non-negative value");
+      assertWriteRejected(
+          producer.asyncUpdate(-1, 1, builder -> builder.setNewFieldValue("name", "new-value")),
+          "Logical time must be a non-negative value");
+      assertWriteRejected(producer.asyncPut(1, null), "Write operation failed:");
+      String keyError = workerCount == 0 ? "Write operation failed:" : "Key serialization failed";
+      assertWriteRejected(producer.asyncDelete(null), keyError);
+
+      when(mockSchemaReader.getValueSchemaId(any(Schema.class))).thenThrow(new VeniceException("missing schema"));
+      assertWriteRejected(producer.asyncPut(1, "value"), "Could not find a registered schema id");
+      when(mockSchemaReader.getLatestUpdateSchema()).thenReturn(null);
+      assertWriteRejected(producer.asyncUpdate(1, builder -> {}), "Update schema not found");
+      when(mockSchemaReader.getLatestUpdateSchema())
+          .thenReturn(new DerivedSchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, 1, UPDATE_SCHEMA));
+      assertWriteRejected(producer.asyncUpdate(1, builder -> {}), "Could not find a registered schema id");
+
+      producer.close();
+      assertWriteRejected(producer.asyncPut(1, "value"), "Producer is already closed");
+      assertWriteRejected(producer.asyncDelete(1), "Producer is already closed");
+      assertWriteRejected(producer.asyncUpdate(1, builder -> {}), "Producer is already closed");
+      verifyNoInteractions(writerHook);
+      verify(adapter, never()).sendMessage(any(), any(), any(), any(), any(), any());
+    }
+  }
+
+  private VeniceException assertWriteRejected(CompletableFuture<DurableWrite> write, String message) {
+    ExecutionException failure = expectThrows(ExecutionException.class, () -> write.get(5, TimeUnit.SECONDS));
+    assertTrue(failure.getCause() instanceof VeniceException);
+    VeniceException cause = (VeniceException) failure.getCause();
+    assertTrue(cause.getMessage().contains(message), cause.getMessage());
+    return cause;
+  }
+
+  private PubSubProducerAdapter createPubSubProducer(
+      BiConsumer<KafkaMessageEnvelope, PubSubProducerCallback> onDataMessage) {
+    PubSubProducerAdapter adapter = mock(PubSubProducerAdapter.class);
+    doAnswer(invocation -> {
+      KafkaKey key = invocation.getArgument(2);
+      KafkaMessageEnvelope message = invocation.getArgument(3);
+      PubSubProducerCallback callback = invocation.getArgument(5);
+      if (key.isControlMessage()) {
+        if (callback != null) {
+          callback.onCompletion(null, null);
+        }
+      } else {
+        onDataMessage.accept(message, callback);
+      }
+      return CompletableFuture.completedFuture(null);
+    }).when(adapter).sendMessage(any(), any(), any(), any(), any(), any());
+    return adapter;
+  }
+
+  private TestableVeniceProducer createRealWriterProducer(
+      PubSubProducerAdapter adapter,
+      int workerCount,
+      int callbackThreadCount,
+      VeniceWriterHook writerHook) {
+    when(mockSchemaReader.getLatestUpdateSchema()).thenReturn(new DerivedSchemaEntry(1, 1, UPDATE_SCHEMA));
+    TestableVeniceProducer producer = new TestableVeniceProducer(adapter);
+    producer.configure(
+        TEST_STORE,
+        getProducerConfigs(workerCount, 10000, callbackThreadCount),
+        null,
+        mockSchemaReader,
+        null,
+        writerHook);
+    return producer;
+  }
+
+  private VeniceProperties getProducerConfigs(int workerCount, int queueCapacity, int callbackThreadCount) {
+    Properties props = new Properties();
+    props.setProperty(CLIENT_PRODUCER_WORKER_COUNT, String.valueOf(workerCount));
+    props.setProperty(CLIENT_PRODUCER_WORKER_QUEUE_CAPACITY, String.valueOf(queueCapacity));
+    props.setProperty(CLIENT_PRODUCER_CALLBACK_THREAD_COUNT, String.valueOf(callbackThreadCount));
+    return new VeniceProperties(props);
+  }
+
+  private TestableVeniceProducer createProducer(int workerCount, int queueCapacity) {
     TestableVeniceProducer producer = new TestableVeniceProducer(mockVeniceWriter);
-    producer.configure(TEST_STORE, new VeniceProperties(props), null, mockSchemaReader, null);
+    producer.configure(TEST_STORE, getProducerConfigs(workerCount, queueCapacity, 0), null, mockSchemaReader, null);
     return producer;
   }
 
@@ -448,9 +711,29 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
    */
   private static class TestableVeniceProducer extends AbstractVeniceProducer<Integer, String> {
     private final VeniceWriter<byte[], byte[], byte[]> mockWriter;
+    private final PubSubProducerAdapter adapter;
+    private VeniceWriterOptions capturedWriterOptions;
+    private boolean legacyConfigureInvoked;
 
     TestableVeniceProducer(VeniceWriter<byte[], byte[], byte[]> mockWriter) {
       this.mockWriter = mockWriter;
+      this.adapter = null;
+    }
+
+    TestableVeniceProducer(PubSubProducerAdapter adapter) {
+      this.mockWriter = null;
+      this.adapter = adapter;
+    }
+
+    @Override
+    protected void configure(
+        String storeName,
+        VeniceProperties producerConfigs,
+        MetricsRepository metricsRepository,
+        SchemaReader schemaReader,
+        SchemaReader kmeSchemaReader) {
+      legacyConfigureInvoked = true;
+      super.configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
     }
 
     @Override
@@ -468,6 +751,10 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     protected VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
         Properties properties,
         VeniceWriterOptions writerOptions) {
+      capturedWriterOptions = writerOptions;
+      if (adapter != null) {
+        return new VeniceWriter<>(writerOptions, new VeniceProperties(properties), adapter);
+      }
       return mockWriter;
     }
   }

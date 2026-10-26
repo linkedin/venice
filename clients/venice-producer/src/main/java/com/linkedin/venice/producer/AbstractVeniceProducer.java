@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
@@ -81,6 +82,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private SchemaReader schemaReader;
   private PartitionedProducerExecutor asyncDispatcher;
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
+  private VeniceWriterHook writerHook;
   private VenicePartitioner partitioner;
   private int partitionCount;
 
@@ -94,6 +96,18 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private static final Schema DOUBLE_SCHEMA = Schema.create(Schema.Type.DOUBLE);
   private static final Schema BYTES_SCHEMA = Schema.create(Schema.Type.BYTES);
   private static final Schema BOOL_SCHEMA = Schema.create(Schema.Type.BOOLEAN);
+
+  protected void configure(
+      String storeName,
+      VeniceProperties producerConfigs,
+      MetricsRepository metricsRepository,
+      SchemaReader schemaReader,
+      SchemaReader kmeSchemaReader,
+      VeniceWriterHook writerHook) {
+    this.writerHook = writerHook;
+    // Preserve dispatch through existing subclass configuration overrides.
+    configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
+  }
 
   protected void configure(
       String storeName,
@@ -187,7 +201,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     VeniceWriterOptions.Builder optionsBuilder =
         new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(partitioner)
             .setPartitionCount(partitionCount)
-            .setChunkingEnabled(false);
+            .setChunkingEnabled(false)
+            .setWriterHook(writerHook);
 
     // Extract concurrent producer configs from properties
     String producerCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_COUNT);
