@@ -563,7 +563,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     /**
-     * Propagate application context through retries, response processing, and synchronous completion callbacks.
+     * Propagate application context through retries, response processing, and callbacks run within those task scopes.
+     * Future continuations that execute on other threads require application-managed context propagation.
      * By default the client does not capture or install application context.
      */
     public ClientConfigBuilder<K, V, T> setExecutionContextProvider(ExecutionContextProvider executionContextProvider) {

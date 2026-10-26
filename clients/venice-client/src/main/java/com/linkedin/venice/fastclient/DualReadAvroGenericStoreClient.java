@@ -29,6 +29,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   private final AvroGenericStoreClient<K, V> thinClient;
   private final FastClientStats clientStatsForSingleGet;
   private final FastClientStats clientStatsForMultiGet;
+  private final ExecutionContextProvider executionContextProvider;
 
   public DualReadAvroGenericStoreClient(InternalAvroStoreClient<K, V> delegate, ClientConfig config) {
     this(delegate, config, config.getGenericThinClient());
@@ -46,13 +47,15 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     this.thinClient = thinClient;
     this.clientStatsForSingleGet = config.getStats(RequestType.SINGLE_GET);
     this.clientStatsForMultiGet = config.getStats(RequestType.MULTI_GET_STREAMING);
+    this.executionContextProvider = config.getExecutionContextProvider();
   }
 
   private static <T> CompletableFuture<T> sendRequest(
       Supplier<CompletableFuture<T>> supplier,
       AtomicBoolean error,
       AtomicReference<Double> latency,
-      CompletableFuture<T> valueFuture) {
+      CompletableFuture<T> valueFuture,
+      ExecutionContextProvider.CapturedContext executionContext) {
     CompletableFuture<T> requestFuture;
     long startTimeNS = System.nanoTime();
     try {
@@ -79,11 +82,11 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       }
       return response;
     });
-    requestFuture.whenComplete((response, throwable) -> {
+    requestFuture.whenComplete(executionContext.wrap((response, throwable) -> {
       if (throwable == null) {
         valueFuture.complete(response);
       }
-    });
+    }));
 
     /**
      * Returning {@link latencyFuture} here will allow the dependencies of latency metrics to complete as soon as possible
@@ -96,39 +99,41 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   private static <T> CompletableFuture<T> dualExecute(
       Supplier<CompletableFuture<T>> fastClientFutureSupplier,
       Supplier<CompletableFuture<T>> thinClientFutureSupplier,
-      FastClientStats clientStats) {
+      FastClientStats clientStats,
+      ExecutionContextProvider.CapturedContext executionContext) {
     CompletableFuture<T> valueFuture = new CompletableFuture<>();
     AtomicBoolean fastClientError = new AtomicBoolean(false);
     AtomicBoolean thinClientError = new AtomicBoolean(false);
     AtomicReference<Double> fastClientLatency = new AtomicReference<>();
     AtomicReference<Double> thinClientLatency = new AtomicReference<>();
     CompletableFuture<T> fastClientFuture =
-        sendRequest(fastClientFutureSupplier, fastClientError, fastClientLatency, valueFuture);
+        sendRequest(fastClientFutureSupplier, fastClientError, fastClientLatency, valueFuture, executionContext);
     CompletableFuture<T> thinClientFuture =
-        sendRequest(thinClientFutureSupplier, thinClientError, thinClientLatency, valueFuture);
+        sendRequest(thinClientFutureSupplier, thinClientError, thinClientLatency, valueFuture, executionContext);
 
-    CompletableFuture.allOf(fastClientFuture, thinClientFuture).whenComplete((response, throwable) -> {
-      /**
-       * Throw exception only if both fast-client and thin-client return error.
-       */
-      if (throwable != null && fastClientFuture.isCompletedExceptionally()
-          && thinClientFuture.isCompletedExceptionally()) {
-        valueFuture.completeExceptionally(throwable);
-      }
+    CompletableFuture.allOf(fastClientFuture, thinClientFuture)
+        .whenComplete(executionContext.wrap((response, throwable) -> {
+          /**
+           * Throw exception only if both fast-client and thin-client return error.
+           */
+          if (throwable != null && fastClientFuture.isCompletedExceptionally()
+              && thinClientFuture.isCompletedExceptionally()) {
+            valueFuture.completeExceptionally(throwable);
+          }
 
-      if (fastClientError.get() && !thinClientError.get()) {
-        // fast client returns error, but thin client returns good.
-        clientStats.recordFastClientErrorThinClientSucceedRequest();
-      }
-      // record latency delta and comparison only both requests succeed.
-      if (!thinClientError.get() && !fastClientError.get()) {
-        clientStats.recordThinClientFastClientLatencyDelta(thinClientLatency.get() - fastClientLatency.get());
-        if (fastClientLatency.get() > thinClientLatency.get()) {
-          // fast client is slower than thin client
-          clientStats.recordFastClientSlowerRequest();
-        }
-      }
-    });
+          if (fastClientError.get() && !thinClientError.get()) {
+            // fast client returns error, but thin client returns good.
+            clientStats.recordFastClientErrorThinClientSucceedRequest();
+          }
+          // record latency delta and comparison only both requests succeed.
+          if (!thinClientError.get() && !fastClientError.get()) {
+            clientStats.recordThinClientFastClientLatencyDelta(thinClientLatency.get() - fastClientLatency.get());
+            if (fastClientLatency.get() > thinClientLatency.get()) {
+              // fast client is slower than thin client
+              clientStats.recordFastClientSlowerRequest();
+            }
+          }
+        }));
 
     return valueFuture;
   }
@@ -142,15 +147,24 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
      * If a user calls {@link batchGet}, the {@link batchGet} would trigger a dual read on the thin-client and
      * fast-client.
      */
-    return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
+    return dualExecute(
+        () -> super.get(requestContext, key),
+        () -> thinClient.get(key),
+        clientStatsForSingleGet,
+        executionContext);
   }
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
     return dualExecute(
         () -> super.batchGet(requestContext, keys),
         () -> thinClient.batchGet(keys),
-        clientStatsForMultiGet);
+        clientStatsForMultiGet,
+        executionContext);
   }
 }

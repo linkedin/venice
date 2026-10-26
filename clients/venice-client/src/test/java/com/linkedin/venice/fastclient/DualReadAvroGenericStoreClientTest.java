@@ -10,6 +10,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -19,6 +22,7 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -29,9 +33,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.AdditionalMatchers;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -75,6 +81,7 @@ public class DualReadAvroGenericStoreClientTest {
     doReturn(dualClientStats).when(clientConfig).getStats(RequestType.MULTI_GET_STREAMING);
     doReturn(dualClientStats).when(clientConfig).getStats(RequestType.SINGLE_GET);
     doReturn(thinClient).when(clientConfig).getGenericThinClient();
+    doReturn(ExecutionContextProvider.NO_OP).when(clientConfig).getExecutionContextProvider();
 
     if (fastClientThrowExceptionWhenSending) {
       String fcRequestFailException = "Mocked VeniceClientException for fast-client while sending out request";
@@ -397,6 +404,105 @@ public class DualReadAvroGenericStoreClientTest {
       // expected
       assertEquals(e.getClass(), ExecutionException.class);
     }
+  }
+
+  @DataProvider
+  public Object[][] executionContextCompletions() {
+    return DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
+  }
+
+  @Test(dataProvider = "executionContextCompletions", timeOut = 15_000)
+  public void testDualReadCompletionKeepsRequestContext(boolean batchGet, boolean thinClientCompletes, boolean failure)
+      throws Exception {
+    ThreadLocal<String> context = new ThreadLocal<>();
+    AtomicInteger captures = new AtomicInteger();
+    ExecutionContextProvider provider = () -> {
+      captures.incrementAndGet();
+      String captured = context.get();
+      return task -> {
+        String previous = context.get();
+        context.set(captured);
+        try {
+          task.run();
+        } finally {
+          context.set(previous);
+        }
+      };
+    };
+    Map<String, String> fastValue = Collections.singletonMap(SINGLE_GET_KEY, FAST_CLIENT_SINGLE_GET_RESPONSE);
+    Map<String, String> thinValue = Collections.singletonMap(SINGLE_GET_KEY, THIN_CLIENT_SINGLE_GET_RESPONSE);
+    for (String request: new String[] { "request-a", "request-b" }) {
+      CompletableFuture<Map<String, String>> fastResponse = new CompletableFuture<>();
+      CompletableFuture<Map<String, String>> thinResponse = new CompletableFuture<>();
+      InternalAvroStoreClient<String, String> fastClient = mock(InternalAvroStoreClient.class);
+      AvroGenericStoreClient<String, String> thinClient = mock(AvroGenericStoreClient.class);
+      ClientConfig config = mock(ClientConfig.class);
+      doReturn(provider).when(config).getExecutionContextProvider();
+      doReturn(thinClient).when(config).getGenericThinClient();
+      doReturn(mock(FastClientStats.class)).when(config).getStats(any());
+      doAnswer(invocation -> {
+        GetRequestContext<?> requestContext = invocation.getArgument(0);
+        requestContext.getOrCaptureExecutionContext(provider);
+        return fastResponse.thenApply(values -> values.get(SINGLE_GET_KEY));
+      }).when(fastClient).get(any(GetRequestContext.class), any());
+      doAnswer(invocation -> {
+        BatchGetRequestContext<?, ?> requestContext = invocation.getArgument(0);
+        requestContext.getOrCaptureExecutionContext(provider);
+        StreamingCallback<String, String> callback = invocation.getArgument(2);
+        fastResponse.whenComplete((values, error) -> {
+          if (error == null) {
+            values.forEach(callback::onRecordReceived);
+          }
+          callback.onCompletion(error == null ? Optional.empty() : Optional.of(new VeniceClientException(error)));
+        });
+        return null;
+      }).when(fastClient).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
+      doReturn(thinResponse.thenApply(values -> values.get(SINGLE_GET_KEY))).when(thinClient).get(any());
+      doReturn(thinResponse).when(thinClient).batchGet(any());
+      DualReadAvroGenericStoreClient<String, String> client = new DualReadAvroGenericStoreClient<>(fastClient, config);
+      CompletableFuture<?> response;
+      context.set(request);
+      try {
+        response = batchGet ? client.batchGet(fastValue.keySet()) : client.get(SINGLE_GET_KEY);
+      } finally {
+        context.remove();
+      }
+      Map<String, String> winningValue = thinClientCompletes ? thinValue : fastValue;
+      CompletableFuture<String> downstream = response.handle((value, error) -> {
+        if (failure) {
+          assertNull(value);
+          assertNotNull(error);
+        } else {
+          assertNull(error);
+          assertEquals(value, batchGet ? winningValue : winningValue.get(SINGLE_GET_KEY));
+        }
+        return context.get();
+      });
+      scheduledExecutor.submit(() -> {
+        context.set("worker-prior-context");
+        try {
+          CompletableFuture<Map<String, String>> last = thinClientCompletes ? thinResponse : fastResponse;
+          CompletableFuture<Map<String, String>> other = thinClientCompletes ? fastResponse : thinResponse;
+          if (failure) {
+            other.completeExceptionally(new VeniceClientException("first failure"));
+            assertFalse(response.isDone());
+            assertEquals(context.get(), "worker-prior-context");
+            last.completeExceptionally(new VeniceClientException("last failure"));
+          } else {
+            last.complete(winningValue);
+            assertEquals(context.get(), "worker-prior-context");
+            other.complete(thinClientCompletes ? fastValue : thinValue);
+          }
+          assertEquals(context.get(), "worker-prior-context");
+        } finally {
+          context.remove();
+        }
+      }).get(5, TimeUnit.SECONDS);
+      assertEquals(downstream.get(5, TimeUnit.SECONDS), request);
+      assertNull(context.get());
+    }
+    assertEquals(captures.get(), 2, "Dual-read and Fast Client must share one snapshot per request");
   }
 
   private void maybeDelayExecute(Runnable runnable, long delayMS) {

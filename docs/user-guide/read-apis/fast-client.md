@@ -163,7 +163,8 @@ disable core request metrics, no-available-replica metrics, or aggregate instanc
 Applications with thread-bound context can configure `setExecutionContextProvider(ExecutionContextProvider)`. The
 provider captures the caller's context before asynchronous work and supplies a reusable snapshot that runs tasks
 synchronously under that context. Fast Client uses it for single-get and batch/compute retries, response
-deserialization, and future/streaming completion callbacks, including requests that do not retry.
+deserialization, and future/streaming completion tasks, including requests that do not retry and optional dual-read
+completion when either the Fast Client or Thin Client finishes.
 
 One snapshot is captured per logical request and shared by its routes and retry attempts. All records in one batch
 invocation use that request's originating context; separate invocations may have different contexts. Propagation is
@@ -176,9 +177,12 @@ its retry. The default provider runs tasks directly without capturing or changin
 callbacks unchanged instead of decorating them, preserving existing behavior. Applications must supply their context
 implementation; no context framework is selected automatically.
 
-This applies to synchronous continuations triggered by the client's completion. Applications remain responsible for
-context propagation to executors they supply to asynchronous future continuations, and for callbacks attached after a
-future has already completed, which Java executes on the registering thread.
+The guarantee covers code that executes within the client's scoped tasks, including streaming callbacks and future
+continuations that actually run inline on the scoped completing thread. A plain `CompletableFuture` can also execute a
+pending synchronous continuation on another thread helping complete the future, such as a timed `get()` waiter, even
+when the continuation was registered before completion. Such execution is outside the client's scope. Applications
+remain responsible for propagating context to these continuations, to asynchronous continuation executors, and to
+callbacks attached after completion, which Java executes on the registering thread.
 
 ## Configuration Options
 

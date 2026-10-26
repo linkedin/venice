@@ -66,12 +66,15 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -1103,19 +1106,20 @@ public class RetriableAvroGenericStoreClientTest {
 
   @DataProvider
   public Object[][] executionContextWinners() {
-    return new Object[][] { { "original-only" }, { "original-wins" }, { "retry-wins" }, { "error-retry" } };
+    return new Object[][] { { "direct" }, { "original-only" }, { "original-wins" }, { "retry-wins" },
+        { "error-retry" } };
   }
 
   @Test(dataProvider = "executionContextWinners", timeOut = TEST_TIMEOUT)
   public void testSingleGetExecutionContext(String winner) throws Exception {
     try (ContextFixture fixture = new ContextFixture()) {
-      AtomicReference<CompletableFuture<GenericRecord>> response = new AtomicReference<>();
-      fixture.inContext("request", () -> response.set(fixture.retryClient.get("test_key")));
-      CompletableFuture<String> downstream = response.get().thenApply(value -> {
+      boolean withRetry = !"direct".equals(winner);
+      CompletableFuture<GenericRecord> response = fixture.startGet("request", withRetry);
+      CompletableFuture<String> downstream = response.thenApply(value -> {
         assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
         return fixture.context.get();
       });
-      boolean retry = !"original-only".equals(winner);
+      boolean retry = withRetry && !"original-only".equals(winner);
       if ("error-retry".equals(winner)) {
         fixture.onWorker(() -> fixture.attempts.get(0).completeExceptionally(new VeniceClientException("original")));
         fixture.drainDeserialization();
@@ -1130,11 +1134,65 @@ public class RetriableAvroGenericStoreClientTest {
       assertEquals(fixture.deserializationContexts, Collections.singletonList("request"));
       if (retry && !"error-retry".equals(winner)) {
         fixture.complete(1 - winningAttempt, fixture.singleResponse());
-        assertEquals(response.get().get(5, TimeUnit.SECONDS), SINGLE_GET_VALUE_RESPONSE);
+        assertEquals(response.get(5, TimeUnit.SECONDS), SINGLE_GET_VALUE_RESPONSE);
       }
-      assertTrue(fixture.scheduled.get(0).done.get());
+      if (withRetry) {
+        assertTrue(fixture.scheduled.get(0).done.get());
+      } else {
+        assertTrue(fixture.scheduled.isEmpty());
+      }
       assertEquals(fixture.contextCaptures.get(), 1, "Original and retry must share one snapshot");
       assertEquals(fixture.contextScopes.get(), retry ? ("error-retry".equals(winner) ? 2 : 3) : 1);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testWaitingCallerCanRunContinuationOutsideClientScope() throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      CompletableFuture<GenericRecord> response = fixture.startGet("request", true);
+      CompletableFuture<String> downstream = response.thenApply(value -> {
+        assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+        return fixture.context.get();
+      });
+      CompletableFuture<Void> blocked = new CompletableFuture<>();
+      CompletableFuture<Void> release = new CompletableFuture<>();
+      FutureTask<String> waiting = new FutureTask<>(() -> {
+        fixture.context.set("waiting-caller");
+        try {
+          assertEquals(response.get(5, TimeUnit.SECONDS), SINGLE_GET_VALUE_RESPONSE);
+          return fixture.context.get();
+        } finally {
+          fixture.context.remove();
+        }
+      });
+      Thread waiter = new Thread(waiting, "context-waiter");
+      try {
+        waiter.start();
+        TestUtils.waitForNonDeterministicAssertion(
+            5,
+            TimeUnit.SECONDS,
+            () -> assertEquals(waiter.getState(), Thread.State.TIMED_WAITING));
+        // Block the completing worker before it wakes the waiter; unpark the waiter explicitly below.
+        CompletableFuture<Void> blockingCallback = response.thenRun(() -> {
+          assertEquals(fixture.context.get(), "request");
+          blocked.complete(null);
+          release.join();
+        });
+        fixture.onWorker(() -> fixture.attempts.get(0).complete(fixture.singleResponse()));
+        Future<?> completing = fixture.submitWorker(() -> fixture.deserialization.remove().run());
+        blocked.get(5, TimeUnit.SECONDS);
+        LockSupport.unpark(waiter);
+        assertEquals(waiting.get(5, TimeUnit.SECONDS), "waiting-caller");
+        assertEquals(downstream.get(5, TimeUnit.SECONDS), "waiting-caller");
+        release.complete(null);
+        completing.get(5, TimeUnit.SECONDS);
+        blockingCallback.get(5, TimeUnit.SECONDS);
+      } finally {
+        release.complete(null);
+        waiter.interrupt();
+        waiter.join(TimeUnit.SECONDS.toMillis(5));
+        assertFalse(waiter.isAlive());
+      }
     }
   }
 
@@ -1143,9 +1201,7 @@ public class RetriableAvroGenericStoreClientTest {
     try (ContextFixture fixture = new ContextFixture()) {
       for (String request: new String[] { "request-a", "request-b" }) {
         int offset = fixture.attempts.size();
-        AtomicReference<CompletableFuture<GenericRecord>> response = new AtomicReference<>();
-        fixture.inContext(request, () -> response.set(fixture.retryClient.get("test_key")));
-        CompletableFuture<String> completionContext = response.get().handle((value, failure) -> {
+        CompletableFuture<String> completionContext = fixture.startGet(request, true).handle((value, failure) -> {
           assertTrue(failure != null);
           return fixture.context.get();
         });
@@ -1160,14 +1216,13 @@ public class RetriableAvroGenericStoreClientTest {
       assertEquals(
           fixture.dispatchContexts,
           java.util.Arrays.asList("request-a", "request-a", "request-b", "request-b"));
-      AtomicReference<CompletableFuture<GenericRecord>> cancelled = new AtomicReference<>();
-      fixture.inContext("cancelled-request", () -> cancelled.set(fixture.retryClient.get("test_key")));
-      assertTrue(cancelled.get().cancel(false));
-      expectThrows(CancellationException.class, () -> cancelled.get().join());
+      CompletableFuture<GenericRecord> cancelled = fixture.startGet("cancelled-request", true);
+      assertTrue(cancelled.cancel(false));
+      expectThrows(CancellationException.class, cancelled::join);
       fixture.onWorker(() -> fixture.scheduled.get(2).fire());
       fixture.complete(5, fixture.singleResponse());
       fixture.complete(4, fixture.singleResponse());
-      assertTrue(cancelled.get().isCancelled());
+      assertTrue(cancelled.isCancelled());
       assertEquals(fixture.dispatchContexts.subList(4, 6), Collections.nCopies(2, "cancelled-request"));
     }
   }
@@ -1175,9 +1230,7 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testSingleGetDeserializationFailureKeepsExecutionContext() throws Exception {
     try (ContextFixture fixture = new ContextFixture()) {
-      AtomicReference<CompletableFuture<GenericRecord>> response = new AtomicReference<>();
-      fixture.inContext("request", () -> response.set(fixture.retryClient.get("test_key")));
-      CompletableFuture<String> downstream = response.get().handle((value, failure) -> {
+      CompletableFuture<String> downstream = fixture.startGet("request", true).handle((value, failure) -> {
         assertTrue(failure != null);
         return fixture.context.get();
       });
@@ -1193,9 +1246,7 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testSingleGetTransportCancellationKeepsExecutionContext(boolean cancelBoth) throws Exception {
     try (ContextFixture fixture = new ContextFixture()) {
-      AtomicReference<CompletableFuture<GenericRecord>> response = new AtomicReference<>();
-      fixture.inContext("request", () -> response.set(fixture.retryClient.get("test_key")));
-      CompletableFuture<String> downstream = response.get().handle((value, failure) -> {
+      CompletableFuture<String> downstream = fixture.startGet("request", true).handle((value, failure) -> {
         if (cancelBoth) {
           assertNotNull(failure);
         } else {
@@ -1220,87 +1271,30 @@ public class RetriableAvroGenericStoreClientTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testSingleGetWithoutRetryLayerKeepsExecutionContext() throws Exception {
-    try (ContextFixture fixture = new ContextFixture()) {
-      AtomicReference<CompletableFuture<GenericRecord>> response = new AtomicReference<>();
-      fixture.inContext("request", () -> response.set(fixture.dispatchClient.get("test_key")));
-      CompletableFuture<String> downstream = response.get().thenApply(value -> {
-        assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
-        return fixture.context.get();
-      });
-      fixture.complete(0, fixture.singleResponse());
-      assertEquals(downstream.get(5, TimeUnit.SECONDS), "request");
-      assertEquals(fixture.dispatchContexts, Collections.singletonList("request"));
-      assertEquals(fixture.deserializationContexts, Collections.singletonList("request"));
-      assertTrue(fixture.scheduled.isEmpty());
-      assertEquals(fixture.contextCaptures.get(), 1);
-      assertEquals(fixture.contextScopes.get(), 1);
-    }
-  }
-
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testStreamingFailureAndWorkerReuseKeepExecutionContext(boolean compute) throws Exception {
     try (ContextFixture fixture = new ContextFixture()) {
       for (String request: new String[] { "request-a", "request-b" }) {
         int offset = fixture.attempts.size();
-        CompletableFuture<String> completion = new CompletableFuture<>();
-        fixture.inContext(request, () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
-          @Override
-          public void onRecordReceived(String key, Object value) {
-            fail("Failed requests must not return a record");
-          }
-
+        ContextCallback callback = new ContextCallback(fixture, request, compute) {
           @Override
           public void onCompletion(Optional<Exception> exception) {
-            assertTrue(exception.isPresent());
-            completion.complete(fixture.context.get());
+            super.onCompletion(exception);
             throw new IllegalStateException("application callback");
           }
-        }, false));
+        };
+        fixture.inContext(request, () -> fixture.startStreaming(compute, callback, false, true));
         fixture.onWorker(() -> fixture.scheduled.get(fixture.scheduled.size() - 1).fire());
         fixture.onWorker(() -> {
           fixture.attempts.get(offset).completeExceptionally(new VeniceClientException("original"));
           fixture.attempts.get(offset + 1).completeExceptionally(new VeniceClientException("retry"));
         });
         fixture.drainDeserialization();
-        assertEquals(completion.get(5, TimeUnit.SECONDS), request);
+        callback.assertFailure();
       }
       assertEquals(
           fixture.dispatchContexts,
           java.util.Arrays.asList("request-a", "request-a", "request-b", "request-b"));
-    }
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testStreamingWithoutRetryLayerKeepsExecutionContext(boolean compute) throws Exception {
-    try (ContextFixture fixture = new ContextFixture()) {
-      CompletableFuture<String> completion = new CompletableFuture<>();
-      AtomicBoolean recordReceived = new AtomicBoolean();
-      fixture.inContext("request", () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
-        @Override
-        public void onRecordReceived(String key, Object value) {
-          assertEquals(fixture.context.get(), "request");
-          assertEquals(key, "test_key");
-          if (compute) {
-            assertEquals(((ComputeGenericRecord) value).get("name").toString(), "context-value");
-          } else {
-            assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
-          }
-          assertFalse(recordReceived.getAndSet(true));
-        }
-
-        @Override
-        public void onCompletion(Optional<Exception> exception) {
-          assertFalse(exception.isPresent());
-          completion.complete(fixture.context.get());
-        }
-      }, true, false));
-      fixture.complete(0, fixture.streamingResponse(compute));
-      assertEquals(completion.get(5, TimeUnit.SECONDS), "request");
-      assertTrue(recordReceived.get());
-      assertEquals(fixture.dispatchContexts, Collections.singletonList("request"));
-      assertTrue(fixture.scheduled.isEmpty());
     }
   }
 
@@ -1314,24 +1308,7 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "streamingExecutionContextWinners", timeOut = TEST_TIMEOUT)
   public void testStreamingExecutionContext(boolean compute, String winner) throws Exception {
     try (ContextFixture fixture = new ContextFixture()) {
-      List<String> callbackContexts = new ArrayList<>();
-      List<Object> records = new ArrayList<>();
-      CompletableFuture<String> completion = new CompletableFuture<>();
-      StreamingCallback<String, Object> callback = new StreamingCallback<String, Object>() {
-        @Override
-        public void onRecordReceived(String key, Object value) {
-          assertEquals(key, "test_key");
-          callbackContexts.add(fixture.context.get());
-          records.add(value);
-        }
-
-        @Override
-        public void onCompletion(Optional<Exception> exception) {
-          assertEquals(exception, Optional.empty());
-          completion.complete(fixture.context.get());
-        }
-      };
-      fixture.inContext("request", () -> fixture.startStreaming(compute, callback));
+      ContextCallback callback = fixture.startStreaming("request", compute, true, true);
       boolean retry = !"original-only".equals(winner);
       if ("original-error".equals(winner)) {
         fixture.onWorker(() -> fixture.attempts.get(0).completeExceptionally(new VeniceClientException("original")));
@@ -1342,19 +1319,14 @@ public class RetriableAvroGenericStoreClientTest {
       int winningAttempt = "retry-wins".equals(winner) || "original-error".equals(winner) ? 1 : 0;
       TransportClientResponse response = fixture.streamingResponse(compute);
       fixture.complete(winningAttempt, response);
-      assertEquals(completion.get(5, TimeUnit.SECONDS), "request");
-      assertEquals(callbackContexts, Collections.singletonList("request"));
-      assertEquals(records.size(), 1);
-      if (compute) {
-        assertEquals(((ComputeGenericRecord) records.get(0)).get("name").toString(), "context-value");
-      } else {
-        assertEquals(records.get(0), SINGLE_GET_VALUE_RESPONSE);
+      callback.assertSuccess();
+      if (!compute) {
         assertEquals(fixture.deserializationContexts, Collections.singletonList("request"));
       }
       assertEquals(fixture.dispatchContexts, Collections.nCopies(retry ? 2 : 1, "request"));
       if (retry && !"original-error".equals(winner)) {
         fixture.complete(1 - winningAttempt, response);
-        assertEquals(records.size(), 1, "The losing attempt must not deliver another record");
+        callback.assertSuccess();
       }
       assertTrue(fixture.scheduled.get(0).done.get());
       assertEquals(fixture.contextCaptures.get(), 1, "Routes, decoder tasks and retry must share one snapshot");
@@ -1373,33 +1345,11 @@ public class RetriableAvroGenericStoreClientTest {
   public void testStreamingContextScopesDoNotScaleWithRecordCount(boolean compute, int keyCount, boolean withRetry)
       throws Exception {
     try (ContextFixture fixture = new ContextFixture(keyCount, 1)) {
-      Map<String, Object> records = new HashMap<>();
-      CompletableFuture<String> completion = new CompletableFuture<>();
-      fixture.inContext("request", () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
-        @Override
-        public void onRecordReceived(String key, Object value) {
-          assertEquals(fixture.context.get(), "request");
-          assertNull(records.put(key, value), "Each record must be delivered exactly once");
-          fixture.inContext("callback-local", () -> assertEquals(fixture.context.get(), "callback-local"));
-          assertEquals(fixture.context.get(), "request");
-        }
-
-        @Override
-        public void onCompletion(Optional<Exception> exception) {
-          assertFalse(exception.isPresent());
-          assertTrue(completion.complete(fixture.context.get()));
-        }
-      }, true, withRetry));
+      ContextCallback callback = fixture.startStreaming("request", compute, true, withRetry);
       fixture.complete(0, fixture.streamingResponse(compute));
-      assertEquals(completion.get(5, TimeUnit.SECONDS), "request");
-      assertEquals(records.keySet(), fixture.keys);
-      for (Object value: records.values()) {
-        if (compute) {
-          assertEquals(((ComputeGenericRecord) value).get("name").toString(), "context-value");
-        } else {
-          assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
-        }
-      }
+      callback.assertSuccess();
+      assertEquals(fixture.dispatchContexts, Collections.singletonList("request"));
+      assertEquals(fixture.scheduled.size(), withRetry ? 1 : 0);
       assertEquals(fixture.contextCaptures.get(), 1);
       assertEquals(
           fixture.contextScopes.get(),
@@ -1411,26 +1361,9 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testConcurrentBatchesShareContextOnlyWithinTheirOwnRequest(boolean compute) throws Exception {
     try (ContextFixture fixture = new ContextFixture(10, 2)) {
-      Map<String, Map<String, Object>> results = new HashMap<>();
-      Map<String, CompletableFuture<String>> completions = new HashMap<>();
+      List<ContextCallback> callbacks = new ArrayList<>();
       for (String request: new String[] { "request-a", "request-b" }) {
-        Map<String, Object> records = new HashMap<>();
-        CompletableFuture<String> completion = new CompletableFuture<>();
-        results.put(request, records);
-        completions.put(request, completion);
-        fixture.inContext(request, () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
-          @Override
-          public void onRecordReceived(String key, Object value) {
-            assertEquals(fixture.context.get(), request);
-            assertNull(records.put(key, value));
-          }
-
-          @Override
-          public void onCompletion(Optional<Exception> exception) {
-            assertFalse(exception.isPresent());
-            assertTrue(completion.complete(fixture.context.get()));
-          }
-        }));
+        callbacks.add(fixture.startStreaming(request, compute, true, true));
       }
       fixture.onWorker(() -> fixture.scheduled.get(0).fire());
       fixture.onWorker(() -> fixture.scheduled.get(1).fire());
@@ -1449,16 +1382,8 @@ public class RetriableAvroGenericStoreClientTest {
       for (int attempt: new int[] { 4, 2, 5, 3, 0, 6, 1, 7 }) {
         fixture.complete(attempt, fixture.streamingResponse(compute, fixture.attemptKeyCounts.get(attempt)));
       }
-      for (String request: results.keySet()) {
-        assertEquals(completions.get(request).get(5, TimeUnit.SECONDS), request);
-        assertEquals(results.get(request).keySet(), fixture.keys);
-        for (Object value: results.get(request).values()) {
-          if (compute) {
-            assertEquals(((ComputeGenericRecord) value).get("name").toString(), "context-value");
-          } else {
-            assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
-          }
-        }
+      for (ContextCallback callback: callbacks) {
+        callback.assertSuccess();
       }
       assertEquals(fixture.contextCaptures.get(), 2, "Separate requests need separate snapshots");
       assertEquals(fixture.contextScopes.get(), compute ? 22 : 14);
@@ -1468,25 +1393,13 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testMultiRouteTransportCancellationKeepsRequestContext(boolean compute) throws Exception {
     try (ContextFixture fixture = new ContextFixture(10, 2)) {
-      CompletableFuture<String> completion = new CompletableFuture<>();
-      fixture.inContext("request", () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
-        @Override
-        public void onRecordReceived(String key, Object value) {
-          fail("Cancelled transports must not return records");
-        }
-
-        @Override
-        public void onCompletion(Optional<Exception> exception) {
-          assertTrue(exception.isPresent());
-          completion.complete(fixture.context.get());
-        }
-      }, false));
+      ContextCallback callback = fixture.startStreaming("request", compute, false, true);
       fixture.onWorker(() -> fixture.scheduled.get(0).fire());
       for (CompletableFuture<TransportClientResponse> attempt: fixture.attempts) {
         fixture.onWorker(() -> assertTrue(attempt.cancel(false)));
         fixture.drainDeserialization();
       }
-      assertEquals(completion.get(5, TimeUnit.SECONDS), "request");
+      callback.assertFailure();
       assertEquals(fixture.dispatchContexts, Collections.nCopies(4, "request"));
       assertEquals(fixture.contextCaptures.get(), 1);
     }
@@ -1504,6 +1417,61 @@ public class RetriableAvroGenericStoreClientTest {
       if (done.compareAndSet(false, true)) {
         task.run();
       }
+    }
+  }
+
+  private static class ContextCallback implements StreamingCallback<String, Object> {
+    private final ContextFixture fixture;
+    private final String request;
+    private final boolean compute;
+    private final Map<String, Object> records = new HashMap<>();
+    private final CompletableFuture<String> completion = new CompletableFuture<>();
+    private Optional<Exception> failure;
+    private int recordCount;
+    private int completionCount;
+
+    ContextCallback(ContextFixture fixture, String request, boolean compute) {
+      this.fixture = fixture;
+      this.request = request;
+      this.compute = compute;
+    }
+
+    @Override
+    public void onRecordReceived(String key, Object value) {
+      recordCount++;
+      assertEquals(fixture.context.get(), request);
+      assertNull(records.put(key, value), "Each record must be delivered exactly once");
+      fixture.inContext("callback-local", () -> assertEquals(fixture.context.get(), "callback-local"));
+      assertEquals(fixture.context.get(), request);
+    }
+
+    @Override
+    public void onCompletion(Optional<Exception> exception) {
+      completionCount++;
+      failure = exception;
+      completion.complete(fixture.context.get());
+    }
+
+    void assertSuccess() throws Exception {
+      assertEquals(completion.get(5, TimeUnit.SECONDS), request);
+      assertEquals(completionCount, 1);
+      assertEquals(failure, Optional.empty());
+      assertEquals(records.keySet(), fixture.keys);
+      assertEquals(recordCount, fixture.keys.size());
+      for (Object value: records.values()) {
+        if (compute) {
+          assertEquals(((ComputeGenericRecord) value).get("name").toString(), "context-value");
+        } else {
+          assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+        }
+      }
+    }
+
+    void assertFailure() throws Exception {
+      assertEquals(completion.get(5, TimeUnit.SECONDS), request);
+      assertEquals(completionCount, 1);
+      assertTrue(failure.isPresent());
+      assertEquals(recordCount, 0, "Failed requests must not return records");
     }
   }
 
@@ -1639,14 +1607,18 @@ public class RetriableAvroGenericStoreClientTest {
       }
     }
 
-    void onWorker(Runnable task) throws Exception {
-      worker.submit(() -> inContext("worker-prior-context", () -> {
+    Future<?> submitWorker(Runnable task) {
+      return worker.submit(() -> inContext("worker-prior-context", () -> {
         try {
           task.run();
         } finally {
           assertEquals(context.get(), "worker-prior-context");
         }
-      })).get(5, TimeUnit.SECONDS);
+      }));
+    }
+
+    void onWorker(Runnable task) throws Exception {
+      submitWorker(task).get(5, TimeUnit.SECONDS);
       assertNull(context.get());
     }
 
@@ -1672,12 +1644,16 @@ public class RetriableAvroGenericStoreClientTest {
               .serialize(SINGLE_GET_VALUE_RESPONSE));
     }
 
-    void startStreaming(boolean compute, StreamingCallback<String, Object> callback) {
-      startStreaming(compute, callback, true);
+    CompletableFuture<GenericRecord> startGet(String request, boolean withRetry) {
+      AtomicReference<CompletableFuture<GenericRecord>> response = new AtomicReference<>();
+      inContext(request, () -> response.set((withRetry ? retryClient : dispatchClient).get("test_key")));
+      return response.get();
     }
 
-    void startStreaming(boolean compute, StreamingCallback<String, Object> callback, boolean partialSuccessAllowed) {
-      startStreaming(compute, callback, partialSuccessAllowed, true);
+    ContextCallback startStreaming(String request, boolean compute, boolean partialSuccessAllowed, boolean withRetry) {
+      ContextCallback callback = new ContextCallback(this, request, compute);
+      inContext(request, () -> startStreaming(compute, callback, partialSuccessAllowed, withRetry));
+      return callback;
     }
 
     void startStreaming(
@@ -1699,34 +1675,28 @@ public class RetriableAvroGenericStoreClientTest {
             request,
             keys,
             COMPUTE_PROJECTION_VALUE_SCHEMA,
-            new StreamingCallback<String, ComputeGenericRecord>() {
-              @Override
-              public void onRecordReceived(String key, ComputeGenericRecord value) {
-                callback.onRecordReceived(key, value);
-              }
-
-              @Override
-              public void onCompletion(Optional<Exception> exception) {
-                callback.onCompletion(exception);
-              }
-            },
+            forwardingCallback(callback),
             System.nanoTime());
       } else {
         client.streamingBatchGet(
             new BatchGetRequestContext<>(keys.size(), partialSuccessAllowed),
             keys,
-            new StreamingCallback<String, GenericRecord>() {
-              @Override
-              public void onRecordReceived(String key, GenericRecord value) {
-                callback.onRecordReceived(key, value);
-              }
-
-              @Override
-              public void onCompletion(Optional<Exception> exception) {
-                callback.onCompletion(exception);
-              }
-            });
+            forwardingCallback(callback));
       }
+    }
+
+    private <V> StreamingCallback<String, V> forwardingCallback(StreamingCallback<String, Object> callback) {
+      return new StreamingCallback<String, V>() {
+        @Override
+        public void onRecordReceived(String key, V value) {
+          callback.onRecordReceived(key, value);
+        }
+
+        @Override
+        public void onCompletion(Optional<Exception> exception) {
+          callback.onCompletion(exception);
+        }
+      };
     }
 
     TransportClientResponse streamingResponse(boolean compute) {
