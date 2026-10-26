@@ -51,14 +51,6 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       ClientConfig storeClientConfig,
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
-      ICProvider icProvider) {
-    this(storeClientConfig, producerConfigs, metricsRepository, icProvider, null);
-  }
-
-  OnlineVeniceProducer(
-      ClientConfig storeClientConfig,
-      VeniceProperties producerConfigs,
-      MetricsRepository metricsRepository,
       ICProvider icProvider,
       VeniceWriterHook writerHook) {
     LOGGER.info("Creating venice online producer for: {}", storeClientConfig.getStoreName());

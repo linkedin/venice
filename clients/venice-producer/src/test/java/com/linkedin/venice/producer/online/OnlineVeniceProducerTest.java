@@ -963,7 +963,7 @@ public class OnlineVeniceProducerTest {
       VeniceWriterOptions writerOptions = producer.getCapturedWriterOptions();
 
       Assert.assertNotNull(writerOptions, "VeniceWriterOptions should be captured");
-      assertNull(writerOptions.getWriterHook(), "The existing constructor should remain hook-free");
+      assertNull(writerOptions.getWriterHook(), "A null hook must preserve hook-free writer options");
       // Default values from VeniceWriterOptions.Builder
       Assert.assertEquals(writerOptions.getProducerCount(), 1, "Producer count should default to 1");
       Assert.assertEquals(writerOptions.getProducerThreadCount(), 1, "Producer thread count should default to 1");
@@ -1299,7 +1299,7 @@ public class OnlineVeniceProducerTest {
         VeniceProperties backendConfigs,
         MetricsRepository metricsRepository,
         boolean failPubSubWrites) {
-      super(storeClientConfig, backendConfigs, metricsRepository, null);
+      super(storeClientConfig, backendConfigs, metricsRepository, null, null);
       this.failPubSubWrites = failPubSubWrites;
 
       configureVeniceWriteMock();
