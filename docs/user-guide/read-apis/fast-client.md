@@ -158,6 +158,22 @@ Store-load-controller metrics are registered and emitted in RRD and OpenTelemetr
 `setStoreLoadControllerEnabled(true)` is configured. Both features are disabled by default. These settings do not
 disable core request metrics, no-available-replica metrics, or aggregate instance-health metrics.
 
+### Application Execution Context
+
+Applications with thread-bound context can configure `setExecutionContextProvider(ExecutionContextProvider)`. The
+provider captures the caller's context before asynchronous work and supplies a reusable snapshot that runs tasks
+synchronously under that context. Fast Client uses it for single-get and batch/compute retries, response
+deserialization, and future/streaming completion callbacks, including requests that do not retry.
+
+The provider must restore each worker's previous context in a `finally` block, including on exceptions, and must not
+swallow exceptions or execute failed callbacks again. Snapshots must support concurrent use by the original request and
+its retry. The default provider runs tasks directly without capturing or changing context, preserving existing behavior.
+Applications must supply their context implementation; no context framework is selected automatically.
+
+This applies to synchronous continuations triggered by the client's completion. Applications remain responsible for
+context propagation to executors they supply to asynchronous future continuations, and for callbacks attached after a
+future has already completed, which Java executes on the registering thread.
+
 ## Configuration Options
 
 Key configuration options for `ClientConfig`:

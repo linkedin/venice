@@ -78,6 +78,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final ClientConfig config;
   private final TransportClient transportClient;
   private final Executor deserializationExecutor;
+  private final ExecutionContextProvider executionContextProvider;
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
@@ -115,6 +116,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     this.transportClient = transportClient;
     this.deserializationExecutor = Optional.ofNullable(config.getDeserializationExecutor())
         .orElseGet(AbstractAvroStoreClient::getDefaultDeserializationExecutor);
+    this.executionContextProvider = config.getExecutionContextProvider();
     String storeName = metadata.getStoreName();
     BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
     COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
@@ -181,6 +183,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   @Override
   protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
+    ExecutionContextProvider.CapturedContext executionContext = executionContextProvider.capture();
     verifyMetadataInitialized();
     requestContext.key = key;
 
@@ -231,7 +234,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(requestContext.route, routeRequestFuture);
 
       CompletableFuture<Integer> routeRequestFutureFinal = routeRequestFuture;
-      transportFuture.whenCompleteAsync((response, throwable) -> {
+      transportFuture.whenCompleteAsync(executionContext.wrap((response, throwable) -> {
         requestContext.requestSubmissionToResponseHandlingTime =
             LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
         if (throwable != null) {
@@ -265,7 +268,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             }
           }
         }
-      }, deserializationExecutor);
+      }), deserializationExecutor);
 
     } catch (Exception e) {
       LOGGER.error("Received exception while sending request to route: {}", requestContext.route, e);
@@ -350,6 +353,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Map<String, String> requestHeaders,
       Function<List<MultiKeyRequestContext.KeyInfo<K>>, byte[]> requestSerializer,
       MultiKeyStreamingRouteResponseHandler routeResponseHandler) {
+    ExecutionContextProvider.CapturedContext executionContext = executionContextProvider.capture();
     verifyMetadataInitialized();
     int keyCnt = keys.size();
     if (keyCnt > metadata.getBatchGetLimit()) {
@@ -390,12 +394,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(route, routeRequestFuture.getOriginalFuture());
       requestCompletionFutures[routeIndex] = routeRequestFuture.getResultFuture();
 
-      transportClientFutureForRoute.whenComplete((transportClientResponse, throwable) -> {
+      transportClientFutureForRoute.whenComplete(executionContext.wrap((transportClientResponse, throwable) -> {
         requestContext.recordRequestSubmissionToResponseHandlingTime(route);
         TransportClientResponseForRoute response = TransportClientResponseForRoute
             .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
         routeResponseHandler.handle(keysForRoutes, response, throwable);
-      });
+      }));
       routeIndex++;
     }
 
@@ -417,7 +421,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestCompletionFutures[routeIndex] = placeholderFailedFuture;
     }
 
-    CompletableFuture.allOf(requestCompletionFutures).whenComplete((response, throwable) -> {
+    CompletableFuture.allOf(requestCompletionFutures).whenComplete(executionContext.wrap((response, throwable) -> {
       requestContext.complete();
 
       boolean failedOverall = throwable != null;
@@ -452,7 +456,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         callback.onCompletion(Optional.empty());
         resultFuture.complete(null);
       }
-    });
+    }));
   }
 
   /**
@@ -528,6 +532,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
+    ExecutionContextProvider.CapturedContext executionContext = executionContextProvider.capture();
     verifyMetadataInitialized();
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
@@ -548,7 +553,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
               keysForRoutes,
               response,
               computeResultRecordDeserializer,
-              callback);
+              callback,
+              executionContext);
           computeTransportRequestCompletionHandler(response, throwable, decoder);
         });
   }
@@ -559,7 +565,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
       TransportClientResponseForRoute transportClientResponse,
       RecordDeserializer<GenericRecord> computeResultRecordDeserializer,
-      StreamingCallback<K, ComputeGenericRecord> allRecordsCallback) {
+      StreamingCallback<K, ComputeGenericRecord> allRecordsCallback,
+      ExecutionContextProvider.CapturedContext executionContext) {
     List<K> keyList = new ArrayList<>(keysForRoutes.size());
     for (MultiKeyRequestContext.KeyInfo keyInfo: keysForRoutes) {
       keyList.add((K) keyInfo.getKey());
@@ -608,7 +615,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return new ComputeRecordStreamDecoder<>(
         keyList,
         nonCompletingStreamingCallback,
-        deserializationExecutor,
+        task -> deserializationExecutor.execute(executionContext.wrap(task)),
         STREAMING_FOOTER_RECORD_DESERIALIZER,
         computeResultRecordDeserializer);
   }

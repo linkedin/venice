@@ -78,6 +78,18 @@ public class ClientConfigTest {
   }
 
   @Test
+  public void testExecutionContextProviderDefaultAndClone() {
+    ClientConfig.ClientConfigBuilder builder = getClientConfigWithMinimumRequiredInputs();
+    assertSame(builder.build().getExecutionContextProvider(), ExecutionContextProvider.NO_OP);
+    assertSame(builder.clone().build().getExecutionContextProvider(), ExecutionContextProvider.NO_OP);
+    ExecutionContextProvider provider = () -> Runnable::run;
+    builder.setExecutionContextProvider(provider);
+    assertSame(builder.build().getExecutionContextProvider(), provider);
+    assertSame(builder.clone().build().getExecutionContextProvider(), provider);
+    assertThrows(NullPointerException.class, () -> builder.setExecutionContextProvider(null));
+  }
+
+  @Test
   public void testRouteMetricsDisabledByDefault() {
     ClientConfig.ClientConfigBuilder clientConfigBuilder = getClientConfigWithMinimumRequiredInputs();
     assertTrue(clientConfigBuilder.build().isRouteMetricsDisabled());
