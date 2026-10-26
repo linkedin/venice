@@ -128,6 +128,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
@@ -5096,6 +5097,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return resources.getStoreMetadataRepository().getAllStores();
   }
 
+  @Override
+  public long getClusterProvisionedVeniceUnits(String clusterName) {
+    long provisionedVeniceUnits = 0;
+    for (Store store: getAllStores(clusterName)) {
+      if (!store.isSystemStore()) {
+        Integer veniceUnits = store.getVeniceUnits();
+        if (veniceUnits != null) {
+          provisionedVeniceUnits += veniceUnits;
+        }
+      }
+    }
+    return provisionedVeniceUnits;
+  }
+
   /**
    * @see Admin#getAllStoreStatuses(String)
    */
@@ -6900,6 +6915,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<String> getStorageNodes(String clusterName) {
     checkControllerLeadershipFor(clusterName);
     return helixAdminClient.getInstancesInCluster(clusterName);
+  }
+
+  @Override
+  public Map<String, Integer> getLiveStorageNodeCount(String clusterName) {
+    checkControllerLeadershipFor(clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
+    SafeHelixDataAccessor accessor = resources.getHelixManager().getHelixDataAccessor();
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    ClusterConfig clusterConfig = accessor.getProperty(keyBuilder.clusterConfig());
+    if (clusterConfig == null) {
+      throw new VeniceException("Got a null clusterConfig from: " + keyBuilder.clusterConfig());
+    }
+    List<InstanceConfig> instanceConfigs = accessor.getChildValues(keyBuilder.instanceConfigs());
+    int liveStorageNodeCount = 0;
+    for (InstanceConfig instanceConfig: instanceConfigs) {
+      String instanceName = instanceConfig.getInstanceName();
+      if (routingDataRepository.isLiveInstance(instanceName) && instanceConfig.getInstanceEnabled()
+          && !clusterConfig.getDisabledInstances().containsKey(instanceName)
+          && !clusterConfig.getDisabledInstancesWithInfo().containsKey(instanceName)) {
+        liveStorageNodeCount++;
+      }
+    }
+    return Collections.singletonMap(getRegionName(), liveStorageNodeCount);
   }
 
   public HelixAdminClient getHelixAdminClient() {

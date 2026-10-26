@@ -65,6 +65,7 @@ import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -132,6 +133,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -3862,6 +3864,99 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 0; i < regionCount; i++) {
       assertEquals(result.get("region" + i).intValue(), i);
     }
+  }
+
+  @Test
+  public void testGetClusterProvisionedVeniceUnitsUsesLocalStoreMetadata() {
+    Store userStore = TestUtils.createTestStore("user_store", "owner", 0);
+    userStore.setVeniceUnits(20);
+    Store systemStore = TestUtils.createTestStore(Store.SYSTEM_STORE_NAME_PREFIX + "metadata", "owner", 0);
+    systemStore.setVeniceUnits(100);
+    doReturn(Arrays.asList(userStore, systemStore)).when(internalAdmin).getAllStores(clusterName);
+    doCallRealMethod().when(internalAdmin).getClusterProvisionedVeniceUnits(clusterName);
+
+    assertEquals(parentAdmin.getClusterProvisionedVeniceUnits(clusterName), 20L);
+    verify(internalAdmin).getClusterProvisionedVeniceUnits(clusterName);
+    doThrow(new VeniceException("Not the leader")).when(internalAdmin).getAllStores(clusterName);
+    assertThrows(VeniceException.class, () -> parentAdmin.getClusterProvisionedVeniceUnits(clusterName));
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountAcrossChildFabrics() {
+    ControllerClient firstClient = mock(ControllerClient.class);
+    ControllerClient secondClient = mock(ControllerClient.class);
+    Map<String, ControllerClient> clients = new LinkedHashMap<>();
+    clients.put("dc-0", firstClient);
+    clients.put("dc-1", secondClient);
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    LiveStorageNodeCountResponse firstResponse = new LiveStorageNodeCountResponse();
+    firstResponse.setLiveStorageNodeCountPerFabric(Collections.singletonMap("dc-0", 3));
+    LiveStorageNodeCountResponse secondResponse = new LiveStorageNodeCountResponse();
+    secondResponse.setLiveStorageNodeCountPerFabric(Collections.singletonMap("dc-1", 0));
+    doReturn(firstResponse).when(firstClient).getLiveStorageNodeCount();
+    doReturn(secondResponse).when(secondClient).getLiveStorageNodeCount();
+
+    Map<String, Integer> expected = new HashMap<>();
+    expected.put("dc-0", 3);
+    expected.put("dc-1", 0);
+    assertEquals(parentAdmin.getLiveStorageNodeCount(clusterName), expected);
+    verify(firstClient).getLiveStorageNodeCount();
+    verify(secondClient).getLiveStorageNodeCount();
+
+    secondResponse.setError("Child unavailable");
+    VeniceException error = expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(error.getMessage().contains("dc-1"));
+    assertTrue(error.getMessage().contains("Child unavailable"));
+  }
+
+  @DataProvider
+  public Object[][] invalidLiveStorageNodeCounts() {
+    Map<String, Integer> extraFabric = new HashMap<>();
+    extraFabric.put("dc-0", 1);
+    extraFabric.put("dc-1", 2);
+    return new Object[][] { { null }, { Collections.emptyMap() }, { Collections.singletonMap("wrong-fabric", 1) },
+        { Collections.singletonMap("dc-0", null) }, { Collections.singletonMap("dc-0", -1) }, { extraFabric } };
+  }
+
+  @Test(dataProvider = "invalidLiveStorageNodeCounts")
+  public void testGetLiveStorageNodeCountRejectsInvalidChildCounts(Map<String, Integer> counts) {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    LiveStorageNodeCountResponse response = new LiveStorageNodeCountResponse();
+    response.setLiveStorageNodeCountPerFabric(counts);
+    doReturn(response).when(client).getLiveStorageNodeCount();
+
+    VeniceException error = expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(error.getMessage().contains("dc-0"));
+    assertTrue(error.getMessage().contains("invalid fabric counts"));
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountRejectsChildRequestFailures() {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(null).when(client).getLiveStorageNodeCount();
+    VeniceException nullResponseError =
+        expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(nullResponseError.getMessage().contains("dc-0"));
+    assertTrue(nullResponseError.getMessage().contains("null response"));
+
+    VeniceException cause = new VeniceException("Request failed");
+    doThrow(cause).when(client).getLiveStorageNodeCount();
+    VeniceException requestError =
+        expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(requestError.getMessage().contains("dc-0"));
+    assertSame(requestError.getCause(), cause);
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountRequiresParentLeadership() {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    doThrow(new VeniceException("Not the leader")).when(internalAdmin).checkControllerLeadershipFor(clusterName);
+
+    assertThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    verify(client, never()).getLiveStorageNodeCount();
   }
 
   @Test

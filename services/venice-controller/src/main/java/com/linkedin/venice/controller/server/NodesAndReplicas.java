@@ -9,6 +9,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ClUSTER_HEALTH_INSTANCES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
@@ -21,6 +22,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.NodeRemovableResult;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
@@ -39,6 +41,7 @@ import java.util.Optional;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import spark.Request;
 import spark.Route;
 
 
@@ -52,6 +55,18 @@ public class NodesAndReplicas extends AbstractRoute {
    */
   public NodesAndReplicas(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
     super(sslEnabled, accessController);
+  }
+
+  public Route getLiveStorageNodeCount(Admin admin) {
+    return new VeniceRouteHandler<LiveStorageNodeCountResponse>(LiveStorageNodeCountResponse.class) {
+      @Override
+      public void internalHandle(Request request, LiveStorageNodeCountResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_LIVE_STORAGE_NODE_COUNT.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setLiveStorageNodeCountPerFabric(admin.getLiveStorageNodeCount(clusterName));
+      }
+    };
   }
 
   /**

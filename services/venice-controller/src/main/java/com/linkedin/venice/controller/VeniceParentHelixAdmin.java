@@ -83,6 +83,7 @@ import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
@@ -2379,6 +2380,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getAllStores(clusterName);
   }
 
+  @Override
+  public long getClusterProvisionedVeniceUnits(String clusterName) {
+    return getVeniceHelixAdmin().getClusterProvisionedVeniceUnits(clusterName);
+  }
+
   /**
    * Unsupported operation in the parent controller.
    */
@@ -3464,6 +3470,34 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public List<String> getStorageNodes(String clusterName) {
     throw new VeniceUnsupportedOperationException("getStorageNodes");
+  }
+
+  @Override
+  public Map<String, Integer> getLiveStorageNodeCount(String clusterName) {
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    Map<String, Integer> counts = new HashMap<>();
+    for (Map.Entry<String, ControllerClient> entry: getVeniceHelixAdmin().getControllerClientMap(clusterName)
+        .entrySet()) {
+      String fabric = entry.getKey();
+      String errorMessage =
+          "Failed to get live storage node count for cluster " + clusterName + " from fabric " + fabric;
+      LiveStorageNodeCountResponse response;
+      try {
+        response = entry.getValue().getLiveStorageNodeCount();
+      } catch (Exception e) {
+        throw new VeniceException(errorMessage, e);
+      }
+      if (response == null || response.isError()) {
+        throw new VeniceException(errorMessage + ": " + (response == null ? "null response" : response.getError()));
+      }
+      Map<String, Integer> fabricCounts = response.getLiveStorageNodeCountPerFabric();
+      Integer count = fabricCounts == null ? null : fabricCounts.get(fabric);
+      if (count == null || count < 0 || fabricCounts.size() != 1) {
+        throw new VeniceException(errorMessage + ": invalid fabric counts: " + fabricCounts);
+      }
+      counts.put(fabric, count);
+    }
+    return counts;
   }
 
   /**
