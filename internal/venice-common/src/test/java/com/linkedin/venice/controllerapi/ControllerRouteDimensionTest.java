@@ -61,6 +61,8 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.CLEAN_EXECUTION_IDS, "clean_execution_ids")
         .put(ControllerRoute.LIST_CHILD_CLUSTERS, "list_child_clusters")
         .put(ControllerRoute.LIST_NODES, "list_nodes")
+        .put(ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT, "get_live_storage_node_count")
+        .put(ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS, "get_cluster_provisioned_venice_units")
         .put(ControllerRoute.CLUSTER_HEALTH_STORES, "cluster_health_stores")
         .put(ControllerRoute.ClUSTER_HEALTH_INSTANCES, "cluster_health_instances")
         .put(ControllerRoute.LIST_REPLICAS, "list_replicas")
