@@ -170,8 +170,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    *
    * <p>This method must not throw — implementations should log and swallow transient broker
    * failures.
+   *
+   * @param timeout the maximum time to block
    */
-  default void commitSync() {
+  default void commitSync(Duration timeout) {
     // no-op default; backends with consumer-group semantics override
   }
 

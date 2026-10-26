@@ -518,19 +518,24 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * {@code IllegalStateException}, which would be repeated at every poll cycle and flood logs.
    * Callers opt in to broker-side monitoring by setting {@code group.id} on the consumer config.
    *
-   * <p>The try/catch wraps {@link #acquireLockWithTimeout()} too so a lock-acquisition failure
+   * <p>The try/catch wraps {@link #acquireLockWithTimeout(Duration)} too so a lock-acquisition failure
    * (timeout, interrupt) doesn't propagate either — this whole code path must obey the
-   * "must not throw" contract.
+   * "must not throw" contract. Time spent waiting for the lock counts against {@code timeout}.
    */
   @Override
-  public void commitSync() {
+  public void commitSync(Duration timeout) {
     Properties props = config.getConsumerProperties();
     if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
       return;
     }
+    long startNs = System.nanoTime();
     try {
-      acquireLockWithTimeout();
-      kafkaConsumer.commitSync();
+      acquireLockWithTimeout(timeout);
+      Duration remaining = timeout.minusNanos(System.nanoTime() - startNs);
+      if (remaining.toMillis() <= 0) {
+        throw new PubSubOpTimeoutException("No time left to commit within " + timeout.toMillis() + " ms");
+      }
+      kafkaConsumer.commitSync(remaining);
     } catch (Exception e) {
       // Monitoring-only path — never propagate to the caller. Log with stack so a real broker
       // failure is debuggable; we already short-circuited the common "no group.id" case above.

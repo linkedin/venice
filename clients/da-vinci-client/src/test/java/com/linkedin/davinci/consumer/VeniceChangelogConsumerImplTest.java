@@ -227,49 +227,21 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testConsumerOffsetCommitIntervalConfig() {
+  public void testConsumerOffsetCommitConfig() {
     ChangelogClientConfig config = new ChangelogClientConfig();
-    // Default is 0 — caller opts in by setting both a positive interval and a Kafka group.id.
-    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 0L);
-    config.setConsumerOffsetCommitIntervalMs(5_000L);
-    Assert.assertEquals(config.getConsumerOffsetCommitIntervalMs(), 5_000L);
-    // Clone must carry the value across.
+    Assert.assertFalse(config.isConsumerOffsetCommitEnabled());
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setConsumerOffsetCommitTimeoutMs(0));
+    config.setConsumerOffsetCommitEnabled(true)
+        .setConsumerOffsetCommitIntervalMs(5_000L)
+        .setConsumerOffsetCommitTimeoutMs(1_000L);
     ChangelogClientConfig cloned = ChangelogClientConfig.cloneConfig(config);
+    Assert.assertTrue(cloned.isConsumerOffsetCommitEnabled());
     Assert.assertEquals(cloned.getConsumerOffsetCommitIntervalMs(), 5_000L);
+    Assert.assertEquals(cloned.getConsumerOffsetCommitTimeoutMs(), 1_000L);
   }
 
   @Test
-  public void testCommitOffsetsDelegatesToPubSubConsumer() {
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-    veniceChangelogConsumer.commitOffsets();
-    Mockito.verify(mockPubSubConsumer).commitSync();
-  }
-
-  @Test
-  public void testCommitOffsetsSwallowsExceptions() {
-    // Defensive second safety layer: even if a PubSubConsumerAdapter implementation throws
-    // unexpectedly, the exception must not bubble out of poll(). Monitoring is non-load-bearing.
-    Mockito.doThrow(new RuntimeException("simulated adapter failure")).when(mockPubSubConsumer).commitSync();
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-
-    veniceChangelogConsumer.commitOffsets();
-
-    Mockito.verify(mockPubSubConsumer).commitSync();
-  }
-
-  @Test
-  public void testPollPeriodicallyCommitsOffsets() {
-    // Large interval — first poll commits unconditionally (lastCommitTimeMs starts at 0),
-    // subsequent polls within the interval do not.
-    changelogClientConfig.setConsumerOffsetCommitIntervalMs(TimeUnit.HOURS.toMillis(1));
+  public void testOffsetCommitsDisabledByDefault() {
     Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
@@ -278,25 +250,58 @@ public class VeniceChangelogConsumerImplTest {
         veniceChangelogConsumerClientFactory);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.poll(pollTimeoutMs);
-    veniceChangelogConsumer.poll(pollTimeoutMs);
-    veniceChangelogConsumer.poll(pollTimeoutMs);
-    Mockito.verify(mockPubSubConsumer, Mockito.times(1)).commitSync();
+    veniceChangelogConsumer.commitOffsets();
+    Mockito.verify(mockPubSubConsumer, Mockito.never()).commitSync(any());
   }
 
   @Test
-  public void testPollSkipsCommitWhenIntervalIsZero() {
-    // Zero disables periodic commits entirely (escape hatch for backends without group.id).
-    changelogClientConfig.setConsumerOffsetCommitIntervalMs(0L);
+  public void testPollPeriodicallyCommitsOffsetsAndSwallowsFailures() {
+    changelogClientConfig.setConsumerOffsetCommitEnabled(true)
+        .setConsumerOffsetCommitIntervalMs(TimeUnit.HOURS.toMillis(1))
+        .setConsumerOffsetCommitTimeoutMs(1_000L);
     Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
+    Mockito.doThrow(new RuntimeException("simulated adapter failure")).when(mockPubSubConsumer).commitSync(any());
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
         mockPubSubConsumer,
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+    // The first poll commits (lastCommitTimeMs starts at 0); later polls within the interval do not.
     veniceChangelogConsumer.poll(pollTimeoutMs);
     veniceChangelogConsumer.poll(pollTimeoutMs);
-    Mockito.verify(mockPubSubConsumer, Mockito.never()).commitSync();
+    Mockito.verify(mockPubSubConsumer, times(1)).commitSync(Duration.ofSeconds(1));
+  }
+
+  @Test
+  public void testConcurrentPollsCommitOncePerInterval() throws Exception {
+    changelogClientConfig.setConsumerOffsetCommitEnabled(true);
+    Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
+    CountDownLatch commitStarted = new CountDownLatch(1);
+    CountDownLatch releaseCommit = new CountDownLatch(1);
+    Mockito.doAnswer(invocation -> {
+      commitStarted.countDown();
+      Assert.assertTrue(releaseCommit.await(5, TimeUnit.SECONDS));
+      return null;
+    }).when(mockPubSubConsumer).commitSync(any());
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    ExecutorService executorService = Executors.newSingleThreadExecutor();
+    try {
+      Future<?> firstPoll = executorService.submit(() -> veniceChangelogConsumer.poll(pollTimeoutMs));
+      Assert.assertTrue(commitStarted.await(5, TimeUnit.SECONDS));
+      // The second poll runs while the first poll's commit is still blocked.
+      veniceChangelogConsumer.poll(pollTimeoutMs);
+      releaseCommit.countDown();
+      firstPoll.get(5, TimeUnit.SECONDS);
+    } finally {
+      executorService.shutdownNow();
+    }
+    Mockito.verify(mockPubSubConsumer, times(1)).commitSync(any());
   }
 
   @Test

@@ -215,10 +215,8 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
    * {@link VeniceChangeCoordinate} state) remains the source of truth for offsets. A failed commit
    * must not affect correctness; impls are expected to log and swallow transient broker failures.
    *
-   * <p>To register a Kafka consumer group via this call, the caller must set
-   * {@code pubsub.kafka.consumer.group.id} (or equivalent) on
-   * {@link ChangelogClientConfig#getConsumerProperties()}. Without a configured group id, the
-   * commit is a no-op on the broker side.
+   * <p>No-op unless {@link ChangelogClientConfig#setConsumerOffsetCommitEnabled(boolean)} is set and a consumer group
+   * id is configured on {@link ChangelogClientConfig#getConsumerProperties()} (for Kafka, {@code kafka.group.id}).
    *
    * <p>Default is no-op; impls that wrap a Kafka pub-sub consumer override.
    */

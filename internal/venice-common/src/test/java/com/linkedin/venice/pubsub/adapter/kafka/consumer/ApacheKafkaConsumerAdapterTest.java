@@ -1029,16 +1029,16 @@ public class ApacheKafkaConsumerAdapterTest {
     consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
     when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
 
-    kafkaConsumerAdapter.commitSync();
-    verify(internalKafkaConsumer).commitSync();
+    kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
+    verify(internalKafkaConsumer).commitSync(any(Duration.class));
   }
 
   @Test
   public void testCommitSyncShortCircuitsWhenNoGroupId() {
     // Default mock returns null for getConsumerProperties — should silently no-op so existing
     // users who don't opt into broker-side monitoring don't see log spam every poll cycle.
-    kafkaConsumerAdapter.commitSync();
-    verify(internalKafkaConsumer, never()).commitSync();
+    kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
+    verify(internalKafkaConsumer, never()).commitSync(any(Duration.class));
   }
 
   @Test
@@ -1048,10 +1048,11 @@ public class ApacheKafkaConsumerAdapterTest {
     when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
     // Real broker failures (rebalance, broker down, etc.) must be swallowed; commit is
     // monitoring-only and must never affect correctness.
-    doThrow(new IllegalStateException("simulated broker failure")).when(internalKafkaConsumer).commitSync();
+    doThrow(new IllegalStateException("simulated broker failure")).when(internalKafkaConsumer)
+        .commitSync(any(Duration.class));
 
-    kafkaConsumerAdapter.commitSync();
-    verify(internalKafkaConsumer).commitSync();
+    kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
+    verify(internalKafkaConsumer).commitSync(any(Duration.class));
   }
 
 }

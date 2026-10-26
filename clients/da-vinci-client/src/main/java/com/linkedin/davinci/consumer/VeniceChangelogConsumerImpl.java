@@ -170,12 +170,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected Time time;
 
   /**
-   * Interval in milliseconds between monitoring-only offset commits to the underlying broker.
-   * Zero or negative disables periodic commits. Configured via
-   * {@link ChangelogClientConfig#setConsumerOffsetCommitIntervalMs(long)}.
+   * Monitoring-only offset commit settings. See {@link ChangelogClientConfig#setConsumerOffsetCommitEnabled(boolean)}.
    */
+  protected final boolean consumerOffsetCommitEnabled;
   protected final long consumerOffsetCommitIntervalMs;
-  protected volatile long lastCommitTimeMs = 0L;
+  protected final Duration consumerOffsetCommitTimeout;
+  private final AtomicLong lastCommitTimeMs = new AtomicLong();
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -206,7 +206,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.totalRegionCount = changelogClientConfig.getTotalRegionCount();
     this.clientRegionName = changelogClientConfig.getClientRegionName();
     this.versionSwapTimeoutInMs = changelogClientConfig.getVersionSwapTimeoutInMs();
+    this.consumerOffsetCommitEnabled = changelogClientConfig.isConsumerOffsetCommitEnabled();
     this.consumerOffsetCommitIntervalMs = changelogClientConfig.getConsumerOffsetCommitIntervalMs();
+    this.consumerOffsetCommitTimeout = Duration.ofMillis(changelogClientConfig.getConsumerOffsetCommitTimeoutMs());
     this.time = new SystemTime();
     this.onGoingVersionSwapSignal.set(new CountDownLatch(0));
     if (versionSwapByControlMessage) {
@@ -871,8 +873,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
    */
   @Override
   public void commitOffsets() {
+    if (!consumerOffsetCommitEnabled) {
+      return;
+    }
     try {
-      pubSubConsumer.commitSync();
+      pubSubConsumer.commitSync(consumerOffsetCommitTimeout);
     } catch (Exception e) {
       LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
     }
@@ -882,18 +887,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
    * Invoked from {@link #poll(long)} to commit positions at most once per configured interval.
    * Cadence-bounded so the commit cost doesn't grow with poll frequency.
    *
-   * <p>The post-commit timestamp (not the pre-commit one) is recorded as
-   * {@code lastCommitTimeMs} so a slow {@code commitSync} (e.g. broker hiccup) doesn't cause the
-   * next poll to immediately re-commit.
+   * <p>Each interval slot is claimed with a CAS before committing, so concurrent polls start at most one commit per
+   * interval.
    */
   private void maybeCommitOffsets() {
-    if (consumerOffsetCommitIntervalMs <= 0) {
+    if (!consumerOffsetCommitEnabled) {
       return;
     }
-    long now = System.currentTimeMillis();
-    if (now - lastCommitTimeMs >= consumerOffsetCommitIntervalMs) {
+    long now = time.getMilliseconds();
+    long last = lastCommitTimeMs.get();
+    if (now - last >= consumerOffsetCommitIntervalMs && lastCommitTimeMs.compareAndSet(last, now)) {
       commitOffsets();
-      lastCommitTimeMs = System.currentTimeMillis();
     }
   }
 
