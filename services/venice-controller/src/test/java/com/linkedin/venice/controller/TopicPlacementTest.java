@@ -124,76 +124,59 @@ public class TopicPlacementTest {
     return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.TREATMENT, true } };
   }
 
-  @Test(dataProvider = "selections")
-  public void testNewTopicUsesSelectionWithoutStaticEnablement(
-      TopicPlacement.Selection selection,
-      boolean alternative) {
-    when(placement.select(any())).thenReturn(selection);
-    create("batch-store", PushType.BATCH);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(placement).select(captured.capture());
-    assertEquals(captured.getValue().getClusterName(), config.getClusterName());
-    assertEquals(captured.getValue().getStoreName(), "batch-store");
-    assertEquals(captured.getValue().getTopicName(), "batch-store_v1");
-    assertEquals(captured.getValue().getDestinationAddress(), "destination.example:9092");
-    verifyCreate("batch-store", alternative);
-  }
-
-  @Test(dataProvider = "selections")
-  public void testPushStatusUsesNonHybridOwnerCohort(TopicPlacement.Selection selection, boolean alternative) {
-    String name = preparePushStatusStore();
-    when(placement.select(any())).thenReturn(selection);
-    create(name, PushType.BATCH);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(placement).select(captured.capture());
-    assertEquals(captured.getValue().getStoreName(), "batch-store");
-    assertEquals(captured.getValue().getTopicName(), name + "_v1");
-    verifyCreate(name, alternative);
-  }
-
   @DataProvider
   public Object[][] selectionsAndStaticSettings() {
     return new Object[][] { { TopicPlacement.Selection.CONTROL, false }, { TopicPlacement.Selection.CONTROL, true },
         { TopicPlacement.Selection.TREATMENT, false }, { TopicPlacement.Selection.TREATMENT, true } };
   }
 
-  @Test(dataProvider = "selectionsAndStaticSettings")
-  public void testStaticSettingsDoNotOverrideActiveSelection(
-      TopicPlacement.Selection selection,
-      boolean staticAlternative) {
-    String pushStatus = preparePushStatusStore();
-    configureStaticSettings("batch-store," + pushStatus, staticAlternative);
-    when(placement.select(any())).thenReturn(selection);
-    create("batch-store", PushType.BATCH);
-    create(pushStatus, PushType.BATCH);
-    verifyCreate("batch-store", selection == TopicPlacement.Selection.TREATMENT);
-    verifyCreate(pushStatus, selection == TopicPlacement.Selection.TREATMENT);
-  }
-
   @DataProvider
-  public Object[][] hybridPlacementCases() {
+  public Object[][] placementCases() {
     List<Object[]> cases = new ArrayList<>();
-    for (boolean pushStatus: new boolean[] { false, true }) {
-      for (String policy: new String[] { "ACTIVE", "SHADOW", "LEGACY" }) {
+    for (boolean hybrid: new boolean[] { false, true }) {
+      for (boolean shadow: new boolean[] { false, true }) {
         for (boolean staticAlternative: new boolean[] { false, true }) {
-          cases.add(new Object[] { pushStatus, policy, staticAlternative });
+          for (TopicPlacement.Selection selection: TopicPlacement.Selection.values()) {
+            cases.add(new Object[] { hybrid, shadow, staticAlternative, selection });
+          }
         }
       }
     }
     return cases.toArray(new Object[0][]);
   }
 
-  @Test(dataProvider = "hybridPlacementCases")
-  public void testHybridPlacementAcrossModes(boolean pushStatus, String policy, boolean staticAlternative) {
-    String name = pushStatus ? preparePushStatusStore() : "batch-store";
-    configureStaticSettings(name, staticAlternative);
-    when(store.isHybrid()).thenReturn(true);
-    when(placement.isEnabled(config.getClusterName())).thenReturn(!policy.equals("LEGACY"));
-    when(placement.isShadowMode(config.getClusterName())).thenReturn(policy.equals("SHADOW"));
-    when(placement.select(any())).thenReturn(TopicPlacement.Selection.TREATMENT);
-    create(name, PushType.BATCH);
-    verify(placement, never()).select(any());
-    verifyCreate(name, !policy.equals("ACTIVE") && staticAlternative);
+  @Test(dataProvider = "placementCases")
+  public void testPlacementControlsOwnerAndPushStatusAcrossCategories(
+      boolean hybrid,
+      boolean shadow,
+      boolean staticAlternative,
+      TopicPlacement.Selection selection) {
+    String pushStatus = preparePushStatusStore();
+    configureStaticSettings("batch-store," + pushStatus, staticAlternative);
+    when(store.isHybrid()).thenReturn(hybrid);
+    when(placement.isShadowMode(config.getClusterName())).thenReturn(shadow);
+    when(placement.select(any())).thenReturn(selection);
+    create("batch-store", PushType.BATCH);
+    create(pushStatus, PushType.BATCH);
+    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
+    verify(placement, times(2)).select(captured.capture());
+    assertEquals(captured.getAllValues().get(0).getTopicName(), "batch-store_v1");
+    assertEquals(captured.getAllValues().get(1).getTopicName(), pushStatus + "_v1");
+    for (TopicPlacementContext context: captured.getAllValues()) {
+      assertEquals(context.getClusterName(), config.getClusterName());
+      assertEquals(context.getStoreName(), "batch-store");
+      assertEquals(context.getDestinationAddress(), "destination.example:9092");
+      assertEquals(context.isLegacyAlternative(), staticAlternative);
+      assertEquals(
+          context.getMigrationCategory(),
+          hybrid
+              ? TopicPlacementContext.MigrationCategory.HYBRID_VT
+              : TopicPlacementContext.MigrationCategory.BATCH_VT);
+    }
+    boolean alternative = shadow ? staticAlternative : selection == TopicPlacement.Selection.TREATMENT;
+    verify(manager, never()).containsTopic(any());
+    verifyCreate("batch-store", alternative);
+    verifyCreate(pushStatus, alternative);
   }
 
   @Test
@@ -210,24 +193,6 @@ public class TopicPlacementTest {
     doReturn(null).when(admin).getStore(config.getClusterName(), "batch-store");
     assertThrows(VeniceNoStoreException.class, () -> create("batch-store", PushType.BATCH));
     verifyNoInteractions(manager, placement);
-  }
-
-  @Test(dataProvider = "selectionsAndStaticSettings")
-  public void testShadowPreservesStaticPlacement(TopicPlacement.Selection selection, boolean staticAlternative) {
-    String pushStatus = preparePushStatusStore();
-    configureStaticSettings("batch-store," + pushStatus, staticAlternative);
-    when(placement.isShadowMode(config.getClusterName())).thenReturn(true);
-    when(placement.select(any())).thenReturn(selection);
-    create("batch-store", PushType.BATCH);
-    create(pushStatus, PushType.BATCH);
-    ArgumentCaptor<TopicPlacementContext> captured = ArgumentCaptor.forClass(TopicPlacementContext.class);
-    verify(placement, times(2)).select(captured.capture());
-    for (TopicPlacementContext context: captured.getAllValues()) {
-      assertEquals(context.isLegacyAlternative(), staticAlternative);
-    }
-    verify(manager, never()).containsTopic(any());
-    verifyCreate("batch-store", staticAlternative);
-    verifyCreate(pushStatus, staticAlternative);
   }
 
   @Test
@@ -276,12 +241,17 @@ public class TopicPlacementTest {
 
   @DataProvider
   public Object[][] disabledPlacements() {
-    return new Object[][] { { true, false }, { true, true }, { false, false }, { false, true } };
+    return new Object[][] { { true, false, false }, { true, false, true }, { true, true, false }, { true, true, true },
+        { false, false, false }, { false, false, true }, { false, true, false }, { false, true, true } };
   }
 
   @Test(dataProvider = "disabledPlacements")
-  public void testDisabledOrMissingPlacementUsesStaticSettings(boolean missing, boolean staticAlternative) {
+  public void testDisabledOrMissingPlacementUsesStaticSettings(
+      boolean missing,
+      boolean staticAlternative,
+      boolean hybrid) {
     String pushStatus = preparePushStatusStore();
+    when(store.isHybrid()).thenReturn(hybrid);
     configureStaticSettings("batch-store," + pushStatus, staticAlternative);
     if (missing) {
       admin.setTopicPlacement(null);
