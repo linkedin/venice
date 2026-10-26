@@ -526,8 +526,7 @@ public class TestChangelogConsumer {
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testNewChangelogConsumerWithNewValueSchema()
-      throws IOException, ExecutionException, InterruptedException {
+  public void testNewChangelogConsumerWithNewValueSchema() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -561,6 +560,7 @@ public class TestChangelogConsumer {
         .setD2Client(fixture.getD2Client())
         .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
         .setIsNewStatelessClientEnabled(true);
+    String groupId = enableOffsetCommits(globalChangelogClientConfig);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
@@ -574,6 +574,7 @@ public class TestChangelogConsumer {
       Assert.assertEquals(polledChangeEventsMap.size(), 100);
       Assert.assertTrue(changeLogConsumer.isCaughtUp());
     });
+    assertCommittedOffsets(changeLogConsumer, groupId, storeName);
     TestUtils.assertCommand(
         setupControllerClient.retryableRequest(
             5,

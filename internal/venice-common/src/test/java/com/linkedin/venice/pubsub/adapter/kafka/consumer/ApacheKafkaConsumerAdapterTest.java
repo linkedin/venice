@@ -73,6 +73,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
@@ -1053,6 +1054,21 @@ public class ApacheKafkaConsumerAdapterTest {
 
     kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
     verify(internalKafkaConsumer).commitSync(any(Duration.class));
+  }
+
+  @Test
+  public void testCommitSyncWithPositionsCommitsNextOffset() {
+    Properties consumerProperties = new Properties();
+    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("store_v1"), 2);
+
+    kafkaConsumerAdapter
+        .commitSync(Collections.singletonMap(tp, ApacheKafkaOffsetPosition.of(41)), Duration.ofSeconds(1));
+    verify(internalKafkaConsumer)
+        .commitSync(eq(Collections.singletonMap(new TopicPartition("store_v1", 2), new OffsetAndMetadata(42))), any());
+    verify(internalKafkaConsumer, never()).assign(any());
+    verify(internalKafkaConsumer, never()).subscribe(any(Collection.class));
   }
 
 }

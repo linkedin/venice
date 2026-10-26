@@ -248,6 +248,17 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   /**
+   * Creates a consumer that only commits positions for a changelog consumer without its own PubSub consumer. It never
+   * subscribes or polls.
+   */
+  PubSubConsumerAdapter getOffsetCommitPubSubConsumer(ChangelogClientConfig changelogClientConfig) {
+    return getPubSubConsumer(
+        changelogClientConfig,
+        pubSubMessageDeserializer,
+        changelogClientConfig.getConsumerName() + "-offset-commit");
+  }
+
+  /**
    * Create a {@link PubSubMessageDeserializer} for changelog consumption.
    *
    * <p>Behavior:

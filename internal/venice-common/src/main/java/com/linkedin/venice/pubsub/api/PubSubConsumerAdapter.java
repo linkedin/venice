@@ -178,6 +178,18 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   }
 
   /**
+   * Same contract as {@link #commitSync(Duration)}, but commits the given positions instead of this consumer's own.
+   * Each position is that of the last record the caller consumed from the partition; the partitions do not need to
+   * be assigned to this consumer.
+   *
+   * @param lastConsumedPositions non-symbolic position of the last consumed record per topic-partition
+   * @param timeout the maximum time to block
+   */
+  default void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    // no-op default; backends with consumer-group semantics override
+  }
+
+  /**
    * Retrieves the consuming offset lag for a PubSub topic partition. The offset lag represents the difference
    * between the last consumed message offset and the latest available message offset for the partition.
    *

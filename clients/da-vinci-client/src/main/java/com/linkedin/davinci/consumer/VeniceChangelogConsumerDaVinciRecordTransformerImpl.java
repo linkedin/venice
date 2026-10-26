@@ -23,6 +23,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -37,6 +38,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -107,6 +109,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final String viewName;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
+  // Monitoring-only offset commits (null when disabled); see ChangelogClientConfig#setConsumerOffsetCommitEnabled.
+  private final PubSubConsumerAdapter offsetCommitConsumer;
+  // Last polled record per partition, keyed by partition so a version swap replaces the old version topic's entry.
+  private final Map<Integer, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> lastPolledMessages =
+      new VeniceConcurrentHashMap<>();
+  private final AtomicLong lastCommitTimeMs = new AtomicLong();
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -198,6 +206,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
+    this.offsetCommitConsumer = changelogClientConfig.isConsumerOffsetCommitEnabled()
+        ? veniceChangelogConsumerClientFactory.getOffsetCommitPubSubConsumer(changelogClientConfig)
+        : null;
   }
 
   private synchronized void startDaVinciClient() {
@@ -369,6 +380,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     } finally {
       isStarted.set(false);
       pubSubMessages.clear();
+      Utils.closeQuietlyWithErrorLogged(offsetCommitConsumer);
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
       clearPartitionState(Collections.emptySet());
       LOGGER.info("Closed VeniceChangelogConsumer with name: {}", changelogClientConfig.getConsumerName());
@@ -513,6 +525,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
 
       int messagesPolled = drainedPubSubMessages.size();
+      maybeCommitOffsets(drainedPubSubMessages);
 
       if (changelogClientConfig.shouldCompactMessages()) {
         if (includeControlMessages) {
@@ -541,6 +554,47 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public boolean isCaughtUp() {
     return isCaughtUp.get();
+  }
+
+  /**
+   * Commits the position of the last polled record per subscribed partition. See
+   * {@link VeniceChangelogConsumer#commitOffsets()}.
+   */
+  @Override
+  public void commitOffsets() {
+    if (offsetCommitConsumer == null || lastPolledMessages.isEmpty()) {
+      return;
+    }
+    Map<PubSubTopicPartition, PubSubPosition> positions = new HashMap<>();
+    lastPolledMessages.values().forEach(m -> positions.put(m.getTopicPartition(), m.getPosition().getPosition()));
+    try {
+      offsetCommitConsumer
+          .commitSync(positions, Duration.ofMillis(changelogClientConfig.getConsumerOffsetCommitTimeoutMs()));
+    } catch (Exception e) {
+      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+    }
+  }
+
+  /**
+   * Tracks the polled positions and commits at most once per interval; the CAS claims each interval slot so concurrent
+   * polls start at most one commit.
+   */
+  private void maybeCommitOffsets(Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
+    if (offsetCommitConsumer == null) {
+      return;
+    }
+    for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
+      // Skips heartbeats at symbolic positions and records buffered before their partition was unsubscribed.
+      if (!message.getPosition().getPosition().isSymbolic() && subscribedPartitions.contains(message.getPartition())) {
+        lastPolledMessages.put(message.getPartition(), message);
+      }
+    }
+    long now = System.currentTimeMillis();
+    long last = lastCommitTimeMs.get();
+    if (now - last >= changelogClientConfig.getConsumerOffsetCommitIntervalMs()
+        && lastCommitTimeMs.compareAndSet(last, now)) {
+      commitOffsets();
+    }
   }
 
   /**
@@ -1015,6 +1069,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       partitionToVersionToServe.clear();
       currentVersionLastHeartbeat.clear();
       eopReceivedPartitions.clear();
+      lastPolledMessages.clear();
       syntheticHeartbeatEnabled = false;
     } else {
       for (int partition: partitions) {
@@ -1022,6 +1077,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         partitionToVersionToServe.remove(partition);
         currentVersionLastHeartbeat.remove(partition);
         eopReceivedPartitions.remove(partition);
+        lastPolledMessages.remove(partition);
       }
     }
   }

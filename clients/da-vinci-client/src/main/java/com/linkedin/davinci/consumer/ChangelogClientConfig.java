@@ -108,12 +108,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   /**
    * Whether the changelog consumer periodically commits its current positions back to the broker for monitoring
-   * (consumer-group lag). Disabled by default. Only supported by the stateless consumer returned by
-   * {@link VeniceChangelogConsumerClientFactory#getChangelogConsumer} when {@link #isNewStatelessClientEnabled()} is
-   * false; other consumers ignore it.
+   * (consumer-group lag). Disabled by default. Supported by the consumers returned by
+   * {@link VeniceChangelogConsumerClientFactory}, both the after-image and the DaVinci-based ones.
    *
    * <p>Commits actually happen only when a Kafka {@code group.id} is also set on the consumer properties. The consumer
-   * never joins the group (partitions are assigned, not subscribed), so no group rebalancing happens.
+   * never joins the group (partitions are assigned or committed explicitly, never subscribed), so no group rebalancing
+   * happens.
    *
    * <p>This commit is monitoring-only: the caller's checkpoint state remains the source of truth for offsets, and the
    * consumer does not read back the committed offset on restart.

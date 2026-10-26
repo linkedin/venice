@@ -46,6 +46,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -524,6 +525,29 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public void commitSync(Duration timeout) {
+    commitWithinTimeout(timeout, kafkaConsumer::commitSync);
+  }
+
+  /**
+   * Commits {@code lastConsumedOffset + 1} per partition (Kafka's next-offset-to-read convention) with the same
+   * no-throw semantics as {@link #commitSync(Duration)}. Committing explicit offsets does not join the group.
+   */
+  @Override
+  public void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    if (lastConsumedPositions.isEmpty()) {
+      return;
+    }
+    commitWithinTimeout(timeout, remaining -> {
+      Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>(lastConsumedPositions.size());
+      lastConsumedPositions.forEach(
+          (tp, position) -> offsets.put(
+              new TopicPartition(tp.getTopicName(), tp.getPartitionNumber()),
+              new OffsetAndMetadata(position.getNumericOffset() + 1)));
+      kafkaConsumer.commitSync(offsets, remaining);
+    });
+  }
+
+  private void commitWithinTimeout(Duration timeout, java.util.function.Consumer<Duration> commit) {
     Properties props = config.getConsumerProperties();
     if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
       return;
@@ -535,7 +559,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       if (remaining.toMillis() <= 0) {
         throw new PubSubOpTimeoutException("No time left to commit within " + timeout.toMillis() + " ms");
       }
-      kafkaConsumer.commitSync(remaining);
+      commit.accept(remaining);
     } catch (Exception e) {
       // Monitoring-only path — never propagate to the caller. Log with stack so a real broker
       // failure is debuggable; we already short-circuited the common "no group.id" case above.
