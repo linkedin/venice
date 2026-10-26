@@ -173,7 +173,10 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   CLEAN_EXECUTION_IDS("/clean_execution_ids", HttpMethod.GET, Collections.emptyList(), CLUSTER),
   LIST_CHILD_CLUSTERS("/list_child_clusters", HttpMethod.GET, Collections.emptyList()),
   LIST_NODES("/list_instances", HttpMethod.GET, Collections.emptyList()),
-  CLUSTER_HEALTH_STORES("/cluster_health_stores", HttpMethod.GET, Collections.emptyList()),
+  GET_LIVE_STORAGE_NODE_COUNT("/get_live_storage_node_count", HttpMethod.GET, Collections.singletonList(CLUSTER)),
+  GET_CLUSTER_PROVISIONED_VENICE_UNITS(
+      "/get_cluster_provisioned_venice_units", HttpMethod.GET, Collections.singletonList(CLUSTER)
+  ), CLUSTER_HEALTH_STORES("/cluster_health_stores", HttpMethod.GET, Collections.emptyList()),
   ClUSTER_HEALTH_INSTANCES(
       "/cluster_health_instances", HttpMethod.GET, Collections.emptyList(), ENABLE_DISABLED_REPLICAS
   ), LIST_REPLICAS("/list_replicas", HttpMethod.GET, Arrays.asList(NAME, VERSION)),

@@ -1090,6 +1090,23 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
+  /**
+   * Returns the configured VU total across non-system stores in this client's cluster.
+   */
+  public ClusterProvisionedVeniceUnitsResponse getClusterProvisionedVeniceUnits() {
+    return request(
+        ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS,
+        newParams(),
+        ClusterProvisionedVeniceUnitsResponse.class);
+  }
+
+  /**
+   * Returns live, enabled storage-node counts for the local fabric (child) or all child fabrics (parent).
+   */
+  public LiveStorageNodeCountResponse getLiveStorageNodeCount() {
+    return request(ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT, newParams(), LiveStorageNodeCountResponse.class);
+  }
+
   public StoppableNodeStatusResponse getAggregatedHealthStatus(
       String clusterName,
       List<String> instances,
