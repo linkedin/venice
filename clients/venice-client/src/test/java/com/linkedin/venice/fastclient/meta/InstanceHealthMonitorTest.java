@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -239,7 +240,7 @@ public class InstanceHealthMonitorTest {
       thread.join(TimeUnit.SECONDS.toMillis(30));
       assertFalse(thread.isAlive());
     }
-    assertEquals(unexpected.get(), null);
+    assertNull(unexpected.get());
   }
 
   @Test
