@@ -2,8 +2,10 @@ package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_GROUP_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.integration.utils.IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -560,6 +562,9 @@ public class TestChangelogConsumer {
         .setD2Client(fixture.getD2Client())
         .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
         .setIsNewStatelessClientEnabled(true);
+    // DaVinci-based consumers discover the broker address, so offset commits must work without it.
+    consumerProperties.remove(KAFKA_BOOTSTRAP_SERVERS);
+    consumerProperties.remove(PUBSUB_BROKER_ADDRESS);
     String groupId = enableOffsetCommits(globalChangelogClientConfig);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);

@@ -516,6 +516,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           return Collections.emptyList();
         }
         pubSubMessages.drainTo(drainedPubSubMessages);
+        // Tracked under the buffer lock so concurrent polls record positions in drain order.
+        trackPolledPositions(drainedPubSubMessages);
       } catch (InterruptedException exception) {
         LOGGER.info("Thread was interrupted", exception);
         // Restore the interrupt status
@@ -525,7 +527,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
 
       int messagesPolled = drainedPubSubMessages.size();
-      maybeCommitOffsets(drainedPubSubMessages);
+      maybeCommitOffsets();
 
       if (changelogClientConfig.shouldCompactMessages()) {
         if (includeControlMessages) {
@@ -562,7 +564,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
    */
   @Override
   public void commitOffsets() {
-    if (offsetCommitConsumer == null || lastPolledMessages.isEmpty()) {
+    if (offsetCommitConsumer == null) {
+      return;
+    }
+    // Retires unsubscribed partitions and versions no longer served, so idle partitions stop committing to old topics.
+    lastPolledMessages.entrySet().removeIf(entry -> !isServedTopic(entry.getKey(), entry.getValue()));
+    if (lastPolledMessages.isEmpty()) {
       return;
     }
     Map<PubSubTopicPartition, PubSubPosition> positions = new HashMap<>();
@@ -575,19 +582,30 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     }
   }
 
-  /**
-   * Tracks the polled positions and commits at most once per interval; the CAS claims each interval slot so concurrent
-   * polls start at most one commit.
-   */
-  private void maybeCommitOffsets(Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
+  private boolean isServedTopic(int partition, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message) {
+    Integer versionToServe = partitionToVersionToServe.get(partition);
+    return versionToServe != null && subscribedPartitions.contains(partition)
+        && versionToServe == Version.parseVersionFromKafkaTopicName(message.getTopicPartition().getTopicName());
+  }
+
+  private void trackPolledPositions(Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
     if (offsetCommitConsumer == null) {
       return;
     }
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
-      // Skips heartbeats at symbolic positions and records buffered before their partition was unsubscribed.
-      if (!message.getPosition().getPosition().isSymbolic() && subscribedPartitions.contains(message.getPartition())) {
+      // Heartbeats carry symbolic positions, which cannot be committed.
+      if (!message.getPosition().getPosition().isSymbolic()) {
         lastPolledMessages.put(message.getPartition(), message);
       }
+    }
+  }
+
+  /**
+   * Commits at most once per interval; the CAS claims each interval slot so concurrent polls start at most one commit.
+   */
+  private void maybeCommitOffsets() {
+    if (offsetCommitConsumer == null) {
+      return;
     }
     long now = System.currentTimeMillis();
     long last = lastCommitTimeMs.get();
