@@ -38,6 +38,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
 
   private final Client r2Client;
+  private final long clientCloseTimeoutMs;
   private final String statsPrefix;
   private final boolean disableRouteMetrics;
   private final Class<T> specificValueClass;
@@ -136,6 +137,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     this.r2Client = builder.r2Client;
+    if (builder.clientCloseTimeoutMs < 0) {
+      throw new VeniceClientException("clientCloseTimeoutMs must be nonnegative");
+    }
+    this.clientCloseTimeoutMs = builder.clientCloseTimeoutMs;
     this.storeName = builder.storeName;
     this.statsPrefix = (builder.statsPrefix == null ? "" : builder.statsPrefix);
     this.disableRouteMetrics = builder.disableRouteMetrics;
@@ -220,11 +225,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.projectionFieldValidation = builder.projectionFieldValidation;
     this.longTailRetryBudgetEnforcementWindowInMs = builder.longTailRetryBudgetEnforcementWindowInMs;
     this.harClusters = builder.harClusters;
+    Client monitorClient = this.r2Client != null
+        ? this.r2Client
+        : this.grpcClientConfig == null ? null : this.grpcClientConfig.getR2Client();
     if (builder.instanceHealthMonitorConfig == null) {
-      this.instanceHealthMonitorConfig = InstanceHealthMonitorConfig.builder().setClient(this.r2Client).build();
+      this.instanceHealthMonitorConfig = InstanceHealthMonitorConfig.builder().setClient(monitorClient).build();
     } else if (builder.instanceHealthMonitorConfig.getClient() == null) {
       this.instanceHealthMonitorConfig =
-          builder.instanceHealthMonitorConfig.toBuilder().setClient(this.r2Client).build();
+          builder.instanceHealthMonitorConfig.toBuilder().setClient(monitorClient).build();
     } else {
       this.instanceHealthMonitorConfig = builder.instanceHealthMonitorConfig;
     }
@@ -254,6 +262,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public String getStoreName() {
     return storeName;
+  }
+
+  public long getClientCloseTimeoutMs() {
+    return clientCloseTimeoutMs;
   }
 
   public Client getR2Client() {
@@ -468,6 +480,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private ScheduledExecutorService metadataRefreshExecutor;
     private ClientRoutingStrategyType clientRoutingStrategyType;
     private Client r2Client;
+    private long clientCloseTimeoutMs = 1000;
     private boolean dualReadEnabled = false;
     private AvroGenericStoreClient<K, V> genericThinClient;
     private AvroSpecificStoreClient<K, T> specificThinClient;
@@ -567,6 +580,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     public ClientConfigBuilder<K, V, T> setClientRoutingStrategyType(
         ClientRoutingStrategyType clientRoutingStrategyType) {
       this.clientRoutingStrategyType = clientRoutingStrategyType;
+      return this;
+    }
+
+    /**
+     * Maximum request drain wait on close, in milliseconds. Zero disables the grace period.
+     */
+    public ClientConfigBuilder<K, V, T> setClientCloseTimeoutMs(long clientCloseTimeoutMs) {
+      this.clientCloseTimeoutMs = clientCloseTimeoutMs;
       return this;
     }
 
@@ -787,6 +808,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     public ClientConfigBuilder<K, V, T> clone() {
       ClientConfigBuilder<K, V, T> copy = new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
+          .setClientCloseTimeoutMs(clientCloseTimeoutMs)
           .setMetricsRepository(metricsRepository)
           .setStatsPrefix(statsPrefix)
           .setDisableRouteMetrics(disableRouteMetrics)

@@ -234,11 +234,27 @@ ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
     .build();
 ```
 
+**Migration:** Replace `setInstanceHealthMonitor(...)` with `setInstanceHealthMonitorConfig(...)`; settings may be
+reused, but live monitors are no longer shared. Use `ClientConfig.getInstanceHealthMonitorConfig()` for settings and let
+the client own monitor creation and cleanup. For gRPC-only configurations, the fallback heartbeat transport is
+`GrpcClientConfig.getR2Client()`.
+
 ## Client Lifecycle
 
 ### Closing the Client
 
-Always close clients properly to release resources:
+Factory-created Fast Clients reject new requests when `close()` starts and allow accepted requests, including retries,
+up to **1 second** to finish before closing metadata and other owned resources. Configure this grace period with
+`ClientConfigBuilder.setClientCloseTimeoutMs(long)`; values must be nonnegative, and `0` disables the wait. Requests
+still pending at the deadline fail with a `VeniceClientException` describing the shutdown timeout before cleanup
+completes. The timeout bounds request draining, not the time spent in application callbacks or resource cleanup.
+
+Queued response processing is discarded after the deadline. Already-running processing may finish or fail against closed
+resources; its late results are not delivered to the caller. Close does not wait for this work beyond the grace period.
+Calling `close()` from a completion callback starts shutdown without waiting for that callback itself. Other callers
+wait for the shared cleanup to finish. An interrupted close ends the drain wait and preserves the thread's interrupt.
+
+Always close clients before shutting down the borrowed D2 and R2 transports:
 
 ```java
 // Close the Venice client

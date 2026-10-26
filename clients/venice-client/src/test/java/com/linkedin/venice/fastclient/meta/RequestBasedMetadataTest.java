@@ -201,6 +201,10 @@ public class RequestBasedMetadataTest {
       assertThrows(RejectedExecutionException.class, () -> firstMonitor.getTimeoutProcessor().execute(() -> {}));
       assertThrows(IllegalStateException.class, () -> firstMonitor.trackHealthBasedOnRequestToInstance(REPLICA1_NAME));
       first.close();
+      assertThrows(VeniceClientException.class, () -> first.getCompressor(CompressionStrategy.NO_OP, CURRENT_VERSION));
+      assertThrows(
+          VeniceClientException.class,
+          () -> first.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, CURRENT_VERSION));
 
       CompletableFuture<Void> secondTimerAlive = new CompletableFuture<>();
       secondMonitor.getTimeoutProcessor().execute(() -> secondTimerAlive.complete(null));

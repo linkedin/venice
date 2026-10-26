@@ -48,6 +48,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
+  private final ClientRequestTracker requestTracker;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final String longTailBatchGetRangeBasedRetryThresholdInMilliSeconds;
   private final String longTailComputeRangeBasedRetryThresholdInMilliSeconds;
@@ -85,6 +86,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
+    this.requestTracker = delegate instanceof GracefulShutdownAvroGenericStoreClient
+        ? ((GracefulShutdownAvroGenericStoreClient<K, V>) delegate).getRequestTracker()
+        : null;
 
     this.singleKeyLongTailRetryManager = new RetryManager(
         clientConfig.getClusterStats().getMetricsRepository(),
@@ -161,7 +165,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         default:
           throw new VeniceClientException("Unknown retry type: " + retryType);
       }
-      retryTask.run();
+      trackedRetryTask(retryTask).run();
     }
   }
 
@@ -390,8 +394,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       }
     };
 
-    TimeoutProcessor.TimeoutFuture scheduledRetryTask =
-        timeoutProcessor.schedule(retryTask, longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
+    TimeoutProcessor.TimeoutFuture scheduledRetryTask = timeoutProcessor
+        .schedule(trackedRetryTask(retryTask), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
 
     /**
      * Retry for streaming multi-key request is done at the request level. This mean we will perform one retry for the
@@ -496,6 +500,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         }
       }
     };
+  }
+
+  private Runnable trackedRetryTask(Runnable task) {
+    return requestTracker == null ? task : requestTracker.resourceTask(task);
   }
 
   private boolean isExceptionCausedByTooManyRequests(Throwable e) {

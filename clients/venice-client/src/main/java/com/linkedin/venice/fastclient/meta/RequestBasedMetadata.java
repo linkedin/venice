@@ -121,6 +121,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, StorageMode> versionStorageModeMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
+  private volatile boolean closed;
   private final D2TransportClient d2TransportClient;
   private final R2TransportClient r2TransportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
@@ -860,6 +861,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public void close() throws IOException {
+    closed = true;
     // Cancel the pending metadata refresh task — interrupt even if mid-execution since the client
     // is shutting down and the refresh result would be discarded anyway.
     ScheduledFuture<?> pendingRefresh = scheduledRefreshFuture;
@@ -1053,7 +1055,19 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
-    return getCompressor(compressionStrategy, version, compressorFactory, versionZstdDictionaryMap);
+    if (closed) {
+      throw new VeniceClientException("Metadata is closed for store " + getStoreName());
+    }
+    VeniceCompressor compressor =
+        getCompressor(compressionStrategy, version, compressorFactory, versionZstdDictionaryMap);
+    if (closed) {
+      // A decoder already running at the shutdown deadline must not recreate a closed version's compressor.
+      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+        compressorFactory.removeVersionSpecificCompressor(getStoreName() + "_v" + version);
+      }
+      throw new VeniceClientException("Metadata is closed for store " + getStoreName());
+    }
+    return compressor;
   }
 
   @Override

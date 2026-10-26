@@ -14,6 +14,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * This class is used to include all the intermediate fields required for the communication between the different tiers.
  */
 public abstract class RequestContext {
+  ClientRequestTracker clientRequestTracker;
+
+  Runnable clientResourceTask(Runnable task) {
+    return clientRequestTracker == null ? task : clientRequestTracker.resourceTask(task);
+  }
+
   int currentVersion = -1;
   boolean noAvailableReplica = false;
 
