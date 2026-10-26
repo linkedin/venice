@@ -56,6 +56,7 @@ public class GetRequestContext<K> extends RequestContext {
 
   public GetRequestContext<K> createRetryRequestContext() {
     GetRequestContext<K> retryRequestContext = new GetRequestContext<>();
+    retryRequestContext.executionContext = executionContext;
     retryRequestContext.partitionId = partitionId;
     retryRequestContext.currentVersion = currentVersion;
     retryRequestContext.key = key;

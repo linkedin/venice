@@ -10,7 +10,7 @@ import java.util.function.BiConsumer;
  */
 @FunctionalInterface
 public interface ExecutionContextProvider {
-  ExecutionContextProvider NO_OP = () -> Runnable::run;
+  ExecutionContextProvider NO_OP = () -> CapturedContext.NO_OP;
 
   /**
    * Capture the calling thread's context before crossing an asynchronous boundary.
@@ -20,6 +20,28 @@ public interface ExecutionContextProvider {
 
   @FunctionalInterface
   interface CapturedContext {
+    CapturedContext NO_OP = new CapturedContext() {
+      @Override
+      public void run(Runnable task) {
+        task.run();
+      }
+
+      @Override
+      public Runnable wrap(Runnable task) {
+        return task;
+      }
+
+      @Override
+      public <T, U> BiConsumer<T, U> wrap(BiConsumer<T, U> callback) {
+        return callback;
+      }
+
+      @Override
+      public <K, V> StreamingCallback<K, V> wrap(StreamingCallback<K, V> callback) {
+        return callback;
+      }
+    };
+
     /**
      * Run the task synchronously, exactly once, under the captured context. Implementations must restore the
      * executing thread's previous context in a finally block, including when the task throws. Task exceptions

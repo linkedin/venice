@@ -183,7 +183,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   @Override
   protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
-    ExecutionContextProvider.CapturedContext executionContext = executionContextProvider.capture();
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
     verifyMetadataInitialized();
     requestContext.key = key;
 
@@ -353,7 +354,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Map<String, String> requestHeaders,
       Function<List<MultiKeyRequestContext.KeyInfo<K>>, byte[]> requestSerializer,
       MultiKeyStreamingRouteResponseHandler routeResponseHandler) {
-    ExecutionContextProvider.CapturedContext executionContext = executionContextProvider.capture();
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
     verifyMetadataInitialized();
     int keyCnt = keys.size();
     if (keyCnt > metadata.getBatchGetLimit()) {
@@ -532,7 +534,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
-    ExecutionContextProvider.CapturedContext executionContext = executionContextProvider.capture();
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
     verifyMetadataInitialized();
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =

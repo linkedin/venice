@@ -123,6 +123,7 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   }
 
   protected void copyStateToRetryRequestContext(MultiKeyRequestContext<K, V> retryContext) {
+    retryContext.executionContext = this.executionContext;
     retryContext.currentVersion = this.currentVersion;
     retryContext.routeRequestMap = this.routeRequestMap;
     // Used to bypass the route chosen by the original request when routing the retry request.

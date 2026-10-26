@@ -55,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -69,6 +70,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -1131,6 +1133,8 @@ public class RetriableAvroGenericStoreClientTest {
         assertEquals(response.get().get(5, TimeUnit.SECONDS), SINGLE_GET_VALUE_RESPONSE);
       }
       assertTrue(fixture.scheduled.get(0).done.get());
+      assertEquals(fixture.contextCaptures.get(), 1, "Original and retry must share one snapshot");
+      assertEquals(fixture.contextScopes.get(), retry ? ("error-retry".equals(winner) ? 2 : 3) : 1);
     }
   }
 
@@ -1230,6 +1234,8 @@ public class RetriableAvroGenericStoreClientTest {
       assertEquals(fixture.dispatchContexts, Collections.singletonList("request"));
       assertEquals(fixture.deserializationContexts, Collections.singletonList("request"));
       assertTrue(fixture.scheduled.isEmpty());
+      assertEquals(fixture.contextCaptures.get(), 1);
+      assertEquals(fixture.contextScopes.get(), 1);
     }
   }
 
@@ -1351,6 +1357,138 @@ public class RetriableAvroGenericStoreClientTest {
         assertEquals(records.size(), 1, "The losing attempt must not deliver another record");
       }
       assertTrue(fixture.scheduled.get(0).done.get());
+      assertEquals(fixture.contextCaptures.get(), 1, "Routes, decoder tasks and retry must share one snapshot");
+    }
+  }
+
+  @DataProvider
+  public Object[][] streamingContextWorkloads() {
+    return DataProviderUtils.allPermutationGenerator(
+        new Object[] { false, true },
+        new Object[] { 1, 10, 1000 },
+        new Object[] { false, true });
+  }
+
+  @Test(dataProvider = "streamingContextWorkloads", timeOut = TEST_TIMEOUT)
+  public void testStreamingContextScopesDoNotScaleWithRecordCount(boolean compute, int keyCount, boolean withRetry)
+      throws Exception {
+    try (ContextFixture fixture = new ContextFixture(keyCount, 1)) {
+      Map<String, Object> records = new HashMap<>();
+      CompletableFuture<String> completion = new CompletableFuture<>();
+      fixture.inContext("request", () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
+        @Override
+        public void onRecordReceived(String key, Object value) {
+          assertEquals(fixture.context.get(), "request");
+          assertNull(records.put(key, value), "Each record must be delivered exactly once");
+          fixture.inContext("callback-local", () -> assertEquals(fixture.context.get(), "callback-local"));
+          assertEquals(fixture.context.get(), "request");
+        }
+
+        @Override
+        public void onCompletion(Optional<Exception> exception) {
+          assertFalse(exception.isPresent());
+          assertTrue(completion.complete(fixture.context.get()));
+        }
+      }, true, withRetry));
+      fixture.complete(0, fixture.streamingResponse(compute));
+      assertEquals(completion.get(5, TimeUnit.SECONDS), "request");
+      assertEquals(records.keySet(), fixture.keys);
+      for (Object value: records.values()) {
+        if (compute) {
+          assertEquals(((ComputeGenericRecord) value).get("name").toString(), "context-value");
+        } else {
+          assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+        }
+      }
+      assertEquals(fixture.contextCaptures.get(), 1);
+      assertEquals(
+          fixture.contextScopes.get(),
+          compute ? 3 : 2,
+          "Scope response, aggregate completion and (for compute) decoder task, not each record");
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testConcurrentBatchesShareContextOnlyWithinTheirOwnRequest(boolean compute) throws Exception {
+    try (ContextFixture fixture = new ContextFixture(10, 2)) {
+      Map<String, Map<String, Object>> results = new HashMap<>();
+      Map<String, CompletableFuture<String>> completions = new HashMap<>();
+      for (String request: new String[] { "request-a", "request-b" }) {
+        Map<String, Object> records = new HashMap<>();
+        CompletableFuture<String> completion = new CompletableFuture<>();
+        results.put(request, records);
+        completions.put(request, completion);
+        fixture.inContext(request, () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
+          @Override
+          public void onRecordReceived(String key, Object value) {
+            assertEquals(fixture.context.get(), request);
+            assertNull(records.put(key, value));
+          }
+
+          @Override
+          public void onCompletion(Optional<Exception> exception) {
+            assertFalse(exception.isPresent());
+            assertTrue(completion.complete(fixture.context.get()));
+          }
+        }));
+      }
+      fixture.onWorker(() -> fixture.scheduled.get(0).fire());
+      fixture.onWorker(() -> fixture.scheduled.get(1).fire());
+      assertEquals(
+          fixture.dispatchContexts,
+          java.util.Arrays.asList(
+              "request-a",
+              "request-a",
+              "request-b",
+              "request-b",
+              "request-a",
+              "request-a",
+              "request-b",
+              "request-b"));
+      // Interleave request A's winning retry with request B's winning original on the same worker.
+      for (int attempt: new int[] { 4, 2, 5, 3, 0, 6, 1, 7 }) {
+        fixture.complete(attempt, fixture.streamingResponse(compute, fixture.attemptKeyCounts.get(attempt)));
+      }
+      for (String request: results.keySet()) {
+        assertEquals(completions.get(request).get(5, TimeUnit.SECONDS), request);
+        assertEquals(results.get(request).keySet(), fixture.keys);
+        for (Object value: results.get(request).values()) {
+          if (compute) {
+            assertEquals(((ComputeGenericRecord) value).get("name").toString(), "context-value");
+          } else {
+            assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+          }
+        }
+      }
+      assertEquals(fixture.contextCaptures.get(), 2, "Separate requests need separate snapshots");
+      assertEquals(fixture.contextScopes.get(), compute ? 22 : 14);
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testMultiRouteTransportCancellationKeepsRequestContext(boolean compute) throws Exception {
+    try (ContextFixture fixture = new ContextFixture(10, 2)) {
+      CompletableFuture<String> completion = new CompletableFuture<>();
+      fixture.inContext("request", () -> fixture.startStreaming(compute, new StreamingCallback<String, Object>() {
+        @Override
+        public void onRecordReceived(String key, Object value) {
+          fail("Cancelled transports must not return records");
+        }
+
+        @Override
+        public void onCompletion(Optional<Exception> exception) {
+          assertTrue(exception.isPresent());
+          completion.complete(fixture.context.get());
+        }
+      }, false));
+      fixture.onWorker(() -> fixture.scheduled.get(0).fire());
+      for (CompletableFuture<TransportClientResponse> attempt: fixture.attempts) {
+        fixture.onWorker(() -> assertTrue(attempt.cancel(false)));
+        fixture.drainDeserialization();
+      }
+      assertEquals(completion.get(5, TimeUnit.SECONDS), "request");
+      assertEquals(fixture.dispatchContexts, Collections.nCopies(4, "request"));
+      assertEquals(fixture.contextCaptures.get(), 1);
     }
   }
 
@@ -1374,6 +1512,11 @@ public class RetriableAvroGenericStoreClientTest {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Queue<Runnable> deserialization = new ArrayDeque<>();
     private final List<CompletableFuture<TransportClientResponse>> attempts = new ArrayList<>();
+    private final List<Integer> attemptKeyCounts = new ArrayList<>();
+    private final Map<String, Integer> routeKeyCounts = new HashMap<>();
+    private final Set<String> keys = new LinkedHashSet<>();
+    private final AtomicInteger contextCaptures = new AtomicInteger();
+    private final AtomicInteger contextScopes = new AtomicInteger();
     private final List<String> dispatchContexts = new ArrayList<>();
     private final List<String> deserializationContexts = new ArrayList<>();
     private final List<ScheduledContextRetry> scheduled = new ArrayList<>();
@@ -1382,9 +1525,20 @@ public class RetriableAvroGenericStoreClientTest {
     private final MetricsRepository repository = new MetricsRepository();
 
     ContextFixture() throws IOException {
+      this(1, 1);
+    }
+
+    ContextFixture(int keyCount, int routeCount) throws IOException {
+      for (int i = 0; i < keyCount; i++) {
+        keys.add(keyCount == 1 ? "test_key" : "test_key-" + i);
+      }
       ExecutionContextProvider provider = () -> {
+        contextCaptures.incrementAndGet();
         String captured = context.get();
-        return task -> inContext(captured, task);
+        return task -> {
+          contextScopes.incrementAndGet();
+          inContext(captured, task);
+        };
       };
       ClientConfig<String, GenericRecord, ?> config =
           new ClientConfig.ClientConfigBuilder<String, GenericRecord, org.apache.avro.specific.SpecificRecord>()
@@ -1402,7 +1556,7 @@ public class RetriableAvroGenericStoreClientTest {
       doReturn(STORE_NAME).when(metadata).getStoreName();
       doReturn(Schema.create(Schema.Type.STRING)).when(metadata).getKeySchema();
       doReturn(STORE_VALUE_SCHEMA).when(metadata).getValueSchema(1);
-      doReturn(100).when(metadata).getBatchGetLimit();
+      doReturn(1000).when(metadata).getBatchGetLimit();
       NoopCompressor compressor = new NoopCompressor() {
         @Override
         public ByteBuffer decompress(ByteBuffer data) {
@@ -1415,15 +1569,20 @@ public class RetriableAvroGenericStoreClientTest {
         RequestContext request = invocation.getArgument(0);
         request.setCurrentVersion(1);
         String route = request.isRetryRequest() ? "http://retry" : "http://original";
+        routeKeyCounts.clear();
         if (request instanceof GetRequestContext) {
           GetRequestContext<?> get = (GetRequestContext<?>) request;
           get.setRoute(route);
           get.setPartitionId(0);
           get.setSerializedKey(new byte[] { 1 });
+          routeKeyCounts.put(route, 1);
         } else {
           MultiKeyRequestContext<String, GenericRecord> multi = invocation.getArgument(0);
+          int index = 0;
           for (String key: multi.getKeys()) {
-            multi.addKey(route, key, new byte[] { 1 }, 0);
+            String keyRoute = routeCount == 1 ? route : route + "-" + index++ % routeCount;
+            multi.addKey(keyRoute, key, new byte[] { 1 }, 0);
+            routeKeyCounts.merge(keyRoute, 1, Integer::sum);
           }
         }
         return null;
@@ -1433,8 +1592,8 @@ public class RetriableAvroGenericStoreClientTest {
         return new ChainedCompletableFuture<>(status, status);
       }).when(metadata).trackHealthBasedOnRequestToInstance(any(), anyInt(), anyInt(), any());
       TransportClient transport = mock(TransportClient.class);
-      doAnswer(invocation -> newAttempt()).when(transport).get(any());
-      doAnswer(invocation -> newAttempt()).when(transport).post(any(), any(), any());
+      doAnswer(invocation -> newAttempt(invocation.getArgument(0))).when(transport).get(any());
+      doAnswer(invocation -> newAttempt(invocation.getArgument(0))).when(transport).post(any(), any(), any());
       TimeoutProcessor timer = mock(TimeoutProcessor.class);
       doAnswer(invocation -> {
         ScheduledContextRetry retry = new ScheduledContextRetry(invocation.getArgument(0));
@@ -1448,10 +1607,17 @@ public class RetriableAvroGenericStoreClientTest {
       retryClient = new RetriableAvroGenericStoreClient<>(dispatchClient, config, timer);
     }
 
-    private CompletableFuture<TransportClientResponse> newAttempt() {
+    private CompletableFuture<TransportClientResponse> newAttempt(String url) {
       dispatchContexts.add(context.get());
+      for (Map.Entry<String, Integer> entry: routeKeyCounts.entrySet()) {
+        if (url.startsWith(entry.getKey() + "/")) {
+          attemptKeyCounts.add(entry.getValue());
+          break;
+        }
+      }
       CompletableFuture<TransportClientResponse> future = new CompletableFuture<>();
       attempts.add(future);
+      assertEquals(attemptKeyCounts.size(), attempts.size());
       return future;
     }
 
@@ -1529,9 +1695,9 @@ public class RetriableAvroGenericStoreClientTest {
             Collections.emptyList(),
             true);
         client.compute(
-            new ComputeRequestContext<>(1, partialSuccessAllowed),
+            new ComputeRequestContext<>(keys.size(), partialSuccessAllowed),
             request,
-            Collections.singleton("test_key"),
+            keys,
             COMPUTE_PROJECTION_VALUE_SCHEMA,
             new StreamingCallback<String, ComputeGenericRecord>() {
               @Override
@@ -1547,8 +1713,8 @@ public class RetriableAvroGenericStoreClientTest {
             System.nanoTime());
       } else {
         client.streamingBatchGet(
-            new BatchGetRequestContext<>(1, partialSuccessAllowed),
-            Collections.singleton("test_key"),
+            new BatchGetRequestContext<>(keys.size(), partialSuccessAllowed),
+            keys,
             new StreamingCallback<String, GenericRecord>() {
               @Override
               public void onRecordReceived(String key, GenericRecord value) {
@@ -1564,25 +1730,41 @@ public class RetriableAvroGenericStoreClientTest {
     }
 
     TransportClientResponse streamingResponse(boolean compute) {
+      return streamingResponse(compute, keys.size());
+    }
+
+    TransportClientResponse streamingResponse(boolean compute, int keyCount) {
       byte[] body;
       if (compute) {
         GenericRecord value = new GenericData.Record(COMPUTE_PROJECTION_VALUE_SCHEMA);
         value.put("name", "context-value");
         value.put(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, Collections.emptyMap());
-        ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
-        record.keyIndex = 0;
-        record.value = ByteBuffer.wrap(
+        byte[] serializedValue =
             FastSerializerDeserializerFactory.getFastAvroGenericSerializer(COMPUTE_PROJECTION_VALUE_SCHEMA)
-                .serialize(value));
-        body = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$)
-            .serializeObjects(Collections.singletonList(record));
+                .serialize(value);
+        List<ComputeResponseRecordV1> records = new ArrayList<>();
+        for (int i = 0; i < keyCount; i++) {
+          ComputeResponseRecordV1 record = new ComputeResponseRecordV1();
+          record.keyIndex = i;
+          record.value = ByteBuffer.wrap(serializedValue);
+          records.add(record);
+        }
+        body = FastSerializerDeserializerFactory
+            .<ComputeResponseRecordV1>getFastAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$)
+            .serializeObjects(records);
       } else {
-        MultiGetResponseRecordV1 record = new MultiGetResponseRecordV1();
-        record.keyIndex = 0;
-        record.schemaId = 1;
-        record.value = ByteBuffer.wrap(singleResponse().getBody());
-        body = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$)
-            .serializeObjects(Collections.singletonList(record));
+        byte[] serializedValue = singleResponse().getBody();
+        List<MultiGetResponseRecordV1> records = new ArrayList<>();
+        for (int i = 0; i < keyCount; i++) {
+          MultiGetResponseRecordV1 record = new MultiGetResponseRecordV1();
+          record.keyIndex = i;
+          record.schemaId = 1;
+          record.value = ByteBuffer.wrap(serializedValue);
+          records.add(record);
+        }
+        body = FastSerializerDeserializerFactory
+            .<MultiGetResponseRecordV1>getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$)
+            .serializeObjects(records);
       }
       return new TransportClientResponse(1, CompressionStrategy.NO_OP, body);
     }

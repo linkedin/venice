@@ -7,10 +7,31 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import org.testng.annotations.Test;
 
 
 public class ExecutionContextProviderTest {
+  @Test
+  public void testNoOpDoesNotDecorateTasksOrCallbacks() {
+    ExecutionContextProvider.CapturedContext context = ExecutionContextProvider.NO_OP.capture();
+    assertSame(context, ExecutionContextProvider.NO_OP.capture());
+    Runnable task = () -> {};
+    BiConsumer<String, Throwable> completion = (value, failure) -> {};
+    StreamingCallback<String, String> callback = new StreamingCallback<String, String>() {
+      @Override
+      public void onRecordReceived(String key, String value) {
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+      }
+    };
+    assertSame(context.wrap(task), task);
+    assertSame(context.wrap(completion), completion);
+    assertSame(context.wrap(callback), callback);
+  }
+
   @Test
   public void testDirectExecutionAndExceptionPropagation() {
     ExecutionContextProvider.CapturedContext context = ExecutionContextProvider.NO_OP.capture();

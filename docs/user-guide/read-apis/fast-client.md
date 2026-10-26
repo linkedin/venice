@@ -165,10 +165,16 @@ provider captures the caller's context before asynchronous work and supplies a r
 synchronously under that context. Fast Client uses it for single-get and batch/compute retries, response
 deserialization, and future/streaming completion callbacks, including requests that do not retry.
 
+One snapshot is captured per logical request and shared by its routes and retry attempts. All records in one batch
+invocation use that request's originating context; separate invocations may have different contexts. Propagation is
+scoped to response/decoder tasks rather than individual records, so its scope count does not grow with the number of
+records in a response. Application callbacks must restore any context changes they make before returning.
+
 The provider must restore each worker's previous context in a `finally` block, including on exceptions, and must not
 swallow exceptions or execute failed callbacks again. Snapshots must support concurrent use by the original request and
-its retry. The default provider runs tasks directly without capturing or changing context, preserving existing behavior.
-Applications must supply their context implementation; no context framework is selected automatically.
+its retry. The default provider runs tasks directly without capturing or changing context, and returns tasks and
+callbacks unchanged instead of decorating them, preserving existing behavior. Applications must supply their context
+implementation; no context framework is selected automatically.
 
 This applies to synchronous continuations triggered by the client's completion. Applications remain responsible for
 context propagation to executors they supply to asynchronous future continuations, and for callbacks attached after a
