@@ -5,14 +5,18 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
@@ -25,30 +29,52 @@ import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -1075,6 +1101,727 @@ public class RetriableAvroGenericStoreClientTest {
     } catch (ExecutionException e) {
       // CORRECT behavior: future completed with exception
       assertTrue(e.getCause() instanceof VeniceClientException);
+    }
+  }
+
+  @DataProvider
+  public Object[][] contextInstallationFailures() {
+    return new Object[][] { { "get", 1, 0 }, { "batch", 1, 0 }, { "batch", 2, 1 }, { "compute", 1, 0 },
+        { "compute", 2, 0 }, { "compute", 3, 1 }, { "get", 0, 0 }, { "batch", 0, 0 }, { "compute", 0, 0 } };
+  }
+
+  @Test(dataProvider = "contextInstallationFailures", timeOut = TEST_TIMEOUT)
+  public void testContextInstallationFailureCompletesRequest(String operation, int failedScope, int deliveredRecords)
+      throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      fixture.failedScope = failedScope;
+      boolean withRetry = failedScope == 0;
+      ContextCallback callback = fixture.startRequest("request", operation, withRetry);
+      if (withRetry) {
+        fixture.onWorker(() -> fixture.scheduled.get(0).run());
+      }
+      fixture.complete(0, fixture.response(operation));
+      callback.completion.get(5, TimeUnit.SECONDS);
+      assertSame(rootCause(callback.failure.get()), fixture.contextFailure);
+      assertEquals(callback.completionCount, 1, "Failure notification must not replay application callbacks");
+      assertEquals(callback.recordCount, deliveredRecords, "Failed work must not run without context");
+      fixture.assertFailedRequests();
+      assertEquals(fixture.dispatchContexts, Collections.singletonList("request"));
+      assertEquals(fixture.contextCaptures.get(), 1);
+      assertEquals(fixture.scheduled.size(), withRetry ? 1 : 0);
+    }
+  }
+
+  @DataProvider
+  public Object[][] executionContextWinners() {
+    return DataProviderUtils.allPermutationGenerator(
+        new Object[] { "get", "batch", "compute" },
+        new Object[] { "direct", "original-only", "original-wins", "retry-wins", "error-retry",
+            "retry-install-failure" });
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testStreamingMissingRecordsKeepExecutionContext(boolean compute) throws Exception {
+    try (ContextFixture fixture = new ContextFixture(2, 1)) {
+      ContextCallback callback = fixture.startRequest("request", compute ? "compute" : "batch", false);
+      fixture.complete(0, fixture.streamingResponse(compute, 1));
+      assertEquals(callback.completion.get(5, TimeUnit.SECONDS), "request");
+      assertEquals(callback.failure, Optional.empty());
+      assertEquals(callback.completionCount, 1);
+      assertEquals(callback.recordCount, 2);
+      assertEquals(callback.records.keySet(), fixture.keys);
+      assertNotNull(callback.records.get("test_key-0"));
+      assertNull(callback.records.get("test_key-1"));
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testRetryCleanupFailureDoesNotCountRetryTwice(boolean compute) throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      fixture.failedCleanupScope = 1;
+      ContextCallback callback = fixture.startRequest("request", compute ? "compute" : "batch", true);
+      fixture.onWorker(() -> fixture.scheduled.get(0).run());
+      fixture.onWorker(() -> fixture.attempts.get(1).completeExceptionally(new VeniceClientException("retry")));
+      fixture.drainDeserialization();
+      assertFalse(callback.completion.isDone(), "The original request can still succeed");
+      assertTrue(fixture.requests.get(1).resultFuture.isCompletedExceptionally());
+      fixture.complete(0, fixture.streamingResponse(compute));
+      callback.assertSuccess();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testComputeResponseCleanupFailureDoesNotDeliverQueuedRecordsAfterCompletion() throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      fixture.failedCleanupScope = 1;
+      ContextCallback callback = fixture.startRequest("request", "compute", false);
+      fixture.onWorker(() -> fixture.attempts.get(0).complete(fixture.streamingResponse(true)));
+      assertFalse(fixture.deserialization.isEmpty(), "The decoder must remain queued when response cleanup fails");
+      callback.assertFailure();
+      assertSame(rootCause(callback.failure.get()), fixture.contextFailure);
+      fixture.drainDeserialization();
+      callback.assertFailure();
+      assertEquals(fixture.contextCaptures.get(), 1);
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testRetryCleanupFailureDoesNotDeliverDelayedRecordsAfterCompletion(boolean compute) throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      ContextCallback callback = fixture.startRequest("request", compute ? "compute" : "batch", true);
+      fixture.onWorker(() -> fixture.attempts.get(0).completeExceptionally(new VeniceClientException("original")));
+      fixture.failedCleanupScope = fixture.contextScopes.get() + 1;
+      fixture.onWorker(() -> fixture.scheduled.get(0).run());
+      callback.assertFailure("worker-prior-context");
+      assertSame(rootCause(callback.failure.get()), fixture.contextFailure);
+      assertFalse(fixture.attempts.get(1).isDone(), "The retry transport must still be active");
+      fixture.complete(1, fixture.streamingResponse(compute));
+      callback.assertFailure("worker-prior-context");
+      assertEquals(fixture.dispatchContexts, Collections.nCopies(2, "request"));
+      assertEquals(fixture.contextCaptures.get(), 1);
+    }
+  }
+
+  @DataProvider
+  public Object[][] keyDeliveryRaces() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
+  }
+
+  @Test(dataProvider = "keyDeliveryRaces", timeOut = TEST_TIMEOUT)
+  public void testCompletionWaitsForKeyRemovedByAnotherWorker(boolean compute, boolean retry) throws Exception {
+    try (ContextFixture fixture = new ContextFixture(2, 2)) {
+      fixture.pauseKeyCompletion = true;
+      ContextCallback callback = fixture.startRequest("request", compute ? "compute" : "batch", true);
+      ExecutorService secondWorker = Executors.newSingleThreadExecutor();
+      Future<?> first = null;
+      try {
+        if (compute) {
+          fixture.onWorker(() -> fixture.attempts.get(0).complete(fixture.streamingResponse(true, 1)));
+          first = fixture.submitWorker(fixture.deserialization.remove());
+        } else {
+          first = fixture.submitWorker(() -> fixture.attempts.get(0).complete(fixture.streamingResponse(false, 1)));
+        }
+        fixture.keyRemoved.get(5, TimeUnit.SECONDS);
+        secondWorker.submit(() -> fixture.inContext("second-worker", () -> {
+          if (retry) {
+            fixture.scheduled.get(0).run();
+          }
+          fixture.attempts.get(retry ? 2 : 1).complete(fixture.streamingResponse(compute, 1));
+          if (compute) {
+            fixture.deserialization.remove().run();
+          }
+          assertEquals(fixture.context.get(), "second-worker");
+        })).get(5, TimeUnit.SECONDS);
+        assertFalse(callback.completion.isDone(), "A reserved record must be delivered before completion");
+        fixture.releaseKeyCompletion.complete(null);
+        first.get(5, TimeUnit.SECONDS);
+        callback.assertSuccess();
+        if (retry) {
+          secondWorker.submit(() -> fixture.inContext("second-worker", () -> {
+            fixture.attempts.get(1).complete(fixture.streamingResponse(compute, 1));
+            if (compute) {
+              fixture.deserialization.remove().run();
+            }
+            assertEquals(fixture.context.get(), "second-worker");
+          })).get(5, TimeUnit.SECONDS);
+          callback.assertSuccess();
+        }
+        assertEquals(fixture.dispatchContexts, Collections.nCopies(retry ? 3 : 2, "request"));
+      } finally {
+        fixture.releaseKeyCompletion.complete(null);
+        if (first != null) {
+          first.get(5, TimeUnit.SECONDS);
+        }
+        secondWorker.shutdownNow();
+        assertTrue(secondWorker.awaitTermination(5, TimeUnit.SECONDS));
+      }
+    }
+  }
+
+  private static Throwable rootCause(Throwable failure) {
+    while (failure.getCause() != null) {
+      failure = failure.getCause();
+    }
+    return failure;
+  }
+
+  @Test(dataProvider = "executionContextWinners", timeOut = TEST_TIMEOUT)
+  public void testRequestExecutionContext(String operation, String winner) throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      boolean withRetry = !"direct".equals(winner);
+      fixture.failedScope = "retry-install-failure".equals(winner) ? 1 : -1;
+      ContextCallback callback = fixture.startRequest("request", operation, withRetry);
+      callback.throwOnCompletion = !"get".equals(operation) && "direct".equals(winner);
+      boolean retry = withRetry && !"original-only".equals(winner);
+      if ("error-retry".equals(winner)) {
+        fixture.onWorker(() -> fixture.attempts.get(0).completeExceptionally(new VeniceClientException("original")));
+        fixture.drainDeserialization();
+      }
+      if (retry) {
+        fixture.onWorker(() -> fixture.scheduled.get(0).run());
+      }
+      int attempts = retry && fixture.failedScope == -1 ? 2 : 1;
+      assertEquals(fixture.dispatchContexts, Collections.nCopies(attempts, "request"));
+      int winningAttempt = "error-retry".equals(winner) || "retry-wins".equals(winner) ? 1 : 0;
+      fixture.complete(winningAttempt, fixture.response(operation));
+      callback.assertSuccess();
+      assertFalse(fixture.requests.get(winningAttempt).resultFuture.isCompletedExceptionally());
+      if (!"compute".equals(operation)) {
+        assertEquals(fixture.deserializationContexts, Collections.singletonList("request"));
+      }
+      if (attempts == 2 && !"error-retry".equals(winner)) {
+        fixture.complete(1 - winningAttempt, fixture.response(operation));
+        callback.assertSuccess();
+      }
+      if (withRetry) {
+        assertTrue(fixture.retryDone.get(0).isDone());
+      } else {
+        assertTrue(fixture.scheduled.isEmpty());
+      }
+      assertEquals(fixture.contextCaptures.get(), 1, "Original and retry must share one snapshot");
+      if ("get".equals(operation) && fixture.failedScope == -1) {
+        assertEquals(fixture.contextScopes.get(), retry ? 3 : 1);
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCompletingHelperCanRunPlainFutureContinuationOutsideClientScope() throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      CompletableFuture<GenericRecord> response = fixture.startGet("request", true);
+      CompletableFuture<String> downstream = response.thenApply(value -> {
+        assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+        return fixture.context.get();
+      });
+      CompletableFuture<Void> blocked = new CompletableFuture<>();
+      CompletableFuture<Void> release = new CompletableFuture<>();
+      try {
+        CompletableFuture<Void> blockingCallback = response.thenRun(() -> {
+          assertEquals(fixture.context.get(), "request");
+          blocked.complete(null);
+          release.join();
+        });
+        fixture.onWorker(() -> fixture.attempts.get(0).complete(fixture.singleResponse()));
+        Future<?> completing = fixture.submitWorker(() -> fixture.deserialization.remove().run());
+        blocked.get(5, TimeUnit.SECONDS);
+        // Even a losing complete() call can help drain a plain future's synchronous continuations.
+        fixture.inContext("helper-caller", () -> assertFalse(response.complete(SINGLE_GET_VALUE_RESPONSE)));
+        assertEquals(downstream.get(5, TimeUnit.SECONDS), "helper-caller");
+        release.complete(null);
+        completing.get(5, TimeUnit.SECONDS);
+        blockingCallback.get(5, TimeUnit.SECONDS);
+      } finally {
+        release.complete(null);
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSingleGetCancellationKeepsExecutionContext() throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      CompletableFuture<GenericRecord> cancelled = fixture.startGet("cancelled-request", true);
+      assertTrue(cancelled.cancel(false));
+      expectThrows(CancellationException.class, cancelled::join);
+      fixture.onWorker(() -> fixture.scheduled.get(0).run());
+      fixture.complete(1, fixture.singleResponse());
+      fixture.complete(0, fixture.singleResponse());
+      assertTrue(cancelled.isCancelled());
+      assertEquals(fixture.dispatchContexts, Collections.nCopies(2, "cancelled-request"));
+    }
+  }
+
+  @DataProvider
+  public Object[][] contextRequestFailures() {
+    return new Object[][] { { "get", "transport" }, { "get", "malformed" }, { "get", "cancel-both" },
+        { "get", "cancel-original" }, { "batch", "transport" }, { "compute", "transport" },
+        { "batch", "cancel-routes" }, { "compute", "cancel-routes" }, { "batch", "retry-dispatch" },
+        { "compute", "retry-dispatch" } };
+  }
+
+  @Test(dataProvider = "contextRequestFailures", timeOut = TEST_TIMEOUT)
+  public void testRequestFailureAndWorkerReuseKeepExecutionContext(String operation, String failure) throws Exception {
+    boolean singleGet = "get".equals(operation);
+    boolean dispatchFailure = "retry-dispatch".equals(failure);
+    try (ContextFixture fixture = new ContextFixture(singleGet ? 1 : 10, singleGet ? 1 : 2)) {
+      fixture.retryDispatchFailure = dispatchFailure ? new IllegalArgumentException("retry dispatch") : null;
+      for (String request: new String[] { "request-a", "request-b" }) {
+        int offset = fixture.attempts.size();
+        int dispatched = fixture.dispatchContexts.size();
+        ContextCallback callback = fixture.startRequest(request, operation, true);
+        callback.throwOnCompletion = !singleGet;
+        if (dispatchFailure) {
+          fixture.onWorker(
+              () -> fixture.attempts.subList(offset, fixture.attempts.size())
+                  .forEach(attempt -> attempt.completeExceptionally(new VeniceClientException("original"))));
+          fixture.drainDeserialization();
+          assertFalse(callback.completion.isDone(), "The original failure must still allow a retry");
+        }
+        fixture.onWorker(() -> fixture.scheduled.get(fixture.scheduled.size() - 1).run());
+        fixture.onWorker(() -> {
+          for (int attempt = offset; !dispatchFailure && attempt < fixture.attempts.size(); attempt++) {
+            if (failure.startsWith("cancel")) {
+              if (attempt == offset || !"cancel-original".equals(failure)) {
+                assertTrue(fixture.attempts.get(attempt).cancel(false));
+              }
+            } else if ("malformed".equals(failure)) {
+              fixture.attempts.get(attempt)
+                  .complete(new TransportClientResponse(1, CompressionStrategy.NO_OP, new byte[0]));
+            } else {
+              fixture.attempts.get(attempt).completeExceptionally(new VeniceClientException("transport"));
+            }
+          }
+        });
+        fixture.drainDeserialization();
+        if ("cancel-original".equals(failure)) {
+          fixture.complete(offset + 1, fixture.response(operation));
+          callback.assertSuccess();
+        } else {
+          callback.assertFailure();
+          fixture.assertFailedRequests();
+        }
+        if (dispatchFailure) {
+          assertSame(rootCause(callback.failure.get()), fixture.retryDispatchFailure);
+          assertEquals(fixture.attempts.size(), offset + 2, "Synchronous dispatch must not create a retry transport");
+        }
+        assertEquals(
+            fixture.dispatchContexts.subList(dispatched, fixture.dispatchContexts.size()),
+            Collections.nCopies(singleGet ? 2 : dispatchFailure ? 3 : 4, request));
+      }
+      if ("malformed".equals(failure)) {
+        assertEquals(fixture.deserializationContexts, fixture.dispatchContexts);
+      }
+      assertEquals(fixture.contextCaptures.get(), 2);
+    }
+  }
+
+  @DataProvider
+  public Object[][] streamingContextWorkloads() {
+    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, new Object[] { 1, 10, 1000 });
+  }
+
+  @Test(dataProvider = "streamingContextWorkloads", timeOut = TEST_TIMEOUT)
+  public void testStreamingContextScopesDoNotScaleWithRecordCount(boolean compute, int keyCount) throws Exception {
+    try (ContextFixture fixture = new ContextFixture(keyCount, 1)) {
+      ContextCallback callback = fixture.startRequest("request", compute ? "compute" : "batch", true);
+      fixture.complete(0, fixture.streamingResponse(compute));
+      callback.assertSuccess();
+      assertEquals(fixture.dispatchContexts, Collections.singletonList("request"));
+      assertEquals(fixture.scheduled.size(), 1);
+      assertEquals(fixture.contextCaptures.get(), 1);
+      assertEquals(
+          fixture.contextScopes.get(),
+          compute ? 3 : 2,
+          "Scope response, aggregate completion and (for compute) decoder task, not each record");
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testConcurrentBatchesShareContextOnlyWithinTheirOwnRequest(boolean compute) throws Exception {
+    try (ContextFixture fixture = new ContextFixture(10, 2)) {
+      List<ContextCallback> callbacks = new ArrayList<>();
+      for (String request: new String[] { "request-a", "request-b" }) {
+        callbacks.add(fixture.startRequest(request, compute ? "compute" : "batch", true));
+      }
+      fixture.onWorker(() -> fixture.scheduled.get(0).run());
+      fixture.onWorker(() -> fixture.scheduled.get(1).run());
+      assertEquals(
+          fixture.dispatchContexts,
+          Arrays.asList(
+              "request-a",
+              "request-a",
+              "request-b",
+              "request-b",
+              "request-a",
+              "request-a",
+              "request-b",
+              "request-b"));
+      // Interleave request A's winning retry with request B's winning original on the same worker.
+      for (int attempt: new int[] { 4, 2, 5, 3, 0, 6, 1, 7 }) {
+        fixture.complete(attempt, fixture.streamingResponse(compute, fixture.attemptKeyCounts.get(attempt)));
+      }
+      for (ContextCallback callback: callbacks) {
+        callback.assertSuccess();
+      }
+      assertEquals(fixture.contextCaptures.get(), 2, "Separate requests need separate snapshots");
+      assertEquals(fixture.contextScopes.get(), compute ? 22 : 14);
+    }
+  }
+
+  private static class ContextCallback implements StreamingCallback<String, Object> {
+    private final ContextFixture fixture;
+    private final String request;
+    private final boolean compute;
+    private final Map<String, Object> records = new HashMap<>();
+    private final CompletableFuture<String> completion = new CompletableFuture<>();
+    private Optional<Exception> failure;
+    private int recordCount;
+    private int completionCount;
+    private boolean throwOnCompletion;
+
+    ContextCallback(ContextFixture fixture, String request, boolean compute) {
+      this.fixture = fixture;
+      this.request = request;
+      this.compute = compute;
+    }
+
+    @Override
+    public void onRecordReceived(String key, Object value) {
+      recordCount++;
+      assertEquals(fixture.context.get(), request);
+      assertNull(records.put(key, value), "Each record must be delivered exactly once");
+      fixture.inContext("callback-local", () -> assertEquals(fixture.context.get(), "callback-local"));
+      assertEquals(fixture.context.get(), request);
+    }
+
+    @Override
+    public void onCompletion(Optional<Exception> exception) {
+      completionCount++;
+      failure = exception;
+      completion.complete(fixture.context.get());
+      if (throwOnCompletion) {
+        throw new IllegalStateException("application callback");
+      }
+    }
+
+    void assertSuccess() throws Exception {
+      assertEquals(completion.get(5, TimeUnit.SECONDS), request);
+      assertEquals(completionCount, 1);
+      assertEquals(failure, Optional.empty());
+      assertEquals(records.keySet(), fixture.keys);
+      assertEquals(recordCount, fixture.keys.size());
+      for (Object value: records.values()) {
+        if (compute) {
+          assertEquals(((ComputeGenericRecord) value).get("name").toString(), "TEST_NAME_1");
+        } else {
+          assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
+        }
+      }
+    }
+
+    void assertFailure() throws Exception {
+      assertFailure(request);
+    }
+
+    void assertFailure(String completionContext) throws Exception {
+      assertEquals(completion.get(5, TimeUnit.SECONDS), completionContext);
+      assertEquals(completionCount, 1);
+      assertTrue(failure.isPresent());
+      assertEquals(recordCount, 0, "Failed requests must not return records");
+    }
+  }
+
+  private static class ContextFixture implements AutoCloseable {
+    private final ThreadLocal<String> context = new ThreadLocal<>();
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final Queue<Runnable> deserialization = new ArrayDeque<>();
+    private final List<CompletableFuture<TransportClientResponse>> attempts = new ArrayList<>();
+    private final List<Integer> attemptKeyCounts = new ArrayList<>();
+    private final Map<String, Integer> routeKeyCounts = new HashMap<>();
+    private final Set<String> keys = new LinkedHashSet<>();
+    private final AtomicInteger contextCaptures = new AtomicInteger();
+    private final AtomicInteger contextScopes = new AtomicInteger();
+    private final AtomicBoolean keyCompletionPaused = new AtomicBoolean();
+    private final CompletableFuture<Void> keyRemoved = new CompletableFuture<>();
+    private final CompletableFuture<Void> releaseKeyCompletion = new CompletableFuture<>();
+    private boolean pauseKeyCompletion;
+    private final IllegalStateException contextFailure = new IllegalStateException("context installation");
+    private int failedScope = -1;
+    private int failedCleanupScope = -1;
+    private RuntimeException retryDispatchFailure;
+    private final List<RequestContext> requests = new ArrayList<>();
+    private final List<String> dispatchContexts = new ArrayList<>();
+    private final List<String> deserializationContexts = new ArrayList<>();
+    private final List<Runnable> scheduled = new ArrayList<>();
+    private final List<CompletableFuture<Void>> retryDone = new ArrayList<>();
+    private final DispatchingAvroGenericStoreClient<String, GenericRecord> dispatchClient;
+    private final RetriableAvroGenericStoreClient<String, GenericRecord> retryClient;
+    private final MetricsRepository repository = new MetricsRepository();
+
+    ContextFixture() throws IOException {
+      this(1, 1);
+    }
+
+    ContextFixture(int keyCount, int routeCount) throws IOException {
+      for (int i = 0; i < keyCount; i++) {
+        keys.add(keyCount == 1 ? "test_key" : "test_key-" + i);
+      }
+      ExecutionContextProvider provider = () -> {
+        contextCaptures.incrementAndGet();
+        String captured = context.get();
+        return task -> {
+          int scope = contextScopes.incrementAndGet();
+          if (scope == failedScope || failedScope == 0) {
+            throw contextFailure;
+          }
+          inContext(captured, task);
+          if (scope == failedCleanupScope) {
+            throw contextFailure;
+          }
+        };
+      };
+      ClientConfig<String, GenericRecord, ?> config =
+          new ClientConfig.ClientConfigBuilder<String, GenericRecord, org.apache.avro.specific.SpecificRecord>()
+              .setStoreName(STORE_NAME)
+              .setR2Client(mock(Client.class))
+              .setD2Client(mock(D2Client.class))
+              .setClusterDiscoveryD2Service("discovery")
+              .setInstanceHealthMonitor(mock(InstanceHealthMonitor.class))
+              .setMetricsRepository(repository)
+              .setExecutionContextProvider(provider)
+              .setDeserializationExecutor(deserialization::add)
+              .build();
+      StoreMetadata metadata = mock(StoreMetadata.class);
+      doReturn(true).when(metadata).isReady();
+      doReturn(STORE_NAME).when(metadata).getStoreName();
+      doReturn(Schema.create(Schema.Type.STRING)).when(metadata).getKeySchema();
+      doReturn(STORE_VALUE_SCHEMA).when(metadata).getValueSchema(1);
+      doReturn(1000).when(metadata).getBatchGetLimit();
+      NoopCompressor compressor = new NoopCompressor() {
+        @Override
+        public ByteBuffer decompress(ByteBuffer data) {
+          deserializationContexts.add(context.get());
+          return data;
+        }
+      };
+      doReturn(compressor).when(metadata).getCompressor(CompressionStrategy.NO_OP, 1);
+      doAnswer(invocation -> {
+        RequestContext request = invocation.getArgument(0);
+        requests.add(request);
+        request.setCurrentVersion(1);
+        String route = request.isRetryRequest() ? "http://retry" : "http://original";
+        routeKeyCounts.clear();
+        if (request instanceof GetRequestContext) {
+          GetRequestContext<?> get = (GetRequestContext<?>) request;
+          get.setRoute(route);
+          get.setPartitionId(0);
+          get.setSerializedKey(new byte[] { 1 });
+          routeKeyCounts.put(route, 1);
+        } else {
+          MultiKeyRequestContext<String, GenericRecord> multi = invocation.getArgument(0);
+          int index = 0;
+          for (String key: multi.getKeys()) {
+            String keyRoute = routeCount == 1 ? route : route + "-" + index++ % routeCount;
+            multi.addKey(keyRoute, key, new byte[] { 1 }, 0);
+            routeKeyCounts.merge(keyRoute, 1, Integer::sum);
+          }
+        }
+        return null;
+      }).when(metadata).routeRequest(any(), any());
+      doAnswer(invocation -> {
+        CompletableFuture<Integer> status = new CompletableFuture<>();
+        return new ChainedCompletableFuture<>(status, status);
+      }).when(metadata).trackHealthBasedOnRequestToInstance(any(), anyInt(), anyInt(), any());
+      TransportClient transport = mock(TransportClient.class);
+      doAnswer(invocation -> newAttempt(invocation.getArgument(0))).when(transport).get(any());
+      doAnswer(invocation -> newAttempt(invocation.getArgument(0))).when(transport).post(any(), any(), any());
+      TimeoutProcessor timer = mock(TimeoutProcessor.class);
+      doAnswer(invocation -> {
+        Runnable task = invocation.getArgument(0);
+        CompletableFuture<Void> done = new CompletableFuture<>();
+        retryDone.add(done);
+        scheduled.add(() -> {
+          if (done.complete(null)) {
+            task.run();
+          }
+        });
+        TimeoutProcessor.TimeoutFuture future = mock(TimeoutProcessor.TimeoutFuture.class);
+        doAnswer(ignored -> done.isDone()).when(future).isDone();
+        doAnswer(ignored -> done.complete(null)).when(future).cancel();
+        return future;
+      }).when(timer).schedule(any(), org.mockito.ArgumentMatchers.anyLong(), any());
+      dispatchClient = new DispatchingAvroGenericStoreClient<>(metadata, config, transport);
+      retryClient = new RetriableAvroGenericStoreClient<String, GenericRecord>(dispatchClient, config, timer) {
+        @Override
+        <RESPONSE> CompletableFuture<RESPONSE> newKeyCompletionFuture() {
+          if (!pauseKeyCompletion) {
+            return super.newKeyCompletionFuture();
+          }
+          return new CompletableFuture<RESPONSE>() {
+            @Override
+            public boolean complete(RESPONSE value) {
+              if (keyCompletionPaused.compareAndSet(false, true)) {
+                keyRemoved.complete(null);
+                releaseKeyCompletion.join();
+              }
+              return super.complete(value);
+            }
+          };
+        }
+      };
+    }
+
+    private CompletableFuture<TransportClientResponse> newAttempt(String url) {
+      dispatchContexts.add(context.get());
+      if (retryDispatchFailure != null && url.startsWith("http://retry")) {
+        throw retryDispatchFailure;
+      }
+      for (Map.Entry<String, Integer> entry: routeKeyCounts.entrySet()) {
+        if (url.startsWith(entry.getKey() + "/")) {
+          attemptKeyCounts.add(entry.getValue());
+          break;
+        }
+      }
+      CompletableFuture<TransportClientResponse> future = new CompletableFuture<>();
+      attempts.add(future);
+      assertEquals(attemptKeyCounts.size(), attempts.size());
+      return future;
+    }
+
+    void inContext(String value, Runnable task) {
+      String previous = context.get();
+      context.set(value);
+      try {
+        task.run();
+      } finally {
+        context.set(previous);
+      }
+    }
+
+    Future<?> submitWorker(Runnable task) {
+      return worker.submit(() -> inContext("worker-prior-context", () -> {
+        try {
+          task.run();
+        } finally {
+          assertEquals(context.get(), "worker-prior-context");
+        }
+      }));
+    }
+
+    void onWorker(Runnable task) throws Exception {
+      submitWorker(task).get(5, TimeUnit.SECONDS);
+      assertNull(context.get());
+    }
+
+    void drainDeserialization() throws Exception {
+      onWorker(() -> {
+        while (!deserialization.isEmpty()) {
+          deserialization.remove().run();
+          assertEquals(context.get(), "worker-prior-context");
+        }
+      });
+    }
+
+    void complete(int attempt, TransportClientResponse response) throws Exception {
+      onWorker(() -> attempts.get(attempt).complete(response));
+      drainDeserialization();
+    }
+
+    void assertFailedRequests() {
+      for (RequestContext request: requests) {
+        assertTrue(request.resultFuture.isCompletedExceptionally());
+        request.routeRequestMap.values().forEach(route -> assertTrue(route.isDone()));
+      }
+    }
+
+    TransportClientResponse singleResponse() {
+      return new TransportClientResponse(
+          1,
+          CompressionStrategy.NO_OP,
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(STORE_VALUE_SCHEMA)
+              .serialize(SINGLE_GET_VALUE_RESPONSE));
+    }
+
+    CompletableFuture<GenericRecord> startGet(String request, boolean withRetry) {
+      AtomicReference<CompletableFuture<GenericRecord>> response = new AtomicReference<>();
+      inContext(request, () -> response.set((withRetry ? retryClient : dispatchClient).get("test_key")));
+      return response.get();
+    }
+
+    TransportClientResponse response(String operation) {
+      return "get".equals(operation) ? singleResponse() : streamingResponse("compute".equals(operation));
+    }
+
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    ContextCallback startRequest(String request, String operation, boolean withRetry) {
+      ContextCallback callback = new ContextCallback(this, request, "compute".equals(operation));
+      if ("get".equals(operation)) {
+        startGet(request, withRetry).whenComplete((value, error) -> {
+          if (error == null) {
+            callback.onRecordReceived("test_key", value);
+          }
+          callback.onCompletion(Optional.ofNullable((Exception) error));
+        });
+      } else {
+        inContext(request, () -> {
+          InternalAvroStoreClient<String, GenericRecord> client = withRetry ? retryClient : dispatchClient;
+          if ("compute".equals(operation)) {
+            ComputeRequestWrapper compute = new ComputeRequestWrapper(
+                1,
+                STORE_VALUE_SCHEMA,
+                COMPUTE_PROJECTION_VALUE_SCHEMA,
+                loadSchemaFileAsString("TestRecordProjection.avsc"),
+                Collections.emptyList(),
+                true);
+            client.compute(
+                new ComputeRequestContext<>(keys.size(), false),
+                compute,
+                keys,
+                COMPUTE_PROJECTION_VALUE_SCHEMA,
+                (StreamingCallback) callback,
+                System.nanoTime());
+          } else {
+            client.streamingBatchGet(
+                new BatchGetRequestContext<>(keys.size(), false),
+                keys,
+                (StreamingCallback) callback);
+          }
+        });
+      }
+      return callback;
+    }
+
+    TransportClientResponse streamingResponse(boolean compute) {
+      return streamingResponse(compute, keys.size());
+    }
+
+    TransportClientResponse streamingResponse(boolean compute, int keyCount) {
+      Schema envelope = compute ? ComputeResponseRecordV1.SCHEMA$ : MultiGetResponseRecordV1.SCHEMA$;
+      GenericRecord value = compute ? COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1") : SINGLE_GET_VALUE_RESPONSE;
+      byte[] serializedValue =
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(value.getSchema()).serialize(value);
+      List<GenericRecord> records = new ArrayList<>();
+      for (int i = 0; i < keyCount; i++) {
+        GenericRecord record = new GenericData.Record(envelope);
+        record.put("keyIndex", i);
+        record.put("value", ByteBuffer.wrap(serializedValue));
+        if (!compute) {
+          record.put("schemaId", 1);
+        }
+        records.add(record);
+      }
+      return new TransportClientResponse(
+          1,
+          CompressionStrategy.NO_OP,
+          FastSerializerDeserializerFactory.<GenericRecord>getFastAvroGenericSerializer(envelope)
+              .serializeObjects(records));
+    }
+
+    @Override
+    public void close() throws Exception {
+      retryClient.close();
+      worker.shutdownNow();
+      assertTrue(worker.awaitTermination(5, TimeUnit.SECONDS));
+      repository.close();
     }
   }
 }
