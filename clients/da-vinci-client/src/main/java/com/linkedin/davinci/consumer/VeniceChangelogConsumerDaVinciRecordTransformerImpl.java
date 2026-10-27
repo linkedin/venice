@@ -30,6 +30,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
@@ -589,11 +590,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     if (lastPolledPositions.isEmpty()) {
       return;
     }
+    long startTimeNs = System.nanoTime();
+    boolean committed = false;
     try {
-      offsetCommitConsumer
+      committed = offsetCommitConsumer
           .commitSync(lastPolledPositions, Duration.ofMillis(changelogClientConfig.getConsumerOffsetCommitTimeoutMs()));
     } catch (Exception e) {
       LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+    }
+    if (changeCaptureStats != null) {
+      changeCaptureStats
+          .emitOffsetCommitMetrics(committed ? SUCCESS : FAIL, LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs));
     }
   }
 

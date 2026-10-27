@@ -172,9 +172,11 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * failures.
    *
    * @param timeout the maximum time to block
+   * @return true if the offsets were committed; false if the commit was skipped or failed
    */
-  default void commitSync(Duration timeout) {
+  default boolean commitSync(Duration timeout) {
     // no-op default; backends with consumer-group semantics override
+    return false;
   }
 
   /**
@@ -184,9 +186,11 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    *
    * @param lastConsumedPositions non-symbolic position of the last consumed record per topic-partition
    * @param timeout the maximum time to block
+   * @return true if the offsets were committed; false if the commit was skipped or failed
    */
-  default void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+  default boolean commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
     // no-op default; backends with consumer-group semantics override
+    return false;
   }
 
   /**

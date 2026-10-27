@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
@@ -249,16 +250,29 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testPollPeriodicallyCommitsOffsetsAndSwallowsFailures() {
+  public void testPollPeriodicallyCommitsOffsetsAndSwallowsFailures() throws Exception {
     changelogClientConfig.setConsumerOffsetCommitEnabled(true)
         .setConsumerOffsetCommitIntervalMs(TimeUnit.HOURS.toMillis(1))
         .setConsumerOffsetCommitTimeoutMs(1_000L);
-    Mockito.doThrow(new RuntimeException("simulated adapter failure")).when(mockPubSubConsumer).commitSync(any());
+    Mockito.doThrow(new RuntimeException("simulated adapter failure"))
+        .doReturn(false)
+        .doReturn(true)
+        .when(mockPubSubConsumer)
+        .commitSync(any());
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = newOffsetCommitTestConsumer();
+    BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
+    setField(veniceChangelogConsumer, "changeCaptureStats", consumerStats);
     // The first poll commits (lastCommitTimeMs starts at 0); later polls within the interval do not.
     veniceChangelogConsumer.poll(pollTimeoutMs);
     veniceChangelogConsumer.poll(pollTimeoutMs);
     Mockito.verify(mockPubSubConsumer, times(1)).commitSync(Duration.ofSeconds(1));
+    verify(consumerStats).emitOffsetCommitMetrics(eq(FAIL), anyDouble());
+
+    // A skipped commit counts as a failure, and a successful one as a success.
+    veniceChangelogConsumer.commitOffsets();
+    verify(consumerStats, times(2)).emitOffsetCommitMetrics(eq(FAIL), anyDouble());
+    veniceChangelogConsumer.commitOffsets();
+    verify(consumerStats).emitOffsetCommitMetrics(eq(SUCCESS), anyDouble());
   }
 
   @Test
@@ -269,7 +283,7 @@ public class VeniceChangelogConsumerImplTest {
     Mockito.doAnswer(invocation -> {
       commitStarted.countDown();
       Assert.assertTrue(releaseCommit.await(5, TimeUnit.SECONDS));
-      return null;
+      return true;
     }).when(mockPubSubConsumer).commitSync(any());
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = newOffsetCommitTestConsumer();
     ExecutorService executorService = Executors.newSingleThreadExecutor();

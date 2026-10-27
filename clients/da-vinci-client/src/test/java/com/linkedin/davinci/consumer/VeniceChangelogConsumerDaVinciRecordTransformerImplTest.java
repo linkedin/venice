@@ -5,7 +5,9 @@ import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISC
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -577,6 +579,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     // The consumer built in setUp uses the default config, so it must not create a commit consumer.
     verify(veniceChangelogConsumerClientFactory, never()).getOffsetCommitPubSubConsumer(any());
     PubSubConsumerAdapter commitConsumer = mock(PubSubConsumerAdapter.class);
+    doReturn(true).when(commitConsumer).commitSync(any(), any());
     doReturn(commitConsumer).when(veniceChangelogConsumerClientFactory).getOffsetCommitPubSubConsumer(any());
     VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer =
         new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
@@ -586,6 +589,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
     daVinciClientField.setAccessible(true);
     daVinciClientField.set(consumer, mockDaVinciClient);
+    BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
+    Field changeCaptureStatsField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("changeCaptureStats");
+    changeCaptureStatsField.setAccessible(true);
+    changeCaptureStatsField.set(consumer, consumerStats);
     VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer transformer =
         consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, CURRENT_STORE_VERSION, keySchema,
             valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
@@ -605,6 +613,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     expected.put(new PubSubTopicPartitionImpl(topic, 0), offset(6));
     expected.put(new PubSubTopicPartitionImpl(topic, 2), offset(3));
     verify(commitConsumer).commitSync(eq(expected), any());
+    verify(consumerStats).emitOffsetCommitMetrics(eq(SUCCESS), anyDouble());
     // The tracked positions map is passed by reference, so earlier invocations reflect later retirements.
     clearInvocations(commitConsumer);
 
@@ -616,11 +625,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     consumer.commitOffsets();
     verify(commitConsumer)
         .commitSync(eq(Collections.singletonMap(new PubSubTopicPartitionImpl(topic, 2), offset(3))), any());
+    verify(consumerStats).emitOffsetCommitMetrics(eq(FAIL), anyDouble());
 
-    // Unsubscribed partitions are no longer committed.
+    // Unsubscribed partitions are no longer committed, and nothing is emitted when there is nothing to commit.
     consumer.unsubscribe(Collections.singleton(2));
     consumer.commitOffsets();
     verify(commitConsumer).commitSync(any(), any());
+    verify(consumerStats, times(2)).emitOffsetCommitMetrics(any(), anyDouble());
 
     consumer.stop();
     verify(commitConsumer).close();

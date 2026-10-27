@@ -1027,14 +1027,14 @@ public class ApacheKafkaConsumerAdapterTest {
   @Test
   public void testCommitSyncDelegatesToKafkaConsumerWhenGroupIdConfigured() {
     configureGroupId();
-    kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
+    assertTrue(kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1)));
     verify(internalKafkaConsumer).commitSync(any(Duration.class));
   }
 
   @Test
   public void testCommitSyncShortCircuitsWhenNoGroupId() {
     // No group id is configured, so the commit is skipped.
-    kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
+    assertFalse(kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1)));
     verify(internalKafkaConsumer, never()).commitSync(any(Duration.class));
   }
 
@@ -1042,8 +1042,9 @@ public class ApacheKafkaConsumerAdapterTest {
   public void testCommitSyncWithPositionsCommitsNextOffset() {
     configureGroupId();
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("store_v1"), 2);
-    kafkaConsumerAdapter
-        .commitSync(Collections.singletonMap(tp, ApacheKafkaOffsetPosition.of(41)), Duration.ofSeconds(1));
+    assertTrue(
+        kafkaConsumerAdapter
+            .commitSync(Collections.singletonMap(tp, ApacheKafkaOffsetPosition.of(41)), Duration.ofSeconds(1)));
     verify(internalKafkaConsumer)
         .commitSync(eq(Collections.singletonMap(new TopicPartition("store_v1", 2), new OffsetAndMetadata(42))), any());
     verify(internalKafkaConsumer, never()).assign(any());

@@ -61,6 +61,7 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RetryUtils;
@@ -876,10 +877,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (!consumerOffsetCommitEnabled) {
       return;
     }
+    long startTimeNs = System.nanoTime();
+    boolean committed = false;
     try {
-      pubSubConsumer.commitSync(consumerOffsetCommitTimeout);
+      committed = pubSubConsumer.commitSync(consumerOffsetCommitTimeout);
     } catch (Exception e) {
       LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+    }
+    if (changeCaptureStats != null) {
+      changeCaptureStats
+          .emitOffsetCommitMetrics(committed ? SUCCESS : FAIL, LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs));
     }
   }
 

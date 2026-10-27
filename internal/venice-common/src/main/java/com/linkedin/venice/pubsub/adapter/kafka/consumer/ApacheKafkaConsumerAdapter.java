@@ -524,8 +524,8 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * "must not throw" contract. Time spent waiting for the lock counts against {@code timeout}.
    */
   @Override
-  public void commitSync(Duration timeout) {
-    commitWithinTimeout(timeout, kafkaConsumer::commitSync);
+  public boolean commitSync(Duration timeout) {
+    return commitWithinTimeout(timeout, kafkaConsumer::commitSync);
   }
 
   /**
@@ -533,8 +533,8 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * same no-throw semantics as {@link #commitSync(Duration)}. Committing explicit offsets does not join the group.
    */
   @Override
-  public void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
-    commitWithinTimeout(timeout, remaining -> {
+  public boolean commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    return commitWithinTimeout(timeout, remaining -> {
       Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>(lastConsumedPositions.size());
       lastConsumedPositions.forEach(
           (tp, position) -> offsets.put(
@@ -544,11 +544,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     });
   }
 
-  private void commitWithinTimeout(Duration timeout, java.util.function.Consumer<Duration> commit) {
+  private boolean commitWithinTimeout(Duration timeout, java.util.function.Consumer<Duration> commit) {
     // The consumer group id is read only here: offsets are committed under it, and committing never joins the group.
     Properties props = config.getConsumerProperties();
     if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
-      return;
+      return false;
     }
     long startNs = System.nanoTime();
     try {
@@ -558,10 +558,12 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         throw new PubSubOpTimeoutException("No time left to commit within " + timeout.toMillis() + " ms");
       }
       commit.accept(remaining);
+      return true;
     } catch (Exception e) {
       // Monitoring-only path — never propagate to the caller. Log with stack so a real broker
       // failure is debuggable; we already short-circuited the common "no group.id" case above.
       LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+      return false;
     } finally {
       // releaseLock() is safe even if acquireLockWithTimeout() threw — it checks
       // consumerLock.isHeldByCurrentThread() before unlocking.
