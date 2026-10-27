@@ -181,7 +181,8 @@ Failures from scoped work are reported before the installed scope exits, without
 scope cleanup itself fails while the request is still pending, the affected operation reports the failure through its
 request completion rather than running work without context. That failure notification may run under the worker's
 previous context; a failure already reported from inside the scope is not reported again. A cleanup failure cannot
-replace an already-delivered result.
+replace an already-delivered result. With a configured provider, terminal streaming notification waits for record
+callbacks already in progress; records arriving after completion has been claimed are ignored.
 
 The guarantee covers code that executes within the client's scoped tasks, including streaming callbacks and future
 continuations that actually run inline on the scoped completing thread. A plain `CompletableFuture` can also execute a

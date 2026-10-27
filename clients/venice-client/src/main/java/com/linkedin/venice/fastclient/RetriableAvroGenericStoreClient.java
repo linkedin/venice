@@ -342,12 +342,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private <R extends MultiKeyRequestContext<K, V>, RESPONSE> void retryStreamingMultiKeyRequest(
       R requestContext,
       Set<K> keys,
-      StreamingCallback<K, RESPONSE> callback,
+      StreamingCallback<K, RESPONSE> originalCallback,
       int longTailRetryThresholdInMicroSeconds,
       RequestContextConstructor<K, V, R> requestContextConstructor,
       StreamingRequestExecutor<K, V, R, RESPONSE> streamingRequestExecutor) throws VeniceClientException {
     ExecutionContextProvider.CapturedContext executionContext =
         requestContext.getOrCaptureExecutionContext(executionContextProvider);
+    StreamingCallback<K, RESPONSE> callback = ExecutionContextUtils.guardCompletion(executionContext, originalCallback);
     requestContext.retryContext = new MultiKeyRequestContext.RetryContext<K, V>();
 
     /** Track the final completion of the request. It will be completed normally if

@@ -306,18 +306,24 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
+    StreamingCallback<K, V> guardedCallback = ExecutionContextUtils
+        .guardCompletion(requestContext.getOrCaptureExecutionContext(executionContextProvider), callback);
     multiKeyStreamingRequest(
         requestContext,
         RequestType.MULTI_GET_STREAMING,
         keys,
-        callback,
+        guardedCallback,
         requestContext,
         RequestHeadersProvider.getStreamingBatchGetHeaders(keys.size()),
         this::serializeMultiGetRequest,
         (MultiKeyStreamingRouteResponseHandler<K>) (
             keysForRoutes,
             response,
-            throwable) -> batchGetTransportRequestCompletionHandler(requestContext, response, throwable, callback));
+            throwable) -> batchGetTransportRequestCompletionHandler(
+                requestContext,
+                response,
+                throwable,
+                guardedCallback));
   }
 
   private interface MultiKeyStreamingRouteResponseHandler<K> {
@@ -565,6 +571,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       long preRequestTimeInNS) throws VeniceClientException {
     ExecutionContextProvider.CapturedContext executionContext =
         requestContext.getOrCaptureExecutionContext(executionContextProvider);
+    StreamingCallback<K, ComputeGenericRecord> guardedCallback =
+        ExecutionContextUtils.guardCompletion(executionContext, callback);
     verifyMetadataInitialized();
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
@@ -574,7 +582,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         requestContext,
         RequestType.COMPUTE_STREAMING,
         keys,
-        callback,
+        guardedCallback,
         requestContext,
         RequestHeadersProvider.getStreamingComputeHeaderMap(keys.size(), computeRequest.getValueSchemaID(), true),
         (keysForRoutes) -> serializeComputeRequest(computeRequest, keysForRoutes),
@@ -585,7 +593,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
               keysForRoutes,
               response,
               computeResultRecordDeserializer,
-              callback,
+              guardedCallback,
               executionContext);
           computeTransportRequestCompletionHandler(response, throwable, decoder);
         });

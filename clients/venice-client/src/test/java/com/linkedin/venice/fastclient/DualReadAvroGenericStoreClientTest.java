@@ -23,11 +23,9 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -411,24 +409,17 @@ public class DualReadAvroGenericStoreClientTest {
 
   @DataProvider
   public Object[][] executionContextCompletions() {
-    List<Object[]> cases = new ArrayList<>();
-    for (Object[] scenario: DataProviderUtils
-        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN)) {
-      cases.add(new Object[] { scenario[0], scenario[1], scenario[2], 0 });
-    }
-    for (boolean batch: new boolean[] { false, true }) {
-      cases.add(new Object[] { batch, true, false, 1 });
-      cases.add(new Object[] { batch, true, true, 2 });
-    }
-    return cases.toArray(new Object[0][]);
+    return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN,
+        new Object[] { "fast-success", "thin-success", "fast-last-failure", "thin-last-failure", "thin-install-failure",
+            "last-install-failure" });
   }
 
   @Test(dataProvider = "executionContextCompletions", timeOut = 15_000)
-  public void testDualReadCompletionKeepsRequestContext(
-      boolean batchGet,
-      boolean thinClientCompletes,
-      boolean failure,
-      int failedScope) throws Exception {
+  public void testDualReadCompletionKeepsRequestContext(boolean batchGet, String scenario) throws Exception {
+    boolean thinClientCompletes = !scenario.startsWith("fast");
+    boolean failure = scenario.contains("last");
+    int failedScope = scenario.contains("install") ? (failure ? 2 : 1) : 0;
     ThreadLocal<String> context = new ThreadLocal<>();
     AtomicInteger captures = new AtomicInteger();
     AtomicInteger scopes = new AtomicInteger();

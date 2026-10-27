@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient;
 
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.BiConsumer;
@@ -32,6 +34,63 @@ final class ExecutionContextUtils {
       return callback;
     }
     return (value, error) -> run(context, () -> callback.accept(value, error), failureHandler);
+  }
+
+  static <K, V> StreamingCallback<K, V> guardCompletion(
+      ExecutionContextProvider.CapturedContext context,
+      StreamingCallback<K, V> callback) {
+    return context == ExecutionContextProvider.CapturedContext.NO_OP ? callback : new CompletionGuard<>(callback);
+  }
+
+  private static final class CompletionGuard<K, V> implements StreamingCallback<K, V> {
+    private final StreamingCallback<K, V> callback;
+    private int activeRecords;
+    private boolean completed;
+    private Optional<Exception> pendingCompletion;
+
+    private CompletionGuard(StreamingCallback<K, V> callback) {
+      this.callback = callback;
+    }
+
+    @Override
+    public void onRecordReceived(K key, V value) {
+      synchronized (this) {
+        if (completed) {
+          return;
+        }
+        activeRecords++;
+      }
+      try {
+        callback.onRecordReceived(key, value);
+      } finally {
+        Optional<Exception> completion;
+        synchronized (this) {
+          activeRecords--;
+          completion = activeRecords == 0 ? pendingCompletion : null;
+          if (completion != null) {
+            pendingCompletion = null;
+          }
+        }
+        if (completion != null) {
+          callback.onCompletion(completion);
+        }
+      }
+    }
+
+    @Override
+    public void onCompletion(Optional<Exception> exception) {
+      synchronized (this) {
+        if (completed) {
+          return;
+        }
+        completed = true;
+        if (activeRecords != 0) {
+          pendingCompletion = exception;
+          return;
+        }
+      }
+      callback.onCompletion(exception);
+    }
   }
 
   private static void run(
