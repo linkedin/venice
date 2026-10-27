@@ -620,25 +620,34 @@ public class StoreBufferServiceTest {
         List<String> reports = logs.getStallReports();
         int expectedReports = reportExpected ? episode + 1 : 0;
         Assert.assertEquals(reports.size(), expectedReports, "Only stalls reaching the threshold must report");
+        List<String> diagnostics = logs.getDiagnosticReports();
+        Assert.assertEquals(diagnostics.size(), expectedReports);
         if (reportExpected) {
           long queuedBytes = bufferService.getDrainerForConsumerRecord(held, episode).getMemoryUsage();
           Assert.assertTrue(
               reports.get(episode).contains("Drainer 0 has been holding topic-partition: " + heldPartition + " for "),
               "The report must use the worker's queue index and current partition");
           Assert.assertTrue(reports.get(episode).contains("; its queue holds " + queuedBytes + " of 10000 bytes"));
-          Assert.assertTrue(reports.get(episode).contains("threadName=Store-writer-sorted"));
-          Assert.assertTrue(reports.get(episode).contains("javaThreadId="));
-          Assert.assertTrue(reports.get(episode).contains("storeVersion=stall_test_v1, partition=" + episode));
-          Assert.assertTrue(reports.get(episode).contains("nodePhase=PROCESS_RECORD"));
-          Assert.assertTrue(reports.get(episode).contains("operation=PROCESS_RECORD"));
+          String expectedMessage = "Drainer 0 has been holding topic-partition: " + heldPartition + " for "
+              + "\\d+ ms; its queue holds " + queuedBytes + " of 10000 bytes. Every "
+              + "partition hashing to this drainer has stopped persisting, and the producer callbacks waiting to "
+              + "hand it work will block once that queue is full. Collect this host's storage engine log before "
+              + "the store-version is retired; it is the only record of why the write stopped.";
+          Assert.assertTrue(reports.get(episode).matches(expectedMessage), "Existing ERROR text must be unchanged");
+          Assert.assertTrue(diagnostics.get(episode).contains("threadName=Store-writer-sorted"));
+          Assert.assertTrue(diagnostics.get(episode).contains("javaThreadId="));
+          Assert.assertTrue(diagnostics.get(episode).contains("storeVersion=stall_test_v1, partition=" + episode));
+          Assert.assertTrue(diagnostics.get(episode).contains("nodePhase=PROCESS_RECORD"));
+          Assert.assertTrue(diagnostics.get(episode).contains("operation=PROCESS_RECORD"));
           if (episode == 1) {
-            Assert.assertTrue(reports.get(episode).contains("lastCompletedOperation=PROCESS_RECORD"));
-            Assert.assertTrue(reports.get(episode).contains("lastCompletionOutcome=SUCCEEDED"));
+            Assert.assertTrue(diagnostics.get(episode).contains("lastCompletedOperation=PROCESS_RECORD"));
+            Assert.assertTrue(diagnostics.get(episode).contains("lastCompletionOutcome=SUCCEEDED"));
           }
         }
 
         bufferService.reportStalledDrainers();
         Assert.assertEquals(logs.getStallReports().size(), expectedReports, "Each episode must be reported only once");
+        Assert.assertEquals(logs.getDiagnosticReports().size(), expectedReports);
         releaseDrainer.countDown();
         persisted.get(10, SECONDS);
       }
@@ -661,7 +670,7 @@ public class StoreBufferServiceTest {
     ExecutorService gaugeReader = Executors.newSingleThreadExecutor();
     try (MockedConstruction<StoreBufferService.StoreBufferDrainer> drainers =
         mockConstruction(StoreBufferService.StoreBufferDrainer.class, (drainer, context) -> {
-          when(drainer.getProcessingAgeMs()).thenAnswer(invocation -> {
+          when(drainer.getProcessingStartedAtMs()).thenAnswer(invocation -> {
             if (Thread.currentThread() == gaugeThread.get()) {
               readingGauge.countDown();
               Assert.assertTrue(releaseGauge.await(10, SECONDS), "Gauge was not released");
@@ -799,7 +808,8 @@ public class StoreBufferServiceTest {
         bufferService.reportStalledDrainers();
         Assert.assertEquals(logs.getStallReports().size(), 1);
       });
-      Assert.assertTrue(logs.getStallReports().get(0).contains("operation=ROCKSDB_WRITE"));
+      Assert.assertEquals(logs.getDiagnosticReports().size(), 1);
+      Assert.assertTrue(logs.getDiagnosticReports().get(0).contains("operation=ROCKSDB_WRITE"));
       releaseNativeCall.countDown();
       Assert.assertTrue(processingContinues.await(10, SECONDS));
       Snapshot snapshot = bufferService.getDrainer(0).getDiagnosticSnapshot();
@@ -808,6 +818,7 @@ public class StoreBufferServiceTest {
       Assert.assertFalse(snapshot.lastSucceeded);
       bufferService.reportStalledDrainers();
       Assert.assertEquals(logs.getStallReports().size(), 1, "Phase changes must not repeat a node's stall report");
+      Assert.assertEquals(logs.getDiagnosticReports().size(), 1);
       releaseProcessing.countDown();
       persisted.get(10, SECONDS);
       TestUtils.waitForNonDeterministicAssertion(
@@ -816,6 +827,7 @@ public class StoreBufferServiceTest {
           () -> Assert.assertNull(bufferService.getDrainer(0).getDiagnosticSnapshot().root));
       bufferService.reportStalledDrainers();
       Assert.assertEquals(logs.getStallReports().size(), 1);
+      Assert.assertEquals(logs.getDiagnosticReports().size(), 1);
     } finally {
       releaseNativeCall.countDown();
       releaseProcessing.countDown();
@@ -836,6 +848,13 @@ public class StoreBufferServiceTest {
       return appender.getLogs()
           .stream()
           .filter(log -> log.contains("has been holding topic-partition:"))
+          .collect(toList());
+    }
+
+    private List<String> getDiagnosticReports() {
+      return appender.getLogs()
+          .stream()
+          .filter(log -> log.startsWith("Stalled drainer diagnostics:"))
           .collect(toList());
     }
 

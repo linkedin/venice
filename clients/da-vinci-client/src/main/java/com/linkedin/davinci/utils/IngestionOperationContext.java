@@ -24,13 +24,18 @@ public final class IngestionOperationContext {
     public final Phase phase;
     public final String storeVersion;
     public final int partition;
-    public final long startedAtMs = System.currentTimeMillis();
+    public final long startedAtMs;
     private final long startedAtNs = System.nanoTime();
 
     private Operation(Phase phase, String storeVersion, int partition) {
+      this(phase, storeVersion, partition, System.currentTimeMillis());
+    }
+
+    private Operation(Phase phase, String storeVersion, int partition, long startedAtMs) {
       this.phase = phase;
       this.storeVersion = storeVersion;
       this.partition = partition;
+      this.startedAtMs = startedAtMs;
     }
 
     public long ageMs() {
@@ -71,7 +76,11 @@ public final class IngestionOperationContext {
   }
 
   public void start(Phase phase, String storeVersion, int partition) {
-    Operation root = new Operation(phase, storeVersion, partition);
+    start(phase, storeVersion, partition, System.currentTimeMillis());
+  }
+
+  public void start(Phase phase, String storeVersion, int partition, long startedAtMs) {
+    Operation root = new Operation(phase, storeVersion, partition, startedAtMs);
     Snapshot previous = snapshot;
     snapshot = new Snapshot(root, root, previous.lastCompleted, previous.lastCompletedAtMs, previous.lastSucceeded);
     CURRENT.set(this);

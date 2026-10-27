@@ -47,7 +47,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -542,9 +542,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
     if (!stallMonitoringEnabled) {
       return 0;
     }
+    long now = System.currentTimeMillis();
     long maxBlockedMs = 0;
     for (StoreBufferDrainer drainer: drainerList) {
-      maxBlockedMs = Math.max(maxBlockedMs, drainer.getProcessingAgeMs());
+      long startedAtMs = drainer.getProcessingStartedAtMs();
+      if (startedAtMs != 0) {
+        maxBlockedMs = Math.max(maxBlockedMs, now - startedAtMs);
+      }
     }
     return maxBlockedMs;
   }
@@ -552,39 +556,50 @@ public class StoreBufferService extends AbstractStoreBufferService {
   /**
    * Logs any drainer that has held one queue node past the threshold. Reporting only; nothing here interrupts
    * or reroutes a drainer, and a drainer wedged inside a native storage call cannot be recovered in-process
-   * anyway. Breadcrumbs identify the Java operation boundary, not the owner of a native mutex.
+   * anyway. The point is to name the offending topic-partition while the host is still running, since the
+   * storage engine's own log is destroyed when the store-version is retired.
    */
   void reportStalledDrainers() {
     if (!stallMonitoringEnabled) {
       return;
     }
+    long now = System.currentTimeMillis();
     for (StoreBufferDrainer drainer: drainerList) {
-      Snapshot snapshot = drainer.diagnostics.snapshot();
-      Operation root = snapshot.root;
-      if (root == null || root.ageMs() < blockedDrainerThresholdMs) {
+      long startedAtMs = drainer.getProcessingStartedAtMs();
+      if (startedAtMs == 0 || now - startedAtMs < blockedDrainerThresholdMs) {
         continue;
       }
+      Snapshot snapshot = drainer.diagnostics.snapshot();
       PubSubTopicPartition heldPartition = drainer.getCurrentTopicPartition();
       /**
        * The drainer may have finished that node between the read above and here, in which case the elapsed
        * time belongs to work that already completed.
        */
-      if (!drainer.markStallReported(root)) {
+      if (!drainer.markStallReported(startedAtMs)) {
         continue;
       }
       LOGGER.error(
           "Drainer {} has been holding topic-partition: {} for {} ms; its queue holds {} of {} bytes. Every "
               + "partition hashing to this drainer has stopped persisting, and the producer callbacks waiting to "
-              + "hand it work will block once that queue is full. threadName={}, javaThreadId={}, threadState={}, "
+              + "hand it work will block once that queue is full. Collect this host's storage engine log before "
+              + "the store-version is retired; it is the only record of why the write stopped.",
+          drainer.drainerIndex,
+          heldPartition,
+          now - startedAtMs,
+          blockingQueueArr.get(drainer.drainerIndex).getMemoryUsage(),
+          bufferCapacityPerDrainer);
+      Operation root = snapshot.root;
+      if (root == null || root.startedAtMs != startedAtMs) {
+        continue;
+      }
+      LOGGER.error(
+          "Stalled drainer diagnostics: drainer={}, topicPartition={}, threadName={}, javaThreadId={}, threadState={}, "
               + "storeVersion={}, partition={}, nodePhase={}, nodeStartedAtMs={}, operation={}, operationAgeMs={}, "
               + "lastCompletedOperation={}, lastCompletedAtMs={}, lastCompletionOutcome={}. "
               + "STORAGE phases include Java synchronization/preparation; ROCKSDB phases identify the JNI boundary, "
               + "not native mutex ownership. Java thread IDs are not native OS thread IDs.",
           drainer.drainerIndex,
           heldPartition,
-          root.ageMs(),
-          blockingQueueArr.get(drainer.drainerIndex).getMemoryUsage(),
-          bufferCapacityPerDrainer,
           drainer.drainerThread.getName(),
           drainer.drainerThread.getId(),
           drainer.drainerThread.getState(),
@@ -1006,8 +1021,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final ConcurrentMap<PubSubTopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
     private final StoreBufferServiceStats stats;
     private final boolean stallMonitoringEnabled;
+    /**
+     * Zero while parked in {@link BlockingQueue#take()} with nothing to do; otherwise when the node currently
+     * being held was taken. An idle drainer is indistinguishable from a healthy one, so only time spent holding
+     * a node is a fault signal.
+     */
+    private final AtomicLong processingStartedAtMs = new AtomicLong(0);
+    private final AtomicLong reportedStallAtMs = new AtomicLong(0);
     private final IngestionOperationContext diagnostics = new IngestionOperationContext();
-    private final AtomicReference<Operation> reportedStall = new AtomicReference<>();
     private volatile PubSubTopicPartition currentTopicPartition = null;
     private volatile Thread drainerThread;
 
@@ -1027,13 +1048,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     long getProcessingStartedAtMs() {
-      Operation root = diagnostics.snapshot().root;
-      return root == null ? 0 : root.startedAtMs;
-    }
-
-    long getProcessingAgeMs() {
-      Operation root = diagnostics.snapshot().root;
-      return root == null ? 0 : root.ageMs();
+      return processingStartedAtMs.get();
     }
 
     Snapshot getDiagnosticSnapshot() {
@@ -1046,14 +1061,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     /**
      * Returns true at most once per stall, and only while this drainer is still holding the node it took at
-     * {@code root}. Identity also distinguishes nodes started within the same millisecond.
+     * {@code startedAtMs}.
      */
-    boolean markStallReported(Operation root) {
-      Operation reported = reportedStall.get();
-      if (reported == root || diagnostics.snapshot().root != root) {
+    boolean markStallReported(long startedAtMs) {
+      long reportedAtMs = reportedStallAtMs.get();
+      if (reportedAtMs == startedAtMs || processingStartedAtMs.get() != startedAtMs) {
         return false;
       }
-      return reportedStall.compareAndSet(reported, root) && diagnostics.snapshot().root == root;
+      return reportedStallAtMs.compareAndSet(reportedAtMs, startedAtMs);
     }
 
     @Override
@@ -1092,7 +1107,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
                 ingestionTask != null && ingestionTask.getVersionTopic() != null
                     ? ingestionTask.getVersionTopic().getName()
                     : "unknown",
-                partitionNum);
+                partitionNum,
+                startTime);
+            processingStartedAtMs.set(startTime);
           }
 
           if (node instanceof CommandQueueNode) {
@@ -1184,8 +1201,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
            * Also covers the three early {@code continue} branches above; without it they would leave the marker
            * set and report a drainer that is in fact looping normally as stalled.
            */
-          if (stallMonitoringEnabled && diagnostics.snapshot().root != null) {
-            diagnostics.finish(succeeded);
+          if (stallMonitoringEnabled) {
+            processingStartedAtMs.set(0);
+            if (diagnostics.snapshot().root != null) {
+              diagnostics.finish(succeeded);
+            }
             currentTopicPartition = null;
           }
         }
