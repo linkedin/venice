@@ -40,6 +40,21 @@ They are not time-weighted utilization or an in-flight request count: asynchrono
 TLS handshakes, and socket I/O outside the request pipeline are excluded. Idle periods produce no samples, and even a
 single request contributes a count of one.
 
+### Stalled Drainer Operation Diagnostics
+
+Set `server.stalled.drainer.diagnostics.enabled=true` in the server configuration of a selected cluster and restart its
+servers to enable additional stalled-drainer breadcrumbs. The default is `false`; this is not a dynamic cluster setting.
+The existing stall monitor must also be enabled (`server.blocked.drainer.threshold.ms` must be positive).
+
+When enabled, a separate diagnostic ERROR accompanies the existing once-per-stall report. It includes the Java thread
+name/ID/state, store-version and partition, current operation start/age, and the last completion outcome. `STORAGE_*`
+phases include Java synchronization and preparation; `ROCKSDB_*` phases identify write/flush JNI boundaries, not native
+mutex ownership. Java thread IDs are not native OS thread IDs.
+
+Tracking allocates short-lived snapshots on the ingestion path. Keep it disabled outside selected diagnostic clusters to
+avoid those allocations. When disabled, no operation context or snapshots are created and no additional diagnostic ERROR
+is emitted; wrapper calls and thread-local lookups remain. Existing stall logs and metrics are unchanged.
+
 ## JFR (Java Flight Recorder) Profile
 
 Use when: latency spikes, CPU contention, thread contention, or when you need to understand where time is being spent.
@@ -60,17 +75,16 @@ Analyze JFR recordings with [JDK Mission Control](https://github.com/openjdk/jmc
 
 ## Graceful Drop
 
-For the current version and the selected backup when backup graceful drop is enabled, OFFLINE-to-DROPPED waits for
-the ingestion service's stop result, removes Customized State, then waits the full configured grace interval before
-dropping storage. Time spent OFFLINE does not shorten that interval, and a missing STANDBY-to-OFFLINE transition does
-not bypass withdrawal. The stop wait uses the configured stop-consumption timeout.
-A fresh unsubscribe is an intentional retry: a successful service acknowledgement can recover from an earlier failed
-OFFLINE/reset stop, while failure of this attempt prevents deletion.
-The storage-drop path skips another routing-state deletion when this transition already withdrew successfully; no
-lifecycle cache is required. Interruption during accessor initialization or a deletion retry also aborts withdrawal,
-including when the configured grace interval is zero.
+For the current version and the selected backup when backup graceful drop is enabled, OFFLINE-to-DROPPED waits for the
+ingestion service's stop result, removes Customized State, then waits the full configured grace interval before dropping
+storage. Time spent OFFLINE does not shorten that interval, and a missing STANDBY-to-OFFLINE transition does not bypass
+withdrawal. The stop wait uses the configured stop-consumption timeout. A fresh unsubscribe is an intentional retry: a
+successful service acknowledgement can recover from an earlier failed OFFLINE/reset stop, while failure of this attempt
+prevents deletion. The storage-drop path skips another routing-state deletion when this transition already withdrew
+successfully; no lifecycle cache is required. Interruption during accessor initialization or a deletion retry also
+aborts withdrawal, including when the configured grace interval is zero.
 
 Stop/withdrawal failures, timeouts, and interrupted waits abort before storage deletion. Existing ingestion-service
-semantics are unchanged: absent or non-running tasks are treated as already stopped, not as proof that task cleanup
-has finished. Customized State removal acknowledges the local routing-state write, not convergence of every routing
-cache; cached routes or queued reads outliving the grace interval can still produce missing-partition errors.
+semantics are unchanged: absent or non-running tasks are treated as already stopped, not as proof that task cleanup has
+finished. Customized State removal acknowledges the local routing-state write, not convergence of every routing cache;
+cached routes or queued reads outliving the grace interval can still produce missing-partition errors.

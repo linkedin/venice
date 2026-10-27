@@ -118,6 +118,7 @@ public class StoreBufferServiceTest {
     bufferService.putConsumerRecord(cr4, mockTask, leaderContext, partition4, kafkaUrl, 0L);
 
     bufferService.start();
+    Assert.assertNull(bufferService.getDrainer(0).getDiagnosticSnapshot(), "Legacy constructors must default to off");
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr3, leaderContext, partition3, kafkaUrl, 0L);
@@ -510,6 +511,13 @@ public class StoreBufferServiceTest {
   }
 
   private StoreBufferService newBufferServiceWithStallMonitor(long thresholdMs, MetricsRepository metricsRepository) {
+    return newBufferServiceWithStallMonitor(thresholdMs, metricsRepository, true);
+  }
+
+  private StoreBufferService newBufferServiceWithStallMonitor(
+      long thresholdMs,
+      MetricsRepository metricsRepository,
+      boolean diagnosticsEnabled) {
     return new StoreBufferService(
         1,
         10000,
@@ -520,7 +528,9 @@ public class StoreBufferServiceTest {
         metricsRepository,
         true,
         "test-cluster",
-        thresholdMs);
+        thresholdMs,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY,
+        diagnosticsEnabled);
   }
 
   private CompletableFuture<Void> putRecordAndGetPersistedFuture(
@@ -566,13 +576,17 @@ public class StoreBufferServiceTest {
 
   @DataProvider
   public Object[][] stallReportingThresholds() {
-    return new Object[][] { { 50L, true }, { HOURS.toMillis(1), false }, { 0L, false }, { -1L, false } };
+    return new Object[][] { { 50L, true, true }, { 50L, true, false }, { HOURS.toMillis(1), false, true },
+        { HOURS.toMillis(1), false, false }, { 0L, false, true }, { 0L, false, false }, { -1L, false, true },
+        { -1L, false, false } };
   }
 
   @Test(dataProvider = "stallReportingThresholds")
-  public void testStalledDrainerReportingAcrossEpisodesAndRestart(long thresholdMs, boolean reportExpected)
-      throws Exception {
-    StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, null);
+  public void testStalledDrainerReportingAcrossEpisodesAndRestart(
+      long thresholdMs,
+      boolean reportExpected,
+      boolean diagnosticsEnabled) throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, null, diagnosticsEnabled);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic("stall_test_v1");
     when(mockTask.getVersionTopic()).thenReturn(pubSubTopic);
@@ -604,6 +618,11 @@ public class StoreBufferServiceTest {
         CompletableFuture<Void> persisted = putRecordAndGetPersistedFuture(bufferService, mockTask, held);
         Assert.assertTrue(enteredDrainer.await(10, SECONDS), "Drainer never picked up the queued record");
         StoreBufferService.StoreBufferDrainer drainer = bufferService.getDrainer(episode == 2 ? 1 : 0);
+        if (!diagnosticsEnabled || thresholdMs <= 0) {
+          Assert.assertNull(drainer.getDiagnosticSnapshot(), "Disabled diagnostics must not allocate a context");
+        } else {
+          Assert.assertEquals(drainer.getDiagnosticSnapshot().operation.phase, Phase.PROCESS_RECORD);
+        }
         if (thresholdMs > 0) {
           Assert.assertTrue(drainer.getProcessingStartedAtMs() >= beforeEnqueueMs);
           Assert.assertEquals(drainer.getCurrentTopicPartition(), heldPartition);
@@ -621,7 +640,8 @@ public class StoreBufferServiceTest {
         int expectedReports = reportExpected ? episode + 1 : 0;
         Assert.assertEquals(reports.size(), expectedReports, "Only stalls reaching the threshold must report");
         List<String> diagnostics = logs.getDiagnosticReports();
-        Assert.assertEquals(diagnostics.size(), expectedReports);
+        int expectedDiagnostics = diagnosticsEnabled ? expectedReports : 0;
+        Assert.assertEquals(diagnostics.size(), expectedDiagnostics);
         if (reportExpected) {
           long queuedBytes = bufferService.getDrainerForConsumerRecord(held, episode).getMemoryUsage();
           Assert.assertTrue(
@@ -634,6 +654,8 @@ public class StoreBufferServiceTest {
               + "hand it work will block once that queue is full. Collect this host's storage engine log before "
               + "the store-version is retired; it is the only record of why the write stopped.";
           Assert.assertTrue(reports.get(episode).matches(expectedMessage), "Existing ERROR text must be unchanged");
+        }
+        if (reportExpected && diagnosticsEnabled) {
           Assert.assertTrue(diagnostics.get(episode).contains("threadName=Store-writer-sorted"));
           Assert.assertTrue(diagnostics.get(episode).contains("javaThreadId="));
           Assert.assertTrue(diagnostics.get(episode).contains("storeVersion=stall_test_v1, partition=" + episode));
@@ -647,7 +669,7 @@ public class StoreBufferServiceTest {
 
         bufferService.reportStalledDrainers();
         Assert.assertEquals(logs.getStallReports().size(), expectedReports, "Each episode must be reported only once");
-        Assert.assertEquals(logs.getDiagnosticReports().size(), expectedReports);
+        Assert.assertEquals(logs.getDiagnosticReports().size(), expectedDiagnostics);
         releaseDrainer.countDown();
         persisted.get(10, SECONDS);
       }
@@ -745,7 +767,7 @@ public class StoreBufferServiceTest {
       throw new InterruptedException();
     });
     StoreBufferService.StoreBufferDrainer drainer =
-        new StoreBufferService.StoreBufferDrainer(queue, 0, mockedStats, true);
+        new StoreBufferService.StoreBufferDrainer(queue, 0, mockedStats, true, true);
     ExecutorService executor = Executors.newSingleThreadExecutor();
     Future<?> task = executor.submit(drainer);
     try {

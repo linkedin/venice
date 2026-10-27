@@ -40,7 +40,8 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             true,
             clusterName,
             serverConfig.getBlockedDrainerThresholdMs(),
-            serverConfig.getWritePathThreadPriority()),
+            serverConfig.getWritePathThreadPriority(),
+            serverConfig.isStalledDrainerDiagnosticsEnabled()),
         new StoreBufferService(
             serverConfig.getDrainerPoolSizeUnsortedInput(),
             serverConfig.getStoreWriterBufferMemoryCapacity(),
@@ -51,7 +52,8 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             false,
             clusterName,
             serverConfig.getBlockedDrainerThresholdMs(),
-            serverConfig.getWritePathThreadPriority()));
+            serverConfig.getWritePathThreadPriority(),
+            serverConfig.isStalledDrainerDiagnosticsEnabled()));
     LOGGER.info(
         "Created separated store buffer service with {} sorted drainers and {} unsorted drainers queues with capacity of {}",
         sortedPoolSize,

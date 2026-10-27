@@ -2,15 +2,34 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import io.tehuti.metrics.MetricsRepository;
+import org.mockito.MockedConstruction;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class SeparatedStoreBufferServiceTest {
   private final MetricsRepository metricsRepo = new MetricsRepository();
+
+  @Test
+  public void testDiagnosticsSettingIsPassedToBothPools() {
+    for (boolean enabled: new boolean[] { false, true }) {
+      VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+      doReturn(enabled).when(serverConfig).isStalledDrainerDiagnosticsEnabled();
+      try (MockedConstruction<StoreBufferService> services =
+          mockConstruction(StoreBufferService.class, (service, context) -> {
+            Assert.assertEquals(context.arguments().size(), 11);
+            Assert.assertEquals(context.arguments().get(10), enabled);
+          });
+          SeparatedStoreBufferService ignored =
+              new SeparatedStoreBufferService(serverConfig, metricsRepo, "test-cluster")) {
+        Assert.assertEquals(services.constructed().size(), 2);
+      }
+    }
+  }
 
   @Test
   public void testSeparatedStoreBufferHaveTwoSetsOfMetrics() {

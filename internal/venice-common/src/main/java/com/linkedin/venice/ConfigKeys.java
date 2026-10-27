@@ -875,6 +875,12 @@ public class ConfigKeys {
    * stall tracking and blocked-time metrics. This is read at construction time; changes require a restart.
    */
   public static final String SERVER_BLOCKED_DRAINER_THRESHOLD_MS = "server.blocked.drainer.threshold.ms";
+  /**
+   * Enables additional stalled-drainer operation breadcrumbs and diagnostic ERROR logs. Defaults to false to
+   * avoid per-operation snapshot allocation. Enable in the server configuration of selected clusters.
+   * Requires a positive {@link #SERVER_BLOCKED_DRAINER_THRESHOLD_MS}. Changes require a server restart.
+   */
+  public static final String SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED = "server.stalled.drainer.diagnostics.enabled";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
 
