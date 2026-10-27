@@ -23,6 +23,9 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
+import com.linkedin.davinci.utils.IngestionOperationContext;
+import com.linkedin.davinci.utils.IngestionOperationContext.Phase;
+import com.linkedin.davinci.utils.IngestionOperationContext.Snapshot;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -572,6 +575,7 @@ public class StoreBufferServiceTest {
     StoreBufferService bufferService = newBufferServiceWithStallMonitor(thresholdMs, null);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic("stall_test_v1");
+    when(mockTask.getVersionTopic()).thenReturn(pubSubTopic);
     CountDownLatch releaseDrainer = new CountDownLatch(1);
     bufferService.start();
     try (StallLogCapture logs = new StallLogCapture()) {
@@ -622,6 +626,15 @@ public class StoreBufferServiceTest {
               reports.get(episode).contains("Drainer 0 has been holding topic-partition: " + heldPartition + " for "),
               "The report must use the worker's queue index and current partition");
           Assert.assertTrue(reports.get(episode).contains("; its queue holds " + queuedBytes + " of 10000 bytes"));
+          Assert.assertTrue(reports.get(episode).contains("threadName=Store-writer-sorted"));
+          Assert.assertTrue(reports.get(episode).contains("javaThreadId="));
+          Assert.assertTrue(reports.get(episode).contains("storeVersion=stall_test_v1, partition=" + episode));
+          Assert.assertTrue(reports.get(episode).contains("nodePhase=PROCESS_RECORD"));
+          Assert.assertTrue(reports.get(episode).contains("operation=PROCESS_RECORD"));
+          if (episode == 1) {
+            Assert.assertTrue(reports.get(episode).contains("lastCompletedOperation=PROCESS_RECORD"));
+            Assert.assertTrue(reports.get(episode).contains("lastCompletionOutcome=SUCCEEDED"));
+          }
         }
 
         bufferService.reportStalledDrainers();
@@ -648,7 +661,7 @@ public class StoreBufferServiceTest {
     ExecutorService gaugeReader = Executors.newSingleThreadExecutor();
     try (MockedConstruction<StoreBufferService.StoreBufferDrainer> drainers =
         mockConstruction(StoreBufferService.StoreBufferDrainer.class, (drainer, context) -> {
-          when(drainer.getProcessingStartedAtMs()).thenAnswer(invocation -> {
+          when(drainer.getProcessingAgeMs()).thenAnswer(invocation -> {
             if (Thread.currentThread() == gaugeThread.get()) {
               readingGauge.countDown();
               Assert.assertTrue(releaseGauge.await(10, SECONDS), "Gauge was not released");
@@ -678,7 +691,8 @@ public class StoreBufferServiceTest {
 
   @DataProvider
   public Object[][] stallTrackingResetPaths() {
-    return new Object[][] { { "record" }, { "exception" }, { "syncOffset" }, { "syncVtDiv" }, { "syncGlobalRtDiv" } };
+    return new Object[][] { { "record" }, { "exception" }, { "syncOffset" }, { "syncVtDiv" }, { "syncGlobalRtDiv" },
+        { "failedSyncGlobalRtDiv" } };
   }
 
   @Test(dataProvider = "stallTrackingResetPaths")
@@ -699,6 +713,10 @@ public class StoreBufferServiceTest {
             mockTask);
         break;
       case "syncGlobalRtDiv":
+      case "failedSyncGlobalRtDiv":
+        if ("failedSyncGlobalRtDiv".equals(nodeType)) {
+          doThrow(new VeniceException("test sync failure")).when(mockTask).syncGlobalRtDivFromSnapshot(partition);
+        }
         bufferService.execSyncGlobalRtDivAsync(partition, mockTask);
         break;
       default:
@@ -725,6 +743,14 @@ public class StoreBufferServiceTest {
       Assert.assertTrue(idle.await(10, SECONDS), "Drainer never returned to take()");
       Assert.assertEquals(drainer.getProcessingStartedAtMs(), 0);
       Assert.assertNull(drainer.getCurrentTopicPartition());
+      Snapshot snapshot = drainer.getDiagnosticSnapshot();
+      Assert.assertNull(snapshot.root);
+      Assert.assertNull(snapshot.operation);
+      Assert.assertNotNull(snapshot.lastCompleted);
+      Assert.assertTrue(snapshot.lastCompletedAtMs > 0);
+      Assert.assertEquals(
+          snapshot.lastSucceeded,
+          !"exception".equals(nodeType) && !"failedSyncGlobalRtDiv".equals(nodeType));
       release.countDown();
       task.get(10, SECONDS);
     } finally {
@@ -732,6 +758,68 @@ public class StoreBufferServiceTest {
       drainer.stop();
       executor.shutdownNow();
       Assert.assertTrue(executor.awaitTermination(10, SECONDS));
+    }
+  }
+
+  @Test
+  public void testOperationBreadcrumbsAreRestoredAfterStorageFailure() throws Exception {
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(1, null);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("diagnostic_test_v1");
+    when(mockTask.getVersionTopic()).thenReturn(versionTopic);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(key, value, partition, mockPosition, 0, 0);
+    CountDownLatch nativeCallEntered = new CountDownLatch(1);
+    CountDownLatch releaseNativeCall = new CountDownLatch(1);
+    CountDownLatch processingContinues = new CountDownLatch(1);
+    CountDownLatch releaseProcessing = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      try {
+        IngestionOperationContext.track(
+            Phase.STORAGE_PUT_WITH_RMD,
+            "diagnostic_test_v1",
+            0,
+            () -> IngestionOperationContext.track(Phase.ROCKSDB_WRITE, "diagnostic_test_v1", 0, () -> {
+              nativeCallEntered.countDown();
+              Assert.assertTrue(releaseNativeCall.await(10, SECONDS));
+              throw new VeniceException("simulated storage failure");
+            }));
+        Assert.fail("Storage failure must propagate");
+      } catch (VeniceException expected) {
+        processingContinues.countDown();
+        Assert.assertTrue(releaseProcessing.await(10, SECONDS));
+      }
+      return null;
+    }).when(mockTask).processConsumerRecord(any(), any(), anyInt(), anyString(), anyLong());
+    try (StallLogCapture logs = new StallLogCapture()) {
+      bufferService.start();
+      CompletableFuture<Void> persisted = putRecordAndGetPersistedFuture(bufferService, mockTask, record);
+      Assert.assertTrue(nativeCallEntered.await(10, SECONDS));
+      TestUtils.waitForNonDeterministicAssertion(5, SECONDS, () -> {
+        bufferService.reportStalledDrainers();
+        Assert.assertEquals(logs.getStallReports().size(), 1);
+      });
+      Assert.assertTrue(logs.getStallReports().get(0).contains("operation=ROCKSDB_WRITE"));
+      releaseNativeCall.countDown();
+      Assert.assertTrue(processingContinues.await(10, SECONDS));
+      Snapshot snapshot = bufferService.getDrainer(0).getDiagnosticSnapshot();
+      Assert.assertEquals(snapshot.operation.phase, Phase.PROCESS_RECORD);
+      Assert.assertEquals(snapshot.lastCompleted.phase, Phase.STORAGE_PUT_WITH_RMD);
+      Assert.assertFalse(snapshot.lastSucceeded);
+      bufferService.reportStalledDrainers();
+      Assert.assertEquals(logs.getStallReports().size(), 1, "Phase changes must not repeat a node's stall report");
+      releaseProcessing.countDown();
+      persisted.get(10, SECONDS);
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          SECONDS,
+          () -> Assert.assertNull(bufferService.getDrainer(0).getDiagnosticSnapshot().root));
+      bufferService.reportStalledDrainers();
+      Assert.assertEquals(logs.getStallReports().size(), 1);
+    } finally {
+      releaseNativeCall.countDown();
+      releaseProcessing.countDown();
+      bufferService.stop();
     }
   }
 

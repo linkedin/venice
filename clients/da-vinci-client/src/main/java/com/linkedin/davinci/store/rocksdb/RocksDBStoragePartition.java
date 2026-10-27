@@ -7,6 +7,8 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.davinci.utils.IngestionOperationContext;
+import com.linkedin.davinci.utils.IngestionOperationContext.Phase;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -449,6 +451,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     });
   }
 
+  protected void trackWrite(Phase phase, RocksDB db, RocksDBVoidOperation operation) throws RocksDBException {
+    IngestionOperationContext.track(phase, storeNameAndVersion, partitionId, () -> {
+      operation.execute(db);
+      return null;
+    });
+  }
+
   protected EnvOptions getEnvOptions() {
     return envOptions;
   }
@@ -647,14 +656,17 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
     if (!deferredWrite) {
       withSynchronizedDatabaseVoid(
-          db -> db.put(
-              writeOptions,
-              key,
-              0,
-              key.length,
-              valueBuffer.array(),
-              valueBuffer.position(),
-              valueBuffer.remaining()));
+          db -> trackWrite(
+              Phase.ROCKSDB_PUT,
+              db,
+              handle -> handle.put(
+                  writeOptions,
+                  key,
+                  0,
+                  key.length,
+                  valueBuffer.array(),
+                  valueBuffer.position(),
+                  valueBuffer.remaining())));
       return;
     }
 
@@ -879,7 +891,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (deferredWrite) {
       throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
     }
-    withSynchronizedDatabaseVoid(db -> db.delete(key));
+    withSynchronizedDatabaseVoid(db -> trackWrite(Phase.ROCKSDB_DELETE, db, handle -> handle.delete(key)));
   }
 
   /**
@@ -896,7 +908,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       if (this.readOnly) {
         LOGGER.debug("Unexpected sync in RocksDB read-only mode for replica: {}", replicaId);
       } else {
-        withSynchronizedDatabaseVoid(db -> db.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList));
+        withSynchronizedDatabaseVoid(
+            db -> trackWrite(
+                Phase.ROCKSDB_FLUSH,
+                db,
+                handle -> handle.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList)));
       }
       return Collections.emptyMap();
     }
