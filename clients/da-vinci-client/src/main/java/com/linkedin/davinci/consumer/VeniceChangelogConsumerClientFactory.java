@@ -262,7 +262,8 @@ public class VeniceChangelogConsumerClientFactory {
   /**
    * Creates a consumer that only commits positions for a changelog consumer without its own PubSub consumer. It never
    * subscribes or polls, and commits under the {@code kafka.group.id} from the consumer properties. Like DaVinci, it
-   * discovers the broker address when the consumer properties omit it.
+   * discovers the broker address when the consumer properties omit it. It gets its own deserializer because closing the
+   * adapter closes its deserializer, and the factory's shared one is still used by other consumers.
    */
   PubSubConsumerAdapter getOffsetCommitPubSubConsumer(ChangelogClientConfig changelogClientConfig) {
     String pubSubBrokerAddress = null;
@@ -277,7 +278,7 @@ public class VeniceChangelogConsumerClientFactory {
     }
     return getPubSubConsumer(
         changelogClientConfig,
-        pubSubMessageDeserializer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
         getOffsetCommitConsumerName(changelogClientConfig),
         pubSubBrokerAddress);
   }
