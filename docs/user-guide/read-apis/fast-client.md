@@ -177,6 +177,10 @@ its retry. The default provider runs tasks directly without capturing or changin
 callbacks unchanged instead of decorating them, preserving existing behavior. Applications must supply their context
 implementation; no context framework is selected automatically.
 
+If installing context fails, the affected operation reports the failure through its request completion rather than
+running the task without context or replaying callbacks. That failure notification may run under the worker's previous
+context because the request context could not be installed.
+
 The guarantee covers code that executes within the client's scoped tasks, including streaming callbacks and future
 continuations that actually run inline on the scoped completing thread. A plain `CompletableFuture` can also execute a
 pending synchronous continuation on another thread helping complete the future, such as a timed `get()` waiter, even

@@ -82,11 +82,11 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
       }
       return response;
     });
-    requestFuture.whenComplete(executionContext.wrap((response, throwable) -> {
+    requestFuture.whenComplete(ExecutionContextUtils.wrap(executionContext, (response, throwable) -> {
       if (throwable == null) {
         valueFuture.complete(response);
       }
-    }));
+    }, failure -> ExecutionContextUtils.completeExceptionally(valueFuture, failure)));
 
     /**
      * Returning {@link latencyFuture} here will allow the dependencies of latency metrics to complete as soon as possible
@@ -112,7 +112,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
         sendRequest(thinClientFutureSupplier, thinClientError, thinClientLatency, valueFuture, executionContext);
 
     CompletableFuture.allOf(fastClientFuture, thinClientFuture)
-        .whenComplete(executionContext.wrap((response, throwable) -> {
+        .whenComplete(ExecutionContextUtils.wrap(executionContext, (response, throwable) -> {
           /**
            * Throw exception only if both fast-client and thin-client return error.
            */
@@ -133,7 +133,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
               clientStats.recordFastClientSlowerRequest();
             }
           }
-        }));
+        }, failure -> ExecutionContextUtils.completeExceptionally(valueFuture, failure)));
 
     return valueFuture;
   }

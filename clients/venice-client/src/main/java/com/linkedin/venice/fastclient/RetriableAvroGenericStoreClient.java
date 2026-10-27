@@ -227,7 +227,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
     // Schedule the created task for long-tail retry
     TimeoutProcessor.TimeoutFuture timeoutFuture = timeoutProcessor.schedule(
-        executionContext.wrap(new RetryRunnable(requestContext, RetryType.LONG_TAIL_RETRY, retryTask)),
+        ExecutionContextUtils.wrap(
+            executionContext,
+            new RetryRunnable(requestContext, RetryType.LONG_TAIL_RETRY, retryTask),
+            failure -> ExecutionContextUtils.completeExceptionally(retryFuture, failure)),
         longTailRetryThresholdForSingleGetInMicroSeconds,
         TimeUnit.MICROSECONDS);
 
@@ -248,7 +251,12 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         if (!timeoutFuture.isDone()) {
           timeoutFuture.cancel();
           if (!isExceptionCausedByTooManyRequests(throwable)) {
-            new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask).run();
+            ExecutionContextUtils
+                .wrap(
+                    executionContext,
+                    new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask),
+                    failure -> ExecutionContextUtils.completeExceptionally(retryFuture, failure))
+                .run();
           } else {
             // 429 received before long-tail fired: retryTask won't run, complete retryFuture directly
             retryFuture.completeExceptionally(throwable);
@@ -396,8 +404,26 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       }
     };
 
-    TimeoutProcessor.TimeoutFuture scheduledRetryTask = timeoutProcessor
-        .schedule(executionContext.wrap(retryTask), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
+    TimeoutProcessor.TimeoutFuture scheduledRetryTask =
+        timeoutProcessor.schedule(ExecutionContextUtils.wrap(executionContext, retryTask, failure -> {
+          MultiKeyRequestContext<K, V> retryRequestContext = requestContext.retryContext.retryRequestContext;
+          if (retryRequestContext == null) {
+            retryRequestContext = requestContextConstructor.construct(pendingKeysFuture.size());
+            requestContext.retryContext.retryRequestContext = retryRequestContext;
+          }
+          if (retryRequestContext.resultFuture != null
+              && !retryRequestContext.resultFuture.completeExceptionally(failure)) {
+            LOGGER.error("Execution context task failed after multi-key retry completion", failure);
+            return;
+          }
+          getStreamingCallback(
+              retryRequestContext,
+              finalRequestCompletionFuture,
+              savedException,
+              pendingKeysFuture,
+              null).onCompletion(
+                  Optional.of(new VeniceClientException("Failed to execute retry with execution context", failure)));
+        }), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
 
     /**
      * Retry for streaming multi-key request is done at the request level. This mean we will perform one retry for the

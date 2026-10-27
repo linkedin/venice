@@ -13,6 +13,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -22,9 +23,11 @@ import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -408,19 +411,35 @@ public class DualReadAvroGenericStoreClientTest {
 
   @DataProvider
   public Object[][] executionContextCompletions() {
-    return DataProviderUtils
-        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
+    List<Object[]> cases = new ArrayList<>();
+    for (Object[] scenario: DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN)) {
+      cases.add(new Object[] { scenario[0], scenario[1], scenario[2], 0 });
+    }
+    for (boolean batch: new boolean[] { false, true }) {
+      cases.add(new Object[] { batch, true, false, 1 });
+      cases.add(new Object[] { batch, true, true, 2 });
+    }
+    return cases.toArray(new Object[0][]);
   }
 
   @Test(dataProvider = "executionContextCompletions", timeOut = 15_000)
-  public void testDualReadCompletionKeepsRequestContext(boolean batchGet, boolean thinClientCompletes, boolean failure)
-      throws Exception {
+  public void testDualReadCompletionKeepsRequestContext(
+      boolean batchGet,
+      boolean thinClientCompletes,
+      boolean failure,
+      int failedScope) throws Exception {
     ThreadLocal<String> context = new ThreadLocal<>();
     AtomicInteger captures = new AtomicInteger();
+    AtomicInteger scopes = new AtomicInteger();
+    IllegalStateException contextFailure = new IllegalStateException("context installation");
     ExecutionContextProvider provider = () -> {
       captures.incrementAndGet();
       String captured = context.get();
       return task -> {
+        if (scopes.incrementAndGet() >= failedScope && failedScope != 0) {
+          throw contextFailure;
+        }
         String previous = context.get();
         context.set(captured);
         try {
@@ -433,6 +452,7 @@ public class DualReadAvroGenericStoreClientTest {
     Map<String, String> fastValue = Collections.singletonMap(SINGLE_GET_KEY, FAST_CLIENT_SINGLE_GET_RESPONSE);
     Map<String, String> thinValue = Collections.singletonMap(SINGLE_GET_KEY, THIN_CLIENT_SINGLE_GET_RESPONSE);
     for (String request: new String[] { "request-a", "request-b" }) {
+      scopes.set(0);
       CompletableFuture<Map<String, String>> fastResponse = new CompletableFuture<>();
       CompletableFuture<Map<String, String>> thinResponse = new CompletableFuture<>();
       InternalAvroStoreClient<String, String> fastClient = mock(InternalAvroStoreClient.class);
@@ -470,9 +490,12 @@ public class DualReadAvroGenericStoreClientTest {
       }
       Map<String, String> winningValue = thinClientCompletes ? thinValue : fastValue;
       CompletableFuture<String> downstream = response.handle((value, error) -> {
-        if (failure) {
+        if (failure || failedScope != 0) {
           assertNull(value);
           assertNotNull(error);
+          if (failedScope != 0) {
+            assertSame(error, contextFailure);
+          }
         } else {
           assertNull(error);
           assertEquals(value, batchGet ? winningValue : winningValue.get(SINGLE_GET_KEY));
@@ -499,7 +522,7 @@ public class DualReadAvroGenericStoreClientTest {
           context.remove();
         }
       }).get(5, TimeUnit.SECONDS);
-      assertEquals(downstream.get(5, TimeUnit.SECONDS), request);
+      assertEquals(downstream.get(5, TimeUnit.SECONDS), failedScope == 0 ? request : "worker-prior-context");
       assertNull(context.get());
     }
     assertEquals(captures.get(), 2, "Dual-read and Fast Client must share one snapshot per request");

@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import org.testng.annotations.Test;
 
 
@@ -30,6 +31,11 @@ public class ExecutionContextProviderTest {
     assertSame(context.wrap(task), task);
     assertSame(context.wrap(completion), completion);
     assertSame(context.wrap(callback), callback);
+    Consumer<Throwable> failureHandler = failure -> {
+      throw new AssertionError("The no-op context must not need a failure guard", failure);
+    };
+    assertSame(ExecutionContextUtils.wrap(context, task, failureHandler), task);
+    assertSame(ExecutionContextUtils.wrap(context, completion, failureHandler), completion);
   }
 
   @Test
