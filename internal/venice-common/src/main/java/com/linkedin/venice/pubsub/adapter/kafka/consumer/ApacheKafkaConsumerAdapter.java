@@ -529,14 +529,11 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   /**
-   * Commits {@code lastConsumedOffset + 1} per partition (Kafka's next-offset-to-read convention) with the same
-   * no-throw semantics as {@link #commitSync(Duration)}. Committing explicit offsets does not join the group.
+   * Commits {@code lastConsumedOffset + 1} per partition (+1 is Kafka's next-offset-to-read convention) with the
+   * same no-throw semantics as {@link #commitSync(Duration)}. Committing explicit offsets does not join the group.
    */
   @Override
   public void commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
-    if (lastConsumedPositions.isEmpty()) {
-      return;
-    }
     commitWithinTimeout(timeout, remaining -> {
       Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>(lastConsumedPositions.size());
       lastConsumedPositions.forEach(
@@ -548,6 +545,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   private void commitWithinTimeout(Duration timeout, java.util.function.Consumer<Duration> commit) {
+    // The consumer group id is read only here: offsets are committed under it, and committing never joins the group.
     Properties props = config.getConsumerProperties();
     if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
       return;

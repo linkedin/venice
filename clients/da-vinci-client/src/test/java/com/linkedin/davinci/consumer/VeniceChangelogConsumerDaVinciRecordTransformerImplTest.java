@@ -605,6 +605,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     expected.put(new PubSubTopicPartitionImpl(topic, 0), offset(6));
     expected.put(new PubSubTopicPartitionImpl(topic, 2), offset(3));
     verify(commitConsumer).commitSync(eq(expected), any());
+    // The tracked positions map is passed by reference, so earlier invocations reflect later retirements.
+    clearInvocations(commitConsumer);
 
     // Commit failures are swallowed, and an idle partition's old version topic is retired after a version swap.
     doThrow(new RuntimeException("commit failed")).when(commitConsumer).commitSync(any(), any());
@@ -618,7 +620,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     // Unsubscribed partitions are no longer committed.
     consumer.unsubscribe(Collections.singleton(2));
     consumer.commitOffsets();
-    verify(commitConsumer, times(2)).commitSync(any(), any());
+    verify(commitConsumer).commitSync(any(), any());
 
     consumer.stop();
     verify(commitConsumer).close();

@@ -863,8 +863,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   /**
    * Commits current consumer positions back to the broker for monitoring (consumer-group
-   * lag). See {@link VeniceChangelogConsumer#commitOffsets()} for semantics. Safe to call without
-   * a configured Kafka {@code group.id}; the underlying adapter logs and skips in that case.
+   * lag). See {@link VeniceChangelogConsumer#commitOffsets()} for semantics. Offsets are committed under the
+   * {@code kafka.group.id} from the consumer properties; without one, the underlying adapter skips the commit.
    *
    * <p>Defensive try/catch as a second safety layer: this method is in the {@code poll()} hot
    * path and the contract is "monitoring-only, must not affect correctness". Any unexpected

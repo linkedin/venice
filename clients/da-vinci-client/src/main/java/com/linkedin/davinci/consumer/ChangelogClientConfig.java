@@ -111,9 +111,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * (consumer-group lag). Disabled by default. Supported by the consumers returned by
    * {@link VeniceChangelogConsumerClientFactory}, both the after-image and the DaVinci-based ones.
    *
-   * <p>Commits actually happen only when a Kafka {@code group.id} is also set on the consumer properties. The consumer
-   * never joins the group (partitions are assigned or committed explicitly, never subscribed), so no group rebalancing
-   * happens.
+   * <p>Commits actually happen only when a Kafka {@code group.id} ({@code kafka.group.id}) is also set on the consumer
+   * properties. That group id is used only for these commits: it reaches every PubSub consumer built from the consumer
+   * properties (including DaVinci's ingestion consumers), but those assign partitions with auto-commit disabled, so
+   * nothing else commits to or joins the group and no rebalancing happens. The broker creates the group on the first
+   * commit. Use a group id unique to the job, since a group with active members rejects these commits.
    *
    * <p>This commit is monitoring-only: the caller's checkpoint state remains the source of truth for offsets, and the
    * consumer does not read back the committed offset on restart.
