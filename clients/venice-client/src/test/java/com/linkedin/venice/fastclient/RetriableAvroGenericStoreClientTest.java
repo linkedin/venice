@@ -53,6 +53,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1241,6 +1242,36 @@ public class RetriableAvroGenericStoreClientTest {
     }
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testSynchronousRetryDispatchFailureKeepsCompletionContext(boolean compute) throws Exception {
+    try (ContextFixture fixture = new ContextFixture()) {
+      IllegalArgumentException dispatchFailure = new IllegalArgumentException("retry dispatch");
+      fixture.retryDispatchFailure = dispatchFailure;
+      for (String request: new String[] { "request-a", "request-b" }) {
+        int originalAttempt = fixture.attempts.size();
+        ContextCallback callback = fixture.startStreaming(request, compute, false, true);
+        fixture.onWorker(
+            () -> fixture.attempts.get(originalAttempt).completeExceptionally(new VeniceClientException("original")));
+        fixture.drainDeserialization();
+        assertFalse(callback.completion.isDone(), "The original failure must still allow a retry");
+        fixture.onWorker(() -> fixture.scheduled.get(fixture.scheduled.size() - 1).fire());
+        callback.assertFailure();
+        Throwable cause = callback.failure.get();
+        while (cause.getCause() != null) {
+          cause = cause.getCause();
+        }
+        assertSame(cause, dispatchFailure);
+        assertEquals(fixture.attempts.size(), originalAttempt + 1);
+      }
+      assertEquals(fixture.dispatchContexts, Arrays.asList("request-a", "request-a", "request-b", "request-b"));
+      assertEquals(fixture.contextCaptures.get(), 2);
+      for (RequestContext request: fixture.requests) {
+        assertTrue(request.resultFuture.isCompletedExceptionally());
+        request.routeRequestMap.values().forEach(route -> assertTrue(route.isDone()));
+      }
+    }
+  }
+
   @Test(dataProvider = "executionContextWinners", timeOut = TEST_TIMEOUT)
   public void testSingleGetExecutionContext(String winner) throws Exception {
     try (ContextFixture fixture = new ContextFixture()) {
@@ -1620,6 +1651,7 @@ public class RetriableAvroGenericStoreClientTest {
     private final IllegalStateException contextFailure = new IllegalStateException("context installation");
     private int failedScope = -1;
     private int failedCleanupScope = -1;
+    private RuntimeException retryDispatchFailure;
     private final List<RequestContext> requests = new ArrayList<>();
     private final List<String> dispatchContexts = new ArrayList<>();
     private final List<String> deserializationContexts = new ArrayList<>();
@@ -1720,6 +1752,9 @@ public class RetriableAvroGenericStoreClientTest {
 
     private CompletableFuture<TransportClientResponse> newAttempt(String url) {
       dispatchContexts.add(context.get());
+      if (retryDispatchFailure != null && url.startsWith("http://retry/")) {
+        throw retryDispatchFailure;
+      }
       for (Map.Entry<String, Integer> entry: routeKeyCounts.entrySet()) {
         if (url.startsWith(entry.getKey() + "/")) {
           attemptKeyCounts.add(entry.getValue());

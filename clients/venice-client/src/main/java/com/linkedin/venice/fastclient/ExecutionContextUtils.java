@@ -38,9 +38,38 @@ final class ExecutionContextUtils {
       ExecutionContextProvider.CapturedContext context,
       Runnable task,
       Consumer<Throwable> failureHandler) {
+    ScopedTask scopedTask = new ScopedTask(task, failureHandler);
     try {
-      context.run(task);
+      context.run(scopedTask);
     } catch (Throwable failure) {
+      if (scopedTask.failureReported) {
+        throw failure;
+      }
+      scopedTask.reportFailure(failure);
+    }
+  }
+
+  private static final class ScopedTask implements Runnable {
+    private final Runnable task;
+    private final Consumer<Throwable> failureHandler;
+    private boolean failureReported;
+
+    private ScopedTask(Runnable task, Consumer<Throwable> failureHandler) {
+      this.task = task;
+      this.failureHandler = failureHandler;
+    }
+
+    @Override
+    public void run() {
+      try {
+        task.run();
+      } catch (Throwable failure) {
+        reportFailure(failure);
+      }
+    }
+
+    private void reportFailure(Throwable failure) {
+      failureReported = true;
       failureHandler.accept(failure);
     }
   }

@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -91,5 +92,52 @@ public class ExecutionContextProviderTest {
         failure);
     assertEquals(scopeDepth.get(), 0);
     assertEquals(records.get(), 1);
+  }
+
+  @DataProvider
+  public Object[][] scopedFailureHandlers() {
+    return new Object[][] { { false, false }, { true, false }, { false, true }, { true, true } };
+  }
+
+  @Test(dataProvider = "scopedFailureHandlers")
+  public void testTaskFailureIsReportedWithinScopeWithoutReplayingHandler(
+      boolean handlerThrows,
+      boolean cleanupThrows) {
+    AtomicInteger scopeDepth = new AtomicInteger();
+    AtomicInteger tasks = new AtomicInteger();
+    AtomicInteger notifications = new AtomicInteger();
+    IllegalStateException taskFailure = new IllegalStateException("task");
+    IllegalArgumentException handlerFailure = new IllegalArgumentException("handler");
+    IllegalStateException cleanupFailure = new IllegalStateException("cleanup");
+    ExecutionContextProvider.CapturedContext context = task -> {
+      scopeDepth.incrementAndGet();
+      try {
+        task.run();
+      } finally {
+        scopeDepth.decrementAndGet();
+        if (cleanupThrows) {
+          throw cleanupFailure;
+        }
+      }
+    };
+    Runnable guarded = ExecutionContextUtils.wrap(context, () -> {
+      tasks.incrementAndGet();
+      throw taskFailure;
+    }, failure -> {
+      notifications.incrementAndGet();
+      assertEquals(scopeDepth.get(), 1, "Task failures must be reported before restoring worker context");
+      assertSame(failure, taskFailure);
+      if (handlerThrows) {
+        throw handlerFailure;
+      }
+    });
+    if (handlerThrows || cleanupThrows) {
+      assertSame(expectThrows(RuntimeException.class, guarded::run), cleanupThrows ? cleanupFailure : handlerFailure);
+    } else {
+      guarded.run();
+    }
+    assertEquals(scopeDepth.get(), 0);
+    assertEquals(tasks.get(), 1);
+    assertEquals(notifications.get(), 1);
   }
 }
