@@ -230,6 +230,7 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
+import com.linkedin.venice.stats.dimensions.VenicePushJobSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -1661,12 +1662,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (pushJobDetailsValue.getPushJobConfigs().containsKey(incPushKey)) {
           isIncrementalPush = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(incPushKey).toString());
         }
+        // An ETL repush gets no push id prefix, so the push job's source.etl config is the only thing that
+        // identifies it. The config key is read by name because the controller does not depend on the push job
+        // module that declares it.
+        Utf8 sourceEtlKey = new Utf8("source.etl");
+        boolean isSourceEtl = false;
+        if (pushJobDetailsValue.getPushJobConfigs().containsKey(sourceEtlKey)) {
+          isSourceEtl = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(sourceEtlKey).toString());
+        }
         StringBuilder logMessage = new StringBuilder();
         CharSequence storeName = pushJobDetailsKey.getStoreName();
         long jobDurationInMs = pushJobDetailsValue.getJobDurationInMs();
         VenicePushJobDurationBucket durationBucket = jobDurationInMs < pushJobSlaMs
             ? VenicePushJobDurationBucket.UNDER_SLA
             : VenicePushJobDurationBucket.AT_OR_OVER_SLA;
+        // What originated the push. PushType reports a repush as BATCH, so only the push id separates a push
+        // that brought in fresh data from one that re-ingested data Venice already held.
+        CharSequence pushId = pushJobDetailsValue.getPushId();
+        VenicePushJobSource pushSource =
+            Version.getPushJobSource(pushId == null ? null : pushId.toString(), isSourceEtl);
         logMessage.append("Push job status for store name: ")
             .append(storeName)
             .append(", version: ")
@@ -1680,35 +1694,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (isIncrementalPush) {
               pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor(
                   storeName.toString(),
+                  pushSource,
                   overallStatus,
                   durationBucket);
             } else {
-              pushJobStatusStats
-                  .recordBatchPushFailureDueToUserErrorSensor(storeName.toString(), overallStatus, durationBucket);
+              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor(
+                  storeName.toString(),
+                  pushSource,
+                  overallStatus,
+                  durationBucket);
             }
           } else {
             logMessage.append(" due to non-user error");
             if (isIncrementalPush) {
               pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor(
                   storeName.toString(),
+                  pushSource,
                   overallStatus,
                   durationBucket);
             } else {
-              pushJobStatusStats
-                  .recordBatchPushFailureNotDueToUserErrorSensor(storeName.toString(), overallStatus, durationBucket);
+              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor(
+                  storeName.toString(),
+                  pushSource,
+                  overallStatus,
+                  durationBucket);
             }
           }
         } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
           logMessage.append(" succeeded with status: ").append(overallStatus);
           // Emit metrics for successful push jobs
           if (isIncrementalPush) {
-            pushJobStatusStats.recordIncrementalPushSuccessSensor(storeName.toString(), overallStatus, durationBucket);
+            pushJobStatusStats
+                .recordIncrementalPushSuccessSensor(storeName.toString(), pushSource, overallStatus, durationBucket);
           } else {
-            pushJobStatusStats.recordBatchPushSuccessSensor(storeName.toString(), overallStatus, durationBucket);
+            pushJobStatusStats
+                .recordBatchPushSuccessSensor(storeName.toString(), pushSource, overallStatus, durationBucket);
           }
 
           // Scheduled log compaction metric
-          if (Version.isPushIdRePush(pushJobDetailsValue.getPushId().toString())) {
+          if (pushSource == VenicePushJobSource.REPUSH) {
             logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
           }
           // Only a completed push's data-writer timings are meaningful for "why was this push slow" — a push
