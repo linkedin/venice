@@ -22,6 +22,7 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,6 +30,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -46,6 +49,9 @@ public class GracefulShutdownAvroStoreClientTest {
     final ClientRequestTracker tracker;
     final InternalAvroStoreClient<String, String> dispatch = mock(InternalAvroStoreClient.class);
     final InternalAvroStoreClient<String, String> trackedDispatch;
+    final ExecutorService closeExecutor = Executors.newCachedThreadPool();
+    final List<CompletableFuture<Void>> closeTasks = new ArrayList<>();
+    final List<Runnable> releases = new ArrayList<>();
     GracefulShutdownAvroGenericStoreClient<String, String> client;
 
     Fixture(long timeout) {
@@ -65,14 +71,46 @@ public class GracefulShutdownAvroStoreClientTest {
       client = new GracefulShutdownAvroGenericStoreClient<>(delegate, config, tracker, true);
     }
 
-    void startCloseFromCallback() {
-      tracker.invokeCallback(client::close);
+    CompletableFuture<Void> closeAsync() {
+      CompletableFuture<Void> task = CompletableFuture.runAsync(client::close, closeExecutor);
+      closeTasks.add(task);
+      return task;
+    }
+
+    CompletableFuture<Void> startClose(Runnable release) {
+      CompletableFuture<Void> task = closeAsync();
+      releases.add(() -> {
+        if (!task.isDone()) {
+          release.run();
+        }
+      });
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertThrows(VeniceClientException.class, () -> {
+          try (ClientRequestTracker.Ticket ignored = tracker.acquire(true, null)) {
+            // Release probes admitted before the close thread starts.
+          }
+        });
+      });
+      return task;
     }
 
     @Override
     public void close() {
-      client.close();
-      metrics.close();
+      try {
+        releases.forEach(Runnable::run);
+        client.close();
+        CompletableFuture.allOf(closeTasks.toArray(new CompletableFuture[0])).join();
+      } finally {
+        closeExecutor.shutdown();
+        try {
+          assertTrue(closeExecutor.awaitTermination(5, TimeUnit.SECONDS), "Close threads must finish");
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new AssertionError(e);
+        } finally {
+          metrics.close();
+        }
+      }
     }
   }
 
@@ -83,7 +121,7 @@ public class GracefulShutdownAvroStoreClientTest {
       when(f.dispatch.get(any(GetRequestContext.class), eq("key"))).thenReturn(response);
       CompletableFuture<String> caller = f.client.get("key");
       assertTrue(caller.cancel(false));
-      f.startCloseFromCallback();
+      f.startClose(() -> response.complete("value"));
       assertThrows(VeniceClientException.class, () -> f.client.get("new"));
       verify(f.dispatch, never()).close();
       response.complete("value");
@@ -110,16 +148,24 @@ public class GracefulShutdownAvroStoreClientTest {
   }
 
   @Test(timeOut = 10000)
-  public void testCloseFromCompletionCallbackDoesNotWaitForItself() {
+  public void testCloseWaitsForResourceCleanup() throws Exception {
     try (Fixture f = new Fixture(5000)) {
-      CompletableFuture<String> response = new CompletableFuture<>();
-      when(f.dispatch.get(any(GetRequestContext.class), any())).thenReturn(response);
-      CompletableFuture<String> caller = f.client.get("key");
-      CompletableFuture<Void> callback = caller.thenRun(f.client::close);
-      response.complete("value");
-      callback.join();
+      CountDownLatch cleanupEntered = new CountDownLatch(1);
+      CountDownLatch release = new CountDownLatch(1);
+      doAnswer(ignored -> {
+        cleanupEntered.countDown();
+        assertTrue(release.await(5, TimeUnit.SECONDS));
+        return null;
+      }).when(f.dispatch).close();
+      CompletableFuture<Void> close = f.startClose(release::countDown);
+      try {
+        assertTrue(cleanupEntered.await(5, TimeUnit.SECONDS));
+        assertFalse(close.isDone(), "Close must wait for resource cleanup");
+      } finally {
+        release.countDown();
+      }
+      close.get(5, TimeUnit.SECONDS);
       f.client.close();
-      assertEquals(caller.join(), "value");
       verify(f.dispatch, times(1)).close();
     }
   }
@@ -135,17 +181,19 @@ public class GracefulShutdownAvroStoreClientTest {
         return CompletableFuture.completedFuture("value");
       });
       CompletableFuture<CompletableFuture<String>> send = CompletableFuture.supplyAsync(() -> f.client.get("key"));
-      assertTrue(sending.await(5, TimeUnit.SECONDS));
-      f.startCloseFromCallback();
-      CompletableFuture<Void> close1 = CompletableFuture.runAsync(f.client::close);
-      CompletableFuture<Void> close2 = CompletableFuture.runAsync(f.client::close);
+      CompletableFuture<Void> close1;
+      CompletableFuture<Void> close2;
       try {
+        assertTrue(sending.await(5, TimeUnit.SECONDS));
+        f.startClose(release::countDown);
+        close1 = f.closeAsync();
+        close2 = f.closeAsync();
         assertThrows(VeniceClientException.class, () -> f.client.get("new"));
         verify(f.dispatch, never()).close();
       } finally {
         release.countDown();
+        assertEquals(send.get(5, TimeUnit.SECONDS).join(), "value");
       }
-      assertEquals(send.get(5, TimeUnit.SECONDS).join(), "value");
       CompletableFuture.allOf(close1, close2).get(5, TimeUnit.SECONDS);
       verify(f.dispatch, times(1)).close();
     }
@@ -162,7 +210,7 @@ public class GracefulShutdownAvroStoreClientTest {
       AtomicReference<StreamingCallback> downstream = new AtomicReference<>();
       captureStreaming(f, downstream);
       CompletableFuture<?> caller = sendStreaming(f, api);
-      f.startCloseFromCallback();
+      f.startClose(() -> downstream.get().onCompletion(Optional.empty()));
       verify(f.dispatch, never()).close();
       StreamingCallback callback = downstream.get();
       callback.onRecordReceived("key", "compute".equals(api) ? mock(ComputeGenericRecord.class) : "value");
@@ -256,7 +304,10 @@ public class GracefulShutdownAvroStoreClientTest {
         retriable.setSingleKeyLongTailRetryManager(null);
         f.wrap(retriable);
         CompletableFuture<String> caller = f.client.get("key");
-        f.startCloseFromCallback();
+        f.startClose(() -> {
+          original.complete("loser");
+          retry.complete("winner");
+        });
         if (errorRetry) {
           original.completeExceptionally(new VeniceClientException("retryable"));
         } else {
@@ -293,16 +344,16 @@ public class GracefulShutdownAvroStoreClientTest {
           throw new AssertionError(e);
         }
       }));
-      assertTrue(resourceEntered.await(5, TimeUnit.SECONDS));
       try {
+        assertTrue(resourceEntered.await(5, TimeUnit.SECONDS));
         f.client.close();
         verify(f.dispatch, times(1)).close();
         assertShutdownFailure(caller, "shutdown timeout");
         assertFalse(work.isDone());
       } finally {
         release.countDown();
+        work.get(5, TimeUnit.SECONDS);
       }
-      work.get(5, TimeUnit.SECONDS);
     }
   }
 
@@ -341,14 +392,14 @@ public class GracefulShutdownAvroStoreClientTest {
           throw new AssertionError(e);
         }
       }));
-      assertTrue(entered.await(5, TimeUnit.SECONDS));
-      f.startCloseFromCallback();
       try {
+        assertTrue(entered.await(5, TimeUnit.SECONDS));
+        f.startClose(release::countDown);
         verify(f.dispatch, never()).close();
       } finally {
         release.countDown();
+        work.get(5, TimeUnit.SECONDS);
       }
-      work.get(5, TimeUnit.SECONDS);
       f.client.close();
       context.clientResourceTask(() -> fail("Queued deserialization must not use closed resources")).run();
       verify(f.dispatch, times(1)).close();
@@ -415,7 +466,7 @@ public class GracefulShutdownAvroStoreClientTest {
       assertEquals(attempts.size(), 2);
       attempts.get(1).onRecordReceived("key", compute ? mock(ComputeGenericRecord.class) : "winner");
       caller.join();
-      f.startCloseFromCallback();
+      f.startClose(() -> attempts.forEach(attempt -> attempt.onCompletion(Optional.empty())));
       verify(f.dispatch, never()).close();
       attempts.get(0).onCompletion(Optional.empty());
       verify(f.dispatch, never()).close();
@@ -441,7 +492,10 @@ public class GracefulShutdownAvroStoreClientTest {
       f.wrap(new DualReadAvroGenericStoreClient<>(f.trackedDispatch, f.config, thin));
       assertEquals(f.client.get("key").join(), "thin");
       assertEquals(f.client.batchGet(Collections.singleton("key")).join(), Collections.singletonMap("key", "thin"));
-      f.startCloseFromCallback();
+      f.startClose(() -> {
+        fast.complete("fast");
+        fastBatch.get().onCompletion(Optional.empty());
+      });
       verify(f.dispatch, never()).close();
       fast.complete("fast");
       verify(f.dispatch, never()).close();

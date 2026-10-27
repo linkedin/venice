@@ -19,7 +19,6 @@ import org.apache.logging.log4j.Logger;
 public final class ClientRequestTracker {
   private static final Logger LOGGER = LogManager.getLogger(ClientRequestTracker.class);
   private final Set<Ticket> pending = new HashSet<>();
-  private final ThreadLocal<Integer> callbackDepth = ThreadLocal.withInitial(() -> 0);
   private final CompletableFuture<Void> closed = new CompletableFuture<>();
   private final long closeTimeoutMs;
   private boolean closing;
@@ -41,20 +40,6 @@ public final class ClientRequestTracker {
 
   boolean isStopped() {
     return stopped;
-  }
-
-  void invokeCallback(Runnable callback) {
-    int depth = callbackDepth.get();
-    callbackDepth.set(depth + 1);
-    try {
-      callback.run();
-    } finally {
-      if (depth == 0) {
-        callbackDepth.remove();
-      } else {
-        callbackDepth.set(depth);
-      }
-    }
   }
 
   Runnable resourceTask(Runnable task) {
@@ -82,10 +67,6 @@ public final class ClientRequestTracker {
         closer.setDaemon(true);
         closer.start();
       }
-    }
-    // A completion callback may still own an attempt ticket. It must return before that ticket can drain.
-    if (callbackDepth.get() != 0) {
-      return;
     }
     boolean restoreInterrupt = false;
     try {
@@ -133,7 +114,7 @@ public final class ClientRequestTracker {
       for (Ticket ticket: remaining) {
         if (ticket.onShutdown != null) {
           try {
-            invokeCallback(() -> ticket.onShutdown.accept(failure));
+            ticket.onShutdown.accept(failure);
           } catch (Throwable e) {
             LOGGER.warn("Request completion callback failed during client shutdown", e);
           }

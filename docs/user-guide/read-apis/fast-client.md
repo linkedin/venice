@@ -251,8 +251,8 @@ completes. The timeout bounds request draining, not the time spent in applicatio
 
 Queued response processing is discarded after the deadline. Already-running processing may finish or fail against closed
 resources; its late results are not delivered to the caller. Close does not wait for this work beyond the grace period.
-Calling `close()` from a completion callback starts shutdown without waiting for that callback itself. Other callers
-wait for the shared cleanup to finish. An interrupted close ends the drain wait and preserves the thread's interrupt.
+Concurrent close calls wait for the shared cleanup to finish. An interrupted close ends the drain wait and preserves the
+thread's interrupt.
 
 Always close clients before shutting down the borrowed D2 and R2 transports:
 

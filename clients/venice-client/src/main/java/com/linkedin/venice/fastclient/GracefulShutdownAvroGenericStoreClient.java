@@ -45,26 +45,22 @@ public class GracefulShutdownAvroGenericStoreClient<K, V> extends DelegatingAvro
     try {
       send.get().whenComplete((value, error) -> {
         try {
-          tracker.invokeCallback(() -> {
-            if (tracker.isStopped()) {
-              return;
-            } else if (error == null) {
-              result.complete(value);
-            } else {
-              result.completeExceptionally(error);
-            }
-          });
+          if (tracker.isStopped()) {
+            return;
+          } else if (error == null) {
+            result.complete(value);
+          } else {
+            result.completeExceptionally(error);
+          }
         } finally {
           ticket.close();
         }
       });
     } catch (Throwable e) {
       try {
-        tracker.invokeCallback(() -> {
-          if (!tracker.isStopped()) {
-            result.completeExceptionally(e);
-          }
-        });
+        if (!tracker.isStopped()) {
+          result.completeExceptionally(e);
+        }
       } finally {
         ticket.close();
       }
@@ -93,14 +89,14 @@ public class GracefulShutdownAvroGenericStoreClient<K, V> extends DelegatingAvro
       @Override
       public synchronized void onRecordReceived(K key, T value) {
         if (!completed.get() && !tracker.isStopped()) {
-          tracker.invokeCallback(() -> callback.onRecordReceived(key, value));
+          callback.onRecordReceived(key, value);
         }
       }
 
       @Override
       public synchronized void onCompletion(Optional<Exception> exception) {
         if (completed.compareAndSet(false, true)) {
-          tracker.invokeCallback(() -> callback.onCompletion(exception));
+          callback.onCompletion(exception);
         }
       }
     };
