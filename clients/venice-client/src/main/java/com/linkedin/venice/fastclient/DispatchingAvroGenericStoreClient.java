@@ -231,7 +231,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(requestContext.route, routeRequestFuture);
 
       CompletableFuture<Integer> routeRequestFutureFinal = routeRequestFuture;
-      transportFuture.whenCompleteAsync((response, throwable) -> {
+      transportFuture.whenCompleteAsync((response, throwable) -> requestContext.clientResourceTask(() -> {
         requestContext.requestSubmissionToResponseHandlingTime =
             LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
         if (throwable != null) {
@@ -265,7 +265,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             }
           }
         }
-      }, deserializationExecutor);
+      }).run(), deserializationExecutor);
 
     } catch (Exception e) {
       LOGGER.error("Received exception while sending request to route: {}", requestContext.route, e);
@@ -390,12 +390,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(route, routeRequestFuture.getOriginalFuture());
       requestCompletionFutures[routeIndex] = routeRequestFuture.getResultFuture();
 
-      transportClientFutureForRoute.whenComplete((transportClientResponse, throwable) -> {
-        requestContext.recordRequestSubmissionToResponseHandlingTime(route);
-        TransportClientResponseForRoute response = TransportClientResponseForRoute
-            .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
-        routeResponseHandler.handle(keysForRoutes, response, throwable);
-      });
+      transportClientFutureForRoute
+          .whenComplete((transportClientResponse, throwable) -> requestContext.clientResourceTask(() -> {
+            requestContext.recordRequestSubmissionToResponseHandlingTime(route);
+            TransportClientResponseForRoute response = TransportClientResponseForRoute
+                .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
+            routeResponseHandler.handle(keysForRoutes, response, throwable);
+          }).run());
       routeIndex++;
     }
 
@@ -608,7 +609,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return new ComputeRecordStreamDecoder<>(
         keyList,
         nonCompletingStreamingCallback,
-        deserializationExecutor,
+        task -> deserializationExecutor.execute(requestContext.clientResourceTask(task)),
         STREAMING_FOOTER_RECORD_DESERIALIZER,
         computeResultRecordDeserializer);
   }

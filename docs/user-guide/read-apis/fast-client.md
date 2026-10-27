@@ -216,11 +216,12 @@ ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
 
 ## Health Monitoring
 
-Configure instance health monitoring to avoid unhealthy servers:
+Each Fast Client creates its own instance health monitor, which tracks unhealthy and overloaded servers so requests
+avoid them. The monitor is not shared with other clients and is closed when the client is closed. Pass settings to tune
+it; the client's R2 client is used unless the settings name another one:
 
 ```java
 InstanceHealthMonitorConfig healthConfig = new InstanceHealthMonitorConfig.Builder()
-    .setClient(r2Client)
     .setRoutingRequestDefaultTimeoutMS(1000)
     .setRoutingPendingRequestCounterInstanceBlockThreshold(50)
     .setHeartBeatIntervalSeconds(30)
@@ -229,15 +230,31 @@ InstanceHealthMonitorConfig healthConfig = new InstanceHealthMonitorConfig.Build
 
 ClientConfig clientConfig = new ClientConfig.ClientConfigBuilder<>()
     // ... basic config ...
-    .setInstanceHealthMonitor(new InstanceHealthMonitor(healthConfig))
+    .setInstanceHealthMonitorConfig(healthConfig)
     .build();
 ```
+
+**Migration:** Replace `setInstanceHealthMonitor(...)` with `setInstanceHealthMonitorConfig(...)`; settings may be
+reused, but live monitors are no longer shared. Use `ClientConfig.getInstanceHealthMonitorConfig()` for settings and let
+the client own monitor creation and cleanup. For gRPC-only configurations, the fallback heartbeat transport is
+`GrpcClientConfig.getR2Client()`.
 
 ## Client Lifecycle
 
 ### Closing the Client
 
-Always close clients properly to release resources:
+Factory-created Fast Clients reject new requests when `close()` starts and allow accepted requests, including retries,
+up to **1 second** to finish before closing metadata and other owned resources. Configure this grace period with
+`ClientConfigBuilder.setClientCloseTimeoutMs(long)`; values must be nonnegative, and `0` disables the wait. Requests
+still pending at the deadline fail with a `VeniceClientException` describing the shutdown timeout before cleanup
+completes. The timeout bounds request draining, not the time spent in application callbacks or resource cleanup.
+
+Queued response processing is discarded after the deadline. Already-running processing may finish or fail against closed
+resources; its late results are not delivered to the caller. Close does not wait for this work beyond the grace period.
+Concurrent close calls wait for the shared cleanup to finish. An interrupted close ends the drain wait and preserves the
+thread's interrupt.
+
+Always close clients before shutting down the borrowed D2 and R2 transports:
 
 ```java
 // Close the Venice client

@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -57,11 +58,14 @@ public class TimeoutProcessor implements Executor {
     }
   };
 
-  /** ResourceRegistry iff none specified at construction */
+  /** Internally owned registry, or null for an externally supplied registry or managed executor. */
   private final ResourceRegistry _registry;
 
   /** ExecutorService for this timeout processor */
   private final ScheduledExecutorService _executor;
+
+  private final ReentrantReadWriteLock _lifecycleLock = new ReentrantReadWriteLock();
+  private boolean _shutdown;
 
   /** A stack containing all tasks scheduled on the ExecutorService */
   private final DoublyLinkedList<TimeoutEvent> _nextEvent = new DoublyLinkedList<>();
@@ -334,13 +338,42 @@ public class TimeoutProcessor implements Executor {
   }
 
   TimeoutProcessor(ResourceRegistry registry, long tickingInterval, EventStore eventStore, int executorThreadCount) {
-    _registry = registry == null ? (registry = new ResourceRegistry()) : null; // SUPPRESS CHECKSTYLE InnerAssignment
-    _executor = registry.factory(ShutdownableExecutors.class)
-        .newScheduledThreadPool(executorThreadCount, new NamedThreadFactory("timeout-processor"));
+    this(registry, tickingInterval, eventStore, executorThreadCount, false);
+  }
+
+  private TimeoutProcessor(
+      ResourceRegistry registry,
+      long tickingInterval,
+      EventStore eventStore,
+      int executorThreadCount,
+      boolean managed) {
+    if (managed) {
+      _registry = null;
+      _executor = Executors.newScheduledThreadPool(executorThreadCount, new NamedThreadFactory("timeout-processor"));
+    } else {
+      _registry = registry == null ? (registry = new ResourceRegistry()) : null; // SUPPRESS CHECKSTYLE InnerAssignment
+      _executor = registry.factory(ShutdownableExecutors.class)
+          .newScheduledThreadPool(executorThreadCount, new NamedThreadFactory("timeout-processor"));
+    }
 
     _eventStore = Objects.requireNonNull(eventStore);
     _eventsMap = _eventStore.buildCorrespondentMap();
     _executor.scheduleAtFixedRate(_tick, 0, tickingInterval, TimeUnit.MILLISECONDS);
+  }
+
+  /**
+   * Creates a processor whose executor is owned exclusively by its caller, rather than a ResourceRegistry.
+   * It is not affected by {@link ResourceRegistry#globalShutdown()}. The owner must stop producers, call
+   * {@link #shutdownNow()}, and then {@link #awaitTermination(int, TimeUnit)} after its dependents have stopped.
+   * Existing constructors retain their registry/global cleanup behavior.
+   */
+  public static TimeoutProcessor createManaged(boolean useTreeMap, int executorThreadCount) {
+    return new TimeoutProcessor(
+        null,
+        TICKING_INTERVAL_MILLISECONDS,
+        useTreeMap ? EventStore.TreeMap : EventStore.SkipList,
+        executorThreadCount,
+        true);
   }
 
   /**
@@ -401,29 +434,44 @@ public class TimeoutProcessor implements Executor {
    * @see ScheduledExecutorService#schedule(Runnable, long, java.util.concurrent.TimeUnit)
    */
   public TimeoutFuture schedule(Runnable task, long delay, TimeUnit unit) {
-    Long time = absoluteTime(delay, unit);
-    return _eventStore.schedule(
-        task,
-        new TimeoutEvent(time),
-        time,
-        _nextEvent,
-        _executor,
-        _drainingEvents,
-        _eventsMap,
-        _mapLock,
-        _nextEventLock);
+    _lifecycleLock.readLock().lock();
+    try {
+      if (_shutdown || _executor.isShutdown()) {
+        throw new RejectedExecutionException("Timeout processor is shut down");
+      }
+      Long time = absoluteTime(delay, unit);
+      return _eventStore.schedule(
+          task,
+          new TimeoutEvent(time),
+          time,
+          _nextEvent,
+          _executor,
+          _drainingEvents,
+          _eventsMap,
+          _mapLock,
+          _nextEventLock);
+    } finally {
+      _lifecycleLock.readLock().unlock();
+    }
   }
 
   /**
    * @see java.util.concurrent.ScheduledExecutorService#shutdownNow()
    */
   public void shutdownNow() {
+    _lifecycleLock.writeLock().lock();
+    try {
+      _shutdown = true;
+    } finally {
+      _lifecycleLock.writeLock().unlock();
+    }
     if (_registry != null) {
       _registry.shutdown();
       try {
         _registry.waitForShutdown();
       } catch (InterruptedException e) {
         LOG.warn("Interrupted", e);
+        Thread.currentThread().interrupt();
       }
     } else {
       _executor.shutdownNow();
@@ -451,7 +499,15 @@ public class TimeoutProcessor implements Executor {
 
   @Override
   public void execute(Runnable command) {
-    _executor.execute(command);
+    _lifecycleLock.readLock().lock();
+    try {
+      if (_shutdown) {
+        throw new RejectedExecutionException("Timeout processor is shut down");
+      }
+      _executor.execute(command);
+    } finally {
+      _lifecycleLock.readLock().unlock();
+    }
   }
 
   /**
@@ -468,20 +524,28 @@ public class TimeoutProcessor implements Executor {
         assert !success || _lock.isHeldByCurrentThread();
         if (success && isEmpty() && !_purgePending) {
           _purgePending = true;
-          _executor.execute(() -> {
-            try {
-              if (isEmpty()) {
-                _nextEventLock.lock();
-                try {
-                  TimeoutEvent.this.unlink();
-                } finally {
-                  _nextEventLock.unlock();
+          try {
+            _executor.execute(() -> {
+              try {
+                if (isEmpty()) {
+                  _nextEventLock.lock();
+                  try {
+                    TimeoutEvent.this.unlink();
+                  } finally {
+                    _nextEventLock.unlock();
+                  }
                 }
+              } finally {
+                _purgePending = false;
               }
-            } finally {
-              _purgePending = false;
+            });
+          } catch (RejectedExecutionException e) {
+            _purgePending = false;
+            // The task was removed; no executor cleanup is needed after shutdown.
+            if (!_executor.isShutdown()) {
+              throw e;
             }
-          });
+          }
         }
         return success;
       }
