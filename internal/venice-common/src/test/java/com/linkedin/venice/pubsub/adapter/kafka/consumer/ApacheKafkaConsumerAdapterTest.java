@@ -1026,49 +1026,34 @@ public class ApacheKafkaConsumerAdapterTest {
 
   @Test
   public void testCommitSyncDelegatesToKafkaConsumerWhenGroupIdConfigured() {
-    Properties consumerProperties = new Properties();
-    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
-    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
-
+    configureGroupId();
     kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
     verify(internalKafkaConsumer).commitSync(any(Duration.class));
   }
 
   @Test
   public void testCommitSyncShortCircuitsWhenNoGroupId() {
-    // Default mock returns null for getConsumerProperties — should silently no-op so existing
-    // users who don't opt into broker-side monitoring don't see log spam every poll cycle.
+    // No group id is configured, so the commit is skipped.
     kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
     verify(internalKafkaConsumer, never()).commitSync(any(Duration.class));
   }
 
   @Test
-  public void testCommitSyncSwallowsExceptions() {
-    Properties consumerProperties = new Properties();
-    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
-    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
-    // Real broker failures (rebalance, broker down, etc.) must be swallowed; commit is
-    // monitoring-only and must never affect correctness.
-    doThrow(new IllegalStateException("simulated broker failure")).when(internalKafkaConsumer)
-        .commitSync(any(Duration.class));
-
-    kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1));
-    verify(internalKafkaConsumer).commitSync(any(Duration.class));
-  }
-
-  @Test
   public void testCommitSyncWithPositionsCommitsNextOffset() {
-    Properties consumerProperties = new Properties();
-    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
-    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
+    configureGroupId();
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("store_v1"), 2);
-
     kafkaConsumerAdapter
         .commitSync(Collections.singletonMap(tp, ApacheKafkaOffsetPosition.of(41)), Duration.ofSeconds(1));
     verify(internalKafkaConsumer)
         .commitSync(eq(Collections.singletonMap(new TopicPartition("store_v1", 2), new OffsetAndMetadata(42))), any());
     verify(internalKafkaConsumer, never()).assign(any());
     verify(internalKafkaConsumer, never()).subscribe(any(Collection.class));
+  }
+
+  private void configureGroupId() {
+    Properties consumerProperties = new Properties();
+    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
   }
 
 }

@@ -242,13 +242,7 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testOffsetCommitsDisabledByDefault() {
-    Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = newOffsetCommitTestConsumer();
     veniceChangelogConsumer.poll(pollTimeoutMs);
     veniceChangelogConsumer.commitOffsets();
     Mockito.verify(mockPubSubConsumer, Mockito.never()).commitSync(any());
@@ -259,14 +253,8 @@ public class VeniceChangelogConsumerImplTest {
     changelogClientConfig.setConsumerOffsetCommitEnabled(true)
         .setConsumerOffsetCommitIntervalMs(TimeUnit.HOURS.toMillis(1))
         .setConsumerOffsetCommitTimeoutMs(1_000L);
-    Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
     Mockito.doThrow(new RuntimeException("simulated adapter failure")).when(mockPubSubConsumer).commitSync(any());
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = newOffsetCommitTestConsumer();
     // The first poll commits (lastCommitTimeMs starts at 0); later polls within the interval do not.
     veniceChangelogConsumer.poll(pollTimeoutMs);
     veniceChangelogConsumer.poll(pollTimeoutMs);
@@ -276,7 +264,6 @@ public class VeniceChangelogConsumerImplTest {
   @Test
   public void testConcurrentPollsCommitOncePerInterval() throws Exception {
     changelogClientConfig.setConsumerOffsetCommitEnabled(true);
-    Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
     CountDownLatch commitStarted = new CountDownLatch(1);
     CountDownLatch releaseCommit = new CountDownLatch(1);
     Mockito.doAnswer(invocation -> {
@@ -284,12 +271,7 @@ public class VeniceChangelogConsumerImplTest {
       Assert.assertTrue(releaseCommit.await(5, TimeUnit.SECONDS));
       return null;
     }).when(mockPubSubConsumer).commitSync(any());
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = newOffsetCommitTestConsumer();
     ExecutorService executorService = Executors.newSingleThreadExecutor();
     try {
       Future<?> firstPoll = executorService.submit(() -> veniceChangelogConsumer.poll(pollTimeoutMs));
@@ -302,6 +284,17 @@ public class VeniceChangelogConsumerImplTest {
       executorService.shutdownNow();
     }
     Mockito.verify(mockPubSubConsumer, times(1)).commitSync(any());
+  }
+
+  private VeniceAfterImageConsumerImpl<String, Utf8> newOffsetCommitTestConsumer() {
+    Mockito.doReturn(Collections.emptyMap()).when(mockPubSubConsumer).poll(Mockito.anyLong());
+    VeniceAfterImageConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    return consumer;
   }
 
   @Test
