@@ -440,12 +440,10 @@ public class DualReadAvroGenericStoreClientTest {
         }
       };
     };
-    Map<String, String> fastValue = Collections.singletonMap(SINGLE_GET_KEY, FAST_CLIENT_SINGLE_GET_RESPONSE);
-    Map<String, String> thinValue = Collections.singletonMap(SINGLE_GET_KEY, THIN_CLIENT_SINGLE_GET_RESPONSE);
     for (String request: new String[] { "request-a", "request-b" }) {
       scopes.set(0);
-      CompletableFuture<Map<String, String>> fastResponse = new CompletableFuture<>();
-      CompletableFuture<Map<String, String>> thinResponse = new CompletableFuture<>();
+      CompletableFuture<String> fastResponse = new CompletableFuture<>();
+      CompletableFuture<String> thinResponse = new CompletableFuture<>();
       InternalAvroStoreClient<String, String> fastClient = mock(InternalAvroStoreClient.class);
       AvroGenericStoreClient<String, String> thinClient = mock(AvroGenericStoreClient.class);
       ClientConfig config = mock(ClientConfig.class);
@@ -455,31 +453,32 @@ public class DualReadAvroGenericStoreClientTest {
       doAnswer(invocation -> {
         GetRequestContext<?> requestContext = invocation.getArgument(0);
         requestContext.getOrCaptureExecutionContext(provider);
-        return fastResponse.thenApply(values -> values.get(SINGLE_GET_KEY));
+        return fastResponse;
       }).when(fastClient).get(any(GetRequestContext.class), any());
       doAnswer(invocation -> {
         BatchGetRequestContext<?, ?> requestContext = invocation.getArgument(0);
         requestContext.getOrCaptureExecutionContext(provider);
         StreamingCallback<String, String> callback = invocation.getArgument(2);
-        fastResponse.whenComplete((values, error) -> {
+        fastResponse.whenComplete((value, error) -> {
           if (error == null) {
-            values.forEach(callback::onRecordReceived);
+            callback.onRecordReceived(SINGLE_GET_KEY, value);
           }
           callback.onCompletion(error == null ? Optional.empty() : Optional.of(new VeniceClientException(error)));
         });
         return null;
       }).when(fastClient).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
-      doReturn(thinResponse.thenApply(values -> values.get(SINGLE_GET_KEY))).when(thinClient).get(any());
-      doReturn(thinResponse).when(thinClient).batchGet(any());
+      doReturn(thinResponse).when(thinClient).get(any());
+      doReturn(thinResponse.thenApply(value -> Collections.singletonMap(SINGLE_GET_KEY, value))).when(thinClient)
+          .batchGet(any());
       DualReadAvroGenericStoreClient<String, String> client = new DualReadAvroGenericStoreClient<>(fastClient, config);
       CompletableFuture<?> response;
       context.set(request);
       try {
-        response = batchGet ? client.batchGet(fastValue.keySet()) : client.get(SINGLE_GET_KEY);
+        response = batchGet ? client.batchGet(Collections.singleton(SINGLE_GET_KEY)) : client.get(SINGLE_GET_KEY);
       } finally {
         context.remove();
       }
-      Map<String, String> winningValue = thinClientCompletes ? thinValue : fastValue;
+      String winningValue = thinClientCompletes ? THIN_CLIENT_SINGLE_GET_RESPONSE : FAST_CLIENT_SINGLE_GET_RESPONSE;
       CompletableFuture<String> downstream = response.handle((value, error) -> {
         if (failure || failedScope != 0) {
           assertNull(value);
@@ -489,15 +488,15 @@ public class DualReadAvroGenericStoreClientTest {
           }
         } else {
           assertNull(error);
-          assertEquals(value, batchGet ? winningValue : winningValue.get(SINGLE_GET_KEY));
+          assertEquals(value, batchGet ? Collections.singletonMap(SINGLE_GET_KEY, winningValue) : winningValue);
         }
         return context.get();
       });
       scheduledExecutor.submit(() -> {
         context.set("worker-prior-context");
         try {
-          CompletableFuture<Map<String, String>> last = thinClientCompletes ? thinResponse : fastResponse;
-          CompletableFuture<Map<String, String>> other = thinClientCompletes ? fastResponse : thinResponse;
+          CompletableFuture<String> last = thinClientCompletes ? thinResponse : fastResponse;
+          CompletableFuture<String> other = thinClientCompletes ? fastResponse : thinResponse;
           if (failure) {
             other.completeExceptionally(new VeniceClientException("first failure"));
             assertFalse(response.isDone());
@@ -506,7 +505,7 @@ public class DualReadAvroGenericStoreClientTest {
           } else {
             last.complete(winningValue);
             assertEquals(context.get(), "worker-prior-context");
-            other.complete(thinClientCompletes ? fastValue : thinValue);
+            other.complete(thinClientCompletes ? FAST_CLIENT_SINGLE_GET_RESPONSE : THIN_CLIENT_SINGLE_GET_RESPONSE);
           }
           assertEquals(context.get(), "worker-prior-context");
         } finally {

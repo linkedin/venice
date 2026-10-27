@@ -42,18 +42,22 @@ final class ExecutionContextUtils {
     return context == ExecutionContextProvider.CapturedContext.NO_OP ? callback : new CompletionGuard<>(callback);
   }
 
-  private static final class CompletionGuard<K, V> implements StreamingCallback<K, V> {
+  static final class CompletionGuard<K, V> implements StreamingCallback<K, V> {
     private final StreamingCallback<K, V> callback;
     private int activeRecords;
     private boolean completed;
     private Optional<Exception> pendingCompletion;
 
-    private CompletionGuard(StreamingCallback<K, V> callback) {
+    CompletionGuard(StreamingCallback<K, V> callback) {
       this.callback = callback;
     }
 
     @Override
     public void onRecordReceived(K key, V value) {
+      runRecord(() -> callback.onRecordReceived(key, value));
+    }
+
+    void runRecord(Runnable recordDelivery) {
       synchronized (this) {
         if (completed) {
           return;
@@ -61,7 +65,7 @@ final class ExecutionContextUtils {
         activeRecords++;
       }
       try {
-        callback.onRecordReceived(key, value);
+        recordDelivery.run();
       } finally {
         Optional<Exception> completion;
         synchronized (this) {

@@ -348,7 +348,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       StreamingRequestExecutor<K, V, R, RESPONSE> streamingRequestExecutor) throws VeniceClientException {
     ExecutionContextProvider.CapturedContext executionContext =
         requestContext.getOrCaptureExecutionContext(executionContextProvider);
-    StreamingCallback<K, RESPONSE> callback = ExecutionContextUtils.guardCompletion(executionContext, originalCallback);
+    ExecutionContextUtils.CompletionGuard<K, RESPONSE> completionGuard =
+        executionContext == ExecutionContextProvider.CapturedContext.NO_OP
+            ? null
+            : new ExecutionContextUtils.CompletionGuard<>(originalCallback);
+    StreamingCallback<K, RESPONSE> callback = completionGuard == null ? originalCallback : completionGuard;
     requestContext.retryContext = new MultiKeyRequestContext.RetryContext<K, V>();
 
     /** Track the final completion of the request. It will be completed normally if
@@ -363,9 +367,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
      callback. Removal is thread safe, so we will do it only once. We can then complete the future for that key */
     VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture = new VeniceConcurrentHashMap<>();
     for (K key: keys) {
-      CompletableFuture<RESPONSE> originalCompletion = new CompletableFuture<>();
+      CompletableFuture<RESPONSE> originalCompletion = newKeyCompletionFuture();
       originalCompletion.whenComplete((value, throwable) -> {
-        callback.onRecordReceived(key, value);
+        originalCallback.onRecordReceived(key, value);
       });
       pendingKeysFuture.put(key, originalCompletion);
     }
@@ -396,6 +400,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
                   finalRequestCompletionFuture,
                   savedException,
                   pendingKeysFuture,
+                  completionGuard,
                   null));
         }
       } else {
@@ -422,6 +427,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
               finalRequestCompletionFuture,
               savedException,
               pendingKeysFuture,
+              completionGuard,
               null).onCompletion(
                   Optional.of(new VeniceClientException("Failed to execute retry with execution context", failure)));
         }), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
@@ -443,6 +449,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             finalRequestCompletionFuture,
             savedException,
             pendingKeysFuture,
+            completionGuard,
             scheduledRetryTask));
     if (multiKeyLongTailRetryManager != null) {
       multiKeyLongTailRetryManager.recordRequests(requestContext.numKeysInRequest);
@@ -474,16 +481,31 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     });
   }
 
+  @VisibleForTesting
+  <RESPONSE> CompletableFuture<RESPONSE> newKeyCompletionFuture() {
+    return new CompletableFuture<>();
+  }
+
   private <RESPONSE> StreamingCallback<K, RESPONSE> getStreamingCallback(
       MultiKeyRequestContext<K, V> requestContext,
       CompletableFuture<Void> finalRequestCompletionFuture,
       AtomicReference<Throwable> savedException,
       VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture,
+      ExecutionContextUtils.CompletionGuard<K, RESPONSE> completionGuard,
       TimeoutProcessor.TimeoutFuture scheduledRetryTask) {
     // Dispatch scopes the response/decoder task, including all records and synchronous future continuations.
     return new StreamingCallback<K, RESPONSE>() {
       @Override
       public void onRecordReceived(K key, RESPONSE value) {
+        if (completionGuard == null) {
+          deliverRecord(key, value);
+        } else {
+          // Reserve the delivery before removing its key so completion cannot overtake it.
+          completionGuard.runRecord(() -> deliverRecord(key, value));
+        }
+      }
+
+      private void deliverRecord(K key, RESPONSE value) {
         // Remove the key and if successful , mark it as complete
         CompletableFuture<RESPONSE> removed = pendingKeysFuture.remove(key);
         if (removed != null) {
