@@ -11,6 +11,11 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.AssertJUnit.fail;
 
+import com.linkedin.d2.D2QuarantineProperties;
+import com.linkedin.d2.HttpMethod;
+import com.linkedin.d2.balancer.config.RelativeStrategyPropertiesConverter;
+import com.linkedin.d2.balancer.properties.PropertyKeys;
+import com.linkedin.d2.balancer.properties.ServiceProperties;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -25,6 +30,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -125,6 +131,30 @@ public class TestParentControllerWithMultiDataCenter {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testD2QuarantinePoliciesForParentAndChildControllers() {
+    assertControllerQuarantinePolicy(
+        multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress(),
+        VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
+    for (VeniceMultiClusterWrapper child: childDatacenters) {
+      assertControllerQuarantinePolicy(
+          child.getZkServerWrapper().getAddress(),
+          VeniceControllerWrapper.D2_SERVICE_NAME);
+    }
+  }
+
+  private static void assertControllerQuarantinePolicy(String zkHosts, String serviceName) {
+    ServiceProperties policy = D2TestUtils.getD2ServiceProperties(zkHosts, serviceName);
+    assertEquals(policy.getLoadBalancerStrategyProperties().get(PropertyKeys.HTTP_LB_QUARANTINE_MAX_PERCENT), "0.1");
+    assertEquals(policy.getLoadBalancerStrategyProperties().get(PropertyKeys.HTTP_LB_QUARANTINE_METHOD), "GET:/health");
+    D2QuarantineProperties relative =
+        RelativeStrategyPropertiesConverter.toProperties(policy.getRelativeStrategyProperties())
+            .getQuarantineProperties();
+    assertEquals(relative.getQuarantineMaxPercent(), Double.valueOf(0.1));
+    assertEquals(relative.getHealthCheckMethod(), HttpMethod.GET);
+    assertEquals(relative.getHealthCheckPath(), "/health");
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -7,7 +7,13 @@ import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVICE_
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnyDoubleGaugeDataPointAtLeast;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateAnySumDataPointAtLeast;
 
+import com.linkedin.d2.D2QuarantineProperties;
+import com.linkedin.d2.HttpMethod;
+import com.linkedin.d2.balancer.config.RelativeStrategyPropertiesConverter;
+import com.linkedin.d2.balancer.properties.PropertyKeys;
+import com.linkedin.d2.balancer.properties.ServiceProperties;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -51,6 +57,7 @@ public class TestRestartServer {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testRestartServerAfterPushCompleted() {
+    assertStorageQuarantinePolicy();
     int keyCount = REPLICATION_FACTOR * VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
     String storeName = cluster.createStore(keyCount);
     String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
@@ -98,6 +105,7 @@ public class TestRestartServer {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       cluster.restartVeniceServer(server.getPort());
     }
+    assertStorageQuarantinePolicy();
 
     // After restart, all partitions should become ready to serve again.
     TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
@@ -113,6 +121,23 @@ public class TestRestartServer {
         Assert.assertTrue(quotaUsedMetric.value() > keyCount);
       }
     });
+  }
+
+  private void assertStorageQuarantinePolicy() {
+    ServiceProperties policy =
+        D2TestUtils.getD2ServiceProperties(cluster.getZk().getAddress(), cluster.getServerD2ServiceName());
+    Assert.assertEquals(
+        policy.getLoadBalancerStrategyProperties().get(PropertyKeys.HTTP_LB_QUARANTINE_MAX_PERCENT),
+        "0.1");
+    Assert.assertEquals(
+        policy.getLoadBalancerStrategyProperties().get(PropertyKeys.HTTP_LB_QUARANTINE_METHOD),
+        "GET:/health");
+    D2QuarantineProperties relative =
+        RelativeStrategyPropertiesConverter.toProperties(policy.getRelativeStrategyProperties())
+            .getQuarantineProperties();
+    Assert.assertEquals(relative.getQuarantineMaxPercent(), Double.valueOf(0.1));
+    Assert.assertEquals(relative.getHealthCheckMethod(), HttpMethod.GET);
+    Assert.assertEquals(relative.getHealthCheckPath(), "/health");
   }
 
   private static InMemoryMetricReader getOtelReader(VeniceServerWrapper server) {

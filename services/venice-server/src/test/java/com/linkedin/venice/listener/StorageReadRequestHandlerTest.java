@@ -119,6 +119,7 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
@@ -368,16 +369,18 @@ public class StorageReadRequestHandlerTest {
     assertEquals(responseObject.getValueRecord().getSchemaId(), schemaId);
   }
 
-  @Test
-  public void testDiskHealthCheckService() throws Exception {
-    doReturn(true).when(healthCheckService).isDiskHealthy();
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDiskHealthCheckService(boolean diskHealthy) throws Exception {
+    doReturn(diskHealthy).when(healthCheckService).isDiskHealthy();
 
     StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
     requestHandler.channelRead(context, new HealthCheckRequest());
 
     verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
     HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) argumentCaptor.getValue();
-    assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
+    assertEquals(
+        healthCheckResponse.getStatus(),
+        diskHealthy ? HttpResponseStatus.OK : HttpResponseStatus.INTERNAL_SERVER_ERROR);
     assertActiveThreadSamples("storage_execution_thread_pool", false);
     assertActiveThreadSamples("storage_compute_thread_pool", false);
   }

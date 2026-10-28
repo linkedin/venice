@@ -9,7 +9,11 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.d2.D2QuarantineProperties;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.config.RelativeStrategyPropertiesConverter;
+import com.linkedin.d2.balancer.properties.PropertyKeys;
+import com.linkedin.d2.balancer.properties.ServiceProperties;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -693,6 +697,21 @@ public abstract class TestRead {
   public void testRouterHealthCheck() {
     if (!isTestEnabled()) {
       return;
+    }
+    String[] serviceNames =
+        { veniceCluster.getRandomVeniceRouter().getD2ServiceNameForCluster(veniceCluster.getClusterName()),
+            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME };
+    for (String serviceName: serviceNames) {
+      ServiceProperties policy = D2TestUtils.getD2ServiceProperties(veniceCluster.getZk().getAddress(), serviceName);
+      assertEquals(policy.getLoadBalancerStrategyProperties().get(PropertyKeys.HTTP_LB_QUARANTINE_MAX_PERCENT), "0.1");
+      Assert
+          .assertFalse(policy.getLoadBalancerStrategyProperties().containsKey(PropertyKeys.HTTP_LB_QUARANTINE_METHOD));
+      D2QuarantineProperties relative =
+          RelativeStrategyPropertiesConverter.toProperties(policy.getRelativeStrategyProperties())
+              .getQuarantineProperties();
+      assertEquals(relative.getQuarantineMaxPercent(), Double.valueOf(0.1));
+      Assert.assertFalse(relative.hasHealthCheckMethod());
+      Assert.assertFalse(relative.hasHealthCheckPath());
     }
     String routerUrl = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {

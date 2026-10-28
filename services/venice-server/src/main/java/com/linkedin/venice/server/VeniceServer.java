@@ -42,6 +42,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.d2.D2ConfigUtils;
+import com.linkedin.venice.d2.D2ConfigUtils.D2ServiceRole;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -918,7 +919,13 @@ public class VeniceServer {
 
       String d2ServiceName = props.getString("server.d2.service.name", "venice-server-d2");
       String d2ClusterName = d2ServiceName + "_d2_cluster";
-      D2ConfigUtils.setupD2Config(zkAddress, false, d2ClusterName, d2ServiceName);
+      D2ConfigUtils.setupD2Config(
+          zkAddress,
+          false,
+          d2ClusterName,
+          d2ServiceName,
+          D2ServiceRole.STORAGE_SERVER,
+          Collections.emptyMap());
       d2Servers.addAll(D2ConfigUtils.getD2Servers(zkAddress, d2ClusterName, localUri));
       LOGGER.info("Server D2 announcement enabled for service {} at URI: {}", d2ServiceName, localUri);
     }
