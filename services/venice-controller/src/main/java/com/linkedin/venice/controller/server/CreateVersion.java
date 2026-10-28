@@ -678,6 +678,17 @@ public class CreateVersion extends AbstractRoute {
           rewindTimeInSecondsOverride = Long.parseLong(rewindTimeInSecondsOverrideOptional.get());
         }
 
+        /**
+         * Version-level absolute epoch rewind time override. When set (>=0), this takes precedence
+         * over the relative rewindTimeInSecondsOverride.
+         */
+        Optional<String> rewindEpochTimeInSecondsOverrideOptional =
+            Optional.ofNullable(request.queryParams(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
+        long rewindEpochTimeInSecondsOverride = -1;
+        if (rewindEpochTimeInSecondsOverrideOptional.isPresent()) {
+          rewindEpochTimeInSecondsOverride = Long.parseLong(rewindEpochTimeInSecondsOverrideOptional.get());
+        }
+
         Optional<String> replicationMetadataVersionIdOptional =
             Optional.ofNullable(request.queryParams(REPLICATION_METADATA_VERSION_ID));
         int replicationMetadataVersionId = REPLICATION_METADATA_VERSION_ID_UNSET;
@@ -694,7 +705,7 @@ public class CreateVersion extends AbstractRoute {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
-            -1,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId,
             false,
             -1,

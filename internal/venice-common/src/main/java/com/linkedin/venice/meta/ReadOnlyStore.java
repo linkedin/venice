@@ -2055,6 +2055,7 @@ public class ReadOnlyStore implements Store {
     StoreHybridConfig storeHybridConfig = new StoreHybridConfig();
 
     storeHybridConfig.setRewindTimeInSeconds(hybridStoreConfig.getRewindTimeInSeconds());
+    storeHybridConfig.setRewindEpochTimeInSecondsOverride(hybridStoreConfig.getRewindEpochTimeInSecondsOverride());
     storeHybridConfig.setOffsetLagThresholdToGoOnline(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
     storeHybridConfig.setProducerTimestampLagThresholdToGoOnlineInSeconds(
         hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());

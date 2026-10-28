@@ -186,6 +186,14 @@ public class ControllerApiConstants {
 
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind_time_in_seconds_override";
 
+  /**
+   * This epoch is resolved against RT record timestamps, not the ingestion
+   * server's current clock. With Kafka CreateTime, clock skew between the
+   * snapshot timestamp source and RT producers can cause required records
+   * to fall before the selected replay position. Choose an earlier epoch
+   * with a safety margin for clock skew and snapshot-cutoff uncertainty.
+   * Replay is also limited by the RT data still retained.
+   */
   public static final String REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE = "rewind_epoch_time_in_seconds_override";
 
   public static final String DEFER_VERSION_SWAP = "defer_version_swap";

@@ -487,6 +487,7 @@ public class ControllerClient implements Closeable {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId) {
     QueryParams params = newParams().add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
@@ -494,6 +495,7 @@ public class ControllerClient implements Closeable {
         .add(PARTITION_COUNT, partitionCount)
         .add(PUSH_TYPE, pushType.toString())
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
+        .add(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, rewindEpochTimeInSecondsOverride)
         .add(REPLICATION_METADATA_VERSION_ID, replicationMetadataVersionId);
     if (remoteKafkaBootstrapServers != null) {
       params.add(REMOTE_KAFKA_BOOTSTRAP_SERVERS, remoteKafkaBootstrapServers);

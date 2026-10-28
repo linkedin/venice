@@ -2117,6 +2117,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Before migration ends, dest stores all leaders and followers consume version topics in local fabric.
             version.getPushStreamSourceAddress(),
             version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
+            version.getHybridStoreConfig() == null
+                ? -1
+                : version.getHybridStoreConfig().getRewindEpochTimeInSecondsOverride(),
             version.getRmdVersionId());
         if (versionResponse.isError()) {
           throw new VeniceException(
@@ -2712,6 +2715,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               pushType,
               remoteKafkaBootstrapServers,
               rewindTimeInSecondsOverride,
+              rewindEpochTimeInSecondsOverride,
               replicationMetadataVersionId);
           if (response.isError()) {
             // Throw exceptions here to utilize admin channel's retry property to overcome transient errors.
@@ -2734,6 +2738,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId);
         if (response.isError()) {
           throw new VeniceException(
