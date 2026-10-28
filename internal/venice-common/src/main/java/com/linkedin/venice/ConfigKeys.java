@@ -879,9 +879,18 @@ public class ConfigKeys {
    * Enables additional stalled-drainer operation breadcrumbs and diagnostic ERROR logs. Defaults to false to
    * avoid per-operation snapshot allocation. This is a live cluster setting, sampled when a drainer starts a
    * queue node; updates do not require a restart or instrument work already in progress.
-   * Requires a positive {@link #SERVER_BLOCKED_DRAINER_THRESHOLD_MS}.
+   * Requires a positive {@link #SERVER_BLOCKED_DRAINER_THRESHOLD_MS} and membership in
+   * {@link #SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST}.
    */
   public static final String SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED = "server.stalled.drainer.diagnostics.enabled";
+  /**
+   * Live set of listener hostnames eligible for stalled-drainer diagnostics. Defaults to empty
+   * (no hosts); the diagnostics enable flag must also be true. Entries must exactly match listener.hostname,
+   * including case and short-name versus FQDN spelling; ports, wildcards, and aliases are not expanded.
+   * Each server captures its configured listener hostname once without additional DNS resolution.
+   */
+  public static final String SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST =
+      "server.stalled.drainer.diagnostics.host.allowlist";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
 

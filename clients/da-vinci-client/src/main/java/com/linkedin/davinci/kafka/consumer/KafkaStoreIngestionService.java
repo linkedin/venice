@@ -459,8 +459,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
         serverConfig.getClusterName());
     this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
+    String diagnosticsHostname = serverConfig.getListenerHostname();
     BooleanSupplier stalledDrainerDiagnosticsEnabled = () -> liveClusterConfigRepository != null
-        && liveClusterConfigRepository.getConfigs().isStalledDrainerDiagnosticsEnabled();
+        && liveClusterConfigRepository.getConfigs().isStalledDrainerDiagnosticsEnabledForHost(diagnosticsHostname);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
       this.storeBufferService = new SeparatedStoreBufferService(
           serverConfig,

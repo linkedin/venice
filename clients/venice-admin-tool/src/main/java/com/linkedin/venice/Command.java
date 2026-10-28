@@ -144,6 +144,7 @@ import static com.linkedin.venice.Arg.SRC_ZK_SSL_CONFIG_FILE;
 import static com.linkedin.venice.Arg.SRC_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.SSL_CONFIG_PATH;
 import static com.linkedin.venice.Arg.STALLED_DRAINER_DIAGNOSTICS_ENABLED;
+import static com.linkedin.venice.Arg.STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
 import static com.linkedin.venice.Arg.STARTING_POSITION;
 import static com.linkedin.venice.Arg.START_DATE;
@@ -360,7 +361,8 @@ public enum Command {
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
       new Arg[] { FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION,
-          CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, STALLED_DRAINER_DIAGNOSTICS_ENABLED }
+          CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, STALLED_DRAINER_DIAGNOSTICS_ENABLED,
+          STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST }
   ),
   UPDATE_DARK_CLUSTER_CONFIG(
       "update-dark-cluster-config", "Update dark cluster configs under /darkClusterConfig znode",

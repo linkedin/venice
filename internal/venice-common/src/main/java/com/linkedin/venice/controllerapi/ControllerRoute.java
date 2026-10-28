@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
@@ -164,7 +165,8 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   DELETE_OLD_VERSION("/delete_old_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   UPDATE_CLUSTER_CONFIG(
       "/update_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER),
-      SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED
+      SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED,
+      SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST
   ),
   UPDATE_DARK_CLUSTER_CONFIG(
       "/update_dark_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER), STORES_TO_REPLICATE

@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.ConfigKeys.DEGRADED_MODE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ALLOW_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
@@ -9,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SERVER_KA
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 
 public class UpdateClusterConfigQueryParams extends QueryParams {
@@ -72,6 +74,14 @@ public class UpdateClusterConfigQueryParams extends QueryParams {
 
   public Optional<Boolean> getStalledDrainerDiagnosticsEnabled() {
     return getBoolean(SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED);
+  }
+
+  public UpdateClusterConfigQueryParams setStalledDrainerDiagnosticsHostAllowlist(Set<String> hostnames) {
+    return (UpdateClusterConfigQueryParams) putStringSet(SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST, hostnames);
+  }
+
+  public Optional<Set<String>> getStalledDrainerDiagnosticsHostAllowlist() {
+    return getStringSet(SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST);
   }
 
   // ***************** above this line are getters and setters *****************

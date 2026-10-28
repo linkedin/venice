@@ -242,7 +242,11 @@ public enum Arg {
   ),
   STALLED_DRAINER_DIAGNOSTICS_ENABLED(
       ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED, "sdde", true,
-      "Enable operation diagnostics for future stalled drainer work in this cluster without restarting servers."
+      "Enable operation diagnostics for future stalled drainer work on allowlisted hosts without restarting servers."
+  ),
+  STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST(
+      ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST, "sddha", true,
+      "Comma-separated hostnames matching listener.hostname exactly (case-sensitive; no ports, wildcards or alias expansion). Empty string clears the list; no hosts are enabled when empty."
   ),
   STORE_CONFIG_NAME_FILTER(
       "store-config-name-filter", "scnf", true,

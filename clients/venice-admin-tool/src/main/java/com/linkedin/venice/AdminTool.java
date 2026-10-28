@@ -1557,6 +1557,12 @@ public class AdminTool {
       params.setStalledDrainerDiagnosticsEnabled(Boolean.parseBoolean(stalledDrainerDiagnosticsEnabled));
     }
 
+    String stalledDrainerDiagnosticsHosts = getOptionalArgument(cmd, Arg.STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST);
+    if (stalledDrainerDiagnosticsHosts != null) {
+      params.setStalledDrainerDiagnosticsHostAllowlist(
+          Utils.parseCommaSeparatedStringToSet(stalledDrainerDiagnosticsHosts));
+    }
+
     return params;
   }
 

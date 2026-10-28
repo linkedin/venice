@@ -34,6 +34,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -53,6 +54,7 @@ import io.tehuti.metrics.stats.AsyncGauge;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -60,7 +62,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import org.apache.logging.log4j.LogManager;
@@ -743,11 +744,17 @@ public class StoreBufferServiceTest {
     }
   }
 
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testLiveDiagnosticsToggleAppliesToNextNodeAndPreservesCleanup(boolean failTrackedOperation)
-      throws Exception {
-    AtomicBoolean enabled = new AtomicBoolean();
-    StoreBufferService bufferService = newBufferServiceWithStallMonitor(50, null, enabled::get);
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
+  public void testLiveDiagnosticsToggleAppliesToNextNodeAndPreservesCleanup(
+      boolean failTrackedOperation,
+      boolean toggleHostAllowlist) throws Exception {
+    LiveClusterConfig initialConfig = new LiveClusterConfig();
+    initialConfig.setStalledDrainerDiagnosticsEnabled(toggleHostAllowlist);
+    initialConfig.setStalledDrainerDiagnosticsHostAllowlist(
+        toggleHostAllowlist ? Collections.emptySet() : Collections.singleton("server-a.example.com"));
+    AtomicReference<LiveClusterConfig> liveConfig = new AtomicReference<>(initialConfig);
+    BooleanSupplier enabled = () -> liveConfig.get().isStalledDrainerDiagnosticsEnabledForHost("server-a.example.com");
+    StoreBufferService bufferService = newBufferServiceWithStallMonitor(50, null, enabled);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic("live_diagnostics_v1");
     when(mockTask.getVersionTopic()).thenReturn(versionTopic);
@@ -759,7 +766,7 @@ public class StoreBufferServiceTest {
       for (int episode = 0; episode < 4; episode++) {
         boolean tracked = episode % 2 == 1;
         boolean fail = failTrackedOperation && episode == 1;
-        Assert.assertEquals(enabled.get(), tracked);
+        Assert.assertEquals(enabled.getAsBoolean(), tracked);
         CountDownLatch entered = new CountDownLatch(1);
         release = new CountDownLatch(1);
         CountDownLatch releaseOperation = release;
@@ -775,7 +782,14 @@ public class StoreBufferServiceTest {
         DefaultPubSubMessage record = new ImmutablePubSubMessage(key, value, partition, mockPosition, 0, 0);
         CompletableFuture<Void> persisted = putRecordAndGetPersistedFuture(bufferService, mockTask, record);
         Assert.assertTrue(entered.await(10, SECONDS));
-        enabled.set(!tracked);
+        LiveClusterConfig updatedConfig = new LiveClusterConfig(liveConfig.get());
+        if (toggleHostAllowlist) {
+          updatedConfig.setStalledDrainerDiagnosticsHostAllowlist(
+              tracked ? Collections.emptySet() : Collections.singleton("server-a.example.com"));
+        } else {
+          updatedConfig.setStalledDrainerDiagnosticsEnabled(!tracked);
+        }
+        liveConfig.set(updatedConfig);
         if (tracked) {
           Assert.assertEquals(drainer.getDiagnosticSnapshot().operation.phase, Phase.ROCKSDB_WRITE);
           expectedDiagnostics++;
