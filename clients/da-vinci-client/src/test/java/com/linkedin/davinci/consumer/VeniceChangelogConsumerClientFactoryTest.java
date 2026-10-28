@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -403,6 +404,7 @@ public class VeniceChangelogConsumerClientFactoryTest {
   public void testOffsetCommitConsumerDoesNotShareDeserializer() throws Exception {
     Properties consumerProperties = new Properties();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:9092");
+    consumerProperties.put(ConfigKeys.KAFKA_GROUP_ID_CONFIG, "venice-cdc-test-group");
     ChangelogClientConfig config = spy(new ChangelogClientConfig().setConsumerProperties(consumerProperties));
     PubSubConsumerAdapterFactory adapterFactory = mock(PubSubConsumerAdapterFactory.class);
     doReturn(adapterFactory).when(config).getPubSubConsumerAdapterFactory();
@@ -415,6 +417,19 @@ public class VeniceChangelogConsumerClientFactoryTest {
     Field sharedDeserializer = VeniceChangelogConsumerClientFactory.class.getDeclaredField("pubSubMessageDeserializer");
     sharedDeserializer.setAccessible(true);
     Assert.assertNotSame(context.getValue().getPubSubMessageDeserializer(), sharedDeserializer.get(factory));
+  }
+
+  @Test
+  public void testOffsetCommitConsumerNotCreatedWithoutGroupId() {
+    // No broker address either, so building the adapter would require D2 discovery.
+    ChangelogClientConfig config = spy(new ChangelogClientConfig().setConsumerProperties(new Properties()));
+    PubSubConsumerAdapterFactory adapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(adapterFactory).when(config).getPubSubConsumerAdapterFactory();
+    VeniceChangelogConsumerClientFactory factory =
+        new VeniceChangelogConsumerClientFactory(config, new MetricsRepository());
+
+    Assert.assertNull(factory.getOffsetCommitPubSubConsumer(config));
+    verify(adapterFactory, never()).create(any());
   }
 
   @Test

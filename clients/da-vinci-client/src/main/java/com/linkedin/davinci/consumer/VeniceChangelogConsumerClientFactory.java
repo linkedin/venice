@@ -262,12 +262,21 @@ public class VeniceChangelogConsumerClientFactory {
   /**
    * Creates a consumer that only commits positions for a changelog consumer without its own PubSub consumer. It never
    * subscribes or polls, and commits under the {@code kafka.group.id} from the consumer properties. Like DaVinci, it
-   * discovers the broker address when the consumer properties omit it. It gets its own deserializer because closing the
+   * discovers the broker address when the consumer properties omit it. Returns {@code null} without creating the adapter
+   * if {@code kafka.group.id} is not set, since there is no group to commit under. It gets its own deserializer because closing the
    * adapter closes its deserializer, and the factory's shared one is still used by other consumers.
    */
   PubSubConsumerAdapter getOffsetCommitPubSubConsumer(ChangelogClientConfig changelogClientConfig) {
-    String pubSubBrokerAddress = null;
     Properties consumerProperties = changelogClientConfig.getConsumerProperties();
+    if (consumerProperties.getProperty(ConfigKeys.KAFKA_GROUP_ID_CONFIG) == null) {
+      LOGGER.warn(
+          "Offset commits are enabled for consumer: {} of store: {}, but {} is not set, so offsets will not be committed",
+          changelogClientConfig.getConsumerName(),
+          changelogClientConfig.getStoreName(),
+          ConfigKeys.KAFKA_GROUP_ID_CONFIG);
+      return null;
+    }
+    String pubSubBrokerAddress = null;
     if (consumerProperties.getProperty(ConfigKeys.PUBSUB_BROKER_ADDRESS) == null
         && consumerProperties.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS) == null) {
       try (D2TransportClient transportClient =

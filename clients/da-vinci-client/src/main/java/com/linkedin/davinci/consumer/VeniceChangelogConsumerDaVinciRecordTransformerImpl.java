@@ -207,7 +207,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
-    // Commits under the kafka.group.id from the consumer properties.
+    // Commits under the kafka.group.id from the consumer properties; null when disabled or no group id is set.
     this.offsetCommitConsumer = changelogClientConfig.isConsumerOffsetCommitEnabled()
         ? veniceChangelogConsumerClientFactory.getOffsetCommitPubSubConsumer(changelogClientConfig)
         : null;
@@ -611,12 +611,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     if (offsetCommitConsumer == null) {
       return;
     }
+    // Collects the last position per partition first, so the shared map is written once per partition, not per record.
+    Map<PubSubTopicPartition, PubSubPosition> batchPositions = new HashMap<>();
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
       // Heartbeats carry symbolic positions, which cannot be committed.
       if (!message.getPosition().getPosition().isSymbolic()) {
-        lastPolledPositions.put(message.getTopicPartition(), message.getPosition().getPosition());
+        batchPositions.put(message.getTopicPartition(), message.getPosition().getPosition());
       }
     }
+    lastPolledPositions.putAll(batchPositions);
   }
 
   /**
