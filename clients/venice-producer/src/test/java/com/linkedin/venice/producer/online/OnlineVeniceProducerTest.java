@@ -974,14 +974,8 @@ public class OnlineVeniceProducerTest {
     }
   }
 
-  @DataProvider(name = "factoryCreationPaths")
-  public Object[][] factoryCreationPaths() {
-    return new Object[][] { { true, false }, { false, false }, { false, true } };
-  }
-
-  @Test(dataProvider = "factoryCreationPaths", timeOut = 60 * Time.MS_PER_SECOND)
-  public void testFactoryCreatesProducerWithOptionalWriterHook(boolean legacyFactory, boolean hookEnabled)
-      throws Exception {
+  @Test(dataProvider = "writerHookPresence", timeOut = 60 * Time.MS_PER_SECOND)
+  public void testFactoryCreatesProducerWithOptionalWriterHook(boolean hookEnabled) throws Exception {
     ClientConfig storeClientConfig = configureMocksAndGetStoreConfig(storeName, true);
     Properties backendConfigs = new Properties();
     backendConfigs.setProperty(CLIENT_PRODUCER_WORKER_COUNT, "0");
@@ -989,9 +983,8 @@ public class OnlineVeniceProducerTest {
     VeniceProperties producerConfigs = new VeniceProperties(backendConfigs);
     VeniceWriterHook writerHook = hookEnabled ? mock(VeniceWriterHook.class) : null;
 
-    try (OnlineVeniceProducer<String, GenericRecord> producer = legacyFactory
-        ? OnlineProducerFactory.createProducer(storeClientConfig, producerConfigs, null)
-        : OnlineProducerFactory.createProducer(storeClientConfig, producerConfigs, null, writerHook)) {
+    try (OnlineVeniceProducer<String, GenericRecord> producer =
+        OnlineProducerFactory.createProducer(storeClientConfig, producerConfigs, null, writerHook)) {
       assertEquals(producer.asyncPut("KEY1", mockValue1).get(5, TimeUnit.SECONDS).getClass(), DurableWrite.class);
       assertEquals(producer.asyncDelete(0, "KEY1").get(5, TimeUnit.SECONDS).getClass(), DurableWrite.class);
       assertEquals(

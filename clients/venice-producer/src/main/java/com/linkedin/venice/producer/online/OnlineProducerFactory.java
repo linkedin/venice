@@ -7,14 +7,6 @@ import com.linkedin.venice.writer.VeniceWriterHook;
 
 
 public class OnlineProducerFactory {
-  /** Creates an online producer without a writer hook. */
-  public static <K, V> OnlineVeniceProducer<K, V> createProducer(
-      ClientConfig storeClientConfig,
-      VeniceProperties producerConfigs,
-      ICProvider icProvider) {
-    return createProducer(storeClientConfig, producerConfigs, icProvider, null);
-  }
-
   /**
    * Creates an online producer with an optional hook installed before writer construction.
    *

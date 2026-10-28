@@ -259,7 +259,7 @@ public class ProducerTool {
 
     try (
         OnlineVeniceProducer producer = OnlineProducerFactory
-            .createProducer(clientConfig, new VeniceProperties(producerContext.configProperties), null);
+            .createProducer(clientConfig, new VeniceProperties(producerContext.configProperties), null, null);
         AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
       AbstractAvroStoreClient<Object, Object> castClient =
           (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client)
