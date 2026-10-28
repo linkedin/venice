@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static com.linkedin.davinci.utils.IngestionOperationContext.isTracking;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -655,8 +656,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
 
     if (!deferredWrite) {
-      withSynchronizedDatabaseVoid(
-          db -> trackWrite(
+      withSynchronizedDatabaseVoid(db -> {
+        if (isTracking()) {
+          trackWrite(
               Phase.ROCKSDB_PUT,
               db,
               handle -> handle.put(
@@ -666,7 +668,18 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
                   key.length,
                   valueBuffer.array(),
                   valueBuffer.position(),
-                  valueBuffer.remaining())));
+                  valueBuffer.remaining()));
+        } else {
+          db.put(
+              writeOptions,
+              key,
+              0,
+              key.length,
+              valueBuffer.array(),
+              valueBuffer.position(),
+              valueBuffer.remaining());
+        }
+      });
       return;
     }
 
@@ -891,7 +904,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (deferredWrite) {
       throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
     }
-    withSynchronizedDatabaseVoid(db -> trackWrite(Phase.ROCKSDB_DELETE, db, handle -> handle.delete(key)));
+    withSynchronizedDatabaseVoid(db -> {
+      if (isTracking()) {
+        trackWrite(Phase.ROCKSDB_DELETE, db, handle -> handle.delete(key));
+      } else {
+        db.delete(key);
+      }
+    });
   }
 
   /**
@@ -908,11 +927,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       if (this.readOnly) {
         LOGGER.debug("Unexpected sync in RocksDB read-only mode for replica: {}", replicaId);
       } else {
-        withSynchronizedDatabaseVoid(
-            db -> trackWrite(
-                Phase.ROCKSDB_FLUSH,
-                db,
-                handle -> handle.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList)));
+        withSynchronizedDatabaseVoid(db -> {
+          if (isTracking()) {
+            trackWrite(Phase.ROCKSDB_FLUSH, db, handle -> handle.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList));
+          } else {
+            db.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList);
+          }
+        });
       }
       return Collections.emptyMap();
     }

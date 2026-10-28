@@ -48,6 +48,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -82,7 +83,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final long blockedDrainerThresholdMs;
   private final int writePathThreadPriority;
   private final boolean stallMonitoringEnabled;
-  private final boolean stalledDrainerDiagnosticsEnabled;
+  private final BooleanSupplier stalledDrainerDiagnosticsEnabled;
   /**
    * Deliberately not the metrics thread: with {@code metricsRepository == null} no gauge is ever polled, and a
    * monitor that only runs when metrics happen to be enabled is not a monitor.
@@ -143,7 +144,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         clusterName,
         blockedDrainerThresholdMs,
         writePathThreadPriority,
-        false);
+        () -> false);
   }
 
   public StoreBufferService(
@@ -157,7 +158,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       String clusterName,
       long blockedDrainerThresholdMs,
       int writePathThreadPriority,
-      boolean stalledDrainerDiagnosticsEnabled) {
+      BooleanSupplier stalledDrainerDiagnosticsEnabled) {
     this(
         drainerNum,
         bufferCapacityPerDrainer,
@@ -253,7 +254,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         clusterName,
         blockedDrainerThresholdMs,
         writePathThreadPriority,
-        false);
+        () -> false);
   }
 
   StoreBufferService(
@@ -268,13 +269,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
       String clusterName,
       long blockedDrainerThresholdMs,
       int writePathThreadPriority,
-      boolean stalledDrainerDiagnosticsEnabled) {
+      BooleanSupplier stalledDrainerDiagnosticsEnabled) {
     this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockedDrainerThresholdMs = blockedDrainerThresholdMs;
     this.writePathThreadPriority = writePathThreadPriority;
     this.stallMonitoringEnabled = blockedDrainerThresholdMs > 0;
-    this.stalledDrainerDiagnosticsEnabled = stalledDrainerDiagnosticsEnabled;
+    this.stalledDrainerDiagnosticsEnabled = Objects.requireNonNull(stalledDrainerDiagnosticsEnabled);
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
     for (int cur = 0; cur < drainerNum; ++cur) {
@@ -1089,7 +1090,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
      */
     private final AtomicLong processingStartedAtMs = new AtomicLong(0);
     private final AtomicLong reportedStallAtMs = new AtomicLong(0);
-    private final IngestionOperationContext diagnostics;
+    private final BooleanSupplier stalledDrainerDiagnosticsEnabled;
+    private volatile IngestionOperationContext diagnostics;
     private volatile PubSubTopicPartition currentTopicPartition = null;
     private volatile Thread drainerThread;
 
@@ -1098,7 +1100,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         int drainerIndex,
         StoreBufferServiceStats stats,
         boolean stallMonitoringEnabled) {
-      this(blockingQueue, drainerIndex, stats, stallMonitoringEnabled, false);
+      this(blockingQueue, drainerIndex, stats, stallMonitoringEnabled, () -> false);
     }
 
     public StoreBufferDrainer(
@@ -1106,13 +1108,12 @@ public class StoreBufferService extends AbstractStoreBufferService {
         int drainerIndex,
         StoreBufferServiceStats stats,
         boolean stallMonitoringEnabled,
-        boolean stalledDrainerDiagnosticsEnabled) {
+        BooleanSupplier stalledDrainerDiagnosticsEnabled) {
       this.blockingQueue = blockingQueue;
       this.drainerIndex = drainerIndex;
       this.stats = stats;
       this.stallMonitoringEnabled = stallMonitoringEnabled;
-      this.diagnostics =
-          stallMonitoringEnabled && stalledDrainerDiagnosticsEnabled ? new IngestionOperationContext() : null;
+      this.stalledDrainerDiagnosticsEnabled = Objects.requireNonNull(stalledDrainerDiagnosticsEnabled);
     }
 
     public void stop() {
@@ -1124,7 +1125,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     Snapshot getDiagnosticSnapshot() {
-      return diagnostics == null ? null : diagnostics.snapshot();
+      IngestionOperationContext context = diagnostics;
+      return context == null ? null : context.snapshot();
     }
 
     PubSubTopicPartition getCurrentTopicPartition() {
@@ -1169,7 +1171,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
           long startTime = System.currentTimeMillis();
           if (stallMonitoringEnabled) {
             currentTopicPartition = consumerRecord.getTopicPartition();
-            processingStartedAtMs.set(startTime);
+            // Sample once per node so live updates cannot interrupt an active context's cleanup.
+            if (stalledDrainerDiagnosticsEnabled.getAsBoolean()) {
+              if (diagnostics == null) {
+                diagnostics = new IngestionOperationContext();
+              }
+            } else {
+              diagnostics = null;
+            }
           }
           if (diagnostics != null) {
             Phase phase = node instanceof CommandQueueNode
@@ -1184,6 +1193,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
                     : "unknown",
                 partitionNum,
                 startTime);
+          }
+          if (stallMonitoringEnabled) {
+            // Publish the active-node marker only after its diagnostic snapshot is ready.
+            processingStartedAtMs.set(startTime);
           }
 
           if (node instanceof CommandQueueNode) {

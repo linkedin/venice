@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mockConstruction;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.mockito.MockedConstruction;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -16,18 +18,20 @@ public class SeparatedStoreBufferServiceTest {
 
   @Test
   public void testDiagnosticsSettingIsPassedToBothPools() {
-    for (boolean enabled: new boolean[] { false, true }) {
-      VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-      doReturn(enabled).when(serverConfig).isStalledDrainerDiagnosticsEnabled();
-      try (MockedConstruction<StoreBufferService> services =
-          mockConstruction(StoreBufferService.class, (service, context) -> {
-            Assert.assertEquals(context.arguments().size(), 11);
-            Assert.assertEquals(context.arguments().get(10), enabled);
-          });
-          SeparatedStoreBufferService ignored =
-              new SeparatedStoreBufferService(serverConfig, metricsRepo, "test-cluster")) {
-        Assert.assertEquals(services.constructed().size(), 2);
-      }
+    AtomicBoolean enabled = new AtomicBoolean();
+    BooleanSupplier liveSetting = enabled::get;
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    try (MockedConstruction<StoreBufferService> services =
+        mockConstruction(StoreBufferService.class, (service, context) -> {
+          Assert.assertEquals(context.arguments().size(), 11);
+          Assert.assertSame(context.arguments().get(10), liveSetting);
+        });
+        SeparatedStoreBufferService ignored =
+            new SeparatedStoreBufferService(serverConfig, metricsRepo, "test-cluster", liveSetting)) {
+      Assert.assertEquals(services.constructed().size(), 2);
+      Assert.assertFalse(liveSetting.getAsBoolean());
+      enabled.set(true);
+      Assert.assertTrue(liveSetting.getAsBoolean());
     }
   }
 

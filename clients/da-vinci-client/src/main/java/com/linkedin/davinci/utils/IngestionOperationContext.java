@@ -75,6 +75,10 @@ public final class IngestionOperationContext {
     return snapshot;
   }
 
+  public static boolean isTracking() {
+    return CURRENT.get() != null;
+  }
+
   public void start(Phase phase, String storeVersion, int partition) {
     start(phase, storeVersion, partition, System.currentTimeMillis());
   }

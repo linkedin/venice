@@ -1552,6 +1552,11 @@ public class AdminTool {
       params.setChildControllerAdminTopicConsumptionEnabled(Boolean.parseBoolean(adminTopicConsumptionEnabled));
     }
 
+    String stalledDrainerDiagnosticsEnabled = getOptionalArgument(cmd, Arg.STALLED_DRAINER_DIAGNOSTICS_ENABLED);
+    if (stalledDrainerDiagnosticsEnabled != null) {
+      params.setStalledDrainerDiagnosticsEnabled(Boolean.parseBoolean(stalledDrainerDiagnosticsEnabled));
+    }
+
     return params;
   }
 

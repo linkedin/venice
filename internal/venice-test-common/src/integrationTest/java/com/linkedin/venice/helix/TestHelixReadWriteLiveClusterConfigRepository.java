@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -96,6 +97,27 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
             && liveClusterConfigRWRepo2.getConfigs()
                 .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
                     NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+  }
+
+  @Test
+  public void testDiagnosticsToggleReachesReadOnlyRepository() {
+    HelixReadOnlyLiveClusterConfigRepository reader =
+        new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, cluster);
+    reader.refresh();
+    try {
+      Assert.assertFalse(reader.getConfigs().isStalledDrainerDiagnosticsEnabled());
+      for (boolean enabled: new boolean[] { true, false }) {
+        LiveClusterConfig config = new LiveClusterConfig(liveClusterConfigRWRepo.getConfigs());
+        config.setStalledDrainerDiagnosticsEnabled(enabled);
+        liveClusterConfigRWRepo.updateConfigs(config);
+        TestUtils.waitForNonDeterministicAssertion(
+            3,
+            TimeUnit.SECONDS,
+            () -> Assert.assertEquals(reader.getConfigs().isStalledDrainerDiagnosticsEnabled(), enabled));
+      }
+    } finally {
+      reader.clear();
+    }
   }
 
   @Test

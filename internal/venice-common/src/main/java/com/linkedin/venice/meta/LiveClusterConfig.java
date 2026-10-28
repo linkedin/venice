@@ -21,6 +21,9 @@ public class LiveClusterConfig {
   @JsonProperty(ConfigKeys.DEGRADED_MODE_ENABLED)
   private boolean degradedModeEnabled = false;
 
+  @JsonProperty(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED)
+  private boolean stalledDrainerDiagnosticsEnabled = false;
+
   @JsonProperty("degraded.datacenters")
   private Map<String, DegradedDcInfo> degradedDatacenters;
 
@@ -34,6 +37,7 @@ public class LiveClusterConfig {
     storeMigrationAllowed = clone.storeMigrationAllowed;
     childControllerAdminTopicConsumptionEnabled = clone.childControllerAdminTopicConsumptionEnabled;
     degradedModeEnabled = clone.degradedModeEnabled;
+    stalledDrainerDiagnosticsEnabled = clone.stalledDrainerDiagnosticsEnabled;
     if (clone.degradedDatacenters != null) {
       degradedDatacenters = new HashMap<>();
       for (Map.Entry<String, DegradedDcInfo> entry: clone.degradedDatacenters.entrySet()) {
@@ -74,6 +78,14 @@ public class LiveClusterConfig {
 
   public void setDegradedModeEnabled(boolean degradedModeEnabled) {
     this.degradedModeEnabled = degradedModeEnabled;
+  }
+
+  public boolean isStalledDrainerDiagnosticsEnabled() {
+    return stalledDrainerDiagnosticsEnabled;
+  }
+
+  public void setStalledDrainerDiagnosticsEnabled(boolean enabled) {
+    stalledDrainerDiagnosticsEnabled = enabled;
   }
 
   public Map<String, DegradedDcInfo> getDegradedDatacenters() {
@@ -147,6 +159,10 @@ public class LiveClusterConfig {
         .append(ConfigKeys.DEGRADED_MODE_ENABLED)
         .append('=')
         .append(degradedModeEnabled)
+        .append(Utils.NEW_LINE_CHAR)
+        .append(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED)
+        .append('=')
+        .append(stalledDrainerDiagnosticsEnabled)
         .append(Utils.NEW_LINE_CHAR)
         .append("degraded.datacenters")
         .append('=')

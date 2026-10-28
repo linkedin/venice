@@ -2,6 +2,7 @@ package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.DEFAULT_COLUMN_FAMILY_INDEX;
 import static com.linkedin.davinci.store.rocksdb.RocksDBSstFileWriter.REPLICATION_METADATA_COLUMN_FAMILY_INDEX;
+import static com.linkedin.davinci.utils.IngestionOperationContext.isTracking;
 
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -96,7 +97,11 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
         try (WriteBatch writeBatch = new WriteBatch()) {
           writeBatch.put(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key, value);
           writeBatch.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, metadata);
-          trackWrite(Phase.ROCKSDB_WRITE, db, handle -> handle.write(writeOptions, writeBatch));
+          if (isTracking()) {
+            trackWrite(Phase.ROCKSDB_WRITE, db, handle -> handle.write(writeOptions, writeBatch));
+          } else {
+            db.write(writeOptions, writeBatch);
+          }
         }
       });
       return;
@@ -125,15 +130,20 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     }
 
     if (!deferredWrite) {
-      withSynchronizedDatabaseVoid(
-          db -> trackWrite(
+      withSynchronizedDatabaseVoid(db -> {
+        if (isTracking()) {
+          trackWrite(
               Phase.ROCKSDB_PUT,
               db,
               handle -> handle.put(
                   columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX),
                   writeOptions,
                   key,
-                  metadata)));
+                  metadata));
+        } else {
+          db.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata);
+        }
+      });
       return;
     }
 
@@ -192,7 +202,11 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
           writeBatch.delete(columnFamilyHandleList.get(DEFAULT_COLUMN_FAMILY_INDEX), key);
           writeBatch
               .put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), key, replicationMetadata);
-          trackWrite(Phase.ROCKSDB_WRITE, db, handle -> handle.write(writeOptions, writeBatch));
+          if (isTracking()) {
+            trackWrite(Phase.ROCKSDB_WRITE, db, handle -> handle.write(writeOptions, writeBatch));
+          } else {
+            db.write(writeOptions, writeBatch);
+          }
         }
       });
       return;

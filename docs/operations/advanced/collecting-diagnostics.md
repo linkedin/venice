@@ -42,9 +42,17 @@ single request contributes a count of one.
 
 ### Stalled Drainer Operation Diagnostics
 
-Set `server.stalled.drainer.diagnostics.enabled=true` in the server configuration of a selected cluster and restart its
-servers to enable additional stalled-drainer breadcrumbs. The default is `false`; this is not a dynamic cluster setting.
-The existing stall monitor must also be enabled (`server.blocked.drainer.threshold.ms` must be positive).
+Set the live cluster configuration `server.stalled.drainer.diagnostics.enabled=true` through the controller's
+`update_cluster_config` API to enable additional stalled-drainer breadcrumbs without restarting servers. The default is
+`false`. With the admin tool, use
+`--update-cluster-config --url <child-controller-url> --cluster <cluster-name> --server.stalled.drainer.diagnostics.enabled true`;
+use `false` to disable. Target the child controller for each region whose server cluster needs diagnostics; this command
+does not broadcast the change from the parent to all regions. The existing stall monitor must also be enabled
+(`server.blocked.drainer.threshold.ms` must be positive).
+
+Servers observe updates through the live cluster configuration watch. Each drainer samples the flag when it starts a
+queue node. An enabled node keeps tracking through completion even if the flag changes; subsequent nodes use the updated
+setting. Enabling does not instrument a node already in progress or reconstruct breadcrumbs for an existing stall.
 
 When enabled, a separate diagnostic ERROR accompanies the existing once-per-stall report. It includes the Java thread
 name/ID/state, store-version and partition, current operation start/age, and the last completion outcome. `STORAGE_*`
@@ -52,8 +60,10 @@ phases include Java synchronization and preparation; `ROCKSDB_*` phases identify
 mutex ownership. Java thread IDs are not native OS thread IDs.
 
 Tracking allocates short-lived snapshots on the ingestion path. Keep it disabled outside selected diagnostic clusters to
-avoid those allocations. When disabled, no operation context or snapshots are created and no additional diagnostic ERROR
-is emitted; wrapper calls and thread-local lookups remain. Existing stall logs and metrics are unchanged.
+avoid those allocations. Nodes started while disabled install no context, allocate no operation snapshots, and emit no
+additional diagnostic ERROR. Untracked RocksDB writes and flushes bypass `trackWrite` and its diagnostic callbacks. The
+per-thread enablement check, storage-dispatch wrappers, and one live-setting read per node remain. Existing stall logs
+and metrics are unchanged.
 
 ## JFR (Java Flight Recorder) Profile
 

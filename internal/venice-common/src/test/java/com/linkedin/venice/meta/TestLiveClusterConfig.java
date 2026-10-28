@@ -14,12 +14,13 @@ public class TestLiveClusterConfig {
 
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private static final String SERIALIZED_CONFIG = String.format(
-      "{\"%s\":{\"%s\": 1500},\"%s\":true,\"%s\":true,\"%s\":false,\"degraded.datacenters\":null}",
+      "{\"%s\":{\"%s\": 1500},\"%s\":true,\"%s\":true,\"%s\":false,\"%s\":false,\"degraded.datacenters\":null}",
       ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND,
       CONFIGURED_REGION,
       ConfigKeys.ALLOW_STORE_MIGRATION,
       ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED,
-      ConfigKeys.DEGRADED_MODE_ENABLED);
+      ConfigKeys.DEGRADED_MODE_ENABLED,
+      ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED);
 
   @Test
   public void deserializesAsJson() throws IOException {
@@ -31,6 +32,7 @@ public class TestLiveClusterConfig {
         LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
     Assert.assertTrue(config.isStoreMigrationAllowed());
     Assert.assertFalse(config.isDegradedModeEnabled());
+    Assert.assertFalse(config.isStalledDrainerDiagnosticsEnabled());
   }
 
   @Test
@@ -54,6 +56,27 @@ public class TestLiveClusterConfig {
     LiveClusterConfig config = OBJECT_MAPPER.readValue(oldJson, LiveClusterConfig.class);
     Assert.assertFalse(config.isDegradedModeEnabled());
     Assert.assertTrue(config.isStoreMigrationAllowed());
+    Assert.assertFalse(config.isStalledDrainerDiagnosticsEnabled());
+  }
+
+  @Test
+  public void stalledDrainerDiagnosticsRoundTripsAndCopies() throws IOException {
+    LiveClusterConfig config = new LiveClusterConfig();
+    Assert.assertFalse(config.isStalledDrainerDiagnosticsEnabled());
+    for (boolean enabled: new boolean[] { true, false }) {
+      config.setStalledDrainerDiagnosticsEnabled(enabled);
+      LiveClusterConfig copy = new LiveClusterConfig(config);
+      Assert.assertEquals(copy.isStalledDrainerDiagnosticsEnabled(), enabled);
+      String json = OBJECT_MAPPER.writeValueAsString(copy);
+      Assert.assertEquals(
+          OBJECT_MAPPER.readTree(json).get(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED).booleanValue(),
+          enabled);
+      Assert.assertEquals(
+          OBJECT_MAPPER.readValue(json, LiveClusterConfig.class).isStalledDrainerDiagnosticsEnabled(),
+          enabled);
+      Assert
+          .assertTrue(copy.toString().contains(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED + "=" + enabled));
+    }
   }
 
   @Test

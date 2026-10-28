@@ -6,6 +6,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BooleanSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -27,6 +28,14 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       String clusterName) {
+    this(serverConfig, metricsRepository, clusterName, () -> false);
+  }
+
+  SeparatedStoreBufferService(
+      VeniceServerConfig serverConfig,
+      MetricsRepository metricsRepository,
+      String clusterName,
+      BooleanSupplier stalledDrainerDiagnosticsEnabled) {
     this(
         serverConfig.getDrainerPoolSizeSortedInput(),
         serverConfig.getDrainerPoolSizeUnsortedInput(),
@@ -41,7 +50,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             clusterName,
             serverConfig.getBlockedDrainerThresholdMs(),
             serverConfig.getWritePathThreadPriority(),
-            serverConfig.isStalledDrainerDiagnosticsEnabled()),
+            stalledDrainerDiagnosticsEnabled),
         new StoreBufferService(
             serverConfig.getDrainerPoolSizeUnsortedInput(),
             serverConfig.getStoreWriterBufferMemoryCapacity(),
@@ -53,7 +62,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             clusterName,
             serverConfig.getBlockedDrainerThresholdMs(),
             serverConfig.getWritePathThreadPriority(),
-            serverConfig.isStalledDrainerDiagnosticsEnabled()));
+            stalledDrainerDiagnosticsEnabled));
     LOGGER.info(
         "Created separated store buffer service with {} sorted drainers and {} unsorted drainers queues with capacity of {}",
         sortedPoolSize,

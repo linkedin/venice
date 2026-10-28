@@ -338,6 +338,22 @@ public class TestAdminTool {
         (int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName),
         kafkaFetchQuota,
         "Kafka fetch quota has incorrect info for region");
+    Assert.assertFalse(params.getStalledDrainerDiagnosticsEnabled().isPresent());
+  }
+
+  @Test
+  public void testAdminUpdateClusterDiagnosticsArg() throws ParseException, IOException {
+    for (boolean enabled: new boolean[] { true, false }) {
+      String[] args = { "--update-cluster-config", "--url", "http://localhost:7036", "--cluster", "test-cluster",
+          "--" + Arg.STALLED_DRAINER_DIAGNOSTICS_ENABLED.getArgName(), Boolean.toString(enabled) };
+      UpdateClusterConfigQueryParams params =
+          AdminTool.getUpdateClusterConfigQueryParams(AdminTool.getCommandLine(args));
+      assertEquals(params.getStalledDrainerDiagnosticsEnabled(), Optional.of(enabled));
+      UpdateClusterConfigQueryParams decoded = new UpdateClusterConfigQueryParams(
+          Collections.singletonMap(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED, Boolean.toString(enabled)));
+      assertEquals(decoded.getStalledDrainerDiagnosticsEnabled(), Optional.of(enabled));
+      Assert.assertFalse(params.getStoreMigrationAllowed().isPresent());
+    }
   }
 
   @Test
