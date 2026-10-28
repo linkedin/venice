@@ -37,10 +37,24 @@ Most "ask every region the same thing" loops follow one best-effort shape, captu
 ```
 
 For each region it runs `request` (retried when `maxAttempts > 1`), and on a per-region error it **logs and stores
-`errorSentinel`** rather than aborting. The parent's multi-fabric version queries (`getCurrentVersionForMultiRegions`,
-`getFutureVersionsForMultiColos`, `getBackupVersionsForMultiColos`) use it. The remaining fan-out sites still hand-roll
+`errorSentinel`** rather than aborting. The parent's future- and backup-version queries
+(`getFutureVersionsForMultiColos`, `getBackupVersionsForMultiColos`) use it. The remaining fan-out sites still hand-roll
 their loops because their error policy is bespoke (fail-fast, throw, region-filtered, error-collecting,
 first-success-wins, fold/max, etc.).
+
+`getCurrentVersionForMultiRegions` instead uses `queryCurrentVersions`: concurrent, single-attempt `getStoreWithTimeout`
+calls with a fixed **15-second shared deadline**, including submission, queueing, discovery, and the store request. The
+provider owns a dedicated bounded executor (16 workers, 256 queued tasks). Returned errors, timeouts, cancelled work,
+and executor rejections produce `-1` for the affected region; unexpected exceptions still propagate. Completed healthy
+responses are retained even when another region times out. On deadline or caller interruption, unfinished tasks are
+cancelled with interruption and the caller's interrupt flag is preserved. Workers never modify the returned map, and the
+executor is shut down before the provider closes its clients.
+
+Normal HTTP and D2 leader discovery each have a fixed **15-second cumulative budget** and a **5-second per-candidate
+cap** to permit fallback. The existing deadline-aware discovery overloads used by `getStoreWithTimeout` remain
+single-candidate operations. Other controller request retry counts and request timeouts are unchanged: the discovery
+budget bounds each discovery invocation, not the entire retry sequence. These budgets bound request waits; transport
+setup, parsing, and cleanup can add wall-clock overhead.
 
 ## The two retry engines
 
@@ -75,22 +89,22 @@ There is **no single retry policy**. Cross-region calls that retry use one of tw
 
 ### Fan-out sites with no retry (single attempt)
 
-| Method                                    | Class:line  | RPC                                         | Error policy             |
-| ----------------------------------------- | ----------- | ------------------------------------------- | ------------------------ |
-| `getCurrentVersionForMultiRegions`        | Parent:2301 | `getStore`                                  | sentinel                 |
-| `getBackupVersionsForMultiColos`          | Parent:2276 | `getBackupVersions`                         | sentinel                 |
-| `getInUseValueSchemaIds`                  | Parent:764  | `getInUseSchemaIds`                         | fail-fast → empty set    |
-| `getOffLineJobStatus`                     | Parent:3451 | `getLeaderControllerUrl` / `queryJobStatus` | log → UNKNOWN, aggregate |
-| `getClusterStaleStores`                   | Parent:4835 | `getClusterStores`                          | throw                    |
-| `getLargestUsedVersionFromStoreGraveyard` | Parent:4906 | `getStoreLargestUsedVersion`                | fold/max                 |
-| `getLargestUsedVersion`                   | Parent:4919 | `getStoreLargestUsedVersion`                | fold/max                 |
-| `listStorePushInfo`                       | Parent:4955 | `getRegionPushDetails`                      | skip null/continue       |
-| `checkResourceCleanupBeforeStoreCreation` | Parent:4982 | `checkResourceCleanupForStoreCreation`      | fail-fast throw          |
-| `removeStoreFromGraveyard`                | Parent:5519 | `removeStoreFromGraveyard`                  | fail-fast throw          |
-| `validateStoreDeleted`                    | Parent:5585 | `validateStoreDeleted`                      | collect errors           |
-| `sendPushJobDetails`                      | Child:1623  | `sendPushJobDetails`                        | first-success-wins       |
-| `getStoreInfoInChildColos`                | Child:1963  | `getStore`                                  | fail-fast throw          |
-| `deleteRTTopicFromAllFabrics`             | Child:4335  | `deleteKafkaTopic`                          | log + continue           |
+| Method                                    | Class:line  | RPC                                           | Error policy             |
+| ----------------------------------------- | ----------- | --------------------------------------------- | ------------------------ |
+| `getCurrentVersionForMultiRegions`        | Parent:2301 | `getStoreWithTimeout` (parallel, shared 15 s) | sentinel                 |
+| `getBackupVersionsForMultiColos`          | Parent:2276 | `getBackupVersions`                           | sentinel                 |
+| `getInUseValueSchemaIds`                  | Parent:764  | `getInUseSchemaIds`                           | fail-fast → empty set    |
+| `getOffLineJobStatus`                     | Parent:3451 | `getLeaderControllerUrl` / `queryJobStatus`   | log → UNKNOWN, aggregate |
+| `getClusterStaleStores`                   | Parent:4835 | `getClusterStores`                            | throw                    |
+| `getLargestUsedVersionFromStoreGraveyard` | Parent:4906 | `getStoreLargestUsedVersion`                  | fold/max                 |
+| `getLargestUsedVersion`                   | Parent:4919 | `getStoreLargestUsedVersion`                  | fold/max                 |
+| `listStorePushInfo`                       | Parent:4955 | `getRegionPushDetails`                        | skip null/continue       |
+| `checkResourceCleanupBeforeStoreCreation` | Parent:4982 | `checkResourceCleanupForStoreCreation`        | fail-fast throw          |
+| `removeStoreFromGraveyard`                | Parent:5519 | `removeStoreFromGraveyard`                    | fail-fast throw          |
+| `validateStoreDeleted`                    | Parent:5585 | `validateStoreDeleted`                        | collect errors           |
+| `sendPushJobDetails`                      | Child:1623  | `sendPushJobDetails`                          | first-success-wins       |
+| `getStoreInfoInChildColos`                | Child:1963  | `getStore`                                    | fail-fast throw          |
+| `deleteRTTopicFromAllFabrics`             | Child:4335  | `deleteKafkaTopic`                            | log + continue           |
 
 ### Single-region calls (pick one region's client) — all no-retry
 
@@ -105,10 +119,10 @@ except `isStoreVersionReadyForDataRecovery` (collect) and `getCurrentVersionInRe
 - **The three sibling version queries disagree on retry:** `getFutureVersionsForMultiColos` retries (5× / fixed 2 s),
   while `getCurrentVersionForMultiRegions` and `getBackupVersionsForMultiColos` do not. The future-version retry was
   added deliberately (it gates a "don't start a push when a future version exists" decision), so unifying is a semantic
-  choice, not a pure cleanup. Because all three now go through `queryAllRegions`, changing a policy is a one-number
-  (`maxAttempts`) edit per site.
+  choice, not a pure cleanup. Current-version queries also use a separate parallel deadline-aware helper; changing their
+  retry policy requires preserving the shared budget.
 - **Two engines, four profiles:** any "unify retry" effort must pick both an engine (fixed-delay `retryableRequest` vs
   exponential `RetryUtils`) and a delay profile; the five retrying sites currently use four different profiles.
-- **Bespoke loops remain hand-rolled:** only the three uniform best-effort version queries were migrated to
-  `queryAllRegions`; the rest keep their own loops because their error policy differs. Consolidating them further would
-  require a more configurable helper and careful behavior preservation.
+- **Bespoke loops remain hand-rolled:** only future- and backup-version queries use `queryAllRegions`; the rest keep
+  their own loops or dedicated helpers because their error policy differs. Consolidating them further would require a
+  more configurable helper and careful behavior preservation.

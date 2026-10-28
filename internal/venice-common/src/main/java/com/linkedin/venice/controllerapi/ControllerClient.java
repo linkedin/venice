@@ -144,6 +144,8 @@ public class ControllerClient implements Closeable {
    * misread as an unreachable controller.
    */
   static final String INTERRUPTED_MESSAGE_SUFFIX = ", aborted because the calling thread was interrupted";
+  protected static final int LEADER_DISCOVERY_TIMEOUT_MS = 15_000;
+  protected static final int LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS = 5_000;
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
@@ -215,16 +217,27 @@ public class ControllerClient implements Closeable {
   }
 
   protected String discoverLeaderController() {
+    long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_TIMEOUT_MS);
     List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
     Collections.shuffle(urls);
 
     Exception lastConnectException = null;
     Exception lastException = null;
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+    try (ControllerTransport transport = getNewControllerTransport()) {
       for (String url: urls) {
+        if (deadlineNs - requestTimeNs() <= 0 || Thread.currentThread().isInterrupted()) {
+          break;
+        }
         try {
           String leaderControllerUrl =
-              transport.request(url, ControllerRoute.LEADER_CONTROLLER, newParams(), LeaderControllerResponse.class)
+              transport
+                  .request(
+                      url,
+                      ControllerRoute.LEADER_CONTROLLER,
+                      newParams(),
+                      LeaderControllerResponse.class,
+                      Math.min(LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS, remainingRequestTimeMs(deadlineNs)),
+                      null)
                   .getUrl();
           LOGGER.debug(
               "Discovered leader controller: {} from: {} for cluster: {}",

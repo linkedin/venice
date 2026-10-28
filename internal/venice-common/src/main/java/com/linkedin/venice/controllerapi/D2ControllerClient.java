@@ -110,18 +110,18 @@ public class D2ControllerClient extends ControllerClient {
    */
   @Override
   protected String discoverLeaderController() {
-    LeaderControllerResponse controllerResponse = null;
+    long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_TIMEOUT_MS);
+    Exception lastException = null;
     for (D2Client d2Client: d2Clients) {
-      try {
-        controllerResponse = d2ClientGet(
-            d2Client,
-            d2ServiceName,
-            ControllerRoute.LEADER_CONTROLLER.getPath(),
-            newParams(),
-            LeaderControllerResponse.class);
-        // we get a successful response, so we break out of loop
+      if (deadlineNs - requestTimeNs() <= 0 || Thread.currentThread().isInterrupted()) {
         break;
-      } catch (VeniceException e) {
+      }
+      try {
+        long candidateDeadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS
+            .toNanos(Math.min(LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS, remainingRequestTimeMs(deadlineNs)));
+        return discoverLeaderController(d2Client, candidateDeadlineNs);
+      } catch (Exception e) {
+        lastException = e;
         LOGGER.warn("Failed to discover leader controller with D2 client: " + d2Client, e);
         if (Thread.currentThread().isInterrupted()) {
           // The caller is cancelling this thread; trying the next D2 client would absorb the signal.
@@ -131,18 +131,22 @@ public class D2ControllerClient extends ControllerClient {
         }
       }
     }
-    if (controllerResponse == null) {
-      throw new VeniceException("Failed to discover leader controller with D2 client");
-    }
-    return getLeaderUrl(controllerResponse);
+    throw new VeniceException(
+        "Failed to discover leader controller with D2 client"
+            + (Thread.currentThread().isInterrupted() ? INTERRUPTED_MESSAGE_SUFFIX : ""),
+        lastException);
   }
 
   @Override
   protected String discoverLeaderController(ControllerTransport transport, long deadlineNs) throws Exception {
+    return discoverLeaderController(d2Clients.get(0), deadlineNs);
+  }
+
+  private String discoverLeaderController(D2Client d2Client, long deadlineNs) throws Exception {
     String requestPath =
         D2_SCHEME + d2ServiceName + ControllerRoute.LEADER_CONTROLLER.getPath() + "?" + encodeQueryParams(newParams());
     remainingRequestTimeMs(deadlineNs);
-    Future<RestResponse> response = d2Clients.get(0).restRequest(D2ClientUtils.createD2GetRequest(requestPath));
+    Future<RestResponse> response = d2Client.restRequest(D2ClientUtils.createD2GetRequest(requestPath));
     try {
       RestResponse result = response.get(remainingRequestTimeMs(deadlineNs), TimeUnit.MILLISECONDS);
       return getLeaderUrl(

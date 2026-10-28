@@ -1,11 +1,16 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -17,6 +22,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.testng.annotations.Test;
 
 
@@ -50,6 +59,162 @@ public class FabricControllerClientProviderTest {
     VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
     when(configs.getControllerConfig(CLUSTER)).thenReturn(clusterConfig);
     return clusterConfig;
+  }
+
+  @Test(timeOut = 10_000)
+  public void testCurrentVersionDeadlineRetainsHealthyRegionsAndInterruptsSlowWorker() throws Exception {
+    CountDownLatch slowStarted = new CountDownLatch(1);
+    CountDownLatch healthyFinished = new CountDownLatch(1);
+    CountDownLatch slowInterrupted = new CountDownLatch(1);
+    ControllerClient slow = mock(ControllerClient.class);
+    when(slow.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+      slowStarted.countDown();
+      try {
+        new CountDownLatch(1).await();
+      } catch (InterruptedException e) {
+        slowInterrupted.countDown();
+        Thread.currentThread().interrupt();
+      }
+      return successStore(99);
+    });
+    ControllerClient healthy = mock(ControllerClient.class);
+    when(healthy.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+      assertTrue(slowStarted.await(5, TimeUnit.SECONDS), "Both regions must run concurrently");
+      healthyFinished.countDown();
+      return successStore(7);
+    });
+    Map<String, ControllerClient> clients = new LinkedHashMap<>();
+    clients.put("slow", slow);
+    clients.put("healthy", healthy);
+
+    try (FabricControllerClientProvider provider = providerWith(mock(VeniceControllerMultiClusterConfig.class), null)) {
+      Map<String, Integer> result =
+          provider.queryCurrentVersions(clients, CLUSTER, STORE, System.nanoTime() + TimeUnit.SECONDS.toNanos(1));
+      assertEquals(healthyFinished.getCount(), 0L);
+      assertEquals(result.get("healthy").intValue(), 7);
+      assertEquals(result.get("slow").intValue(), SENTINEL);
+      assertTrue(slowInterrupted.await(5, TimeUnit.SECONDS));
+      assertEquals(result.get("slow").intValue(), SENTINEL, "Late responses must not change the returned map");
+    }
+  }
+
+  @Test
+  public void testCurrentVersionsEmptyErrorsAndUnexpectedExceptions() {
+    ControllerClient good = mock(ControllerClient.class);
+    when(good.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+      int timeoutMs = invocation.getArgument(1);
+      assertTrue(timeoutMs > 0 && timeoutMs <= 15_000);
+      return successStore(9);
+    });
+    ControllerClient bad = mock(ControllerClient.class);
+    when(bad.getStoreWithTimeout(eq(STORE), anyInt())).thenReturn(errorStore());
+    Map<String, ControllerClient> clients = new LinkedHashMap<>();
+    clients.put("good", good);
+    clients.put("bad", bad);
+    try (FabricControllerClientProvider provider = providerWith(mock(VeniceControllerMultiClusterConfig.class), null)) {
+      assertTrue(provider.queryCurrentVersions(Collections.emptyMap(), CLUSTER, STORE).isEmpty());
+      Map<String, Integer> result = provider.queryCurrentVersions(clients, CLUSTER, STORE);
+      assertEquals(result.get("good").intValue(), 9);
+      assertEquals(result.get("bad").intValue(), SENTINEL);
+      when(bad.getStoreWithTimeout(eq(STORE), anyInt())).thenThrow(new IllegalStateException("unexpected"));
+      assertThrows(IllegalStateException.class, () -> provider.queryCurrentVersions(clients, CLUSTER, STORE));
+    }
+  }
+
+  @Test(timeOut = 10_000)
+  public void testCurrentVersionsCallerInterruptionCancelsWork() throws Exception {
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch interrupted = new CountDownLatch(1);
+    AtomicBoolean callerInterrupted = new AtomicBoolean();
+    ControllerClient client = mock(ControllerClient.class);
+    when(client.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+      started.countDown();
+      try {
+        new CountDownLatch(1).await();
+      } catch (InterruptedException e) {
+        interrupted.countDown();
+        Thread.currentThread().interrupt();
+      }
+      return errorStore();
+    });
+    try (FabricControllerClientProvider provider = providerWith(mock(VeniceControllerMultiClusterConfig.class), null)) {
+      FutureTask<Map<String, Integer>> query = new FutureTask<>(() -> {
+        Map<String, Integer> result =
+            provider.queryCurrentVersions(Collections.singletonMap("region", client), CLUSTER, STORE);
+        callerInterrupted.set(Thread.currentThread().isInterrupted());
+        return result;
+      });
+      Thread caller = new Thread(query);
+      caller.start();
+      try {
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+        caller.interrupt();
+        assertEquals(query.get(5, TimeUnit.SECONDS).get("region").intValue(), SENTINEL);
+        assertTrue(callerInterrupted.get());
+        assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+      } finally {
+        caller.interrupt();
+        caller.join(5000);
+      }
+    }
+  }
+
+  @Test(timeOut = 10_000)
+  public void testCurrentVersionsQueueingSharesDeadlineAndRejectsExcessWork() throws Exception {
+    CountDownLatch running = new CountDownLatch(16);
+    CountDownLatch interrupted = new CountDownLatch(16);
+    ControllerClient slow = mock(ControllerClient.class);
+    when(slow.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+      running.countDown();
+      try {
+        new CountDownLatch(1).await();
+      } catch (InterruptedException e) {
+        interrupted.countDown();
+        Thread.currentThread().interrupt();
+      }
+      return errorStore();
+    });
+    ControllerClient queued = mock(ControllerClient.class);
+    Map<String, ControllerClient> clients = new LinkedHashMap<>();
+    for (int i = 0; i < 16; i++) {
+      clients.put("running-" + i, slow);
+    }
+    // Fill the bounded queue and force explicit rejection of the last region.
+    for (int i = 0; i < 257; i++) {
+      clients.put("queued-" + i, queued);
+    }
+    try (FabricControllerClientProvider provider = providerWith(mock(VeniceControllerMultiClusterConfig.class), null)) {
+      Map<String, Integer> result =
+          provider.queryCurrentVersions(clients, CLUSTER, STORE, System.nanoTime() + TimeUnit.SECONDS.toNanos(1));
+      assertEquals(running.getCount(), 0L);
+      assertEquals(result.size(), clients.size());
+      result.values().forEach(version -> assertEquals(version.intValue(), SENTINEL));
+      assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+      verify(queued, never()).getStoreWithTimeout(eq(STORE), anyInt());
+      // Cancelled queued work must not prevent a subsequent healthy call from being admitted.
+      when(queued.getStoreWithTimeout(eq(STORE), anyInt())).thenReturn(successStore(4));
+      assertEquals(
+          provider.queryCurrentVersions(Collections.singletonMap("healthy", queued), CLUSTER, STORE)
+              .get("healthy")
+              .intValue(),
+          4);
+    }
+  }
+
+  @Test
+  public void testCurrentVersionsExpiredBudgetAndClosedProviderDoNotIssueRequests() {
+    ControllerClient client = mock(ControllerClient.class);
+    FabricControllerClientProvider provider = providerWith(mock(VeniceControllerMultiClusterConfig.class), null);
+    Map<String, ControllerClient> clients = Collections.singletonMap("region", client);
+    try {
+      assertEquals(
+          provider.queryCurrentVersions(clients, CLUSTER, STORE, System.nanoTime()).get("region").intValue(),
+          SENTINEL);
+    } finally {
+      provider.close();
+    }
+    assertEquals(provider.queryCurrentVersions(clients, CLUSTER, STORE).get("region").intValue(), SENTINEL);
+    verify(client, never()).getStoreWithTimeout(eq(STORE), anyInt());
   }
 
   @Test

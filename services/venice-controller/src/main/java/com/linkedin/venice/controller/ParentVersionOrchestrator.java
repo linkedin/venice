@@ -145,13 +145,7 @@ class ParentVersionOrchestrator {
       Map<String, ControllerClient> controllerClients) {
     return parent.getVeniceHelixAdmin()
         .getFabricControllerClientProvider()
-        .queryAllRegions(
-            controllerClients,
-            clusterName,
-            1,
-            controllerClient -> controllerClient.getStore(storeName),
-            response -> response.getStore().getCurrentVersion(),
-            IGNORED_CURRENT_VERSION);
+        .queryCurrentVersions(controllerClients, clusterName, storeName);
   }
 
   List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {

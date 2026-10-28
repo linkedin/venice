@@ -1,17 +1,31 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
+
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -35,6 +49,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class FabricControllerClientProvider implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(FabricControllerClientProvider.class);
+  private static final int CURRENT_VERSION_QUERY_TIMEOUT_SECONDS = 15;
+  private final ThreadPoolExecutor currentVersionQueryExecutor;
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Optional<SSLFactory> sslFactory;
@@ -55,6 +71,14 @@ public class FabricControllerClientProvider implements Closeable {
     this.multiClusterConfigs = multiClusterConfigs;
     this.sslFactory = sslFactory;
     this.d2Clients = d2Clients;
+    this.currentVersionQueryExecutor = new ThreadPoolExecutor(
+        16,
+        16,
+        0,
+        TimeUnit.MILLISECONDS,
+        new LinkedBlockingQueue<>(256),
+        new DaemonThreadFactory("CurrentVersionQuery", multiClusterConfigs.getLogContext()),
+        new ThreadPoolExecutor.AbortPolicy());
   }
 
   /**
@@ -189,8 +213,116 @@ public class FabricControllerClientProvider implements Closeable {
     return result;
   }
 
+  /**
+   * Queries current versions concurrently with one 15-second budget, including queueing and discovery.
+   * Only the caller assembles the result; cancellation cannot allow a worker to modify a returned map.
+   */
+  public Map<String, Integer> queryCurrentVersions(
+      Map<String, ControllerClient> controllerClients,
+      String clusterName,
+      String storeName) {
+    return queryCurrentVersions(
+        controllerClients,
+        clusterName,
+        storeName,
+        System.nanoTime() + TimeUnit.SECONDS.toNanos(CURRENT_VERSION_QUERY_TIMEOUT_SECONDS));
+  }
+
+  Map<String, Integer> queryCurrentVersions(
+      Map<String, ControllerClient> controllerClients,
+      String clusterName,
+      String storeName,
+      long deadlineNs) {
+    Map<String, CompletableFuture<StoreResponse>> responses = new HashMap<>();
+    Map<CompletableFuture<StoreResponse>, Future<?>> tasks = new HashMap<>();
+    try {
+      controllerClients.forEach((region, client) -> {
+        CompletableFuture<StoreResponse> response = new CompletableFuture<>();
+        responses.put(region, response);
+        if (Thread.currentThread().isInterrupted() || deadlineNs - System.nanoTime() <= 0) {
+          response
+              .completeExceptionally(new TimeoutException("Current-version query budget exhausted before submission"));
+          return;
+        }
+        try {
+          tasks.put(response, currentVersionQueryExecutor.submit(() -> {
+            try {
+              long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - System.nanoTime());
+              if (remainingMs <= 0 || Thread.currentThread().isInterrupted()) {
+                throw new TimeoutException("Current-version query budget exhausted before request");
+              }
+              response.complete(client.getStoreWithTimeout(storeName, (int) Math.min(Integer.MAX_VALUE, remainingMs)));
+            } catch (Throwable e) {
+              response.completeExceptionally(e);
+            }
+          }));
+        } catch (RejectedExecutionException e) {
+          response.completeExceptionally(e);
+        }
+      });
+
+      try {
+        CompletableFuture.allOf(responses.values().toArray(new CompletableFuture<?>[0]))
+            .get(Math.max(0, deadlineNs - System.nanoTime()), TimeUnit.NANOSECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      } catch (TimeoutException | ExecutionException e) {
+        // Collect every completed response below, including successes behind a slow region.
+      }
+      cancelUnfinishedQueries(tasks);
+
+      Map<String, Integer> result = new HashMap<>();
+      responses.forEach((region, response) -> {
+        int version = IGNORED_CURRENT_VERSION;
+        try {
+          StoreResponse storeResponse = response.join();
+          if (storeResponse.isError()) {
+            LOGGER.error(
+                "Could not query current version from region: {} for cluster: {}. Error: {}",
+                region,
+                clusterName,
+                storeResponse.getError());
+          } else {
+            version = storeResponse.getStore().getCurrentVersion();
+          }
+        } catch (CompletionException e) {
+          Throwable cause = e.getCause();
+          if (!(cause instanceof TimeoutException || cause instanceof CancellationException
+              || cause instanceof RejectedExecutionException)) {
+            if (cause instanceof RuntimeException) {
+              throw (RuntimeException) cause;
+            }
+            if (cause instanceof Error) {
+              throw (Error) cause;
+            }
+            throw new VeniceException(cause);
+          }
+          LOGGER.warn("Could not query current version from region: {} for cluster: {}", region, clusterName, cause);
+        } catch (CancellationException e) {
+          LOGGER.warn("Could not query current version from region: {} for cluster: {}", region, clusterName, e);
+        }
+        result.put(region, version);
+      });
+      return result;
+    } finally {
+      cancelUnfinishedQueries(tasks);
+      currentVersionQueryExecutor.purge();
+    }
+  }
+
+  private void cancelUnfinishedQueries(Map<CompletableFuture<StoreResponse>, Future<?>> tasks) {
+    // CompletableFuture.cancel(true) alone does not interrupt a running supplier.
+    tasks.forEach((response, task) -> {
+      if (!response.isDone()) {
+        response.cancel(true);
+        task.cancel(true);
+      }
+    });
+  }
+
   @Override
   public void close() {
+    currentVersionQueryExecutor.shutdownNow();
     clusterControllerClientPerFabricMap.values()
         .forEach(controllerClientMap -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
     newFabricControllerClientMap.values()

@@ -156,6 +156,14 @@ public class AbstractTestVeniceParentHelixAdmin {
     // clients.
     when(fabricControllerClientProvider.queryAllRegions(any(), any(), anyInt(), any(), any(), any()))
         .thenCallRealMethod();
+    // The deadline-aware fan-out owns an executor, so use and close a real provider for each invocation.
+    when(fabricControllerClientProvider.queryCurrentVersions(any(), any(), any())).thenAnswer(invocation -> {
+      try (FabricControllerClientProvider provider =
+          new FabricControllerClientProvider(mock(VeniceControllerMultiClusterConfig.class), Optional.empty(), null)) {
+        return provider
+            .queryCurrentVersions(invocation.getArgument(0), invocation.getArgument(1), invocation.getArgument(2));
+      }
+    });
     doReturn(fabricControllerClientProvider).when(internalAdmin).getFabricControllerClientProvider();
 
     resources = mockResources(config, clusterName);
@@ -203,6 +211,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     StoreResponse storeResponse = mock(StoreResponse.class);
     doReturn(storeResponse).when(mockControllerClient).getStore(anyString());
+    doReturn(storeResponse).when(mockControllerClient).getStoreWithTimeout(anyString(), anyInt());
     StoreInfo storeInfo = mock(StoreInfo.class);
     doReturn(storeInfo).when(storeResponse).getStore();
     MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
