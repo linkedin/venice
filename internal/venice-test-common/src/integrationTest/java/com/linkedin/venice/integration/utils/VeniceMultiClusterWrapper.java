@@ -8,7 +8,6 @@ import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.d2.D2ConfigUtils.D2ServiceRole;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SslUtils;
@@ -125,8 +124,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
           VeniceControllerWrapper.D2_SERVICE_NAME,
-          D2ServiceRole.CONTROLLER,
-          Collections.emptyMap());
+          true);
       D2Client clientConfigD2Client = D2TestUtils.getAndStartD2Client(zkAddress);
       controllerProperties.put(
           VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER,

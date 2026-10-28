@@ -1,6 +1,5 @@
 package com.linkedin.venice.d2;
 
-import com.linkedin.d2.HttpMethod;
 import com.linkedin.d2.balancer.config.ConfigWriter;
 import com.linkedin.d2.balancer.properties.PropertyKeys;
 import com.linkedin.d2.balancer.servers.ZKUriStoreFactory;
@@ -25,37 +24,27 @@ import java.util.Map;
 public final class D2ConfigUtils {
   private static final String DEFAULT_QUARANTINE_MAX_PERCENT = "0.1";
 
-  public enum D2ServiceRole {
-    GENERIC, CONTROLLER, STORAGE_SERVER
-  }
-
   private D2ConfigUtils() {
   }
 
   public static void setupD2Config(String zkHosts, boolean https, String d2ClusterName, String d2ServiceName) {
-    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, D2ServiceRole.GENERIC, Collections.emptyMap());
+    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, false);
   }
 
-  /**
-   * Publishes a Venice-owned policy, with service overrides taking precedence over defaults.
-   * This does not read or merge an existing externally managed policy.
-   */
   public static void setupD2Config(
       String zkHosts,
       boolean https,
       String d2ClusterName,
       String d2ServiceName,
-      D2ServiceRole role,
-      Map<String, Object> serviceOverrides) {
+      boolean useHealthCheckEndpoint) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
     int retryLimit = 10;
 
     try {
       Map<String, Object> clusterDefaults = Collections.emptyMap();
-      Map<String, Object> serviceDefaults = getD2ServiceDefaults();
-      Map<String, Object> clusterServiceConfigurations =
-          getD2ServiceConfig(d2ClusterName, d2ServiceName, https, role, serviceOverrides);
+      Map<String, Object> serviceDefaults = getD2ServiceDefaults(useHealthCheckEndpoint);
+      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(d2ClusterName, d2ServiceName, https);
       Map<String, Object> extraClusterServiceConfigurations = Collections.emptyMap();
       Map<String, Object> serviceVariants = Collections.emptyMap();
 
@@ -78,93 +67,24 @@ public final class D2ConfigUtils {
   }
 
   /**
-   * Completes only missing quarantine leaves, without modifying or sharing the caller's quarantine maps.
-   * D2 accepts caps as {@link Double} or numeric {@link String} values. Generic services retain D2's
-   * OPTIONS/service-path probe defaults; controllers and storage servers default to GET /health.
+   * Builds fresh quarantine defaults. False retains D2's OPTIONS/service-path probes; it does not disable quarantine.
    */
-  public static Map<String, Object> withQuarantineDefaults(Map<String, Object> serviceProperties, D2ServiceRole role) {
-    if (serviceProperties == null) {
-      throw new VeniceException("D2 service properties must not be null");
-    }
-    if (role == null) {
-      throw new VeniceException("D2 service role must not be null");
-    }
-
-    Map<String, Object> legacy =
-        getPropertyMap(serviceProperties, PropertyKeys.LB_STRATEGY_PROPERTIES, PropertyKeys.LB_STRATEGY_PROPERTIES);
-    String relativePath = PropertyKeys.RELATIVE_STRATEGY_PROPERTIES;
-    Map<String, Object> relative = getPropertyMap(serviceProperties, relativePath, relativePath);
-    String quarantinePath = relativePath + "." + PropertyKeys.QUARANTINE_PROPERTIES;
-    Map<String, Object> quarantine = getPropertyMap(relative, PropertyKeys.QUARANTINE_PROPERTIES, quarantinePath);
-    validateCap(legacy, PropertyKeys.HTTP_LB_QUARANTINE_MAX_PERCENT, PropertyKeys.LB_STRATEGY_PROPERTIES);
-    validateString(legacy, PropertyKeys.HTTP_LB_QUARANTINE_METHOD, PropertyKeys.LB_STRATEGY_PROPERTIES);
-    validateCap(quarantine, PropertyKeys.QUARANTINE_MAX_PERCENT, quarantinePath);
-    validateString(quarantine, PropertyKeys.QUARANTINE_HEALTH_CHECK_METHOD, quarantinePath);
-    validateString(quarantine, PropertyKeys.QUARANTINE_HEALTH_CHECK_PATH, quarantinePath);
-    if (quarantine.containsKey(PropertyKeys.QUARANTINE_HEALTH_CHECK_METHOD)) {
-      String method = (String) quarantine.get(PropertyKeys.QUARANTINE_HEALTH_CHECK_METHOD);
-      if (!HttpMethod.GET.name().equalsIgnoreCase(method) && !HttpMethod.OPTIONS.name().equalsIgnoreCase(method)) {
-        throw new VeniceException(
-            "Invalid D2 property " + quarantinePath + "." + PropertyKeys.QUARANTINE_HEALTH_CHECK_METHOD
-                + ": expected GET or OPTIONS");
-      }
-    }
-
+  public static Map<String, Object> getD2QuarantineDefaults(boolean useHealthCheckEndpoint) {
     Map<String, Object> legacyDefaults = new HashMap<>();
     legacyDefaults.put(PropertyKeys.HTTP_LB_QUARANTINE_MAX_PERCENT, DEFAULT_QUARANTINE_MAX_PERCENT);
     Map<String, Object> quarantineDefaults = new HashMap<>();
     quarantineDefaults.put(PropertyKeys.QUARANTINE_MAX_PERCENT, DEFAULT_QUARANTINE_MAX_PERCENT);
-    if (role != D2ServiceRole.GENERIC) {
+    if (useHealthCheckEndpoint) {
       legacyDefaults.put(PropertyKeys.HTTP_LB_QUARANTINE_METHOD, "GET:/health");
-      quarantineDefaults.put(PropertyKeys.QUARANTINE_HEALTH_CHECK_METHOD, HttpMethod.GET.name());
+      quarantineDefaults.put(PropertyKeys.QUARANTINE_HEALTH_CHECK_METHOD, "GET");
       quarantineDefaults.put(PropertyKeys.QUARANTINE_HEALTH_CHECK_PATH, "/health");
     }
+    Map<String, Object> relativeDefaults = new HashMap<>();
+    relativeDefaults.put(PropertyKeys.QUARANTINE_PROPERTIES, quarantineDefaults);
     Map<String, Object> defaults = new HashMap<>();
     defaults.put(PropertyKeys.LB_STRATEGY_PROPERTIES, legacyDefaults);
-    defaults.put(
-        PropertyKeys.RELATIVE_STRATEGY_PROPERTIES,
-        Collections.singletonMap(PropertyKeys.QUARANTINE_PROPERTIES, quarantineDefaults));
-    return ConfigWriter.merge(serviceProperties, defaults);
-  }
-
-  @SuppressWarnings("unchecked")
-  private static Map<String, Object> getPropertyMap(Map<String, Object> properties, String key, String path) {
-    if (!properties.containsKey(key)) {
-      return Collections.emptyMap();
-    }
-    Object value = properties.get(key);
-    if (!(value instanceof Map)) {
-      throw new VeniceException("Invalid D2 property " + path + ": expected a map");
-    }
-    return (Map<String, Object>) value;
-  }
-
-  private static void validateCap(Map<String, Object> properties, String key, String path) {
-    if (!properties.containsKey(key)) {
-      return;
-    }
-    Object value = properties.get(key);
-    double cap;
-    if (value instanceof Double) {
-      cap = (Double) value;
-    } else if (value instanceof String) {
-      try {
-        cap = Double.parseDouble((String) value);
-      } catch (NumberFormatException e) {
-        throw new VeniceException("Invalid D2 property " + path + "." + key + ": expected a numeric String", e);
-      }
-    } else {
-      throw new VeniceException("Invalid D2 property " + path + "." + key + ": expected a Double or numeric String");
-    }
-    if (!Double.isFinite(cap)) {
-      throw new VeniceException("Invalid D2 property " + path + "." + key + ": expected a finite cap");
-    }
-  }
-
-  private static void validateString(Map<String, Object> properties, String key, String path) {
-    if (properties.containsKey(key) && !(properties.get(key) instanceof String)) {
-      throw new VeniceException("Invalid D2 property " + path + "." + key + ": expected a String");
-    }
+    defaults.put(PropertyKeys.RELATIVE_STRATEGY_PROPERTIES, relativeDefaults);
+    return defaults;
   }
 
   public static D2Server createD2Server(String zkHosts, String localUri, String clusterName) {
@@ -222,7 +142,7 @@ public final class D2ConfigUtils {
     return d2List;
   }
 
-  private static Map<String, Object> getD2ServiceDefaults() {
+  private static Map<String, Object> getD2ServiceDefaults(boolean useHealthCheckEndpoint) {
     List<String> loadBalancerStrategyList = new ArrayList<>();
     loadBalancerStrategyList.add("degraderV3");
     loadBalancerStrategyList.add("degraderV2");
@@ -251,15 +171,10 @@ public final class D2ConfigUtils {
     serviceDefaults.put("transportClientProperties", transportClientProperties);
     serviceDefaults.put("degraderProperties", degraderProperties);
 
-    return withQuarantineDefaults(serviceDefaults, D2ServiceRole.GENERIC);
+    return ConfigWriter.merge(getD2QuarantineDefaults(useHealthCheckEndpoint), serviceDefaults);
   }
 
-  private static Map<String, Object> getD2ServiceConfig(
-      String cluster,
-      String service,
-      boolean https,
-      D2ServiceRole role,
-      Map<String, Object> serviceOverrides) {
+  private static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https) {
     Map<String, Object> serviceMap = new HashMap<>();
     serviceMap.put("path", "/");
     if (https) {
@@ -269,7 +184,7 @@ public final class D2ConfigUtils {
     }
 
     Map<String, Object> servicesMap = new HashMap<>();
-    servicesMap.put(service, ConfigWriter.merge(withQuarantineDefaults(serviceOverrides, role), serviceMap));
+    servicesMap.put(service, serviceMap);
 
     Map<String, Object> clusterMap = new HashMap<>();
     clusterMap.put("services", servicesMap);

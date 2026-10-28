@@ -3,14 +3,10 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.config.RelativeStrategyPropertiesConverter;
-import com.linkedin.d2.balancer.properties.PropertyKeys;
-import com.linkedin.d2.balancer.properties.ServiceProperties;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.d2.D2ConfigUtils.D2ServiceRole;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -57,19 +53,7 @@ public class TestD2ControllerClient {
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
           VeniceControllerWrapper.D2_SERVICE_NAME,
-          D2ServiceRole.CONTROLLER,
-          Collections.emptyMap());
-
-      ServiceProperties policy =
-          D2TestUtils.getD2ServiceProperties(zkServer.getAddress(), VeniceControllerWrapper.D2_SERVICE_NAME);
-      Assert.assertEquals(
-          policy.getLoadBalancerStrategyProperties().get(PropertyKeys.HTTP_LB_QUARANTINE_METHOD),
-          "GET:/health");
-      Assert.assertEquals(
-          RelativeStrategyPropertiesConverter.toProperties(policy.getRelativeStrategyProperties())
-              .getQuarantineProperties()
-              .getHealthCheckPath(),
-          "/health");
+          true);
 
       d2Client = D2TestUtils.getAndStartD2Client(zkServer.getAddress());
       String d2ServiceName = VeniceControllerWrapper.D2_SERVICE_NAME;

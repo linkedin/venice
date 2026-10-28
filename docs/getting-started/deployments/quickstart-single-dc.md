@@ -153,52 +153,10 @@ value=null
 
 ##### D2 quarantine defaults and policy ownership
 
-When Venice generates a D2 service policy, it defaults the maximum quarantined-host fraction to `0.1` independently for
-the legacy and relative strategies. This is a host-quarantine cap, not a client canary percentage. The strategy priority
-remains `degraderV3`, then `degraderV2`; publishing relative properties does not select the relative strategy.
-
-| Service role                                               | Default quarantine probe                                         |
-| ---------------------------------------------------------- | ---------------------------------------------------------------- |
-| Routers, cluster discovery, and per-cluster router aliases | Existing D2 OPTIONS/service-path behavior; no `/health` override |
-| Parent and child controllers                               | Legacy `GET:/health`; relative method `GET`, path `/health`      |
-| Storage servers                                            | Legacy `GET:/health`; relative method `GET`, path `/health`      |
-
-Existing publication opt-ins are unchanged: `router.d2.announce.enabled` and `server.d2.announce.enabled` default to
-`false`. The Docker quickstart enables them. Controller policies created by the integration harness use the controller
-role; standalone controller startup does not gain a policy publisher.
-
-The role/properties overload of `D2ConfigUtils.setupD2Config` accepts service-policy overrides. Explicit caps and probes
-win; partial nested maps receive only missing defaults, and caller maps are not modified. For example, a publisher can
-opt out of quarantine in both strategies while retaining storage-server probe defaults:
-
-```java
-Map<String, Object> overrides = new HashMap<>();
-overrides.put(
-    PropertyKeys.LB_STRATEGY_PROPERTIES,
-    Collections.singletonMap(PropertyKeys.HTTP_LB_QUARANTINE_MAX_PERCENT, "0"));
-overrides.put(
-    PropertyKeys.RELATIVE_STRATEGY_PROPERTIES,
-    Collections.singletonMap(
-        PropertyKeys.QUARANTINE_PROPERTIES,
-        Collections.singletonMap(PropertyKeys.QUARANTINE_MAX_PERCENT, "0")));
-D2ConfigUtils.setupD2Config(
-    zkHosts, false, d2ClusterName, d2ServiceName,
-    D2ConfigUtils.D2ServiceRole.STORAGE_SERVER, overrides);
-```
-
-Caps must be finite Java `Double` values, such as `0.0`, or numeric `String` values, such as `"0"`. The pinned D2
-dependency does not accept an `Integer` cap, including `0`; malformed maps, null values, and unsupported types fail
-rather than silently receiving defaults. Relative probe methods support `GET` and `OPTIONS` (case-insensitive), with a
-separate string path. Legacy probes use a combined method/path string. Explicit empty paths retain D2's service-path
-fallback. Configured fractions are preserved at publication; D2's existing legacy runtime clamp above `0.5` remains
-unchanged. Set both caps to zero to opt out of both strategies; setting only one does not disable the other.
-
-These are defaults for source-owned publication, not an automatic migration of externally managed D2 records. Client
-creation and instance announcement do not rewrite service policies. For externally managed policies, the configuration
-owner must publish any change or rollback separately. Reverting Java code alone does not undo a policy already stored in
-ZooKeeper. Before adopting the defaults in a deployment, verify probes, failure isolation, and re-admission with the
-intended endpoint pool and traffic volume; the configured fraction alone does not establish rounding or recovery
-behavior.
+Venice-generated D2 policies default the maximum quarantined-host fraction to `0.1` for both legacy and relative
+strategies. Routers and discovery aliases retain OPTIONS/service-path probes; controllers and storage servers use
+`GET /health`. Existing strategy order and publication opt-ins are unchanged. Externally managed D2 service records are
+not automatically migrated; their configuration owner must publish any changes or rollback.
 
 #### Step 8: Update and add some new records using Incremental Push
 

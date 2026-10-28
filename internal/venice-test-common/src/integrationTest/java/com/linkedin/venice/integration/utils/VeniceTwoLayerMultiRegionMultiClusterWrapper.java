@@ -21,7 +21,6 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.helix.HelixParticipationService;
 import com.linkedin.davinci.notifier.LeaderErrorNotifier;
-import com.linkedin.venice.d2.D2ConfigUtils.D2ServiceRole;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.LogContext;
@@ -31,7 +30,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -244,8 +242,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           false,
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
           VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
-          D2ServiceRole.CONTROLLER,
-          Collections.emptyMap());
+          true);
       d2Clients.put(parentRegionName + ".parent", D2TestUtils.getAndStartD2Client(zkServer.getAddress()));
       VeniceControllerCreateOptions parentControllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper, d2Clients)

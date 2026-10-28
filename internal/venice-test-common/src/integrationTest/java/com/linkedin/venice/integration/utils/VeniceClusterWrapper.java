@@ -35,7 +35,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.d2.D2ConfigUtils.D2ServiceRole;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -254,8 +253,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
           VeniceControllerWrapper.D2_SERVICE_NAME,
-          D2ServiceRole.CONTROLLER,
-          Collections.emptyMap());
+          true);
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
         if (options.getNumberOfRouters() > 0) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)

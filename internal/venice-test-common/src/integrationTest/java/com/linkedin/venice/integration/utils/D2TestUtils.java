@@ -5,19 +5,15 @@ import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.d2.balancer.config.ConfigWriter;
-import com.linkedin.d2.balancer.properties.ServiceProperties;
-import com.linkedin.d2.balancer.properties.ServicePropertiesJsonSerializer;
 import com.linkedin.d2.balancer.servers.ZKUriStoreFactory;
 import com.linkedin.d2.balancer.servers.ZooKeeperAnnouncer;
 import com.linkedin.d2.balancer.servers.ZooKeeperConnectionManager;
 import com.linkedin.d2.balancer.servers.ZooKeeperServer;
-import com.linkedin.d2.balancer.zkfs.ZKFSUtil;
 import com.linkedin.d2.discovery.util.D2Config;
 import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.r2.transport.http.common.HttpProtocolVersion;
 import com.linkedin.venice.d2.D2ConfigUtils;
-import com.linkedin.venice.d2.D2ConfigUtils.D2ServiceRole;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.d2.D2ServerManager;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -33,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import org.apache.zookeeper.ZooKeeper;
 
 
 public class D2TestUtils {
@@ -45,27 +40,25 @@ public class D2TestUtils {
    * creates a cluster name for each service and returns the created name.
    */
   public static String setupD2Config(String zkHosts, boolean https, String d2ServiceName) {
-    return setupD2Config(zkHosts, https, d2ServiceName, D2ServiceRole.GENERIC, Collections.emptyMap());
+    return setupD2Config(zkHosts, https, d2ServiceName, false);
   }
 
   public static String setupD2Config(
       String zkHosts,
       boolean https,
       String d2ServiceName,
-      D2ServiceRole role,
-      Map<String, Object> serviceOverrides) {
-    Map<String, Object> validatedOverrides = D2ConfigUtils.withQuarantineDefaults(serviceOverrides, role);
+      boolean useHealthCheckEndpoint) {
     // d2ClusterName must be different for routers with different d2ServiceName
     // We've consciously not set it to be deterministically derivable from service name to make sure we don't rely on
     // hardcoded values.
     String d2ClusterName =
         D2_SERVICE_TO_CLUSTER.computeIfAbsent(d2ServiceName, s -> Utils.getUniqueString(d2ServiceName + "_cluster"));
-    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, role, validatedOverrides);
+    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, useHealthCheckEndpoint);
     return d2ClusterName;
   }
 
   public static void setupD2Config(String zkHosts, boolean https, String d2ClusterName, String d2ServiceName) {
-    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, D2ServiceRole.GENERIC, Collections.emptyMap());
+    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, false);
   }
 
   public static void setupD2Config(
@@ -73,9 +66,7 @@ public class D2TestUtils {
       boolean https,
       String d2ClusterName,
       String d2ServiceName,
-      D2ServiceRole role,
-      Map<String, Object> serviceOverrides) {
-    Map<String, Object> validatedOverrides = D2ConfigUtils.withQuarantineDefaults(serviceOverrides, role);
+      boolean useHealthCheckEndpoint) {
     String d2ClusterNameFromCache = D2_SERVICE_TO_CLUSTER.get(d2ServiceName);
     if (d2ClusterNameFromCache == null) {
       D2_SERVICE_TO_CLUSTER.put(d2ServiceName, d2ClusterName);
@@ -96,9 +87,8 @@ public class D2TestUtils {
     D2Config d2Config;
     try {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
-      Map<String, Object> serviceDefaults = getD2ServiceDefaults();
-      Map<String, Object> clusterServiceConfigurations =
-          getD2ServiceConfig(d2ClusterName, d2ServiceName, https, role, validatedOverrides);
+      Map<String, Object> serviceDefaults = getD2ServiceDefaults(useHealthCheckEndpoint);
+      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(d2ClusterName, d2ServiceName, https);
       Map<String, Object> extraClusterServiceConfigurations = Collections.EMPTY_MAP;
       Map<String, Object> serviceVariants = Collections.EMPTY_MAP;
 
@@ -116,18 +106,6 @@ public class D2TestUtils {
 
       // populate zookeeper
       d2Config.configure();
-    } catch (Exception e) {
-      throw new VeniceException(e);
-    }
-  }
-
-  public static ServiceProperties getD2ServiceProperties(String zkHosts, String serviceName) {
-    try (ZooKeeper zooKeeper = new ZooKeeper(zkHosts, 5000, event -> {})) {
-      byte[] data = zooKeeper.getData(ZKFSUtil.servicePath("/d2") + "/" + serviceName, false, null);
-      return new ServicePropertiesJsonSerializer().fromBytes(data);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException(e);
     } catch (Exception e) {
       throw new VeniceException(e);
     }
@@ -275,7 +253,10 @@ public class D2TestUtils {
    * @see <a href="https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json">D2 Quickstart</a>
    */
   public static Map<String, Object> getD2ServiceDefaults() {
+    return getD2ServiceDefaults(false);
+  }
 
+  private static Map<String, Object> getD2ServiceDefaults(boolean useHealthCheckEndpoint) {
     List<String> loadBalancerStrategyList = new ArrayList<>();
     loadBalancerStrategyList.add("degraderV3");
     loadBalancerStrategyList.add("degraderV2");
@@ -304,7 +285,7 @@ public class D2TestUtils {
     serviceDefaults.put("transportClientProperties", transportClientProperties);
     serviceDefaults.put("degraderProperties", degraderProperties);
 
-    return D2ConfigUtils.withQuarantineDefaults(serviceDefaults, D2ServiceRole.GENERIC);
+    return ConfigWriter.merge(D2ConfigUtils.getD2QuarantineDefaults(useHealthCheckEndpoint), serviceDefaults);
   }
 
   /**
@@ -330,15 +311,6 @@ public class D2TestUtils {
    * @see <a href="https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json">D2 Quickstart</a>
    */
   public static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https) {
-    return getD2ServiceConfig(cluster, service, https, D2ServiceRole.GENERIC, Collections.emptyMap());
-  }
-
-  private static Map<String, Object> getD2ServiceConfig(
-      String cluster,
-      String service,
-      boolean https,
-      D2ServiceRole role,
-      Map<String, Object> serviceOverrides) {
     Map<String, Object> serviceMap = new HashMap<>();
     serviceMap.put("path", "/");
     if (https) {
@@ -348,8 +320,7 @@ public class D2TestUtils {
     }
 
     Map<String, Object> servicesMap = new HashMap<>();
-    servicesMap
-        .put(service, ConfigWriter.merge(D2ConfigUtils.withQuarantineDefaults(serviceOverrides, role), serviceMap));
+    servicesMap.put(service, serviceMap);
 
     Map<String, Object> clusterMap = new HashMap<>();
     clusterMap.put("services", servicesMap);
