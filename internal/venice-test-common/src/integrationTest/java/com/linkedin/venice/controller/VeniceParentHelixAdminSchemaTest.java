@@ -10,6 +10,7 @@ import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WR
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -609,6 +610,58 @@ public class VeniceParentHelixAdminSchemaTest {
     testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
     testUpdateEnumSchemaEvolution(parentControllerClient, childControllerClient);
     testUpdateStoreFlinkVeniceViewsEnable(parentControllerClient, childControllerClient);
+    testUpdateVeniceUnitsAndWorkloadType(parentControllerClient, childControllerClient);
+  }
+
+  /**
+   * Exercises the full update-store path for the two nullable capacity-planning configs: parent
+   * controller HTTP request -> admin topic -> child controller -> ZK, for all three states the
+   * params support. The clear case is the interesting one: an explicit clear has to stay
+   * distinguishable from "config not provided" all the way through, otherwise a config that has
+   * been set once can never be unset.
+   */
+  private void testUpdateVeniceUnitsAndWorkloadType(ControllerClient parentClient, ControllerClient childClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    parentClient.createNewStore(storeName, "test_owner", "\"long\"", generateSchema(false).toString());
+
+    // Both configs start out unset.
+    assertVeniceUnitsAndWorkloadType(parentClient, childClient, storeName, null, null);
+
+    // Set both configs.
+    assertCommand(
+        parentClient
+            .updateStore(storeName, new UpdateStoreQueryParams().setVeniceUnits(42).setWorkloadType("GENERIC")));
+    assertVeniceUnitsAndWorkloadType(parentClient, childClient, storeName, 42, "GENERIC");
+
+    // An unrelated update must leave both configs alone.
+    assertCommand(parentClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100)));
+    assertVeniceUnitsAndWorkloadType(parentClient, childClient, storeName, 42, "GENERIC");
+
+    // Update one config without touching the other.
+    assertCommand(parentClient.updateStore(storeName, new UpdateStoreQueryParams().setWorkloadType("LOW_LATENCY")));
+    assertVeniceUnitsAndWorkloadType(parentClient, childClient, storeName, 42, "LOW_LATENCY");
+
+    // Clear both configs back to null.
+    assertCommand(
+        parentClient.updateStore(storeName, new UpdateStoreQueryParams().setVeniceUnits(null).setWorkloadType(null)));
+    assertVeniceUnitsAndWorkloadType(parentClient, childClient, storeName, null, null);
+  }
+
+  private void assertVeniceUnitsAndWorkloadType(
+      ControllerClient parentClient,
+      ControllerClient childClient,
+      String storeName,
+      Integer expectedVeniceUnits,
+      String expectedWorkloadType) {
+    StoreInfo parentStore = assertCommand(parentClient.getStore(storeName)).getStore();
+    Assert.assertEquals(parentStore.getVeniceUnits(), expectedVeniceUnits, "Parent veniceUnits mismatch");
+    Assert.assertEquals(parentStore.getWorkloadType(), expectedWorkloadType, "Parent workloadType mismatch");
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreInfo childStore = assertCommand(childClient.getStore(storeName)).getStore();
+      Assert.assertEquals(childStore.getVeniceUnits(), expectedVeniceUnits, "Child veniceUnits mismatch");
+      Assert.assertEquals(childStore.getWorkloadType(), expectedWorkloadType, "Child workloadType mismatch");
+    });
   }
 
   private void testUpdateConfig(

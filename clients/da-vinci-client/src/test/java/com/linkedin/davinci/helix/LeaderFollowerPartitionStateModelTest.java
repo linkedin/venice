@@ -6,12 +6,17 @@ import static com.linkedin.venice.helix.HelixState.OFFLINE_STATE;
 import static com.linkedin.venice.helix.HelixState.STANDBY_STATE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -22,6 +27,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -38,11 +44,14 @@ import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -51,13 +60,21 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.commons.io.FileUtils;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
+import org.mockito.InOrder;
+import org.mockito.MockedStatic;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -85,9 +102,11 @@ public class LeaderFollowerPartitionStateModelTest {
         .stopConsumption(any(), anyInt(), anyString());
     doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend)
         .dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    doReturn(CompletableFuture.completedFuture(null)).when(storeIngestionService).stopConsumption(any(), anyInt());
 
     storeAndServerConfigs = mock(VeniceStoreVersionConfig.class);
     when(storeAndServerConfigs.getStoreVersionMetadataWaitDuringStateTransitionTimeMs()).thenReturn(5000L);
+    when(storeAndServerConfigs.getStopConsumptionTimeoutInSeconds()).thenReturn(17);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
     metadataRepo = mock(ReadOnlyStoreRepository.class);
     // Default store mock so waitForVersionToBeAvailable() finds the version immediately
@@ -250,190 +269,262 @@ public class LeaderFollowerPartitionStateModelTest {
     verify(stateTransitionStats, never()).trackStateTransitionCompleted(STANDBY_STATE, LEADER_STATE);
   }
 
-  /**
-   * Tests timestamp tracking behavior for graceful drop timing across multiple scenarios.
-   */
-  @Test
-  public void testTimestampTracking() {
-    Message offlineMessage = mock(Message.class);
-    Message droppedMessage = mock(Message.class);
-    NotificationContext context = mock(NotificationContext.class);
-    when(offlineMessage.getResourceName()).thenReturn(resourceName);
-    when(droppedMessage.getResourceName()).thenReturn(resourceName);
-
-    Store store = mock(Store.class);
-    when(store.getCurrentVersion()).thenReturn(storeVersion);
-    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
-    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
-
-    // Case 1: Timestamp captured during STANDBY->OFFLINE transition
-    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(0); // No sleep for speed
-    long beforeTransition = System.currentTimeMillis();
-    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
-    long afterTransition = System.currentTimeMillis();
-
-    long capturedTimestamp = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
-    assertTrue(capturedTimestamp >= beforeTransition, "Case 1: Timestamp should be >= beforeTransition");
-    assertTrue(capturedTimestamp <= afterTransition, "Case 1: Timestamp should be <= afterTransition");
-    assertTrue(capturedTimestamp > 0, "Case 1: Timestamp should be positive");
-
-    // Case 2: Timestamp reset after OFFLINE->DROPPED transition
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(droppedMessage, context);
-    assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
-        -1L,
-        "Case 2: Timestamp should be reset to -1 after transition");
-
-    // Case 3: Multiple cycles maintain independent timestamps
-    when(store.getCurrentVersion()).thenReturn(storeVersion + 1); // Non-current to skip sleep
-
-    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
-    long timestamp1 = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
-    assertTrue(timestamp1 > 0, "Case 3: First cycle timestamp should be positive");
-
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(droppedMessage, context);
-    assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
-        -1L,
-        "Case 3: First cycle timestamp should be reset");
-    Utils.sleep(5); // Minimal sleep to ensure different timestamps
-    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
-    long timestamp2 = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
-    assertTrue(timestamp2 > timestamp1, "Case 3: Second cycle timestamp should be later than first");
-
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(droppedMessage, context);
-    assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
-        -1L,
-        "Case 3: Second cycle timestamp should be reset");
+  private Message prepareGracefulDrop() {
+    when(metadataRepo.getStoreOrThrow(storeName).getCurrentVersion()).thenReturn(storeVersion);
+    when(storeAndServerConfigs.getStoreVersionName()).thenReturn(resourceName);
+    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(30);
+    Message message = mock(Message.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    when(message.getFromState()).thenReturn(OFFLINE_STATE);
+    when(message.getToState()).thenReturn(DROPPED_STATE);
+    return message;
   }
 
-  /**
-   * Tests graceful drop timing scenarios with milliseconds for faster test execution.
-   */
-  @Test
-  public void testGracefulDropTimingScenarios() {
-    Store store = mock(Store.class);
-    when(store.getCurrentVersion()).thenReturn(storeVersion); // Current version
-    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
-    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
-    NotificationContext context = mock(NotificationContext.class);
-
-    // Case 1: Partial wait - partition offline for some time, should wait for remaining delay
-    // Using 2 second delay and 500ms sleep for more tolerance
-    Message message1 = mock(Message.class);
-    Message offlineMessage1 = mock(Message.class);
-    when(message1.getResourceName()).thenReturn(resourceName);
-    when(offlineMessage1.getResourceName()).thenReturn(resourceName);
-    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(2); // 2 seconds
-
-    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage1, context);
-    Utils.sleep(500); // Sleep 500ms to simulate time spent offline
-
-    long startTime1 = System.currentTimeMillis();
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message1, context);
-    long elapsedTime1 = System.currentTimeMillis() - startTime1;
-
-    // Should wait less than full 2000ms since partition already offline for 500ms+
-    // But allow wide tolerance for test overhead (100ms - 1700ms range)
-    assertTrue(
-        elapsedTime1 >= 100 && elapsedTime1 <= 1700,
-        "Case 1: Should wait less than 2000ms (some elapsed), waited: " + elapsedTime1 + "ms");
-    verify(stateTransitionStats, times(1)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
-    verify(stateTransitionStats, times(1)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
-    assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
-        -1L,
-        "Case 1: Timestamp should be reset");
-
-    // Case 2: Skip wait - partition offline longer than delay, should skip sleep entirely
-    Message message2 = mock(Message.class);
-    Message offlineMessage2 = mock(Message.class);
-    when(message2.getResourceName()).thenReturn(resourceName);
-    when(offlineMessage2.getResourceName()).thenReturn(resourceName);
-    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(0); // 0 seconds delay
-
-    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage2, context);
-    Utils.sleep(100); // Sleep 100ms to simulate time spent offline
-
-    long startTime2 = System.currentTimeMillis();
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message2, context);
-    long elapsedTime2 = System.currentTimeMillis() - startTime2;
-
-    assertTrue(
-        elapsedTime2 < 100,
-        "Case 2: Should skip sleep (offline longer than delay), waited: " + elapsedTime2 + "ms");
-    verify(stateTransitionStats, times(1)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
-    verify(stateTransitionStats, times(1)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
-    assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
-        -1L,
-        "Case 2: Timestamp should be reset");
-
-    // Case 3: No timestamp - should use full delay
-    Message message3 = mock(Message.class);
-    when(message3.getResourceName()).thenReturn(resourceName);
-
-    assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
-        -1L,
-        "Case 3: Timestamp should be -1 initially");
-
-    // Use 1 second delay for this case
-    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(1);
-    long startTime3 = System.currentTimeMillis();
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message3, context);
-    long elapsedTime3 = System.currentTimeMillis() - startTime3;
-
-    assertTrue(
-        elapsedTime3 >= 900 && elapsedTime3 <= 1200,
-        "Case 3: Should wait full 1000ms (no timestamp), waited: " + elapsedTime3 + "ms");
-    verify(stateTransitionStats, times(2)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
-    verify(stateTransitionStats, times(2)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
-    assertEquals(
-        leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs(),
-        -1L,
-        "Case 3: Timestamp should remain -1");
+  @DataProvider
+  public Object[][] gracefulDropOrdering() {
+    return new Object[][] { { true, 30 }, { false, 30 }, { true, 0 }, { false, 0 } };
   }
 
-  /**
-   * Tests that non-current version skips graceful drop delay entirely.
-   */
+  @Test(dataProvider = "gracefulDropOrdering")
+  public void testGracefulDropWithdrawsBeforeFullDrain(boolean offlineObserved, int delaySeconds) throws Exception {
+    Message message = prepareGracefulDrop();
+    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(delaySeconds);
+    doReturn(new CompletableFuture<>()).when(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+    if (offlineObserved) {
+      leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, null);
+    }
+    CompletableFuture<Void> unsubscribe = mock(CompletableFuture.class);
+    doReturn(unsubscribe).when(storeIngestionService).stopConsumption(storeAndServerConfigs, partition);
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    doAnswer(invocation -> {
+      verify(accessor).deleteReplicaStatus(resourceName, partition);
+      doThrow(new VeniceException("Synthetic post-drop withdrawal failure")).when(accessor)
+          .deleteReplicaStatus(anyString(), anyInt());
+      return CompletableFuture.completedFuture(null);
+    }).when(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+      when(unsubscribe.get(17, TimeUnit.SECONDS)).thenAnswer(invocation -> {
+        verify(accessor, never()).deleteReplicaStatus(anyString(), anyInt());
+        utils.verify(() -> Utils.sleep(anyLong()), never());
+        verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+        return null;
+      });
+      utils.when(() -> Utils.sleep(TimeUnit.SECONDS.toMillis(delaySeconds))).thenAnswer(invocation -> {
+        verify(unsubscribe).get(17, TimeUnit.SECONDS);
+        verify(accessor).deleteReplicaStatus(resourceName, partition);
+        verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+        return true;
+      });
+      leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, null);
+      utils.verify(() -> Utils.sleep(anyLong()), times(delaySeconds > 0 ? 1 : 0));
+    }
+    InOrder order = inOrder(unsubscribe, accessor, ingestionBackend);
+    order.verify(unsubscribe).get(17, TimeUnit.SECONDS);
+    order.verify(accessor).deleteReplicaStatus(resourceName, partition);
+    order.verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    verify(accessor).deleteReplicaStatus(resourceName, partition);
+    verify(stateTransitionStats).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(stateTransitionStats).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+  }
+
   @Test
-  public void testNonCurrentVersionSkipsGracefulDrop() {
+  public void testGracefulDropRecoversFromFailedResetStop() throws Exception {
+    Message message = prepareGracefulDrop();
+    CompletableFuture<Void> resetStop = new CompletableFuture<>();
+    resetStop.completeExceptionally(new VeniceException("Synthetic reset unsubscribe failure"));
+    doReturn(resetStop).when(ingestionBackend).stopConsumption(any(), anyInt(), anyString());
+    leaderFollowerPartitionStateModel.reset();
+
+    CompletableFuture<Void> unsubscribe = mock(CompletableFuture.class);
+    doReturn(unsubscribe).when(storeIngestionService).stopConsumption(storeAndServerConfigs, partition);
+    when(unsubscribe.get(17, TimeUnit.SECONDS)).thenReturn(null);
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+      utils.when(() -> Utils.sleep(TimeUnit.SECONDS.toMillis(30))).thenAnswer(invocation -> {
+        verify(unsubscribe).get(17, TimeUnit.SECONDS);
+        verify(accessor).deleteReplicaStatus(resourceName, partition);
+        verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+        return true;
+      });
+      leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, null);
+      utils.verify(() -> Utils.sleep(TimeUnit.SECONDS.toMillis(30)));
+    }
+    InOrder order = inOrder(ingestionBackend, storeIngestionService, unsubscribe, accessor);
+    order.verify(ingestionBackend).stopConsumption(eq(storeAndServerConfigs), eq(partition), anyString());
+    order.verify(storeIngestionService).stopConsumption(storeAndServerConfigs, partition);
+    order.verify(unsubscribe).get(17, TimeUnit.SECONDS);
+    order.verify(accessor).deleteReplicaStatus(resourceName, partition);
+    order.verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    assertTrue(resetStop.isCompletedExceptionally());
+  }
+
+  @DataProvider
+  public Object[][] gracefulDropFailures() {
+    return new Object[][] { { "unsubscribe" }, { "timeout" }, { "withdrawal" }, { "interrupt-unsubscribe" },
+        { "interrupt-drain" }, { "interrupt-accessor" }, { "interrupt-retry" }, { "interrupt-withdrawal" } };
+  }
+
+  @Test(dataProvider = "gracefulDropFailures")
+  public void testGracefulDropFailureRetainsStorage(String failureStep) throws Exception {
+    Message message = prepareGracefulDrop();
+    HelixPartitionStatusAccessor accessor = partitionPushStatusAccessorFuture.join();
+    if ("interrupt-accessor".equals(failureStep)) {
+      partitionPushStatusAccessorFuture = new CompletableFuture<>();
+      leaderFollowerPartitionStateModel = buildModel(notifier);
+    }
+    if ("interrupt-accessor".equals(failureStep) || "interrupt-retry".equals(failureStep)
+        || "interrupt-withdrawal".equals(failureStep)) {
+      when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(0);
+    }
+    CompletableFuture<Void> unsubscribe = mock(CompletableFuture.class);
+    doReturn(unsubscribe).when(storeIngestionService).stopConsumption(any(), anyInt());
+    when(unsubscribe.get(17, TimeUnit.SECONDS)).thenAnswer(invocation -> {
+      switch (failureStep) {
+        case "unsubscribe":
+          throw new ExecutionException(new VeniceException("Synthetic unsubscribe failure"));
+        case "timeout":
+          throw new TimeoutException("Synthetic unsubscribe timeout");
+        case "interrupt-unsubscribe":
+          throw new InterruptedException("Synthetic unsubscribe interruption");
+        case "interrupt-accessor":
+          Thread.currentThread().interrupt();
+          return null;
+        default:
+          return null;
+      }
+    });
+    if ("withdrawal".equals(failureStep)) {
+      doThrow(new VeniceException("Synthetic withdrawal failure")).when(accessor)
+          .deleteReplicaStatus(anyString(), anyInt());
+    }
+    if ("interrupt-retry".equals(failureStep)) {
+      doThrow(new VeniceException("Synthetic withdrawal failure")).doNothing()
+          .when(accessor)
+          .deleteReplicaStatus(anyString(), anyInt());
+    } else if ("interrupt-withdrawal".equals(failureStep)) {
+      doAnswer(invocation -> {
+        Thread.currentThread().interrupt();
+        return null;
+      }).when(accessor).deleteReplicaStatus(anyString(), anyInt());
+    }
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+      if ("interrupt-drain".equals(failureStep)) {
+        utils.when(() -> Utils.sleep(TimeUnit.SECONDS.toMillis(30))).thenAnswer(invocation -> {
+          Thread.currentThread().interrupt();
+          return false;
+        });
+      } else if ("interrupt-retry".equals(failureStep)) {
+        utils.when(() -> Utils.sleep(1000)).thenAnswer(invocation -> {
+          Thread.currentThread().interrupt();
+          return false;
+        });
+      }
+      VeniceException exception = expectThrows(
+          VeniceException.class,
+          () -> leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, null));
+      assertEquals(Thread.currentThread().isInterrupted(), failureStep.startsWith("interrupt"));
+      if ("interrupt-accessor".equals(failureStep)) {
+        assertTrue(exception.getCause() instanceof InterruptedException);
+        assertFalse(partitionPushStatusAccessorFuture.isDone());
+        verify(accessor, never()).deleteReplicaStatus(anyString(), anyInt());
+      } else if ("interrupt-retry".equals(failureStep)) {
+        verify(accessor).deleteReplicaStatus(resourceName, partition);
+      }
+    } finally {
+      Thread.interrupted();
+    }
+    verify(unsubscribe).get(17, TimeUnit.SECONDS);
+    verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    verify(stateTransitionStats).trackStateTransitionFailed(OFFLINE_STATE, DROPPED_STATE);
+    verify(stateTransitionStats).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(stateTransitionStats).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+  }
+
+  @DataProvider
+  public Object[][] gracefulDropVersionRoles() {
+    return new Object[][] { { storeVersion, false, false, true, true }, { storeVersion + 2, false, false, true, true },
+        { storeVersion + 3, false, false, false, true }, { storeVersion - 2, false, false, false, true },
+        { Store.NON_EXISTING_VERSION, false, false, false, true }, { storeVersion + 2, true, false, true, true },
+        { storeVersion + 2, false, true, false, true }, { storeVersion, false, false, true, false },
+        { storeVersion + 2, false, false, false, false }, { storeVersion + 2, true, false, false, false } };
+  }
+
+  @Test(dataProvider = "gracefulDropVersionRoles")
+  public void testGracefulDropForCurrentAndBackupVersions(
+      int currentVersion,
+      boolean demoteBeforeDrop,
+      boolean versionRemovedFromMetadata,
+      boolean expectDelay,
+      boolean backupGracefulDropEnabled) {
     Message message = mock(Message.class);
     NotificationContext context = mock(NotificationContext.class);
     when(message.getResourceName()).thenReturn(resourceName);
-    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(10); // 10 seconds
+    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(30);
+    when(storeAndServerConfigs.isBackupVersionGracefulDropEnabled()).thenReturn(backupGracefulDropEnabled);
 
     Store store = mock(Store.class);
-    when(store.getCurrentVersion()).thenReturn(storeVersion + 1); // NOT current version
+    when(store.getCurrentVersion()).thenReturn(demoteBeforeDrop ? storeVersion : currentVersion);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
-    when(store.getVersion(storeVersion)).thenReturn(mock(Version.class));
+    Version failedVersion = new VersionImpl(storeName, storeVersion + 1, "test-push");
+    List<Version> versions = new ArrayList<>(
+        Arrays.asList(
+            new VersionImpl(storeName, storeVersion + 3, "test-push"),
+            new VersionImpl(storeName, storeVersion - 2, "test-push"),
+            new VersionImpl(storeName, storeVersion + 2, "test-push"),
+            failedVersion));
+    if (!versionRemovedFromMetadata) {
+      versions.add(new VersionImpl(storeName, storeVersion, "test-push"));
+    }
+    versions.forEach(version -> version.setStatus(VersionStatus.ONLINE));
+    failedVersion.setStatus(VersionStatus.ERROR);
+    when(store.getVersions()).thenReturn(versions);
 
-    // Transition to OFFLINE first to capture timestamp
-    Message offlineMessage = mock(Message.class);
-    when(offlineMessage.getResourceName()).thenReturn(resourceName);
-    leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(offlineMessage, context);
+    if (demoteBeforeDrop) {
+      leaderFollowerPartitionStateModel.onBecomeOfflineFromStandby(message, context);
+      when(store.getCurrentVersion()).thenReturn(currentVersion);
+    }
 
-    long startTime = System.currentTimeMillis();
+    int expectedWaitCount = expectDelay ? 1 : 0;
+    long gracefulDropDelayMs = TimeUnit.SECONDS.toMillis(30);
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenAnswer(invocation -> {
+        long delayMs = invocation.getArgument(0);
+        assertEquals(delayMs, gracefulDropDelayMs);
+        verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+        return true;
+      });
 
-    // Execute OFFLINE->DROPPED transition
-    leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, context);
+      leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, context);
 
-    long elapsedTime = System.currentTimeMillis() - startTime;
+      utils.verify(() -> Utils.sleep(anyLong()), times(expectedWaitCount));
+    }
 
-    // Should skip graceful drop entirely for non-current version
-    assertTrue(elapsedTime < 1000, "Should not wait for non-current version, waited: " + elapsedTime + "ms");
+    verify(stateTransitionStats, times(expectedWaitCount)).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(stateTransitionStats, times(expectedWaitCount)).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+    verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+  }
 
-    // Stats should not be incremented since no actual waiting occurs
-    // (graceful drop is skipped for non-current version, and partition removal future is already complete)
+  @Test
+  public void testDeletedStoreSkipsGracefulDropDelay() {
+    Message message = mock(Message.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    when(storeAndServerConfigs.getPartitionGracefulDropDelaySeconds()).thenReturn(30);
+    doThrow(new VeniceNoStoreException(storeName)).when(metadataRepo).getStoreOrThrow(storeName);
+
+    try (MockedStatic<Utils> utils = mockStatic(Utils.class, CALLS_REAL_METHODS)) {
+      utils.when(() -> Utils.sleep(anyLong())).thenReturn(true);
+
+      leaderFollowerPartitionStateModel.onBecomeDroppedFromOffline(message, mock(NotificationContext.class));
+
+      utils.verify(() -> Utils.sleep(anyLong()), never());
+    }
+
+    verify(ingestionBackend).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
     verify(stateTransitionStats, never()).incrementThreadBlockedOnOfflineToDroppedTransitionCount();
     verify(stateTransitionStats, never()).decrementThreadBlockedOnOfflineToDroppedTransitionCount();
-
-    // Verify timestamp is reset
-    long resetTimestamp = leaderFollowerPartitionStateModel.getOfflineTransitionTimestampMs();
-    assertEquals(resetTimestamp, -1L, "Timestamp should be reset to -1 after transition");
   }
 
   /**

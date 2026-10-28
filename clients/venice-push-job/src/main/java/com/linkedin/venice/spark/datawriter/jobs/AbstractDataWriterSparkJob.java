@@ -48,6 +48,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
@@ -400,6 +402,19 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         SPARK_DATA_WRITER_CONF_PREFIX);
   }
 
+  Properties getWriterTaskProperties() {
+    Properties jobProps = new Properties();
+    sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    // Input formats may update the session after configure(); writer encryption comes from store metadata.
+    jobProps.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(pushJobSetting.isStoreEncryptionEnabled));
+    if (pushJobSetting.isStoreEncryptionEnabled) {
+      jobProps.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      jobProps.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
+    return jobProps;
+  }
+
   protected SparkSession getSparkSession() {
     return sparkSession;
   }
@@ -525,8 +540,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
 
     // Create properties for TTL filter
-    Properties filterProps = new Properties();
-    this.sparkSession.conf().getAll().foreach(entry -> filterProps.setProperty(entry._1, entry._2));
+    Properties filterProps = getWriterTaskProperties();
 
     // Broadcast the filter configuration
     Broadcast<Properties> broadcastFilterProps = sparkContext.broadcast(filterProps);
@@ -718,9 +732,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // Prepare TTL filter properties if enabled
     VeniceProperties filterProps = null;
     if (isTTLEnabled) {
-      Properties props = new Properties();
-      this.sparkSession.conf().getAll().foreach(entry -> props.setProperty(entry._1, entry._2));
-      filterProps = new VeniceProperties(props);
+      filterProps = new VeniceProperties(getWriterTaskProperties());
     }
     final VeniceProperties broadcastFilterProps = filterProps;
 
@@ -1010,8 +1022,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     ExpressionEncoder<Row> partitionWriterTaskOutputEncoder = RowEncoder.apply(PARTITION_RECORD_COUNT_SCHEMA);
     int numOutputPartitions = pushJobSetting.partitionCount;
 
-    Properties jobProps = new Properties();
-    this.sparkSession.conf().getAll().foreach(entry -> jobProps.setProperty(entry._1, entry._2));
+    Properties jobProps = getWriterTaskProperties();
     JavaSparkContext sparkContext = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
     Broadcast<Properties> broadcastProperties = sparkContext.broadcast(jobProps);
 

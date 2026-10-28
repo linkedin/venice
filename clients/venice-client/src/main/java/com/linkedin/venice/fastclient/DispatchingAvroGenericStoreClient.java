@@ -78,6 +78,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final ClientConfig config;
   private final TransportClient transportClient;
   private final Executor deserializationExecutor;
+  private final ExecutionContextProvider executionContextProvider;
 
   // Key serializer
   private RecordSerializer<K> keySerializer;
@@ -115,6 +116,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     this.transportClient = transportClient;
     this.deserializationExecutor = Optional.ofNullable(config.getDeserializationExecutor())
         .orElseGet(AbstractAvroStoreClient::getDefaultDeserializationExecutor);
+    this.executionContextProvider = config.getExecutionContextProvider();
     String storeName = metadata.getStoreName();
     BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
     COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
@@ -181,6 +183,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   @Override
   protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
     verifyMetadataInitialized();
     requestContext.key = key;
 
@@ -231,7 +235,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(requestContext.route, routeRequestFuture);
 
       CompletableFuture<Integer> routeRequestFutureFinal = routeRequestFuture;
-      transportFuture.whenCompleteAsync((response, throwable) -> {
+      transportFuture.whenCompleteAsync(ExecutionContextUtils.wrap(executionContext, (response, throwable) -> {
         requestContext.requestSubmissionToResponseHandlingTime =
             LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
         if (throwable != null) {
@@ -265,7 +269,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             }
           }
         }
-      }, deserializationExecutor);
+      }, failure -> {
+        routeRequestFutureFinal.completeExceptionally(failure);
+        if (!valueFuture.completeExceptionally(failure)) {
+          LOGGER.error("Execution context task failed after single-get completion", failure);
+        }
+      }), deserializationExecutor);
 
     } catch (Exception e) {
       LOGGER.error("Received exception while sending request to route: {}", requestContext.route, e);
@@ -297,18 +306,24 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
+    StreamingCallback<K, V> guardedCallback = ExecutionContextUtils
+        .guardCompletion(requestContext.getOrCaptureExecutionContext(executionContextProvider), callback);
     multiKeyStreamingRequest(
         requestContext,
         RequestType.MULTI_GET_STREAMING,
         keys,
-        callback,
+        guardedCallback,
         requestContext,
         RequestHeadersProvider.getStreamingBatchGetHeaders(keys.size()),
         this::serializeMultiGetRequest,
         (MultiKeyStreamingRouteResponseHandler<K>) (
             keysForRoutes,
             response,
-            throwable) -> batchGetTransportRequestCompletionHandler(requestContext, response, throwable, callback));
+            throwable) -> batchGetTransportRequestCompletionHandler(
+                requestContext,
+                response,
+                throwable,
+                guardedCallback));
   }
 
   private interface MultiKeyStreamingRouteResponseHandler<K> {
@@ -350,6 +365,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Map<String, String> requestHeaders,
       Function<List<MultiKeyRequestContext.KeyInfo<K>>, byte[]> requestSerializer,
       MultiKeyStreamingRouteResponseHandler routeResponseHandler) {
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
     verifyMetadataInitialized();
     int keyCnt = keys.size();
     if (keyCnt > metadata.getBatchGetLimit()) {
@@ -390,12 +407,18 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(route, routeRequestFuture.getOriginalFuture());
       requestCompletionFutures[routeIndex] = routeRequestFuture.getResultFuture();
 
-      transportClientFutureForRoute.whenComplete((transportClientResponse, throwable) -> {
-        requestContext.recordRequestSubmissionToResponseHandlingTime(route);
-        TransportClientResponseForRoute response = TransportClientResponseForRoute
-            .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
-        routeResponseHandler.handle(keysForRoutes, response, throwable);
-      });
+      transportClientFutureForRoute
+          .whenComplete(ExecutionContextUtils.wrap(executionContext, (transportClientResponse, throwable) -> {
+            requestContext.recordRequestSubmissionToResponseHandlingTime(route);
+            TransportClientResponseForRoute response = TransportClientResponseForRoute
+                .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
+            routeResponseHandler.handle(keysForRoutes, response, throwable);
+          }, failure -> {
+            requestContext.setPartialResponseExceptionIfNull(failure);
+            if (!routeRequestFuture.getOriginalFuture().completeExceptionally(failure)) {
+              LOGGER.error("Execution context task failed after route completion: {}", route, failure);
+            }
+          }));
       routeIndex++;
     }
 
@@ -417,42 +440,60 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestCompletionFutures[routeIndex] = placeholderFailedFuture;
     }
 
-    CompletableFuture.allOf(requestCompletionFutures).whenComplete((response, throwable) -> {
-      requestContext.complete();
+    CompletableFuture.allOf(requestCompletionFutures)
+        .whenComplete(ExecutionContextUtils.wrap(executionContext, (response, throwable) -> {
+          requestContext.complete();
 
-      boolean failedOverall = throwable != null;
-      if (!failedOverall) {
-        for (CompletableFuture<Integer> requestCompletionFuture: requestCompletionFutures) {
-          try {
-            int status = requestCompletionFuture.get();
-            if (status != SC_OK && status != SC_NOT_FOUND) {
-              failedOverall = true;
-              break;
+          boolean failedOverall = throwable != null;
+          if (!failedOverall) {
+            for (CompletableFuture<Integer> requestCompletionFuture: requestCompletionFutures) {
+              try {
+                int status = requestCompletionFuture.get();
+                if (status != SC_OK && status != SC_NOT_FOUND) {
+                  failedOverall = true;
+                  break;
+                }
+              } catch (Exception e) {
+                failedOverall = true;
+                break;
+              }
             }
-          } catch (Exception e) {
-            failedOverall = true;
-            break;
           }
-        }
-      }
 
-      // Wiring in a callback for when all events have been received. If any route failed with an exception,
-      // that exception will be passed to the aggregate future's next stages.
-      if (failedOverall && !requestContext.isPartialSuccessAllowed) {
-        // The exception to send to the client might be different. Get from the requestContext
-        Throwable clientException = throwable;
-        if (requestContext.getPartialResponseException().isPresent()) {
-          clientException = requestContext.getPartialResponseException().get();
-        }
-        VeniceClientException exception =
-            new VeniceClientException("At least one route did not complete", clientException);
-        callback.onCompletion(Optional.of(exception));
-        resultFuture.completeExceptionally(exception);
-      } else {
-        callback.onCompletion(Optional.empty());
-        resultFuture.complete(null);
-      }
-    });
+          // Wiring in a callback for when all events have been received. If any route failed with an exception,
+          // that exception will be passed to the aggregate future's next stages.
+          if (failedOverall && !requestContext.isPartialSuccessAllowed) {
+            // The exception to send to the client might be different. Get from the requestContext
+            Throwable clientException = throwable;
+            if (requestContext.getPartialResponseException().isPresent()) {
+              clientException = requestContext.getPartialResponseException().get();
+            }
+            VeniceClientException exception =
+                new VeniceClientException("At least one route did not complete", clientException);
+            if (executionContext == ExecutionContextProvider.CapturedContext.NO_OP) {
+              callback.onCompletion(Optional.of(exception));
+              resultFuture.completeExceptionally(exception);
+            } else if (resultFuture.completeExceptionally(exception)) {
+              callback.onCompletion(Optional.of(exception));
+            }
+          } else {
+            if (executionContext == ExecutionContextProvider.CapturedContext.NO_OP) {
+              callback.onCompletion(Optional.empty());
+              resultFuture.complete(null);
+            } else if (resultFuture.complete(null)) {
+              callback.onCompletion(Optional.empty());
+            }
+          }
+        }, failure -> {
+          requestContext.complete();
+          requestContext.setPartialResponseExceptionIfNull(failure);
+          if (resultFuture.completeExceptionally(failure)) {
+            callback.onCompletion(
+                Optional.of(new VeniceClientException("Failed to complete request with execution context", failure)));
+          } else {
+            LOGGER.error("Execution context task failed after multi-key completion", failure);
+          }
+        }));
   }
 
   /**
@@ -528,6 +569,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
+    StreamingCallback<K, ComputeGenericRecord> guardedCallback =
+        ExecutionContextUtils.guardCompletion(executionContext, callback);
     verifyMetadataInitialized();
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer =
@@ -537,7 +582,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         requestContext,
         RequestType.COMPUTE_STREAMING,
         keys,
-        callback,
+        guardedCallback,
         requestContext,
         RequestHeadersProvider.getStreamingComputeHeaderMap(keys.size(), computeRequest.getValueSchemaID(), true),
         (keysForRoutes) -> serializeComputeRequest(computeRequest, keysForRoutes),
@@ -548,7 +593,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
               keysForRoutes,
               response,
               computeResultRecordDeserializer,
-              callback);
+              guardedCallback,
+              executionContext);
           computeTransportRequestCompletionHandler(response, throwable, decoder);
         });
   }
@@ -559,7 +605,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       List<MultiKeyRequestContext.KeyInfo<K>> keysForRoutes,
       TransportClientResponseForRoute transportClientResponse,
       RecordDeserializer<GenericRecord> computeResultRecordDeserializer,
-      StreamingCallback<K, ComputeGenericRecord> allRecordsCallback) {
+      StreamingCallback<K, ComputeGenericRecord> allRecordsCallback,
+      ExecutionContextProvider.CapturedContext executionContext) {
     List<K> keyList = new ArrayList<>(keysForRoutes.size());
     for (MultiKeyRequestContext.KeyInfo keyInfo: keysForRoutes) {
       keyList.add((K) keyInfo.getKey());
@@ -605,12 +652,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
           }
         };
 
-    return new ComputeRecordStreamDecoder<>(
+    return new ComputeRecordStreamDecoder<K, GenericRecord>(
         keyList,
         nonCompletingStreamingCallback,
         deserializationExecutor,
         STREAMING_FOOTER_RECORD_DESERIALIZER,
-        computeResultRecordDeserializer);
+        computeResultRecordDeserializer) {
+      @Override
+      protected CompletableFuture<Void> deserializeAsync(Runnable task) {
+        return ExecutionContextUtils.runAsync(executionContext, task, deserializationExecutor);
+      }
+    };
   }
 
   /**

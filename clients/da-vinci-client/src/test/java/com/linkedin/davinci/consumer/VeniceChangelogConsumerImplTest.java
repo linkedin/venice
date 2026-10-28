@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -28,8 +29,10 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
@@ -72,6 +75,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.rmd.RmdConstants;
@@ -84,6 +88,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -91,12 +96,14 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -111,13 +118,18 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.LogEvent;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -281,6 +293,46 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubPosition p11 = ApacheKafkaOffsetPosition.of(11L);
     Mockito.verify(mockPubSubConsumer).subscribe(eq(pubSubTopicPartition), eq(p11), eq(true));
+  }
+
+  @Test
+  public void testSeekToTailStartsHeartbeatReporter() throws Exception {
+    PubSubPosition tailPosition = mock(PubSubPosition.class);
+    Set<PubSubTopicPartition> assignments = Collections.synchronizedSet(new HashSet<>());
+    when(mockPubSubConsumer.getAssignment()).thenReturn(assignments);
+    when(mockPubSubConsumer.endPosition(any())).thenReturn(tailPosition);
+    doAnswer(invocation -> {
+      assignments.add(invocation.getArgument(0));
+      return null;
+    }).when(mockPubSubConsumer).subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
+
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    try {
+      long beforeSeek = System.currentTimeMillis();
+      veniceChangelogConsumer.seekToTail(Collections.singleton(0)).get(10, TimeUnit.SECONDS);
+      long afterSeek = System.currentTimeMillis();
+
+      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+      verify(mockPubSubConsumer).subscribe(eq(pubSubTopicPartition), eq(tailPosition), eq(true));
+      Map<Integer, Long> lastHeartbeat = veniceChangelogConsumer.getLastHeartbeatPerPartition();
+      assertEquals(lastHeartbeat.size(), 1);
+      assertTrue(lastHeartbeat.containsKey(0));
+      assertTrue(lastHeartbeat.get(0) >= beforeSeek);
+      assertTrue(lastHeartbeat.get(0) <= afterSeek);
+      assertTrue(veniceChangelogConsumer.subscribed());
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(veniceChangelogConsumer.getHeartbeatReporterThread().isAlive()));
+    } finally {
+      veniceChangelogConsumer.close();
+    }
   }
 
   @Test
@@ -664,6 +716,122 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testMetricReportingThreadSurvivesRecordStatsFailure() {
+    // Keep the interval short so a surviving loop completes several cycles well within the test timeout.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    doThrow(new NumberFormatException("Simulated failure while computing stats")).when(mockPubSubConsumer)
+        .getAssignment();
+
+    VeniceChangelogConsumerImpl.HeartbeatReporterThread reporterThread =
+        veniceChangelogConsumer.getHeartbeatReporterThread();
+    try {
+      reporterThread.start();
+      /**
+       * Require a second cycle rather than a single one: the first invocation is recorded before the
+       * exception finishes unwinding, so asserting on it alone could observe a thread that is already
+       * terminating. A second call only happens if the loop resumed.
+       */
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Mockito.verify(mockPubSubConsumer, atLeast(2)).getAssignment());
+      assertTrue(
+          reporterThread.isAlive(),
+          "Reporter thread must stay alive after recordStats throws, otherwise lag reporting stops permanently.");
+    } finally {
+      reporterThread.interrupt();
+    }
+  }
+
+  @Test
+  public void testMetricReportingFailureLogsAreRateLimited() throws Exception {
+    // Run synchronously to control suppression, reset, and recovery without timing-dependent assertions.
+    changelogClientConfig.setBackgroundReporterThreadSleepIntervalInSeconds(1L);
+    VeniceChangelogConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+    BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
+    VeniceChangelogConsumerImpl<String, Utf8>.HeartbeatReporterThread reporter =
+        consumer.new HeartbeatReporterThread() {
+          @Override
+          protected void recordStats(
+              Map<Integer, Long> lastHeartbeats,
+              BasicConsumerStats stats,
+              Set<PubSubTopicPartition> assignment) {
+            super.recordStats(lastHeartbeats, consumerStats, assignment);
+          }
+        };
+
+    org.apache.logging.log4j.core.Logger logger =
+        (org.apache.logging.log4j.core.Logger) LogManager.getLogger(VeniceChangelogConsumerImpl.class);
+    Appender appender = mock(Appender.class);
+    when(appender.getName()).thenReturn("reportingFailureTest");
+    when(appender.isStarted()).thenReturn(true);
+    List<LogEvent> errors = new ArrayList<>();
+    doAnswer(invocation -> {
+      LogEvent event = invocation.getArgument(0);
+      if (event.getLevel() == Level.ERROR) {
+        errors.add(event.toImmutable());
+      }
+      return null;
+    }).when(appender).append(any(LogEvent.class));
+
+    RuntimeException firstFailure = new IllegalStateException("first failure");
+    RuntimeException changedFailure = new IllegalArgumentException("different failure");
+    AssertionError fatalError = new AssertionError("Errors must not be swallowed");
+    AtomicInteger cycles = new AtomicInteger();
+    doAnswer(invocation -> {
+      int cycle = cycles.incrementAndGet();
+      if (cycle == 3) {
+        filter.clearBitSet();
+      }
+      if (cycle == 4) {
+        return Collections.emptySet(); // A successful reporting cycle after repeated failures.
+      }
+      if (cycle == 5) {
+        consumer.changelogClientConfig.setConsumerName("another-consumer");
+      }
+      if (cycle >= 6) {
+        throw fatalError;
+      }
+      throw cycle == 1 ? firstFailure : changedFailure;
+    }).when(mockPubSubConsumer).getAssignment();
+
+    logger.addAppender(appender);
+    try {
+      synchronized (filter) {
+        filter.clearBitSet();
+        assertSame(expectThrows(AssertionError.class, reporter::run), fatalError);
+      }
+      assertEquals(cycles.get(), 6);
+      assertEquals(errors.size(), 3, "Log once, again after reset, and independently for another consumer.");
+      assertSame(errors.get(0).getThrown(), firstFailure);
+      assertSame(errors.get(1).getThrown(), changedFailure);
+      assertSame(errors.get(2).getThrown(), changedFailure);
+      assertTrue(errors.get(0).getMessage().getFormattedMessage().contains(storeName));
+      assertTrue(errors.get(2).getMessage().getFormattedMessage().contains("another-consumer"));
+      verify(consumerStats).emitCurrentConsumingVersionMetrics(-1, -1);
+      verify(consumerStats, never()).emitHeartBeatDelayMetrics(anyLong());
+    } finally {
+      logger.removeAppender(appender);
+      doReturn(Collections.emptySet()).when(mockPubSubConsumer).getAssignment();
+      consumer.close();
+    }
+  }
+
+  @Test
   public void testChunkingSuccess() throws NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
 
@@ -907,6 +1075,7 @@ public class VeniceChangelogConsumerImplTest {
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
     veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.setSeekPositionResolutionRetryDelays(Duration.ofMillis(1), Duration.ofMillis(2));
     CompletableFuture<Void> seekFuture =
         veniceChangelogConsumer.internalSeekToTimestamps(partitionTimestampMap, mockLogger);
     try {
@@ -925,6 +1094,128 @@ public class VeniceChangelogConsumerImplTest {
     Assert.assertTrue(params.get(1) instanceof Long);
     Long timestamp = (Long) params.get(1);
     Assert.assertEquals(timestamp.longValue(), 1000L);
+    // The failure is retried, logged once after the retries are exhausted, and never touches the subscription.
+    verify(mockErrorPubSubConsumer, times(VeniceChangelogConsumerImpl.SEEK_POSITION_RESOLUTION_MAX_ATTEMPTS))
+        .getPositionByTimestamp(any(), anyLong());
+    verify(mockErrorPubSubConsumer, never()).unSubscribe(any());
+    verify(mockErrorPubSubConsumer, never()).subscribe(any(), any(PubSubPosition.class), anyBoolean());
+  }
+
+  @Test
+  public void testFailedSeekToTimestampKeepsExistingSubscription() {
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    Set<PubSubTopicPartition> assignments = Collections.synchronizedSet(new HashSet<>());
+    assignments.add(partition0);
+    when(mockPubSubConsumer.getAssignment()).thenReturn(assignments);
+    doAnswer(invocation -> assignments.remove(invocation.getArgument(0))).when(mockPubSubConsumer).unSubscribe(any());
+    doThrow(new PubSubOpTimeoutException("simulated position lookup timeout")).when(mockPubSubConsumer)
+        .getPositionByTimestamp(any(), anyLong());
+
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.setSeekPositionResolutionRetryDelays(Duration.ofMillis(1), Duration.ofMillis(2));
+
+    ExecutionException e = expectThrows(
+        ExecutionException.class,
+        () -> veniceChangelogConsumer.seekToTimestamps(Collections.singletonMap(0, 1000L)).get(30, TimeUnit.SECONDS));
+    assertTrue(e.getCause() instanceof PubSubOpTimeoutException);
+    verify(mockPubSubConsumer, times(VeniceChangelogConsumerImpl.SEEK_POSITION_RESOLUTION_MAX_ATTEMPTS))
+        .getPositionByTimestamp(partition0, 1000L);
+    // Before the fix the partition was unsubscribed before the lookup and never re-subscribed.
+    verify(mockPubSubConsumer, never()).unSubscribe(any());
+    assertTrue(
+        assignments.contains(partition0),
+        "Partition must keep consuming when the seek target can't be resolved");
+  }
+
+  @Test
+  public void testSeekToTimestampRecoversFromTransientLookupFailure() throws Exception {
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    PubSubPosition targetPosition = ApacheKafkaOffsetPosition.of(42L);
+    Set<PubSubTopicPartition> assignments = Collections.synchronizedSet(new HashSet<>());
+    assignments.add(partition0);
+    when(mockPubSubConsumer.getAssignment()).thenReturn(assignments);
+    doAnswer(invocation -> assignments.remove(invocation.getArgument(0))).when(mockPubSubConsumer).unSubscribe(any());
+    doAnswer(invocation -> assignments.add(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
+    when(mockPubSubConsumer.getPositionByTimestamp(partition0, 1000L))
+        .thenThrow(new PubSubOpTimeoutException("simulated transient failure"))
+        .thenReturn(targetPosition);
+
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    veniceChangelogConsumer.seekToTimestamps(Collections.singletonMap(0, 1000L)).get(30, TimeUnit.SECONDS);
+
+    verify(mockPubSubConsumer, times(2)).getPositionByTimestamp(partition0, 1000L);
+    verify(mockPubSubConsumer).unSubscribe(partition0);
+    verify(mockPubSubConsumer).subscribe(eq(partition0), eq(targetPosition), eq(true));
+    assertTrue(assignments.contains(partition0));
+  }
+
+  @Test
+  public void testSeekSubscribeFailureOnOnePartitionStillMovesOthers() {
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    PubSubTopicPartition partition1 = new PubSubTopicPartitionImpl(oldVersionTopic, 1);
+    PubSubPosition tailPosition = ApacheKafkaOffsetPosition.of(100L);
+    when(mockPubSubConsumer.getAssignment()).thenReturn(Collections.synchronizedSet(new HashSet<>()));
+    when(mockPubSubConsumer.endPosition(any())).thenReturn(tailPosition);
+    VeniceException subscribeFailure = new VeniceException("simulated subscribe failure");
+    doThrow(subscribeFailure).when(mockPubSubConsumer).subscribe(eq(partition0), any(PubSubPosition.class), eq(true));
+
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    Set<Integer> partitions = new HashSet<>(Arrays.asList(0, 1));
+    ExecutionException e = expectThrows(
+        ExecutionException.class,
+        () -> veniceChangelogConsumer.seekToTail(partitions).get(30, TimeUnit.SECONDS));
+    assertEquals(e.getCause(), subscribeFailure);
+    verify(mockPubSubConsumer).subscribe(eq(partition1), eq(tailPosition), eq(true));
+    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(1));
+    assertFalse(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(0));
+  }
+
+  @Test
+  public void testSeekSharedSubscribeExceptionDoesNotAbortRemainingPartitions() {
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    PubSubTopicPartition partition1 = new PubSubTopicPartitionImpl(oldVersionTopic, 1);
+    PubSubTopicPartition partition2 = new PubSubTopicPartitionImpl(oldVersionTopic, 2);
+    PubSubPosition tailPosition = ApacheKafkaOffsetPosition.of(100L);
+    when(mockPubSubConsumer.getAssignment()).thenReturn(Collections.synchronizedSet(new HashSet<>()));
+    when(mockPubSubConsumer.endPosition(any())).thenReturn(tailPosition);
+    // Two partitions fail with the same exception instance, which must not trigger self-suppression.
+    VeniceException sharedFailure = new VeniceException("simulated shared subscribe failure");
+    doThrow(sharedFailure).when(mockPubSubConsumer).subscribe(eq(partition0), any(PubSubPosition.class), eq(true));
+    doThrow(sharedFailure).when(mockPubSubConsumer).subscribe(eq(partition1), any(PubSubPosition.class), eq(true));
+
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    Set<Integer> partitions = new LinkedHashSet<>(Arrays.asList(0, 1, 2));
+    ExecutionException e = expectThrows(
+        ExecutionException.class,
+        () -> veniceChangelogConsumer.seekToTail(partitions).get(30, TimeUnit.SECONDS));
+    assertEquals(e.getCause(), sharedFailure);
+    assertEquals(sharedFailure.getSuppressed().length, 0);
+    verify(mockPubSubConsumer).subscribe(eq(partition2), eq(tailPosition), eq(true));
+    assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(2));
   }
 
   @Test

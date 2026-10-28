@@ -4,6 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
@@ -28,7 +29,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONCURRENT_PUSH_DETECTION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
@@ -60,7 +60,6 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
@@ -103,12 +102,15 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_META_SYSTEM_STORE_VT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_RT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUBSUB_ALTERNATIVE_BACKEND_PUSH_STATUS_SYSTEM_STORE_VT;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_JOB_SLA_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_RETRY_COOLDOWN_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ROLLED_BACK_VERSION_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STATE_PROTOCOL_SCHEMA_STARTUP_REGISTRATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
@@ -119,6 +121,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_ENABLED;
@@ -177,9 +180,11 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_UNCLEAN_LEADER_ELECTION_ENABL
 import static com.linkedin.venice.ConfigKeys.KME_REGISTRATION_FROM_MESSAGE_HEADER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_BACKUP_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
@@ -255,7 +260,7 @@ import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -337,6 +342,7 @@ public class VeniceControllerClusterConfig {
   private final double storageEngineOverheadRatio;
   private final long deprecatedJobTopicRetentionMs;
   private final long pushRetryCooldownMs;
+  private final long pushJobSlaMs;
 
   private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
@@ -456,6 +462,8 @@ public class VeniceControllerClusterConfig {
   private final CloudConfig helixCloudConfig;
 
   private final long controllerHelixParticipantDeregistrationTimeoutMs;
+  private final long controllerStandbyToLeaderTransitionTimeoutMs;
+  private final int pushStatusLoadThreadCount;
 
   private final String helixRestCustomizedHealthUrl;
 
@@ -519,7 +527,6 @@ public class VeniceControllerClusterConfig {
   private final PersistenceType persistenceType;
   private final ReadStrategy readStrategy;
 
-  private final ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy;
   private final OfflinePushStrategy offlinePushStrategy;
   private final RoutingStrategy routingStrategy;
   private final int replicationFactor;
@@ -680,6 +687,8 @@ public class VeniceControllerClusterConfig {
    */
   private final boolean isLogCompactionEnabled;
   private final boolean isLogCompactionSchedulingEnabled;
+  private final boolean isLogCompactionPreserveBackupVersionEnabled;
+  private final BackupStrategy logCompactionBackupStrategy;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long logCompactionVersionStalenessThresholdMS;
@@ -719,6 +728,7 @@ public class VeniceControllerClusterConfig {
 
   private final boolean backupVersionReplicaReductionEnabled;
   private final boolean useMultiRegionRealTimeTopicSwitcher;
+  private final int versionSwapBroadcastTimeoutSeconds;
   private final Set<String> activeActiveRealTimeSourceFabrics;
 
   private final boolean isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled;
@@ -796,6 +806,10 @@ public class VeniceControllerClusterConfig {
     if (pushRetryCooldownMs < 0) {
       throw new ConfigurationException(CONTROLLER_PUSH_RETRY_COOLDOWN_MS + " cannot be negative.");
     }
+    this.pushJobSlaMs = props.getLong(CONTROLLER_PUSH_JOB_SLA_MS, TimeUnit.HOURS.toMillis(24));
+    if (pushJobSlaMs <= 0) {
+      throw new ConfigurationException(CONTROLLER_PUSH_JOB_SLA_MS + " must be greater than 0.");
+    }
     this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -804,13 +818,6 @@ public class VeniceControllerClusterConfig {
     }
     this.isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled =
         props.getBoolean(SKIP_HYBRID_STORE_RT_TOPIC_COMPACTION_POLICY_UPDATE_ENABLED, false);
-
-    if (props.containsKey(CONCURRENT_PUSH_DETECTION_STRATEGY)) {
-      this.concurrentPushDetectionStrategy =
-          ConcurrentPushDetectionStrategy.valueOf(props.getString(CONCURRENT_PUSH_DETECTION_STRATEGY));
-    } else {
-      this.concurrentPushDetectionStrategy = ConcurrentPushDetectionStrategy.DUAL;
-    }
 
     if (props.containsKey(DEFAULT_READ_STRATEGY)) {
       this.readStrategy = ReadStrategy.valueOf(props.getString(DEFAULT_READ_STRATEGY));
@@ -1172,7 +1179,6 @@ public class VeniceControllerClusterConfig {
                 + Arrays.toString(CloudProvider.values()));
       }
 
-      String helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
       String helixCloudInfoProcessorPackage = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE, "");
       String helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
 
@@ -1185,7 +1191,6 @@ public class VeniceControllerClusterConfig {
 
       helixCloudConfig = HelixUtils.getCloudConfig(
           helixCloudProvider,
-          helixCloudId,
           helixCloudInfoSources,
           helixCloudInfoProcessorPackage,
           helixCloudInfoProcessorName);
@@ -1195,6 +1200,9 @@ public class VeniceControllerClusterConfig {
 
     this.controllerHelixParticipantDeregistrationTimeoutMs =
         props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(10));
+    this.controllerStandbyToLeaderTransitionTimeoutMs =
+        props.getLong(CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(10));
+    this.pushStatusLoadThreadCount = props.getInt(CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT, 1);
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
 
     this.serverHelixClusterTopologyAware = props.getBoolean(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, false);
@@ -1257,6 +1265,10 @@ public class VeniceControllerClusterConfig {
 
     this.isLogCompactionEnabled = props.getBoolean(LOG_COMPACTION_ENABLED, false);
     this.isLogCompactionSchedulingEnabled = props.getBoolean(LOG_COMPACTION_SCHEDULING_ENABLED, false);
+    this.isLogCompactionPreserveBackupVersionEnabled =
+        props.getBoolean(LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED, false);
+    this.logCompactionBackupStrategy = BackupStrategy
+        .fromInt(props.getInt(LOG_COMPACTION_BACKUP_STRATEGY, BackupStrategy.KEEP_MIN_VERSIONS.getValue()));
     if (this.isLogCompactionEnabled) {
       try {
         this.repushOrchestratorClassName = props.getString(REPUSH_ORCHESTRATOR_CLASS_NAME);
@@ -1363,6 +1375,11 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
     this.useMultiRegionRealTimeTopicSwitcher =
         props.getBoolean(ConfigKeys.CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED, false);
+    this.versionSwapBroadcastTimeoutSeconds = props
+        .getInt(CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS, DEFAULT_VERSION_SWAP_BROADCAST_TIMEOUT_IN_SECONDS);
+    if (versionSwapBroadcastTimeoutSeconds <= 0) {
+      throw new ConfigurationException(CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS + " must be greater than 0.");
+    }
     this.isAdminOperationSystemStoreEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ADMIN_OPERATION_SYSTEM_STORE_ENABLED, false);
 
@@ -1420,6 +1437,8 @@ public class VeniceControllerClusterConfig {
     // Log compaction
     LOGGER.info("\tisLogCompactionEnabled: {}", isLogCompactionEnabled);
     LOGGER.info("\tisLogCompactionSchedulingEnabled: {}", isLogCompactionSchedulingEnabled);
+    LOGGER.info("\tisLogCompactionPreserveBackupVersionEnabled: {}", isLogCompactionPreserveBackupVersionEnabled);
+    LOGGER.info("\tlogCompactionBackupStrategy: {}", logCompactionBackupStrategy);
     LOGGER.info("\tlogCompactionThreadCount: {}", logCompactionThreadCount);
     LOGGER.info("\tlogCompactionIntervalMS: {}", logCompactionIntervalMS);
     LOGGER.info("\tlogCompactionVersionStalenessThresholdMS: {}", logCompactionVersionStalenessThresholdMS);
@@ -1542,10 +1561,6 @@ public class VeniceControllerClusterConfig {
     return readStrategy;
   }
 
-  public ConcurrentPushDetectionStrategy getConcurrentPushDetectionStrategy() {
-    return concurrentPushDetectionStrategy;
-  }
-
   public OfflinePushStrategy getOfflinePushStrategy() {
     return offlinePushStrategy;
   }
@@ -1604,6 +1619,10 @@ public class VeniceControllerClusterConfig {
 
   public long getPushRetryCooldownMs() {
     return pushRetryCooldownMs;
+  }
+
+  public long getPushJobSlaMs() {
+    return pushJobSlaMs;
   }
 
   public long getDelayToRebalanceMS() {
@@ -2198,6 +2217,14 @@ public class VeniceControllerClusterConfig {
     return controllerHelixParticipantDeregistrationTimeoutMs;
   }
 
+  public long getControllerStandbyToLeaderTransitionTimeoutMs() {
+    return controllerStandbyToLeaderTransitionTimeoutMs;
+  }
+
+  public int getPushStatusLoadThreadCount() {
+    return pushStatusLoadThreadCount;
+  }
+
   public String getHelixRestCustomizedHealthUrl() {
     return helixRestCustomizedHealthUrl;
   }
@@ -2550,6 +2577,14 @@ public class VeniceControllerClusterConfig {
     return isLogCompactionEnabled && isLogCompactionSchedulingEnabled;
   }
 
+  public boolean isLogCompactionPreserveBackupVersionEnabled() {
+    return isLogCompactionPreserveBackupVersionEnabled;
+  }
+
+  public BackupStrategy getLogCompactionBackupStrategy() {
+    return logCompactionBackupStrategy;
+  }
+
   public int getLogCompactionThreadCount() {
     return logCompactionThreadCount;
   }
@@ -2596,6 +2631,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isUseMultiRegionRealTimeTopicSwitcherEnabled() {
     return useMultiRegionRealTimeTopicSwitcher;
+  }
+
+  public int getVersionSwapBroadcastTimeoutSeconds() {
+    return versionSwapBroadcastTimeoutSeconds;
   }
 
   public Set<String> getActiveActiveRealTimeSourceFabrics() {

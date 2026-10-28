@@ -73,6 +73,10 @@ public class PushJobSetting implements Serializable {
   public String kafkaInputTopic;
   public int repushSourceVersion;
   public long rewindTimeInSecondsOverride;
+  // Raw epoch-rewind override inputs, converted into rewindTimeInSecondsOverride right before version creation.
+  // NOT_SET when no epoch override was provided.
+  public long rewindEpochTimeInSecondsOverride;
+  public long rewindEpochTimeBufferInSecondsOverride;
   public boolean pushToSeparateRealtimeTopicEnabled;
   public boolean versionSeparateRealTimeTopicEnabled;
   public boolean kafkaInputCombinerEnabled;
@@ -229,6 +233,9 @@ public class PushJobSetting implements Serializable {
   }
 
   public String materializedViewConfigFlatMap;
+
+  public boolean isStoreEncryptionEnabled;
+  public String pubSubEncryptionKeyUrn;
 
   public boolean isBatchWriteOptimizationForHybridStoreEnabled;
   public boolean isSortedIngestionEnabled;

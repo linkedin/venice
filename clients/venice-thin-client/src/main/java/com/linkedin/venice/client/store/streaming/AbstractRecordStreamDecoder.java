@@ -111,7 +111,7 @@ public abstract class AbstractRecordStreamDecoder<ENVELOPE, K, V> implements Rec
       // no full record is available
       return;
     }
-    CompletableFuture<Void> deserializationFuture = CompletableFuture.runAsync(() -> {
+    CompletableFuture<Void> deserializationFuture = deserializeAsync(() -> {
       Map<K, V> resultMap = new HashMap<>();
       for (ENVELOPE record: availableRecords) {
         final int keyIdx = getKeyIndex(record);
@@ -176,8 +176,15 @@ public abstract class AbstractRecordStreamDecoder<ENVELOPE, K, V> implements Rec
        * Also with this way, the context switches are also reduced.
         */
       resultMap.forEach(callback::onRecordReceived);
-    }, deserializationExecutor);
+    });
     deserializationFutures.add(deserializationFuture);
+  }
+
+  /**
+   * Run deserialization and complete its future within the same execution scope.
+   */
+  protected CompletableFuture<Void> deserializeAsync(Runnable task) {
+    return CompletableFuture.runAsync(task, deserializationExecutor);
   }
 
   @Override

@@ -14,12 +14,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -34,8 +41,10 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicMetadataFetcher.ValueAndExpiryTime;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,6 +52,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,7 +64,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -71,6 +85,51 @@ public class TopicMetadataFetcherTest {
   private PubSubTopic pubSubTopic;
   private PubSubConsumerAdapter consumerMock;
   private TopicManagerStats stats;
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testConstructorPropagatesEncryptionKeyLookup(boolean lookupEnabled) throws Exception {
+    PubSubConsumerAdapterFactory<PubSubConsumerAdapter> factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumerMock);
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, pubSubClusterAddress);
+    AtomicInteger lookups = new AtomicInteger();
+    AtomicReference<String> keyUrn = new AtomicReference<>();
+    Function<String, String> keyLookup = lookupEnabled ? storeName -> {
+      lookups.incrementAndGet();
+      return keyUrn.get();
+    } : null;
+    TopicManagerContext context =
+        new TopicManagerContext.Builder().setPubSubAdminAdapterFactory(mock(PubSubAdminAdapterFactory.class))
+            .setPubSubConsumerAdapterFactory(factory)
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+            .setPubSubPropertiesSupplier(address -> new VeniceProperties(properties))
+            .setTopicMetadataFetcherConsumerPoolSize(2)
+            .setPubSubEncryptionKeyUrnLookup(keyLookup)
+            .build();
+
+    try (TopicMetadataFetcher fetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, adminMock)) {
+      ArgumentCaptor<PubSubConsumerAdapterContext> captor = ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+      verify(factory, times(2)).create(captor.capture());
+      List<PubSubTopicPartitionInfo> partitions =
+          Collections.singletonList(new PubSubTopicPartitionInfo(pubSubTopic, 0, true));
+      when(consumerMock.partitionsFor(pubSubTopic)).thenReturn(partitions);
+      assertEquals(fetcher.getTopicPartitionInfo(pubSubTopic), partitions);
+      assertEquals(lookups.get(), 0);
+      for (PubSubConsumerAdapterContext consumerContext: captor.getAllValues()) {
+        assertSame(consumerContext.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+        if (lookupEnabled) {
+          assertNull(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"));
+        }
+      }
+      if (lookupEnabled) {
+        keyUrn.set("urn:test:key:1");
+        for (PubSubConsumerAdapterContext consumerContext: captor.getAllValues()) {
+          assertEquals(consumerContext.getPubSubEncryptionKeyUrnLookup().apply("store"), "urn:test:key:1");
+        }
+      }
+    }
+  }
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws InterruptedException {

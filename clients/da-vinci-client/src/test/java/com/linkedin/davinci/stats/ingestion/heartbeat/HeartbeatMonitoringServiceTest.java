@@ -761,15 +761,15 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
-    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, never()).removeLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(metadataRepo, times(2)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
 
     // 2. Test when store is not null and version is null
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(new StoreVersionInfo(store, null));
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
-    verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(3)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addLeaderLagMonitor(
         any(Version.class),
         anyInt(),
@@ -780,7 +780,7 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
-    verify(metadataRepo, times(5)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService, never()).addFollowerLagMonitor(
         any(Version.class),
         anyInt(),
@@ -791,15 +791,15 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
-    verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService).removeLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(metadataRepo, times(4)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, times(2)).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
 
     // 3. Test both store and version are not null
     when(metadataRepo.waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong()))
         .thenReturn(new StoreVersionInfo(store, version));
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_LEADER_MONITOR, replicaId);
-    verify(metadataRepo, times(7)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(5)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService).addLeaderLagMonitor(
         version,
         partition,
@@ -810,7 +810,7 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, replicaId);
-    verify(metadataRepo, times(8)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
     verify(heartbeatMonitoringService).addFollowerLagMonitor(
         version,
         partition,
@@ -821,8 +821,8 @@ public class HeartbeatMonitoringServiceTest {
 
     heartbeatMonitoringService
         .updateLagMonitor(resourceName, partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
-    verify(metadataRepo, times(9)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
-    verify(heartbeatMonitoringService, times(2)).removeLagMonitor(any(Version.class), anyInt(), anyString());
+    verify(metadataRepo, times(6)).waitVersion(eq(storeName), eq(storeVersion), any(Duration.class), anyLong());
+    verify(heartbeatMonitoringService, times(3)).removeLagMonitor(any(Version.class), eq(partition), eq(replicaId));
   }
 
   @Test
@@ -1015,73 +1015,16 @@ public class HeartbeatMonitoringServiceTest {
               .intValue(),
           50);
     }
-  }
 
-  @Test
-  public void testCleanupLagMonitorHandlesUnpopulatedPartitionWithoutNpe() {
-    // Regression test: PartitionAssignment#getPartition(partitionId) returns null when that partition slot
-    // has not been populated in the customized view yet (e.g. resource exists but this partition has no
-    // reported replicas). checkAndMaybeCleanupLagMonitor previously dereferenced that null Partition directly,
-    // throwing a NullPointerException from the Ingestion-Heartbeat-Lag-Logging-Service-Thread. It should
-    // instead treat the replica as unassigned/lingering, same as the resource-deleted case.
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
-    Version currentVersion = new VersionImpl(TEST_STORE, 1, "1");
-    currentVersion.setHybridStoreConfig(hybridStoreConfig);
-    Store mockStore = mock(Store.class);
-    Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
-    Mockito.when(mockStore.getCurrentVersion()).thenReturn(currentVersion.getNumber());
-    Mockito.when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-    Mockito.when(mockStore.getVersion(1)).thenReturn(currentVersion);
-
-    MetricsRepository mockMetricsRepository = new MetricsRepository();
-    ReadOnlyStoreRepository mockReadOnlyRepository = mock(ReadOnlyStoreRepository.class);
-    Mockito.when(mockReadOnlyRepository.getStoreOrThrow(TEST_STORE)).thenReturn(mockStore);
-    doReturn(new StoreVersionInfo(mockStore, currentVersion)).when(mockReadOnlyRepository)
-        .waitVersion(eq(TEST_STORE), eq(1), any(), anyLong());
-
-    Set<String> regions = new HashSet<>();
-    regions.add(LOCAL_FABRIC);
-    String hostname = "localhost";
-    int port = 123;
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    doReturn(regions).when(serverConfig).getRegionNames();
-    doReturn(LOCAL_FABRIC).when(serverConfig).getRegionName();
-    doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
-    doReturn(hostname).when(serverConfig).getListenerHostname();
-    doReturn(port).when(serverConfig).getListenerPort();
-    doReturn(5).when(serverConfig).getLagMonitorCleanupCycle();
-    String versionTopic = Version.composeKafkaTopic(mockStore.getName(), 1);
-
-    HelixCustomizedViewOfflinePushRepository mockCustomizedViewOfflinePushRepository =
-        mock(HelixCustomizedViewOfflinePushRepository.class);
-    // p0 has no reported replicas yet: getPartition(0) returns null, matching the real
-    // PartitionAssignment#getPartition behavior for an unpopulated slot.
-    PartitionAssignment mockPartitionAssignment = mock(PartitionAssignment.class);
-    doReturn(null).when(mockPartitionAssignment).getPartition(0);
-    doReturn(mockPartitionAssignment).when(mockCustomizedViewOfflinePushRepository)
-        .getPartitionAssignments(versionTopic);
-
-    CompletableFuture<HelixCustomizedViewOfflinePushRepository> mockCVRepositoryFuture =
-        CompletableFuture.completedFuture(mockCustomizedViewOfflinePushRepository);
-
-    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
-        mockMetricsRepository,
-        mockReadOnlyRepository,
-        serverConfig,
-        mock(HeartbeatMonitoringServiceStats.class),
-        mockCVRepositoryFuture);
-    heartbeatMonitoringService.updateLagMonitor(
-        versionTopic,
-        0,
-        HeartbeatLagMonitorAction.SET_LEADER_MONITOR,
-        Utils.getReplicaId(versionTopic, 0));
-
-    // Must not throw NullPointerException, and the replica should be treated as lingering/unassigned.
-    heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
-    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 1);
+    long currentFollowerCount =
+        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2);
+    Assert.assertTrue(currentFollowerCount > 0);
+    heartbeatMonitoringService.removeLagMonitors(backupVersion);
+    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getLeaderHeartbeatTimeStamps(), TEST_STORE, 1), 0);
+    Assert.assertEquals(countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 1), 0);
     Assert.assertEquals(
-        heartbeatMonitoringService.getCleanupHeartbeatMap().get(Utils.getReplicaId(versionTopic, 0)).intValue(),
-        1);
+        countPartitions(heartbeatMonitoringService.getFollowerHeartbeatTimeStamps(), TEST_STORE, 2),
+        currentFollowerCount);
   }
 
   @Test

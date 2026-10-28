@@ -136,7 +136,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
     /**
      * ClusterLockManager is created per cluster and shared between {@link VeniceHelixAdmin},
-     * {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} and {@link HelixReadWriteStoreRepository}.
+     * {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor}, {@link LeakedPushStatusCleanUpService}
+     * and {@link HelixReadWriteStoreRepository}.
      */
     this.clusterLockManager = new ClusterLockManager(clusterName);
     HelixReadWriteStoreRepository readWriteStoreRepository = new HelixReadWriteStoreRepository(
@@ -182,7 +183,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         zkClient,
         adapterSerializer,
         config.getLogContext(),
-        config.getRefreshAttemptsForZkReconnect());
+        config.getRefreshAttemptsForZkReconnect(),
+        config.getPushStatusLoadThreadCount());
     String aggregateRealTimeSourceKafkaUrl =
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
@@ -222,6 +224,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
         offlinePushMonitorAccessor,
         storeMetadataRepository,
         admin,
+        clusterLockManager,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository, storeMetadataRepository, unregisterMetricEnabled),
         this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs(),
         this.config.getLeakedResourceAllowedLingerTimeInMs());

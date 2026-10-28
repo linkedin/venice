@@ -20,6 +20,7 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -672,6 +673,45 @@ public class TestAvroSupersetSchemaUtils {
             .generateSupersetSchema(USER_WITH_NESTED_RECORD_SCHEMA, USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA)
             .toString(),
         USER_WITH_NESTED_RECORD_AND_DEFAULT_SCHEMA.toString());
+  }
+
+  @Test
+  public void testGenerateSupersetSchemaPreservesEmptyBytesDefault() {
+    String existingSchemaStr = "{\"type\":\"record\",\"name\":\"RecordWithBitmap\",\"fields\":["
+        + "{\"name\":\"memberBitmap\",\"type\":\"bytes\",\"default\":\"\"}]}";
+    String newSchemaStr = "{\"type\":\"record\",\"name\":\"RecordWithBitmap\",\"fields\":["
+        + "{\"name\":\"memberBitmap\",\"type\":\"bytes\",\"default\":\"\"},"
+        + "{\"name\":\"newField\",\"type\":\"string\",\"default\":\"\"}]}";
+
+    Schema existingSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existingSchemaStr);
+    Schema newSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newSchemaStr);
+
+    Schema supersetSchema = AvroSupersetSchemaUtils.generateSupersetSchema(existingSchema, newSchema);
+
+    Assert.assertNotNull(supersetSchema.getField("newField"));
+    Object memberBitmapDefault = AvroSchemaUtils.getFieldDefault(supersetSchema.getField("memberBitmap"));
+    Assert.assertTrue(memberBitmapDefault instanceof ByteBuffer);
+    Assert.assertEquals(((ByteBuffer) memberBitmapDefault).remaining(), 0);
+  }
+
+  @Test
+  public void testGenerateSupersetSchemaPreservesNestedBytesDefault() {
+    String existingSchemaStr = "{\"type\":\"record\",\"name\":\"RecordWithSettings\",\"fields\":["
+        + "{\"name\":\"settings\",\"type\":{\"type\":\"record\",\"name\":\"Settings\",\"fields\":["
+        + "{\"name\":\"memberBitmap\",\"type\":\"bytes\"}]}," + "\"default\":{\"memberBitmap\":\"\\u0001\\u0002\"}}]}";
+    String newSchemaStr = "{\"type\":\"record\",\"name\":\"RecordWithSettings\",\"fields\":["
+        + "{\"name\":\"settings\",\"type\":{\"type\":\"record\",\"name\":\"Settings\",\"fields\":["
+        + "{\"name\":\"memberBitmap\",\"type\":\"bytes\"}]}," + "\"default\":{\"memberBitmap\":\"\\u0001\\u0002\"}},"
+        + "{\"name\":\"newField\",\"type\":\"string\",\"default\":\"\"}]}";
+
+    Schema existingSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(existingSchemaStr);
+    Schema newSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newSchemaStr);
+
+    Schema supersetSchema = AvroSupersetSchemaUtils.generateSupersetSchema(existingSchema, newSchema);
+
+    GenericRecord settingsDefault =
+        (GenericRecord) AvroSchemaUtils.getFieldDefault(supersetSchema.getField("settings"));
+    Assert.assertEquals(settingsDefault.get("memberBitmap"), ByteBuffer.wrap(new byte[] { 1, 2 }));
   }
 
   @Test

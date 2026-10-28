@@ -14,6 +14,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
@@ -227,6 +229,9 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
 
     VeniceProperties allJobProps = getJobProperties();
     for (String key: allJobProps.keySet()) {
+      if (key.equalsIgnoreCase(PUB_SUB_ENCRYPTION_ENABLED) || key.equalsIgnoreCase(PUB_SUB_ENCRYPTION_KEY_URN)) {
+        continue;
+      }
       setInputConf(sparkSession, dataFrameReader, key, allJobProps.getString(key));
     }
 
@@ -241,6 +246,16 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
         dataFrameReader,
         KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP,
         AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema));
+    setInputConf(
+        sparkSession,
+        dataFrameReader,
+        PUB_SUB_ENCRYPTION_ENABLED,
+        Boolean.toString(pushJobSetting.isStoreEncryptionEnabled));
+    if (pushJobSetting.isStoreEncryptionEnabled) {
+      setInputConf(sparkSession, dataFrameReader, PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      sparkSession.conf().unset(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
 
     // Add KME (Kafka Message Envelope) schemas to support different message envelope versions
     KafkaInputUtils.putSchemaMapIntoProperties(pushJobSetting.newKmeSchemasFromController)

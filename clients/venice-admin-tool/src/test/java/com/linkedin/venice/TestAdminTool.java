@@ -23,10 +23,12 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controllerapi.ClusterProvisionedVeniceUnitsResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
@@ -57,12 +59,18 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -80,6 +88,72 @@ import org.testng.annotations.Test;
 
 
 public class TestAdminTool {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetClusterProvisionedVeniceUnitsCommand(boolean error) throws Exception {
+    ControllerClient client = mock(ControllerClient.class);
+    ClusterProvisionedVeniceUnitsResponse response = new ClusterProvisionedVeniceUnitsResponse();
+    response.setCluster("test-cluster");
+    response.setProvisionedVeniceUnits((long) Integer.MAX_VALUE + 10);
+    response.setError(error ? "Not the cluster leader" : null);
+    when(client.getClusterProvisionedVeniceUnits()).thenReturn(response);
+
+    ClusterProvisionedVeniceUnitsResponse output = ObjectMapperFactory.getInstance()
+        .readValue(
+            runClusterCapacityCommand("get-cluster-provisioned-venice-units", client),
+            ClusterProvisionedVeniceUnitsResponse.class);
+
+    assertEquals(output.getCluster(), response.getCluster());
+    assertEquals(output.getProvisionedVeniceUnits(), response.getProvisionedVeniceUnits());
+    assertEquals(output.isError(), error);
+    assertEquals(output.getError(), response.getError());
+    Mockito.verify(client).getClusterProvisionedVeniceUnits();
+    Mockito.verifyNoMoreInteractions(client);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetLiveStorageNodeCountCommand(boolean error) throws Exception {
+    ControllerClient client = mock(ControllerClient.class);
+    LiveStorageNodeCountResponse response = new LiveStorageNodeCountResponse();
+    response.setCluster("test-cluster");
+    Map<String, Integer> counts = new HashMap<>();
+    counts.put("dc-0", 4);
+    counts.put("dc-1", 0);
+    response.setLiveStorageNodeCountPerFabric(counts);
+    response.setError(error ? "Child fabric unavailable" : null);
+    when(client.getLiveStorageNodeCount()).thenReturn(response);
+
+    LiveStorageNodeCountResponse output = ObjectMapperFactory.getInstance()
+        .readValue(
+            runClusterCapacityCommand("get-live-storage-node-count", client),
+            LiveStorageNodeCountResponse.class);
+
+    assertEquals(output.getCluster(), response.getCluster());
+    assertEquals(output.getLiveStorageNodeCountPerFabric(), counts);
+    assertEquals(output.isError(), error);
+    assertEquals(output.getError(), response.getError());
+    Mockito.verify(client).getLiveStorageNodeCount();
+    Mockito.verifyNoMoreInteractions(client);
+  }
+
+  private String runClusterCapacityCommand(String command, ControllerClient client) throws Exception {
+    String url = "http://localhost:7036";
+    String cluster = "test-cluster";
+    PrintStream originalOut = System.out;
+    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+    try (PrintStream capturing = new PrintStream(buffer, true, StandardCharsets.UTF_8.name());
+        MockedStatic<ControllerClientFactory> factory = Mockito.mockStatic(ControllerClientFactory.class)) {
+      factory.when(() -> ControllerClientFactory.getControllerClient(eq(cluster), eq(url), any())).thenReturn(client);
+      System.setOut(capturing);
+      AdminTool.main(new String[] { "--" + command, "--url", url, "--cluster", cluster });
+      String output = buffer.toString(StandardCharsets.UTF_8.name());
+      int jsonStart = output.indexOf('{');
+      assertTrue(jsonStart >= 0, "Expected a JSON response: " + output);
+      return output.substring(jsonStart);
+    } finally {
+      System.setOut(originalOut);
+    }
+  }
+
   @Test
   public void testPrintObject() {
     List<String> output = new ArrayList<>();
@@ -149,6 +223,16 @@ public class TestAdminTool {
     assertEquals(lifecycleHooksRecords.size(), 2);
     assertTrue(params.getFlinkVeniceViewsEnabled().isPresent());
     assertTrue(params.getFlinkVeniceViewsEnabled().get());
+  }
+
+  @Test
+  public void testAdminUpdateWriteQuotaEnabled() throws Exception {
+    for (boolean enabled: new boolean[] { true, false }) {
+      String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+          "testStore", "--write-quota-enabled", Boolean.toString(enabled) };
+      UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(args));
+      assertEquals(params.getWriteQuotaEnabled(), Optional.of(enabled));
+    }
   }
 
   @Test
@@ -549,6 +633,7 @@ public class TestAdminTool {
     RecordSerializer<MetadataResponseRecord> metadataResponseSerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MetadataResponseRecord.SCHEMA$);
     MetadataResponseRecord record = new MetadataResponseRecord();
+    record.setMultiKeyLongTailRetryThresholdsInMs("");
     record.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList("host1")));
     record.setVersions(Collections.singletonList(1));
     record.setHelixGroupInfo(Collections.emptyMap());

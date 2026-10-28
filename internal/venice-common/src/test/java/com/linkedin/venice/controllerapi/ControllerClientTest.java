@@ -1,15 +1,171 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ControllerClientTest {
+  @DataProvider
+  public Object[][] boundedQueries() {
+    return new Object[][] { { ControllerRoute.STORE }, { ControllerRoute.GET_ADMIN_TOPIC_METADATA } };
+  }
+
+  private ControllerResponse boundedQuery(ControllerClient client, ControllerRoute route) {
+    if (route == ControllerRoute.STORE) {
+      return client.getStoreWithTimeout("store", 1000);
+    }
+    return client.getAdminTopicMetadataWithTimeout(Optional.empty(), 1000);
+  }
+
+  @Test(dataProvider = "boundedQueries")
+  public void testBoundedQueriesShareDiscoveryBudget(ControllerRoute route) throws Exception {
+    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://discovery"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    AtomicLong clock = new AtomicLong();
+    Mockito.doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    LeaderControllerResponse leader = new LeaderControllerResponse();
+    leader.setUrl("http://leader");
+    Mockito.doAnswer(invocation -> {
+      Assert.assertEquals(invocation.<Integer>getArgument(4).intValue(), 1000);
+      clock.set(TimeUnit.MILLISECONDS.toNanos(400));
+      return leader;
+    })
+        .when(transport)
+        .request(
+            Mockito.eq("http://discovery"),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.anyInt(),
+            Mockito.isNull());
+    boundedQuery(client, route);
+    Mockito.verify(transport)
+        .request(
+            Mockito.eq("http://leader"),
+            Mockito.eq(route),
+            Mockito.any(),
+            Mockito.any(),
+            Mockito.eq(600),
+            Mockito.isNull());
+    Mockito.verify(transport).close();
+  }
+
+  @Test(dataProvider = "boundedQueries")
+  public void testBoundedQueriesDoNotRetryDiscovery(ControllerRoute route) throws Exception {
+    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://discovery,http://other"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    Mockito.doThrow(new TimeoutException())
+        .when(transport)
+        .request(
+            Mockito.anyString(),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.anyInt(),
+            Mockito.isNull());
+    Assert.assertTrue(boundedQuery(client, route).isError());
+    Mockito.verify(transport)
+        .request(
+            Mockito.anyString(),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.anyInt(),
+            Mockito.isNull());
+    Mockito.verify(transport, Mockito.never())
+        .request(
+            Mockito.anyString(),
+            Mockito.eq(route),
+            Mockito.any(),
+            Mockito.any(),
+            Mockito.anyInt(),
+            Mockito.isNull());
+  }
+
+  @Test(dataProvider = "boundedQueries")
+  public void testBoundedQueriesDoNotRetryRequest(ControllerRoute route) throws Exception {
+    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://discovery"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    Mockito.doReturn("http://leader").when(client).discoverLeaderController(Mockito.eq(transport), Mockito.anyLong());
+    Mockito.doThrow(new TimeoutException())
+        .when(transport)
+        .request(
+            Mockito.eq("http://leader"),
+            Mockito.eq(route),
+            Mockito.any(),
+            Mockito.any(),
+            Mockito.anyInt(),
+            Mockito.isNull());
+    Assert.assertTrue(boundedQuery(client, route).isError());
+    Mockito.verify(transport)
+        .request(
+            Mockito.eq("http://leader"),
+            Mockito.eq(route),
+            Mockito.any(),
+            Mockito.any(),
+            Mockito.anyInt(),
+            Mockito.isNull());
+  }
+
+  @Test(dataProvider = "boundedQueries")
+  public void testBoundedQueriesSkipRequestAfterDiscoveryUsesBudget(ControllerRoute route) throws Exception {
+    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://discovery"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    AtomicLong clock = new AtomicLong();
+    Mockito.doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    Mockito.doAnswer(invocation -> {
+      clock.set(TimeUnit.SECONDS.toNanos(1));
+      return "http://leader";
+    }).when(client).discoverLeaderController(Mockito.eq(transport), Mockito.anyLong());
+    Assert.assertTrue(boundedQuery(client, route).isError());
+    Mockito.verify(transport, Mockito.never())
+        .request(
+            Mockito.anyString(),
+            Mockito.eq(route),
+            Mockito.any(),
+            Mockito.any(),
+            Mockito.anyInt(),
+            Mockito.isNull());
+  }
+
+  @Test
+  public void testBoundedD2DiscoveryDoesNotRetryAndCancelsTimedOutRead() throws Exception {
+    D2Client first = Mockito.mock(D2Client.class);
+    D2Client second = Mockito.mock(D2Client.class);
+    D2ControllerClient client =
+        Mockito.spy(new D2ControllerClient("service", "cluster", Arrays.asList(first, second), Optional.empty()));
+    Mockito.doReturn(0L).when(client).requestTimeNs();
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    Future<RestResponse> future = Mockito.mock(Future.class);
+    Mockito.doReturn(future).when(first).restRequest(Mockito.any());
+    Mockito.doThrow(new TimeoutException()).when(future).get(1000, TimeUnit.MILLISECONDS);
+    Assert.assertTrue(client.getStoreWithTimeout("store", 1000).isError());
+    Mockito.verify(future).get(1000, TimeUnit.MILLISECONDS);
+    Mockito.verify(future).cancel(true);
+    Mockito.verify(second, Mockito.never()).restRequest(Mockito.any());
+    Mockito.verify(transport, Mockito.never())
+        .request(Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any(), Mockito.anyInt(), Mockito.isNull());
+  }
+
   /**
    * A transient failure on an earlier attempt must not mask a later successful attempt: the retry state is cleared
    * at the start of every attempt, so the first success is returned rather than the run throwing on a stale failure.

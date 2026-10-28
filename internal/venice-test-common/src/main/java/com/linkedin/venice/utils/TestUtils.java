@@ -602,6 +602,8 @@ public class TestUtils {
     store.setBlobTransferEnabled(true);
     store.setNearlineProducerCompressionEnabled(true);
     store.setNearlineProducerCountPerWriter(random.nextInt());
+    store.setVeniceUnits(random.nextInt());
+    store.setWorkloadType("GENERIC");
     return store;
   }
 

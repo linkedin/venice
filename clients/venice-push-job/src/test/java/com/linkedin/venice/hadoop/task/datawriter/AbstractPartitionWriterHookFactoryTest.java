@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
@@ -38,6 +39,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -92,6 +94,28 @@ public class AbstractPartitionWriterHookFactoryTest {
       assertEquals(
           RecordingFactory.TASK_PROPERTIES.get().getString(PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting"),
           "test-value");
+    } finally {
+      partitionWriter.close();
+    }
+  }
+
+  @DataProvider
+  public Object[][] incrementalPushTopics() {
+    return new Object[][] { { "testStore_rt" }, { "testStore_rt_v2" }, { "testStore_rt_v2_sep" } };
+  }
+
+  @Test(dataProvider = "incrementalPushTopics")
+  public void testIncrementalPushFactoryReceivesStoreName(String topic) throws IOException {
+    Properties properties = createBaseProperties();
+    properties.setProperty(TOPIC_PROP, topic);
+    properties.setProperty(INCREMENTAL_PUSH, "true");
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, RecordingFactory.class.getName());
+
+    TestablePartitionWriter partitionWriter = configureWriter(properties);
+    try {
+      assertSame(createAndCaptureMainWriterOptions(partitionWriter).getWriterHook(), RecordingFactory.HOOK);
+      assertEquals(RecordingFactory.STORE_NAME.get(), "testStore");
+      assertTrue(RecordingFactory.TASK_PROPERTIES.get().getBoolean(INCREMENTAL_PUSH));
     } finally {
       partitionWriter.close();
     }

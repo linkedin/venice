@@ -4,12 +4,19 @@ import static com.linkedin.davinci.stats.ServerMetricEntity.SERVER_METRIC_ENTITI
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_DRAINER_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -19,6 +26,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.LongSupplier;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -57,12 +65,15 @@ public class StoreBufferServiceStatsOtelTest {
     }
   }
 
-  @Test
-  public void testAsyncGaugeMemoryMetrics() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAsyncGaugeMemoryMetrics(boolean stallMonitoringEnabled) {
     AtomicLong totalUsage = new AtomicLong(1000L);
     AtomicLong totalRemaining = new AtomicLong(9000L);
     AtomicLong maxPerWriter = new AtomicLong(500L);
     AtomicLong minPerWriter = new AtomicLong(100L);
+    AtomicLong maxBlockedTime = new AtomicLong(50L);
+    LongSupplier blockedTimeSupplier = mock(LongSupplier.class);
+    when(blockedTimeSupplier.getAsLong()).thenAnswer(invocation -> maxBlockedTime.get());
 
     new StoreBufferServiceStats(
         metricsRepository,
@@ -72,7 +83,9 @@ public class StoreBufferServiceStatsOtelTest {
         totalUsage::get,
         totalRemaining::get,
         maxPerWriter::get,
-        minPerWriter::get);
+        minPerWriter::get,
+        blockedTimeSupplier,
+        stallMonitoringEnabled);
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -83,12 +96,37 @@ public class StoreBufferServiceStatsOtelTest {
     validateGauge("drainer.memory.remaining", 9000, expectedAttrs);
     validateGauge("drainer.writer.memory.max_used", 500, expectedAttrs);
     validateGauge("drainer.writer.memory.min_used", 100, expectedAttrs);
+    assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--total_memory_usage.Gauge"));
+    assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--total_remaining_memory.Gauge"));
+    assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--max_memory_usage_per_writer.Gauge"));
+    assertNotNull(metricsRepository.getMetric(".StoreBufferServiceSorted--min_memory_usage_per_writer.Gauge"));
+
+    Metric blockedTimeMetric =
+        metricsRepository.getMetric(".StoreBufferServiceSorted--max_blocked_time_per_writer.Gauge");
+    if (stallMonitoringEnabled) {
+      assertNotNull(blockedTimeMetric);
+      assertEquals(blockedTimeMetric.value(), 50.0);
+      validateGauge("drainer.writer.blocked.max_time", 50, expectedAttrs);
+    } else {
+      assertNull(blockedTimeMetric);
+      assertTrue(
+          inMemoryMetricReader.collectAllMetrics()
+              .stream()
+              .noneMatch(metric -> metric.getName().equals(TEST_METRIC_PREFIX + ".drainer.writer.blocked.max_time")));
+      verify(blockedTimeSupplier, never()).getAsLong();
+    }
 
     // Test live value updates
     totalUsage.set(2000L);
     totalRemaining.set(8000L);
+    maxBlockedTime.set(150L);
     validateGauge("drainer.memory.used", 2000, expectedAttrs);
     validateGauge("drainer.memory.remaining", 8000, expectedAttrs);
+    if (stallMonitoringEnabled) {
+      validateGauge("drainer.writer.blocked.max_time", 150, expectedAttrs);
+    } else {
+      verify(blockedTimeSupplier, never()).getAsLong();
+    }
   }
 
   @Test
@@ -101,7 +139,8 @@ public class StoreBufferServiceStatsOtelTest {
         () -> 500L,
         () -> 9500L,
         () -> 250L,
-        () -> 50L);
+        () -> 50L,
+        () -> 0L);
 
     Attributes expectedAttrs = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
@@ -310,9 +349,9 @@ public class StoreBufferServiceStatsOtelTest {
    * AND OTel metric values from the same recording calls. Catches bugs where joint API binding
    * is broken (Tehuti records but OTel doesn't, or vice versa).
    */
-  @Test
-  public void testTehutiAndOtelConsistency() {
-    StoreBufferServiceStats stats = createSortedStats();
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testTehutiAndOtelConsistency(boolean stallMonitoringEnabled) {
+    StoreBufferServiceStats stats = createSortedStats(stallMonitoringEnabled);
 
     stats.recordInternalProcessingLatency(25, TEST_STORE_A);
     stats.recordInternalProcessingLatency(75, TEST_STORE_A);
@@ -364,7 +403,8 @@ public class StoreBufferServiceStatsOtelTest {
         () -> 100L,
         () -> 900L,
         () -> 50L,
-        () -> 10L);
+        () -> 10L,
+        () -> 0L);
     stats.recordInternalProcessingLatency(10, "test-store");
     stats.recordInternalProcessingError("test-store");
     stats.recordInternalProcessingLatency(20, OpenTelemetryMetricsSetup.UNKNOWN_STORE_NAME);
@@ -372,6 +412,10 @@ public class StoreBufferServiceStatsOtelTest {
   }
 
   private StoreBufferServiceStats createSortedStats() {
+    return createSortedStats(true);
+  }
+
+  private StoreBufferServiceStats createSortedStats(boolean stallMonitoringEnabled) {
     return new StoreBufferServiceStats(
         metricsRepository,
         "StoreBufferServiceSorted",
@@ -380,7 +424,9 @@ public class StoreBufferServiceStatsOtelTest {
         () -> 100L,
         () -> 900L,
         () -> 50L,
-        () -> 10L);
+        () -> 10L,
+        () -> 0L,
+        stallMonitoringEnabled);
   }
 
   private Attributes buildStoreAttrs(String storeName) {

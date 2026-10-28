@@ -37,6 +37,14 @@ public class TestVeniceServer extends VeniceServer {
     super(serverContext);
   }
 
+  /**
+   * Widens {@link VeniceServer#getConfigLoader()} so integration tests can assert that a property they set on the
+   * server actually reached the booted config rather than being silently dropped or misspelled.
+   */
+  public VeniceServerConfig getServerConfig() {
+    return getConfigLoader().getVeniceServerConfig();
+  }
+
   @Override
   protected ListenerService createListenerService(
       StorageEngineRepository storageEngineRepository,
@@ -88,6 +96,7 @@ public class TestVeniceServer extends VeniceServer {
             serverConfig,
             executor,
             computeExecutor,
+            metricsRepository,
             storageEngineRepository,
             metadataRepository,
             schemaRepository,

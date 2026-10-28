@@ -1,5 +1,6 @@
 package com.linkedin.davinci.stats;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.StatsSupplier;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -20,12 +21,24 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
 
   private final Supplier<STATS> statsInitiator;
   private final STATS totalStats;
+  // Null unless role-scoped stats are enabled.
+  private final STATS currentRoleStats;
+  private final STATS futureRoleStats;
 
   public VeniceVersionedStats(
       MetricsRepository metricsRepository,
       String storeName,
       Supplier<STATS> statsInitiator,
       StatsSupplier<STATS_REPORTER> reporterSupplier) {
+    this(metricsRepository, storeName, statsInitiator, reporterSupplier, false);
+  }
+
+  public VeniceVersionedStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      Supplier<STATS> statsInitiator,
+      StatsSupplier<STATS_REPORTER> reporterSupplier,
+      boolean roleScopedStatsEnabled) {
     this.storeName = storeName;
     this.versionedStats = new Int2ObjectOpenHashMap<>();
     this.reporters = new VeniceVersionedStatsReporter<>(metricsRepository, storeName, reporterSupplier);
@@ -33,10 +46,39 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
 
     this.totalStats = statsInitiator.get();
     reporters.setTotalStats(totalStats);
+
+    if (roleScopedStatsEnabled) {
+      this.currentRoleStats = statsInitiator.get();
+      // System stores have no future reporter.
+      this.futureRoleStats = VeniceSystemStoreUtils.isSystemStore(storeName) ? null : statsInitiator.get();
+      reporters.setRoleStats(currentRoleStats, futureRoleStats);
+    } else {
+      this.currentRoleStats = null;
+      this.futureRoleStats = null;
+    }
   }
 
   protected STATS getTotalStats() {
     return totalStats;
+  }
+
+  /**
+   * Returns the stats for the role {@code version} currently holds, or null if disabled or the version is neither
+   * current nor future.
+   */
+  protected STATS getRoleStats(int version) {
+    if (currentRoleStats == null) {
+      return null;
+    }
+    // Single read so a concurrent swap can't make the version match neither role.
+    OtelVersionedStatsUtils.VersionInfo versionInfo = reporters.getVersionInfo();
+    if (version == versionInfo.getCurrentVersion()) {
+      return currentRoleStats;
+    }
+    if (version == versionInfo.getFutureVersion()) {
+      return futureRoleStats;
+    }
+    return null;
   }
 
   public void registerConditionalStats() {

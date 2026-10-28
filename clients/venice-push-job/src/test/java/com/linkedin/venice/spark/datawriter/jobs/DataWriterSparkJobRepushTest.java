@@ -6,9 +6,12 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLA
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.SCHEMA_FOR_CHUNK_ASSEMBLY;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
+import static com.linkedin.venice.vpj.PubSubEncryptionUtilsTest.KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
@@ -16,6 +19,14 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PRO
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_PUSH_DESTINATION_PUBSUB_BROKER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_SELF;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -29,6 +40,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
@@ -43,6 +55,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -52,12 +65,14 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.spark.api.java.function.MapPartitionsFunction;
 import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.sql.DataFrameReader;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
@@ -502,8 +517,9 @@ public class DataWriterSparkJobRepushTest {
    * the SSL configurator and PubSub consumer factory are actually invoked with correctly materialized SSL
    * properties (not just that failure surfaces when SSL setup is skipped).
    */
-  @Test
-  public void testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary() throws Exception {
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary(boolean enabled, String expectedUrn)
+      throws Exception {
     String testName = "testApplyTTLFilterMaterializesSSLBeforeReadingZstdDictionary";
 
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
@@ -554,8 +570,12 @@ public class DataWriterSparkJobRepushTest {
       sourceVersion.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
       setting.sourceKafkaInputVersionInfo = sourceVersion;
       setting.sourceVersionCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
+      setting.isStoreEncryptionEnabled = enabled;
+      setting.pubSubEncryptionKeyUrn = KEY_URN;
 
       job.configure(new VeniceProperties(props), setting);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_ENABLED, !enabled);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-session-key");
 
       List<Row> rows =
           Arrays.asList(createChunkedRow("key1", "chunk1", -1, 1L), createChunkedRow("key2", "chunk2", -20, 2L));
@@ -568,6 +588,12 @@ public class DataWriterSparkJobRepushTest {
         assertTrue(SparkExecutorTestUtils.getSslConfiguratorInvocations() > 0);
         assertTrue(SparkExecutorTestUtils.getConsumerFactoryInvocations() > 0);
         assertTrue(SparkExecutorTestUtils.getDictionaryConsumerInvocations() > 0);
+        PubSubConsumerAdapterContext context = SparkExecutorTestUtils.getObservedContext();
+        assertEquals(context.getVeniceProperties().getBoolean(PUB_SUB_ENCRYPTION_ENABLED), enabled);
+        Function<String, String> lookup = context.getPubSubEncryptionKeyUrnLookup();
+        assertEquals(lookup != null, enabled);
+        assertEquals(lookup == null ? null : lookup.apply("store"), expectedUrn);
+        assertEquals(context.getVeniceProperties().getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null), expectedUrn);
       });
     } finally {
       deleteDirectory(valueSchemaTempDir);
@@ -588,8 +614,9 @@ public class DataWriterSparkJobRepushTest {
    * SparkChunkAssembler once per Spark task and reuses it across key groups instead of PR #2955's per-task
    * caching refactor.
    */
-  @Test
-  public void testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL() throws Exception {
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL(boolean enabled, String expectedUrn)
+      throws Exception {
     String testName = "testApplyChunkAssemblyReusesExecutorSSLForPostAssemblyTTL";
 
     File valueSchemaTempDir = Files.createTempDirectory("value-schemas").toFile();
@@ -660,8 +687,12 @@ public class DataWriterSparkJobRepushTest {
       sourceVersion.setChunkingEnabled(true);
       setting.sourceKafkaInputVersionInfo = sourceVersion;
       setting.sourceVersionCompressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
+      setting.isStoreEncryptionEnabled = enabled;
+      setting.pubSubEncryptionKeyUrn = KEY_URN;
 
       job.configure(new VeniceProperties(props), setting);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_ENABLED, !enabled);
+      job.getSparkSession().conf().set(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-session-key");
       job.getSparkSession().conf().set("spark.sql.shuffle.partitions", "1");
 
       byte[] chunkedKey = "chunked-key".getBytes();
@@ -689,6 +720,12 @@ public class DataWriterSparkJobRepushTest {
         assertEquals(SparkExecutorTestUtils.getSslConfiguratorInvocations(), 1);
         assertEquals(SparkExecutorTestUtils.getConsumerFactoryInvocations(), 1);
         assertEquals(SparkExecutorTestUtils.getDictionaryConsumerInvocations(), 1);
+        PubSubConsumerAdapterContext context = SparkExecutorTestUtils.getObservedContext();
+        assertEquals(context.getVeniceProperties().getBoolean(PUB_SUB_ENCRYPTION_ENABLED), enabled);
+        Function<String, String> lookup = context.getPubSubEncryptionKeyUrnLookup();
+        assertEquals(lookup != null, enabled);
+        assertEquals(lookup == null ? null : lookup.apply("store"), expectedUrn);
+        assertEquals(context.getVeniceProperties().getString(PUB_SUB_ENCRYPTION_KEY_URN, (String) null), expectedUrn);
       });
     } finally {
       deleteDirectory(valueSchemaTempDir);
@@ -963,20 +1000,9 @@ public class DataWriterSparkJobRepushTest {
         "VALUE_SCHEMA_ID_PROP should be set to pushJobSetting.valueSchemaId for KIF repush");
   }
 
-  /**
-   * Verify that all job properties (including xc.*, pubsub.*, etc.) are forwarded to the
-   * DataFrameReader, matching MR behavior where KafkaInputUtils.getConsumerProperties() copies
-   * ALL JobConf properties to the PubSub consumer.
-   */
-  @Test
-  public void testJobPropertiesForwardedToDataFrameReader() {
-    String testName = "testJobPropertiesForwardedToDataFrameReader";
-
-    // Uses ConfigTestSparkJob pattern: calls super.getKafkaInputDataFrame() which runs
-    // the real production code (including the bulk forwarding loop), catches the expected
-    // Kafka connection failure, and returns mock data. This ensures the test exercises
-    // the actual DataWriterSparkJob.getKafkaInputDataFrame() method.
-    ConfigTestSparkJob job = new ConfigTestSparkJob();
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testJobPropertiesForwardedToDataFrameReader(boolean enabled, String expectedUrn) {
+    DataWriterSparkJob job = spy(new DataWriterSparkJob());
     currentTestJob = job;
 
     Properties props = createDefaultTestProperties();
@@ -987,6 +1013,8 @@ public class DataWriterSparkJobRepushTest {
     props.setProperty("pubsub.some.client.config", "test-value");
     // Dynamic pass-through prefix list (same as production voldemort-build-and-push config)
     props.setProperty("pass.through.config.prefixes.list", "pubsub.,xc.");
+    props.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!enabled));
+    props.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-job-key");
 
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
@@ -998,11 +1026,18 @@ public class DataWriterSparkJobRepushTest {
     setting.partitionerClass = DefaultVenicePartitioner.class.getName();
     setting.partitionCount = 1;
     setting.sourceKafkaInputVersionInfo = new VersionImpl("test_store", 1, "test-push-id");
+    setting.storeKeySchema = Schema.create(Schema.Type.STRING);
+    setting.isStoreEncryptionEnabled = enabled;
+    setting.pubSubEncryptionKeyUrn = KEY_URN;
 
     job.configure(new VeniceProperties(props), setting);
+    SparkSession spark = spy(job.getSparkSession());
+    DataFrameReader reader = mock(DataFrameReader.class, RETURNS_SELF);
+    doReturn(reader).when(spark).read();
+    doReturn(spark).when(job).getSparkSession();
     job.getKafkaInputDataFrame();
+    verify(reader).load();
 
-    SparkSession spark = job.getSparkSession();
     assertEquals(spark.conf().get("xc.tls.key.store.type"), "PKCS12", "xc.tls.* should be forwarded");
     assertEquals(
         spark.conf().get("xc.pubsub.broker.url.to.region.name.map"),
@@ -1014,6 +1049,11 @@ public class DataWriterSparkJobRepushTest {
         spark.conf().get("venice.repush.source.pubsub.broker"),
         "localhost:9092",
         "venice.repush.source.pubsub.broker should be forwarded");
+    verify(reader).option(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(enabled));
+    assertEquals(spark.conf().get(PUB_SUB_ENCRYPTION_ENABLED), Boolean.toString(enabled));
+    verify(reader, times(enabled ? 1 : 0)).option(eq(PUB_SUB_ENCRYPTION_KEY_URN), anyString());
+    verify(reader, times(enabled ? 1 : 0)).option(PUB_SUB_ENCRYPTION_KEY_URN, KEY_URN);
+    assertEquals(spark.conf().get(PUB_SUB_ENCRYPTION_KEY_URN, null), expectedUrn);
   }
 
   /**
@@ -1252,21 +1292,6 @@ public class DataWriterSparkJobRepushTest {
           createPutRow("key3", "value3", 400L));
 
       return getSparkSession().createDataFrame(testData, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
-    }
-  }
-
-  private static class ConfigTestSparkJob extends DataWriterSparkJob {
-    @Override
-    public Dataset<Row> getKafkaInputDataFrame() {
-      try {
-        return super.getKafkaInputDataFrame();
-      } catch (Exception e) {
-        List<Row> emptyRows = Arrays.asList(
-            new GenericRowWithSchema(
-                new Object[] { "region1", 0, 0L, 0, 1, new byte[0], new byte[0], 0, new byte[0], null },
-                RAW_PUBSUB_INPUT_TABLE_SCHEMA));
-        return getSparkSession().createDataFrame(emptyRows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
-      }
     }
   }
 

@@ -48,6 +48,11 @@ public class ComplexVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     return complexPut(key, value, valueSchemaId, valueProvider, null, null, null);
   }
 
+  @Override
+  public int getPartitionIdForSerializedKey(byte[] serializedKey) {
+    throw new UnsupportedOperationException("ComplexVeniceWriter can route one record to multiple partitions");
+  }
+
   /**
    * {@link ComplexVenicePartitioner} offers a more sophisticated getPartitionId API. It also takes value as a
    * parameter, and could return a single, multiple or no partition(s). The API also accepts a partition consumer to

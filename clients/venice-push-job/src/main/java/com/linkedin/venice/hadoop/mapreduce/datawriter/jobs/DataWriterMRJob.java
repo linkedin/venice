@@ -32,6 +32,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
@@ -353,6 +355,12 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       jobConf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
+    jobConf.setBoolean(PUB_SUB_ENCRYPTION_ENABLED, pushJobSetting.isStoreEncryptionEnabled);
+    if (pushJobSetting.isStoreEncryptionEnabled) {
+      jobConf.set(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      jobConf.unset(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
     jobConf.setReduceSpeculativeExecution(vpjProperties.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false));
     int partitionCount = pushJobSetting.partitionCount;
     jobConf.setInt(PARTITION_COUNT, partitionCount);
@@ -474,6 +482,11 @@ public class DataWriterMRJob extends DataWriterComputeJob {
   @VisibleForTesting
   void setJobConf(JobConf jobConf) {
     this.jobConf = jobConf;
+  }
+
+  @VisibleForTesting
+  JobConf getJobConf() {
+    return jobConf;
   }
 
   @VisibleForTesting

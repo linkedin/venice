@@ -140,7 +140,7 @@ public class ClusterRouteStats {
       this.pendingRequestCount = MetricEntityStateBase.create(
           ROUTE_REQUEST_PENDING_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.PENDING_REQUEST_COUNT,
           Arrays.asList(new Avg(), new Max()),
           baseDimensionsMap,
@@ -150,7 +150,7 @@ public class ClusterRouteStats {
       this.rejectionRatio = MetricEntityStateOneEnum.create(
           ROUTE_REQUEST_REJECTION_RATIO.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.REJECTION_RATIO,
           Arrays.asList(new Avg(), new Max()),
           baseDimensionsMap,
@@ -160,7 +160,7 @@ public class ClusterRouteStats {
       this.healthyRequestCount = MetricEntityStateThreeEnums.create(
           ROUTE_CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.HEALTHY_REQUEST_COUNT,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -172,7 +172,7 @@ public class ClusterRouteStats {
       this.quotaExceededRequestCount = MetricEntityStateThreeEnums.create(
           ROUTE_CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.QUOTA_EXCEEDED_REQUEST_COUNT,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -184,7 +184,7 @@ public class ClusterRouteStats {
       this.internalServerErrorRequestCount = MetricEntityStateThreeEnums.create(
           ROUTE_CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.INTERNAL_SERVER_ERROR_REQUEST_COUNT,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -196,7 +196,7 @@ public class ClusterRouteStats {
       this.leakedRequestCount = MetricEntityStateThreeEnums.create(
           ROUTE_CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.LEAKED_REQUEST_COUNT,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -208,7 +208,7 @@ public class ClusterRouteStats {
       this.serviceUnavailableRequestCount = MetricEntityStateThreeEnums.create(
           ROUTE_CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.SERVICE_UNAVAILABLE_REQUEST_COUNT,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -220,7 +220,7 @@ public class ClusterRouteStats {
       this.otherErrorRequestCount = MetricEntityStateThreeEnums.create(
           ROUTE_CALL_COUNT.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.OTHER_ERROR_REQUEST_COUNT,
           Collections.singletonList(new OccurrenceRate()),
           baseDimensionsMap,
@@ -232,7 +232,7 @@ public class ClusterRouteStats {
       this.responseWaitingTime = MetricEntityStateThreeEnums.create(
           ROUTE_CALL_TIME.getMetricEntity(),
           otelRepository,
-          this::registerSensor,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
           RouteTehutiMetricName.RESPONSE_WAITING_TIME,
           Collections
               .singletonList(TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time"))),

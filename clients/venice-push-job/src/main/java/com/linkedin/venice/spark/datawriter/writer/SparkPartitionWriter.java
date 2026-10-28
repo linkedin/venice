@@ -41,6 +41,15 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
   }
 
   void processRows(Iterator<Row> rows) {
+    try {
+      doProcessRows(rows);
+    } catch (Throwable t) {
+      markTaskFailed();
+      throw t;
+    }
+  }
+
+  private void doProcessRows(Iterator<Row> rows) {
     List<VeniceRecordWithMetadata> valueRecordsForKey = new ArrayList<>();
     byte[] key = null;
 

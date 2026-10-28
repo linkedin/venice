@@ -32,11 +32,11 @@ final class StoreMigrationHelper {
       String srcClusterName,
       String destClusterName,
       String storeName) {
-    if (srcEncryptionCluster || destEncryptionCluster) {
+    if (srcEncryptionCluster != destEncryptionCluster) {
       throw new VeniceHttpException(
           HttpStatus.SC_BAD_REQUEST,
           "Cannot migrate store " + storeName + " from cluster " + srcClusterName + " to cluster " + destClusterName
-              + " because migration from or to an encryption cluster is not allowed.",
+              + " because migrating between an encryption cluster and a non-encryption cluster is not allowed.",
           ErrorType.BAD_REQUEST);
     }
   }
@@ -51,6 +51,7 @@ final class StoreMigrationHelper {
       String storeName,
       String localRegion,
       Logger logger) {
+    // The caller supplies schemas in ID order; ordinary creation installs the first schema at ID 1.
     NewStoreResponse newStoreResponse = destControllerClient
         .createNewStore(storeName, srcStore.getOwner(), keySchema, valueSchemaEntries.get(0).getSchema().toString());
     if (newStoreResponse.isError()) {
@@ -59,21 +60,22 @@ final class StoreMigrationHelper {
               + newStoreResponse.getError());
     }
 
+    // Import the first source ID too: existing records reference it, not the destination's bootstrap ID.
     for (SchemaEntry schemaEntry: valueSchemaEntries) {
       SchemaResponse schemaResponse =
-          destControllerClient.addValueSchema(storeName, schemaEntry.getSchema().toString());
-      if (schemaResponse.isError()) {
+          destControllerClient.addValueSchema(storeName, schemaEntry.getSchema().toString(), schemaEntry.getId());
+      if (schemaResponse.isError() || schemaResponse.getId() != schemaEntry.getId()) {
         throw new VeniceException(
             "Failed to add value schema " + schemaEntry.getId() + " into store " + storeName + " in dest cluster "
-                + destClusterName + ". Error " + schemaResponse.getError());
+                + destClusterName + ". Returned ID " + schemaResponse.getId() + ". Error " + schemaResponse.getError());
       }
     }
 
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore, true);
+    UpdateStoreQueryParams params = migrationConfigs(srcStore);
     Set<String> remainingRegions = new HashSet<>();
     remainingRegions.add(localRegion);
     for (Map.Entry<String, StoreInfo> entry: srcStoresInChildColos.get(storeName).entrySet()) {
-      UpdateStoreQueryParams paramsInChildColo = new UpdateStoreQueryParams(entry.getValue(), true);
+      UpdateStoreQueryParams paramsInChildColo = migrationConfigs(entry.getValue());
       if (params.isDifferent(paramsInChildColo)) {
         paramsInChildColo.setRegionsFilter(entry.getKey());
         logger.info("Sending update-store request {} to store {} in {}", paramsInChildColo, storeName, entry.getKey());
@@ -96,5 +98,10 @@ final class StoreMigrationHelper {
           "Failed to update store " + storeName + " in dest cluster " + destClusterName + " in regions "
               + remainingRegions + ". Error " + updateStoreResponse.getError());
     }
+  }
+
+  private static UpdateStoreQueryParams migrationConfigs(StoreInfo source) {
+    // Preserved schema IDs keep source superset pointers valid in both parent and regional configs.
+    return new UpdateStoreQueryParams(source, true).setLatestSupersetSchemaId(source.getLatestSuperSetValueSchemaId());
   }
 }

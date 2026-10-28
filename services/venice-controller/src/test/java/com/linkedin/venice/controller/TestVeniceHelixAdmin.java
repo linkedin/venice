@@ -25,7 +25,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -55,7 +54,6 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -107,6 +105,10 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.constants.InstanceConstants;
+import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.InstanceConfig;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -123,6 +125,117 @@ public class TestVeniceHelixAdmin {
 
   private static final String clusterName = "test-cluster";
   private static final String storeName = "test-store";
+
+  @Test
+  public void testGetClusterProvisionedVeniceUnitsExcludesAllSystemStores() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doCallRealMethod().when(admin).getAllStores(clusterName);
+    doCallRealMethod().when(admin).getClusterProvisionedVeniceUnits(clusterName);
+
+    Store firstStore = TestUtils.createTestStore("first", "owner", 0);
+    firstStore.setVeniceUnits(Integer.MAX_VALUE);
+    Store secondStore = TestUtils.createTestStore("second", "owner", 0);
+    secondStore.setVeniceUnits(10);
+    Store unsetStore = TestUtils.createTestStore("unset", "owner", 0);
+    List<Store> stores = new ArrayList<>(Arrays.asList(firstStore, secondStore, unsetStore));
+    for (String systemStoreName: Arrays.asList(
+        VeniceSystemStoreType.META_STORE.getSystemStoreName("first"),
+        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName("first"),
+        VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName),
+        Store.SYSTEM_STORE_NAME_PREFIX + "other_system_store")) {
+      Store systemStore = TestUtils.createTestStore(systemStoreName, "owner", 0);
+      systemStore.setVeniceUnits(Integer.MAX_VALUE);
+      stores.add(systemStore);
+    }
+    doReturn(stores).when(repository).getAllStores();
+
+    assertEquals(admin.getClusterProvisionedVeniceUnits(clusterName), (long) Integer.MAX_VALUE + 10);
+    doReturn(Collections.singletonList(unsetStore)).when(repository).getAllStores();
+    assertEquals(admin.getClusterProvisionedVeniceUnits(clusterName), 0L);
+    doReturn(Collections.emptyList()).when(repository).getAllStores();
+    assertEquals(admin.getClusterProvisionedVeniceUnits(clusterName), 0L);
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountExcludesDisconnectedAndDisabledNodes() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    HelixExternalViewRepository routingDataRepository = mock(HelixExternalViewRepository.class);
+    SafeHelixManager manager = mock(SafeHelixManager.class);
+    SafeHelixDataAccessor accessor = mock(SafeHelixDataAccessor.class);
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    doReturn(resources).when(admin).getHelixVeniceClusterResources(clusterName);
+    doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
+    doReturn(manager).when(resources).getHelixManager();
+    doReturn(accessor).when(manager).getHelixDataAccessor();
+    doReturn("dc-0").when(admin).getRegionName();
+    doCallRealMethod().when(admin).getLiveStorageNodeCount(clusterName);
+
+    InstanceConfig enabled = new InstanceConfig("enabled");
+    InstanceConfig secondEnabled = new InstanceConfig("second-enabled");
+    InstanceConfig disconnected = new InstanceConfig("disconnected");
+    InstanceConfig disabled = new InstanceConfig("disabled");
+    disabled.setInstanceOperation(InstanceConstants.InstanceOperation.DISABLE);
+    InstanceConfig legacyDisabled = new InstanceConfig("legacy-disabled");
+    legacyDisabled.getRecord().setBooleanField("HELIX_ENABLED", false);
+    InstanceConfig batchDisabled = new InstanceConfig("batch-disabled");
+    InstanceConfig batchDisabledWithInfo = new InstanceConfig("batch-disabled-with-info");
+    ClusterConfig config = new ClusterConfig(clusterName);
+    config.setDisabledInstances(Collections.singletonMap(batchDisabled.getInstanceName(), "1"));
+    config.setDisabledInstancesWithInfo(Collections.singletonMap(batchDisabledWithInfo.getInstanceName(), "1"));
+    doReturn(config).when(accessor).getProperty(keyBuilder.clusterConfig());
+    doReturn(
+        Arrays.asList(
+            enabled,
+            secondEnabled,
+            disconnected,
+            disabled,
+            legacyDisabled,
+            batchDisabled,
+            batchDisabledWithInfo)).when(accessor).getChildValues(keyBuilder.instanceConfigs());
+    for (String instance: Arrays.asList(
+        "enabled",
+        "second-enabled",
+        "disabled",
+        "legacy-disabled",
+        "batch-disabled",
+        "batch-disabled-with-info",
+        "unregistered")) {
+      doReturn(true).when(routingDataRepository).isLiveInstance(instance);
+    }
+
+    assertEquals(admin.getLiveStorageNodeCount(clusterName), Collections.singletonMap("dc-0", 2));
+    enabled.setInstanceOperation(InstanceConstants.InstanceOperation.DISABLE);
+    secondEnabled.setInstanceOperation(InstanceConstants.InstanceOperation.DISABLE);
+    assertEquals(admin.getLiveStorageNodeCount(clusterName), Collections.singletonMap("dc-0", 0));
+    enabled.setInstanceOperation(InstanceConstants.InstanceOperation.ENABLE);
+    secondEnabled.setInstanceOperation(InstanceConstants.InstanceOperation.ENABLE);
+    doReturn(false).when(routingDataRepository).isLiveInstance(anyString());
+    assertEquals(admin.getLiveStorageNodeCount(clusterName), Collections.singletonMap("dc-0", 0));
+    verify(accessor, never()).getChildValuesMap(keyBuilder.liveInstances());
+    doThrow(new VeniceException("Cannot read instance configs")).when(accessor)
+        .getChildValues(keyBuilder.instanceConfigs());
+    assertThrows(VeniceException.class, () -> admin.getLiveStorageNodeCount(clusterName));
+    doReturn(null).when(accessor).getProperty(keyBuilder.clusterConfig());
+    assertThrows(VeniceException.class, () -> admin.getLiveStorageNodeCount(clusterName));
+  }
+
+  @Test
+  public void testClusterCapacityQueriesRequireLeadership() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(admin).checkControllerLeadershipFor(clusterName);
+    doCallRealMethod().when(admin).getAllStores(clusterName);
+    doCallRealMethod().when(admin).getClusterProvisionedVeniceUnits(clusterName);
+    doCallRealMethod().when(admin).getLiveStorageNodeCount(clusterName);
+
+    assertThrows(VeniceException.class, () -> admin.getClusterProvisionedVeniceUnits(clusterName));
+    assertThrows(VeniceException.class, () -> admin.getLiveStorageNodeCount(clusterName));
+    verify(admin, never()).getHelixVeniceClusterResources(anyString());
+  }
 
   @Test
   public void testValidatePubSubEncryptionKeyUrnForVersionCreation() {
@@ -2014,64 +2127,4 @@ public class TestVeniceHelixAdmin {
 
     assertTrue(customException.getMessage().contains("Required waiting period: 3600 seconds"));
   }
-
-  @Test
-  public void testShouldSkipTruncatingTopicForChildControllers() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
-
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
-    doReturn(false).when(admin).isParent();
-    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
-
-    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
-    verify(admin, times(1)).isParent();
-    assertFalse(shouldSkip);
-  }
-
-  @Test
-  public void testShouldSkipTruncatingTopicForParentControllersTopicWriteNeeded() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
-    doReturn(true).when(admin).isParent();
-    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
-
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
-    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
-    verify(admin, times(1)).getMultiClusterConfigs();
-    verify(admin, times(1)).isParent();
-    assertFalse(shouldSkip);
-
-    doReturn(ConcurrentPushDetectionStrategy.DUAL).when(config).getConcurrentPushDetectionStrategy();
-    boolean shouldSkip2 = admin.shouldSkipTruncatingTopic(clusterName);
-    verify(admin, times(2)).getMultiClusterConfigs();
-    verify(admin, times(2)).isParent();
-    assertFalse(shouldSkip2);
-
-  }
-
-  @Test
-  public void testShouldSkipTruncatingTopicForParentControllersTopicWriteNotNeeded() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    VeniceControllerClusterConfig config = mock(VeniceControllerClusterConfig.class);
-    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(config)
-        .getConcurrentPushDetectionStrategy();
-    doReturn(true).when(admin).isParent();
-
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(admin).getMultiClusterConfigs();
-    doCallRealMethod().when(admin).shouldSkipTruncatingTopic(clusterName);
-
-    boolean shouldSkip = admin.shouldSkipTruncatingTopic(clusterName);
-    verify(admin, times(1)).getMultiClusterConfigs();
-    verify(admin, times(1)).isParent();
-    assertTrue(shouldSkip);
-  }
-
 }

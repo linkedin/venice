@@ -139,6 +139,11 @@ public class ControllerApiConstants {
   public static final String VERSION_STORAGE_MODE_UPDATE_REASON = "version_storage_mode_update_reason";
   public static final String EXTERNAL_STORAGE_READ_MODE = "external_storage_read_mode";
 
+  /** Optional forecasted Venice Units (VU) capacity ask for a store; absent means not provided. */
+  public static final String VENICE_UNITS = "venice_units";
+  /** Optional requested class of service for a store; absent means not provided. */
+  public static final String WORKLOAD_TYPE = "workload_type";
+
   public static final String AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED = "auto_auto_register_for_pushjob_enabled";
 
   public static final String REGULAR_VERSION_ETL_ENABLED = "regular_version_etl_enabled";
@@ -268,6 +273,7 @@ public class ControllerApiConstants {
   public static final String TARGET_REGION_PUSH_WITH_DEFERRED_SWAP = "target_region_push_with_deferred_swap";
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
+  public static final String WRITE_QUOTA_ENABLED = "write_quota_enabled";
 
   public static final String COMPACTION_ENABLED = "compaction_enabled";
   public static final String COMPACTION_THRESHOLD_MILLISECONDS = "compaction_threshold_milliseconds";

@@ -19,6 +19,7 @@ public class SeparatedStoreBufferServiceTest {
     doReturn(8).when(serverConfig).getDrainerPoolSizeUnsortedInput();
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(1000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(serverConfig).getWritePathThreadPriority();
     SeparatedStoreBufferService separatedStoreBufferService =
         new SeparatedStoreBufferService(serverConfig, metricsRepo, "test-cluster");
     // Verify that metricsRepo has two sets of metrics, example metric:

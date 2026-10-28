@@ -8,6 +8,7 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.meta.AsyncStoreChangeNotifier;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -15,6 +16,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.function.Function;
 
 
 /**
@@ -36,6 +38,7 @@ public class TopicManagerContext {
   private final VeniceComponent veniceComponent;
   private final LogContext logContext;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+  private final Function<String, String> pubSubEncryptionKeyUrnLookup;
 
   private TopicManagerContext(Builder builder) {
     this.pubSubOperationTimeoutMs = builder.pubSubOperationTimeoutMs;
@@ -53,6 +56,7 @@ public class TopicManagerContext {
     this.veniceComponent = builder.veniceComponent;
     this.logContext = builder.logContext;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
+    this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
   }
 
   public long getPubSubOperationTimeoutMs() {
@@ -123,6 +127,11 @@ public class TopicManagerContext {
     return asyncStoreChangeNotifier;
   }
 
+  /** @see PubSubContext#getPubSubEncryptionKeyUrnLookup() */
+  public Function<String, String> getPubSubEncryptionKeyUrnLookup() {
+    return pubSubEncryptionKeyUrnLookup;
+  }
+
   @Override
   public String toString() {
     return "TopicManagerContext{veniceComponent=" + veniceComponent + ", pubSubOperationTimeoutMs="
@@ -144,6 +153,7 @@ public class TopicManagerContext {
     private VeniceComponent veniceComponent = VeniceComponent.UNSPECIFIED; // Default component
     private LogContext logContext;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
+    private Function<String, String> pubSubEncryptionKeyUrnLookup;
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -225,6 +235,11 @@ public class TopicManagerContext {
 
     public Builder setStoreChangeNotifier(AsyncStoreChangeNotifier asyncStoreChangeNotifier) {
       this.asyncStoreChangeNotifier = asyncStoreChangeNotifier;
+      return this;
+    }
+
+    public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
+      this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
       return this;
     }
 

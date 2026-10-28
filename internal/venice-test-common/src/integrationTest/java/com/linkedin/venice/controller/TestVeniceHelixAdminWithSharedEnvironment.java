@@ -90,6 +90,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.model.IdealState;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -112,6 +113,19 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final static Logger LOGGER = LogManager.getLogger(TestVeniceHelixAdminWithSharedEnvironment.class);
 
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testWriteQuotaEnabledDefaultsFalseUntilUpdate() {
+    String storeName = Utils.getUniqueString("write-quota-new");
+    veniceAdmin.createStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(true));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner("new-owner"));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(false));
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isWriteQuotaEnabled());
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     setupCluster(metricsRepository);
@@ -126,6 +140,71 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void clearETLTriggers() {
     resetVersionLifecycleEvents();
     resetExternalETLServiceEvents();
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
+  public void testGetLiveStorageNodeCountTracksParticipantLifecycle() throws Exception {
+    String region = veniceAdmin.getRegionName();
+    TestUtils.waitForNonDeterministicAssertion(
+        10,
+        TimeUnit.SECONDS,
+        () -> assertTrue(
+            veniceAdmin.getHelixVeniceClusterResources(clusterName)
+                .getRoutingDataRepository()
+                .isLiveInstance(NODE_ID)));
+    int initialCount = veniceAdmin.getLiveStorageNodeCount(clusterName).get(region);
+    String nodeId = Utils.getHelixNodeIdentifier("localhost", TestUtils.getFreePort());
+    SafeHelixManager originalManager = helixManager;
+    HelixAdminClient helixAdminClient = veniceAdmin.getHelixAdminClient();
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    try {
+      startParticipant(false, nodeId);
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              veniceAdmin.getLiveStorageNodeCount(clusterName),
+              Collections.singletonMap(region, initialCount + 1)));
+
+      helixAdminClient
+          .setInstanceOperation(clusterName, nodeId, InstanceConstants.InstanceOperation.DISABLE, "test disable");
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              veniceAdmin.getLiveStorageNodeCount(clusterName),
+              Collections.singletonMap(region, initialCount)));
+      assertNotNull(
+          veniceAdmin.getHelixVeniceClusterResources(clusterName)
+              .getHelixManager()
+              .getHelixDataAccessor()
+              .getProperty(keyBuilder.liveInstance(nodeId)),
+          "A disabled participant remains live in Helix but must not be counted");
+
+      helixAdminClient
+          .setInstanceOperation(clusterName, nodeId, InstanceConstants.InstanceOperation.ENABLE, "test re-enable");
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              veniceAdmin.getLiveStorageNodeCount(clusterName),
+              Collections.singletonMap(region, initialCount + 1)));
+
+      stopParticipant(nodeId);
+      TestUtils.waitForNonDeterministicAssertion(
+          10,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(
+              veniceAdmin.getLiveStorageNodeCount(clusterName),
+              Collections.singletonMap(region, initialCount)));
+      assertTrue(veniceAdmin.getStorageNodes(clusterName).contains(nodeId), "Disconnected nodes remain registered");
+    } finally {
+      stopParticipant(nodeId);
+      if (veniceAdmin.getStorageNodes(clusterName).contains(nodeId)) {
+        helixAdminClient.dropStorageInstance(clusterName, nodeId);
+      }
+      helixManager = originalManager;
+    }
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)

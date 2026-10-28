@@ -352,6 +352,11 @@ public interface Admin extends AutoCloseable, Closeable {
   List<Store> getAllStores(String clusterName);
 
   /**
+   * Sums configured Venice Units across non-system stores. Unset values contribute zero.
+   */
+  long getClusterProvisionedVeniceUnits(String clusterName);
+
+  /**
    * Get the statuses of all stores. The store status is decided by the current version. For example, if one partition
    * only have 2 ONLINE replicas in the current version, we say this store is under replicated. Refer to {@link
    * com.linkedin.venice.meta.StoreStatus} for the definition of each status.
@@ -489,6 +494,11 @@ public interface Admin extends AutoCloseable, Closeable {
   double getStorageEngineOverheadRatio(String clusterName);
 
   List<String> getStorageNodes(String clusterName);
+
+  /**
+   * Counts only live, enabled storage nodes. Children return their local fabric; parents query all child fabrics.
+   */
+  Map<String, Integer> getLiveStorageNodeCount(String clusterName);
 
   Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica);
 

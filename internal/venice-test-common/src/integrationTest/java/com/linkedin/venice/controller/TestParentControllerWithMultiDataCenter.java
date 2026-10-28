@@ -1301,7 +1301,7 @@ public class TestParentControllerWithMultiDataCenter {
           "Second compliance push should fail because system pushes cannot kill other system pushes");
       Assert.assertTrue(
           compliancePushResponse2.getError().contains("An ongoing push") && compliancePushResponse2.getError()
-              .contains("is found and it must be terminated before another push can be started"),
+              .contains("is still in progress and must complete or be terminated before another push can be started"),
           "Error should indicate an ongoing push must be terminated: " + compliancePushResponse2.getError());
     }
   }
@@ -1334,7 +1334,7 @@ public class TestParentControllerWithMultiDataCenter {
           "Compliance push should fail because system pushes cannot kill user pushes");
       Assert.assertTrue(
           compliancePushResponse.getError().contains("An ongoing push") && compliancePushResponse.getError()
-              .contains("is found and it must be terminated before another push can be started"),
+              .contains("is still in progress and must complete or be terminated before another push can be started"),
           "Error should indicate an ongoing push must be terminated: " + compliancePushResponse.getError());
     }
   }

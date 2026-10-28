@@ -13,6 +13,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
@@ -74,6 +75,10 @@ import org.testng.annotations.Test;
  * transfer when no Da Vinci peer is available. A single blob-serving server hosts the store;
  * a fresh Da Vinci client with the server-fallback flag and no peers should cold-start by pulling the snapshot
  * directly from the server (instead of replaying the Version Topic, which is forced off below).
+ *
+ * <p>Both ends run with {@code blob.transfer.dedicated.allocator.enabled} on, so this is also where that flag gets
+ * end-to-end coverage. Its off state is the process-wide default allocator, which every other blob transfer test
+ * already exercises.
  *
  * <p><b>Scope / known limitations of this local test:</b>
  * <ul>
@@ -137,6 +142,9 @@ public class DaVinciClientServerFallbackBlobTransferTest {
     serverProperties.setProperty(BLOB_TRANSFER_SSL_ENABLED, "true");
     serverProperties.setProperty(BLOB_TRANSFER_ACL_ENABLED, "true");
     serverProperties.setProperty(SERVER_BLOB_TRANSFER_ACCEPT_CLIENT_REQUEST_ENABLED, "false");
+    // Both ends of this test enable the dedicated allocator, which is otherwise off by default, so that a real
+    // transfer runs over it end to end through the config key rather than only through the constructor flag.
+    serverProperties.setProperty(BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED, "true");
     // The server's metadata endpoint is reached over D2; enabling HTTP/2 inbound makes the server's D2 service
     // prioritize the https scheme (see VeniceServerWrapper), so the HTTPS d2 client connects over TLS instead of
     // hitting the SSL-only port in plaintext (which returns 403). Mirrors the Fast Client request-based-metadata tests.
@@ -176,6 +184,13 @@ public class DaVinciClientServerFallbackBlobTransferTest {
     String storeName = Utils.getUniqueString("server-fallback-store");
     setUpStore(storeName, activeActiveReplicationEnabled);
 
+    // The blob-transfer allocator is chosen once at startup from this config, so a key that never reaches the booted
+    // config would leave the transfer below passing on the process-wide allocator and prove nothing about the flag.
+    Assert.assertTrue(
+        cluster.getVeniceServers().get(0).getVeniceServer().getServerConfig().isBlobTransferDedicatedAllocatorEnabled(),
+        "The server booted without the dedicated blob transfer allocator, so "
+            + BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED + " did not reach its config");
+
     if (activeActiveReplicationEnabled) {
       StorageEngine storageEngine = cluster.getVeniceServers()
           .get(0)
@@ -202,6 +217,7 @@ public class DaVinciClientServerFallbackBlobTransferTest {
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
         .put(BLOB_TRANSFER_SSL_ENABLED, true)
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED, true)
         .put(DAVINCI_BLOB_TRANSFER_SERVER_FALLBACK_ENABLED, true)
         .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
         .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, serverBlobClientPort)

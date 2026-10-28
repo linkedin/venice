@@ -5,6 +5,7 @@ import static com.linkedin.venice.controller.kafka.protocol.serializer.AdminOper
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -262,6 +263,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * The local region name of the controller.
    */
   private final String regionName;
+  private final StoreUpdateHandler storeUpdateHandler;
 
   public AdminConsumptionTask(
       String clusterName,
@@ -279,6 +281,42 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       int maxWorkerThreadPoolSize,
       PubSubTopicRepository pubSubTopicRepository,
       String regionName) {
+    this(
+        clusterName,
+        consumer,
+        remoteConsumptionEnabled,
+        remoteKafkaServerUrl,
+        admin,
+        adminTopicMetadataAccessor,
+        executionIdAccessor,
+        isParentController,
+        stats,
+        adminTopicReplicationFactor,
+        minInSyncReplicas,
+        processingCycleTimeoutInMs,
+        maxWorkerThreadPoolSize,
+        pubSubTopicRepository,
+        regionName,
+        StoreUpdateHandler.NO_OP);
+  }
+
+  public AdminConsumptionTask(
+      String clusterName,
+      PubSubConsumerAdapter consumer,
+      boolean remoteConsumptionEnabled,
+      Optional<String> remoteKafkaServerUrl,
+      VeniceHelixAdmin admin,
+      AdminTopicMetadataAccessor adminTopicMetadataAccessor,
+      ExecutionIdAccessor executionIdAccessor,
+      boolean isParentController,
+      AdminConsumptionStats stats,
+      int adminTopicReplicationFactor,
+      Optional<Integer> minInSyncReplicas,
+      long processingCycleTimeoutInMs,
+      int maxWorkerThreadPoolSize,
+      PubSubTopicRepository pubSubTopicRepository,
+      String regionName,
+      StoreUpdateHandler storeUpdateHandler) {
     this.clusterName = clusterName;
     this.pubSubAdminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
     this.adminTopicPartition = new PubSubTopicPartitionImpl(pubSubAdminTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
@@ -312,6 +350,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         new DaemonThreadFactory(String.format("Venice-Admin-Execution-Task-%s", clusterName), admin.getLogContext()));
     this.undelegatedRecords = new LinkedList<>();
     this.regionName = regionName;
+    this.storeUpdateHandler = storeUpdateHandler;
     this.storeRetryCountMap = new ConcurrentHashMap<>();
 
     if (remoteConsumptionEnabled) {
@@ -569,7 +608,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             isParentController,
             stats,
             regionName,
-            inflightThreadsByStore);
+            inflightThreadsByStore,
+            storeUpdateHandler);
         // Check if there is previously created scheduled task still occupying one thread from the pool.
         if (storesWithScheduledTask.add(storeName)) {
           // Log the store name and the position of the task being added into the task list

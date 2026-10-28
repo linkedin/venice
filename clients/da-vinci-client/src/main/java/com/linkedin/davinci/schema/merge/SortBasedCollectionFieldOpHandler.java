@@ -217,8 +217,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     }
 
     // Handle Put on a map that is in the collection-merge state.
-    IndexedHashMap<String, Object> currMap =
-        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
+    Map<String, Object> currMap = (Map<String, Object>) currValueRecord.get(currValueRecordField.pos());
+    if (currMap == null) {
+      currMap = Collections.emptyMap();
+    }
     List<KeyValPair> currKeyValPairs = new ArrayList<>(currMap.size());
     currMap.forEach((key, value) -> currKeyValPairs.add(new KeyValPair(key, value)));
 
@@ -378,8 +380,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Step 2: Remove all active entries with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
-    IndexedHashMap<String, Object> currMap =
-        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
 
     // All map entries in the current put-only part should be removed.
     final int remainingEntriesStartIdx = originalPutOnlyPartLength + removedActiveTimestampsCount;
@@ -388,6 +388,8 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       collectionFieldRmd.setTopLevelFieldTimestamp(originalTopLevelFieldTimestamp);
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
+    IndexedHashMap<String, Object> currMap =
+        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
     Map<String, Object> remainingMap = new IndexedHashMap<>();
     for (int i = remainingEntriesStartIdx; i < currMap.size(); i++) {
       Map.Entry<String, Object> remainingEntry = currMap.getByIndex(i);
@@ -810,8 +812,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (newEntries.isEmpty() && toRemoveKeys.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    IndexedHashMap<String, Object> currMap =
-        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
+    Map<String, Object> currMap = (Map<String, Object>) currValueRecord.get(currValueRecordField.pos());
     final IndexedHashMap<String, Object> putOnlyPartMap =
         currMap == null ? new IndexedHashMap<>() : new IndexedHashMap<>(currMap);
     final List<String> collectionMergePartKeys = new ArrayList<>();
@@ -896,8 +897,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (newEntries.isEmpty() && toRemoveKeys.isEmpty()) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    IndexedHashMap<String, Object> currMap =
-        (IndexedHashMap<String, Object>) currValueRecord.get(currValueRecordField.pos());
+    Map<String, Object> currMap = (Map<String, Object>) currValueRecord.get(currValueRecordField.pos());
+    if (currMap == null) {
+      currMap = Collections.emptyMap();
+    }
     List<KeyValPair> currKeyValPairs = new ArrayList<>(currMap.size());
     currMap.forEach((key, value) -> currKeyValPairs.add(new KeyValPair(key, value)));
 

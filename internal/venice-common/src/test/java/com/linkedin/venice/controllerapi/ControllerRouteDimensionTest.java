@@ -1,7 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.HttpMethod;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionTestFixture;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.utils.CollectionUtils;
@@ -11,6 +13,16 @@ import org.testng.annotations.Test;
 
 public class ControllerRouteDimensionTest {
   @Test
+  public void testHealthRouteRequiresNoParameters() {
+    assertEquals(ControllerRoute.HEALTH.getPath(), "/health");
+    assertEquals(ControllerRoute.HEALTH.getHttpMethod(), HttpMethod.GET);
+    assertTrue(ControllerRoute.HEALTH.getParams().isEmpty());
+    assertTrue(ControllerRoute.HEALTH.getOptionalParams().isEmpty());
+    assertEquals(ControllerRoute.valueOfPath("/health"), ControllerRoute.HEALTH);
+    assertEquals(ControllerRoute.valueOfPath("/healthcheck"), ControllerRoute.UNKNOWN_ROUTE);
+  }
+
+  @Test
   public void testUpdateStoreVersionStorageModeRequiresCluster() {
     assertTrue(ControllerRoute.UPDATE_STORE_VERSION_STORAGE_MODE.getParams().contains(ControllerApiConstants.CLUSTER));
   }
@@ -19,6 +31,7 @@ public class ControllerRouteDimensionTest {
   public void testDimensionInterface() {
     Map<ControllerRoute, String> expectedValues = CollectionUtils.<ControllerRoute, String>mapBuilder()
         .put(ControllerRoute.UNKNOWN_ROUTE, "unknown_route")
+        .put(ControllerRoute.HEALTH, "health")
         .put(ControllerRoute.REQUEST_TOPIC, "request_topic")
         .put(ControllerRoute.EMPTY_PUSH, "empty_push")
         .put(ControllerRoute.END_OF_PUSH, "end_of_push")
@@ -48,6 +61,8 @@ public class ControllerRouteDimensionTest {
         .put(ControllerRoute.CLEAN_EXECUTION_IDS, "clean_execution_ids")
         .put(ControllerRoute.LIST_CHILD_CLUSTERS, "list_child_clusters")
         .put(ControllerRoute.LIST_NODES, "list_nodes")
+        .put(ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT, "get_live_storage_node_count")
+        .put(ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS, "get_cluster_provisioned_venice_units")
         .put(ControllerRoute.CLUSTER_HEALTH_STORES, "cluster_health_stores")
         .put(ControllerRoute.ClUSTER_HEALTH_INSTANCES, "cluster_health_instances")
         .put(ControllerRoute.LIST_REPLICAS, "list_replicas")

@@ -1,14 +1,18 @@
 package com.linkedin.venice.vpj.pubsub.input;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_MAX_MESSAGES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_COMPRESSION_DICTIONARY_MAX_MESSAGES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_MAX_SPLITS_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SPLIT_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.MIN_COMPRESSION_DICTIONARY_MESSAGES_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
 
 import com.linkedin.venice.acl.VeniceComponent;
@@ -26,6 +30,7 @@ import com.linkedin.venice.pubsub.manager.TopicManagerContext;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.vpj.pubsub.input.splitter.PubSubTopicPartitionSplitStrategy;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -66,6 +71,9 @@ public class PubSubSplitPlanner {
   private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   public List<PubSubPartitionSplit> plan(VeniceProperties jobConfig) {
+    if (jobConfig.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+      PubSubEncryptionUtils.getRequiredKeyUrnLookup(jobConfig);
+    }
     String brokerUrl = jobConfig.getString(VENICE_REPUSH_SOURCE_PUBSUB_BROKER);
 
     try (TopicManager tm = createTopicManager(jobConfig, brokerUrl)) {
@@ -73,6 +81,13 @@ public class PubSubSplitPlanner {
           .valueOf(jobConfig.getString(PUBSUB_INPUT_SPLIT_STRATEGY, DEFAULT_PUBSUB_INPUT_SPLIT_STRATEGY));
       long recordsPerSplit =
           jobConfig.getLong(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER);
+      if (partitionSplitStrategy == PartitionSplitStrategy.CAPPED_SINGLE_SPLIT_PER_PARTITION) {
+        recordsPerSplit =
+            jobConfig.getLong(COMPRESSION_DICTIONARY_MAX_MESSAGES, DEFAULT_COMPRESSION_DICTIONARY_MAX_MESSAGES);
+        if (recordsPerSplit <= 0) {
+          throw new IllegalArgumentException(COMPRESSION_DICTIONARY_MAX_MESSAGES + " must be > 0");
+        }
+      }
       int maxSplits = jobConfig.getInt(PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION, DEFAULT_MAX_SPLITS_PER_PARTITION);
       long timeWindowMinutes =
           jobConfig.getLong(PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES);
@@ -114,6 +129,9 @@ public class PubSubSplitPlanner {
     if (partitionCount <= 0) {
       return Collections.emptyList();
     }
+    long partitionRecordLimit = partitionSplitStrategy == PartitionSplitStrategy.CAPPED_SINGLE_SPLIT_PER_PARTITION
+        ? Math.max(MIN_COMPRESSION_DICTIONARY_MESSAGES_PER_PARTITION, recordsPerSplit / partitionCount)
+        : recordsPerSplit;
 
     // Batch-fetch start and end positions for ALL partitions in 2 bulk calls
     // instead of 2 * partitionCount individual calls.
@@ -164,7 +182,7 @@ public class PubSubSplitPlanner {
           SplitRequest req = new SplitRequest.Builder().topicManager(tm)
               .splitType(partitionSplitStrategy)
               .maxSplits(maxSplitsPerPartition)
-              .recordsPerSplit(recordsPerSplit)
+              .recordsPerSplit(partitionRecordLimit)
               .timeWindowInMs(timeWindowMs)
               .pubSubTopicPartition(tp)
               .startPosition(start)

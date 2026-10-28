@@ -17,6 +17,9 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
@@ -95,6 +98,7 @@ public class AbstractDataWriterSparkJobTest {
     Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
     PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.isIncrementalPush = true;
     String sparkAppNameOverride = "UPDATED_SPARK_APP_NAME";
     String dummyKafkaConfig = "dummy.kafka.config";
     String dummyKafkaConfigValue = "dummy.kafka.config.value";
@@ -110,9 +114,11 @@ public class AbstractDataWriterSparkJobTest {
     properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, writerHookFactoryClass);
     properties.setProperty(writerHookSetting, "test-value");
 
+    SparkSession firstSession;
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
 
+      firstSession = dataWriterSparkJob.getSparkSession();
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
       // Builder configs should get applied
       Assert.assertEquals(jobConf.get(SPARK_APP_NAME_CONFIG), sparkAppNameOverride);
@@ -126,11 +132,13 @@ public class AbstractDataWriterSparkJobTest {
       // VPJ writer-hook factory config should reach executor task properties.
       Assert.assertEquals(jobConf.get(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS), writerHookFactoryClass);
       Assert.assertEquals(jobConf.get(writerHookSetting), "test-value");
+      Assert.assertEquals(jobConf.get(INCREMENTAL_PUSH), "true");
     }
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(VeniceProperties.empty(), setting);
 
+      Assert.assertSame(dataWriterSparkJob.getSparkSession(), firstSession);
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
       Assert.assertTrue(jobConf.getOption(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS).isEmpty());
       Assert.assertTrue(jobConf.getOption(writerHookSetting).isEmpty());
@@ -924,4 +932,48 @@ public class AbstractDataWriterSparkJobTest {
 
     abstract long resolve(QuotaTestingDataWriterSparkJob job);
   }
+
+  @Test
+  public void testWriterTaskEncryptionKeyUrnOverridesLateCallerValue() throws IOException {
+    File inputDir = TestWriteUtils.getTempDataDirectory();
+    Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
+
+    PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.isStoreEncryptionEnabled = true;
+    setting.pubSubEncryptionKeyUrn = "urn:li:storeDerived";
+
+    Properties properties = new Properties();
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:callerSupplied");
+    properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + PUB_SUB_ENCRYPTION_ENABLED, "false");
+    VeniceProperties jobProperties = new VeniceProperties(properties);
+
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(jobProperties, setting);
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:callerSupplied");
+      dataWriterSparkJob.setInputConf(
+          dataWriterSparkJob.getSparkSession(),
+          dataWriterSparkJob.getSparkSession().read(),
+          PUB_SUB_ENCRYPTION_KEY_URN,
+          "urn:li:lateCaller");
+      Assert.assertEquals(jobConf.get(PUB_SUB_ENCRYPTION_KEY_URN), "urn:li:lateCaller");
+      Assert.assertEquals(
+          dataWriterSparkJob.getWriterTaskProperties().getProperty(PUB_SUB_ENCRYPTION_KEY_URN),
+          "urn:li:storeDerived");
+      Assert.assertEquals(dataWriterSparkJob.getWriterTaskProperties().getProperty(PUB_SUB_ENCRYPTION_ENABLED), "true");
+
+      setting.isStoreEncryptionEnabled = false;
+      dataWriterSparkJob.configure(jobProperties, setting);
+      dataWriterSparkJob.setInputConf(
+          dataWriterSparkJob.getSparkSession(),
+          dataWriterSparkJob.getSparkSession().read(),
+          PUB_SUB_ENCRYPTION_KEY_URN,
+          "urn:li:lateCaller");
+      jobConf.set(PUB_SUB_ENCRYPTION_ENABLED, "true");
+      Assert.assertNull(dataWriterSparkJob.getWriterTaskProperties().getProperty(PUB_SUB_ENCRYPTION_KEY_URN));
+      Assert
+          .assertEquals(dataWriterSparkJob.getWriterTaskProperties().getProperty(PUB_SUB_ENCRYPTION_ENABLED), "false");
+    }
+  }
+
 }

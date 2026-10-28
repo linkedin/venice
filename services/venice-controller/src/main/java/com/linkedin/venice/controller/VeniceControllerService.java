@@ -7,6 +7,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.init.DelegatingClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
@@ -24,13 +25,16 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -48,12 +52,14 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceControllerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerService.class);
+  private static final int PUSH_JOB_DETAILS_SCHEMA_READER_MAX_ATTEMPTS = 1;
 
   private final Admin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Map<String, AdminConsumerService> consumerServicesByClusters;
 
   private final BiConsumer<Integer, Schema> newSchemaEncountered;
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
 
   public VeniceControllerService(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -73,6 +79,46 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
       Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
+    this(
+        multiClusterConfigs,
+        metricsRepository,
+        sslEnabled,
+        sslConfig,
+        accessController,
+        authorizerService,
+        d2Client,
+        d2Clients,
+        routerClientConfig,
+        icProvider,
+        externalSupersetSchemaGenerator,
+        pubSubTopicRepository,
+        pubSubClientsFactory,
+        pubSubPositionTypeRegistry,
+        versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
+        externalETLService,
+        StoreUpdateHandler.NO_OP);
+  }
+
+  public VeniceControllerService(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository,
+      boolean sslEnabled,
+      Optional<SSLConfig> sslConfig,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
+      Map<String, D2Client> d2Clients,
+      Optional<ClientConfig> routerClientConfig,
+      Optional<ICProvider> icProvider,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubClientsFactory pubSubClientsFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
+      Optional<ExternalETLService> externalETLService,
+      StoreUpdateHandler storeUpdateHandler) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -113,6 +159,7 @@ public class VeniceControllerService extends AbstractVeniceService {
         versionLifecycleEventListeners,
         valueSchemaCreatedListeners,
         externalETLService);
+    pushJobDetailsSerializer = internalAdmin.getPushJobDetailsSerializer();
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
@@ -135,18 +182,18 @@ public class VeniceControllerService extends AbstractVeniceService {
       this.admin = internalAdmin;
       LOGGER.info("Controller works as a child controller.");
     }
-    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = Optional.empty();
-    try {
-      kafkaMessageEnvelopeSchemaReader = routerClientConfig.isPresent()
-          ? Optional.of(
-              getSchemaReader(
-                  ClientConfig.cloneConfig(routerClientConfig.get())
-                      .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
-                  null))
-          : Optional.empty();
-    } catch (Exception e) {
-      LOGGER.error("Exception in initializing KME schema reader", e);
-    }
+    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = getProtocolSchemaReader(
+        routerClientConfig,
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+        AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName());
+    Optional<ClientConfig> pushJobDetailsClientConfig = routerClientConfig
+        .map(clientConfig -> ClientConfig.cloneConfig(clientConfig).setSchemaRefreshPeriod(Duration.ZERO));
+    getProtocolSchemaReader(
+        pushJobDetailsClientConfig,
+        AvroProtocolDefinition.PUSH_JOB_DETAILS,
+        VeniceSystemStoreUtils.getPushJobDetailsStoreName()).ifPresent(
+            schemaReader -> pushJobDetailsSerializer
+                .setSchemaReader(schemaReader, PUSH_JOB_DETAILS_SCHEMA_READER_MAX_ATTEMPTS));
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
 
@@ -207,13 +254,30 @@ public class VeniceControllerService extends AbstractVeniceService {
             metricsRepository,
             pubSubClientsFactory.getConsumerAdapterFactory(),
             pubSubTopicRepository,
-            pubSubMessageDeserializer);
+            pubSubMessageDeserializer,
+            storeUpdateHandler);
         this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
         this.admin.setAdminConsumerService(cluster, adminConsumerService);
       }
     }
 
+  }
+
+  private Optional<SchemaReader> getProtocolSchemaReader(
+      Optional<ClientConfig> routerClientConfig,
+      AvroProtocolDefinition protocolDefinition,
+      String systemStoreName) {
+    if (!routerClientConfig.isPresent()) {
+      return Optional.empty();
+    }
+    try {
+      return Optional
+          .of(getSchemaReader(ClientConfig.cloneConfig(routerClientConfig.get()).setStoreName(systemStoreName), null));
+    } catch (Exception e) {
+      LOGGER.error("Exception in initializing {} schema reader", protocolDefinition.name(), e);
+      return Optional.empty();
+    }
   }
 
   private LingeringStoreVersionChecker createLingeringStoreVersionChecker(
@@ -280,6 +344,10 @@ public class VeniceControllerService extends AbstractVeniceService {
    */
   public Admin getVeniceHelixAdmin() {
     return admin;
+  }
+
+  InternalAvroSpecificSerializer<PushJobDetails> getPushJobDetailsSerializer() {
+    return pushJobDetailsSerializer;
   }
 
   /**

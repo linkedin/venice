@@ -1,9 +1,11 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
@@ -19,6 +21,7 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -58,12 +61,15 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -75,7 +81,6 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DegradedDcInfo;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -111,6 +116,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -127,15 +133,24 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -458,12 +473,17 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
-  @Test
-  public void testAddStore() {
+  @DataProvider(name = "writeQuotaCreationValues")
+  public Object[][] writeQuotaCreationValues() {
+    return new Object[][] { { "test-store", false, true }, { "system-store", true, false },
+        { VeniceSystemStoreType.META_STORE.getSystemStoreName("test-store"), false, false } };
+  }
+
+  @Test(dataProvider = "writeQuotaCreationValues")
+  public void testAddStore(String storeName, boolean isSystemStore, boolean expectedWriteQuotaEnabled) {
 
     parentAdmin.initStorageCluster(clusterName);
 
-    String storeName = "test-store";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
@@ -472,10 +492,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr, isSystemStore);
 
     verify(internalAdmin)
-        .checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
+        .checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, isSystemStore, false);
     verify(veniceWriter, times(2)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -508,6 +528,17 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(storeCreationMessage.owner.toString(), owner);
     assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
     assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
+    assertEquals(storeCreationMessage.writeQuotaEnabled, false);
+
+    AdminOperation followUp = adminOperationSerializer
+        .deserialize(ByteBuffer.wrap(valueCaptor.getAllValues().get(1)), schemaCaptor.getAllValues().get(1));
+    assertEquals(followUp.operationType, AdminMessageType.UPDATE_STORE.getValue());
+    UpdateStore update = (UpdateStore) followUp.payloadUnion;
+    assertTrue(update.storageNodeReadQuotaEnabled);
+    assertEquals(update.writeQuotaEnabled, expectedWriteQuotaEnabled);
+    assertEquals(
+        update.updatedConfigsList.stream().anyMatch(config -> WRITE_QUOTA_ENABLED.contentEquals(config)),
+        expectedWriteQuotaEnabled);
   }
 
   @Test
@@ -878,13 +909,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     Store store = mock(Store.class);
     doReturn(store).when(internalAdmin).getStore(clusterName, pubSubTopic.getStoreName());
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
 
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.killOfflinePush(clusterName, pubSubTopic.getName(), false);
 
     verify(internalAdmin).checkPreConditionForKillOfflinePush(clusterName, pubSubTopic.getName());
-    verify(internalAdmin).truncateKafkaTopic(pubSubTopic.getName());
     verify(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -2117,11 +2146,557 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1);
       fail("Expected VeniceException to be thrown");
     } catch (VeniceException e) {
-      assertTrue(e.getMessage().contains("is found and it must be terminated before another push can be started"));
+      assertTrue(
+          e.getMessage()
+              .contains("is still in progress and must complete or be terminated before another push can be started"));
     }
 
     // Verify that killOfflinePush was never called
     verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
+  }
+
+  @DataProvider(name = "deferredSwapRecovery")
+  public Object[][] deferredSwapRecovery() {
+    return new Object[][] { { null, new Integer[] { 1, 1 }, true }, { "", new Integer[] { 1, 1 }, true },
+        { "", new Integer[] { 1, 0 }, false }, { "", new Integer[] { 1, IGNORED_CURRENT_VERSION }, false },
+        { "", new Integer[] { 1, null }, false }, { "", new Integer[] {}, false }, { "", new Integer[] { 1 }, false },
+        { "dc-0", new Integer[] { 1, 0 }, false }, { "dc-0", new Integer[] { 1, 1 }, false } };
+  }
+
+  @Test(dataProvider = "deferredSwapRecovery")
+  public void testDeferredVersionSwapRecovery(
+      String targetSwapRegion,
+      Integer[] regionVersions,
+      boolean shouldRecover) {
+    verifyDeferredVersionSwapRecovery(targetSwapRegion, regionVersions, shouldRecover, (admin, name) -> {});
+  }
+
+  private void verifyDeferredVersionSwapRecovery(
+      String targetSwapRegion,
+      Integer[] regionVersions,
+      boolean shouldRecover,
+      BiConsumer<VeniceParentHelixAdmin, String> configureAdmin) {
+    String storeName = Utils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
+
+    doReturn(mockInternalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+
+    String userPushId = System.currentTimeMillis() + "_https://example.com/user-job";
+    VersionImpl version = new VersionImpl(storeName, 1, userPushId);
+    version.setVersionSwapDeferred(true);
+    if (targetSwapRegion != null) {
+      version.setTargetSwapRegion(targetSwapRegion);
+    }
+    version.setStatus(VersionStatus.PUSHED);
+    store.addVersion(version);
+    doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
+
+    Map<String, Integer> currentVersionsPerRegion = new HashMap<>();
+    for (int i = 0; i < regionVersions.length; i++) {
+      currentVersionsPerRegion.put("dc-" + i, regionVersions[i]);
+    }
+    doReturn(currentVersionsPerRegion).when(mockParentAdmin)
+        .getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
+    Map<String, ControllerClient> childClients = new HashMap<>();
+    childClients.put("dc-0", mock(ControllerClient.class));
+    childClients.put("dc-1", mock(ControllerClient.class));
+    doReturn(childClients).when(mockInternalAdmin).getControllerClientMap(clusterName);
+    doReturn(10L).when(mockInternalAdmin).getLastSucceededExecutionId(clusterName, storeName);
+    ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
+    doReturn(executionIdAccessor).when(mockInternalAdmin).getExecutionIdAccessor();
+    doReturn(10L).when(executionIdAccessor).getLastGeneratedExecutionId(clusterName);
+    for (ControllerClient client: childClients.values()) {
+      AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+      response.setExecutionId(10L);
+      doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+    }
+
+    doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
+        .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
+
+    // A compliance push cannot preempt the existing user push.
+    String incomingPushId = Version.generateCompliancePushId("compliance_push");
+    // Stub both the 5-arg overload and the full 17-arg impl it delegates to.
+    doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1);
+    doCallRealMethod().when(mockParentAdmin)
+        .incrementVersionIdempotent(
+            anyString(),
+            anyString(),
+            anyString(),
+            anyInt(),
+            anyInt(),
+            any(),
+            anyBoolean(),
+            anyBoolean(),
+            any(),
+            any(),
+            any(),
+            anyLong(),
+            any(),
+            anyBoolean(),
+            any(),
+            anyInt(),
+            anyInt());
+
+    HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
+    doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
+    doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
+    doReturn(new ClusterLockManager(clusterName)).when(mockHelixVeniceClusterResources).getClusterLockManager();
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(mockHelixVeniceClusterResources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(storeName);
+
+    Version newVersion = new VersionImpl(storeName, 2, incomingPushId);
+    doAnswer(invocation -> {
+      assertEquals(store.getCurrentVersion(), 1);
+      assertEquals(store.getVersion(1).getStatus(), ONLINE);
+      return newVersion;
+    }).when(mockParentAdmin)
+        .addVersionAndTopicOnly(
+            clusterName,
+            storeName,
+            incomingPushId,
+            VERSION_ID_UNSET,
+            1,
+            1,
+            Version.PushType.BATCH,
+            true,
+            false,
+            null,
+            Optional.empty(),
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            store.getLargestUsedRTVersionNumber(),
+            -1,
+            false);
+
+    configureAdmin.accept(mockParentAdmin, storeName);
+    if (shouldRecover) {
+      assertSame(mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1), newVersion);
+      assertEquals(store.getVersion(1).getStatus(), ONLINE);
+      assertEquals(store.getCurrentVersion(), 1);
+      verify(repository).updateStore(store);
+    } else {
+      ConcurrentBatchPushException e = expectThrows(
+          ConcurrentBatchPushException.class,
+          () -> mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1));
+      assertTrue(
+          e.getMessage().contains("waiting on deferred version swap"),
+          "Blocking message should identify the deferred version swap wait: " + e.getMessage());
+      if (targetSwapRegion != null && !targetSwapRegion.isEmpty()) {
+        assertTrue(
+            e.getMessage().contains("target swap region(s): " + targetSwapRegion),
+            "Blocking message should include the target swap region: " + e.getMessage());
+      }
+      Assert.assertFalse(
+          e.getMessage().contains("is still in progress"),
+          "A deferred-swap wait must not be reported as an in-flight concurrent push: " + e.getMessage());
+      assertEquals(store.getVersion(1).getStatus(), PUSHED);
+      Assert.assertNotEquals(store.getCurrentVersion(), 1);
+      verify(repository, never()).updateStore(any());
+    }
+    verify(mockParentAdmin, never()).killOfflinePush(anyString(), anyString(), anyBoolean());
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryUsesClusterAdminCheckpoint() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+      ExecutionIdAccessor accessor = admin.getVeniceHelixAdmin().getExecutionIdAccessor();
+      doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        // Another store's command advances the cluster checkpoint, but not this store's checkpoint.
+        AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+        response.setExecutionId(11L);
+        doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      }
+    });
+  }
+
+  @DataProvider(name = "deferredSwapAdminConsumption")
+  public Object[][] deferredSwapAdminConsumption() {
+    return new Object[][] { { "pending", "is behind required ID" }, { "allocated", "is behind required ID" },
+        { "missing", "Missing generated admin execution ID" },
+        { "generated-error", "Could not read generated admin execution ID" },
+        { "error", "Cannot read child checkpoint" }, { "exception", "Could not verify child admin consumption" },
+        { "missing-response", "missing response" }, { "missing-child-id", "missing execution ID" } };
+  }
+
+  @Test(dataProvider = "deferredSwapAdminConsumption")
+  public void testDeferredVersionSwapRecoveryWaitsForChildAdminConsumption(String state, String expectedLog) {
+    Logger logger = (Logger) LogManager.getLogger(VeniceParentHelixAdmin.class);
+    InMemoryLogAppender appender = new InMemoryLogAppender.Builder().build();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+        VeniceHelixAdmin internal = admin.getVeniceHelixAdmin();
+        ExecutionIdAccessor accessor = internal.getExecutionIdAccessor();
+        ControllerClient client = internal.getControllerClientMap(clusterName).get("dc-0");
+        AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+        response.setExecutionId(9L);
+        if ("missing".equals(state)) {
+          doReturn(null).when(accessor).getLastGeneratedExecutionId(clusterName);
+        } else if ("generated-error".equals(state)) {
+          doThrow(new VeniceException("Cannot read generated ID")).when(accessor)
+              .getLastGeneratedExecutionId(clusterName);
+        } else if ("error".equals(state)) {
+          response.setError("Cannot read child checkpoint");
+        } else if ("exception".equals(state)) {
+          doThrow(new VeniceException("Cannot reach child")).when(client)
+              .getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+          return;
+        } else if ("missing-response".equals(state)) {
+          response = null;
+        } else if ("missing-child-id".equals(state)) {
+          response.setExecutionId(-1L);
+        } else if ("allocated".equals(state)) {
+          doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+          response.setExecutionId(10L);
+        }
+        doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      });
+      assertTrue(
+          appender.getLogs().stream().anyMatch(message -> message.contains(expectedLog)),
+          appender.getLogs().toString());
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @DataProvider(name = "pendingDeferredSwapRollback")
+  public Object[][] pendingDeferredSwapRollback() {
+    return new Object[][] { { false, false }, { false, true }, { true, false }, { true, true } };
+  }
+
+  @Test(dataProvider = "pendingDeferredSwapRollback")
+  public void testDeferredVersionSwapRecoveryWithPendingRollback(boolean deferredRollback, boolean parentConsumed) {
+    AtomicReference<VeniceParentHelixAdmin> recoveryAdmin = new AtomicReference<>();
+    AtomicReference<String> recoveryStoreName = new AtomicReference<>();
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+      recoveryAdmin.set(admin);
+      recoveryStoreName.set(name);
+      VeniceHelixAdmin internal = admin.getVeniceHelixAdmin();
+      ExecutionIdAccessor accessor = internal.getExecutionIdAccessor();
+      doCallRealMethod().when(admin).rollbackToBackupVersion(clusterName, name, "dc-0");
+      doCallRealMethod().when(admin).rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+      doAnswer(invocation -> {
+        AdminOperation message = invocation.getArgument(2);
+        assertEquals(message.operationType, AdminMessageType.ROLLBACK_CURRENT_VERSION.getValue());
+        doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+        if (!parentConsumed) {
+          // Publication succeeded, but parent consumption times out with no recorded store exception.
+          throw new AdminMessageConsumptionTimeoutException("Parent has not consumed rollback 11", null);
+        }
+        doReturn(11L).when(internal).getLastSucceededExecutionId(clusterName, name);
+        return null;
+      }).when(admin).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(name), any());
+      Runnable rollback = () -> {
+        if (deferredRollback) {
+          admin.rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+        } else {
+          admin.rollbackToBackupVersion(clusterName, name, "dc-0");
+        }
+      };
+      if (parentConsumed) {
+        rollback.run();
+      } else {
+        expectThrows(AdminMessageConsumptionTimeoutException.class, rollback::run);
+        assertEquals(internal.getLastSucceededExecutionId(clusterName, name), Long.valueOf(10L));
+        Assert.assertNull(internal.getLastExceptionForStore(clusterName, name));
+      }
+      assertEquals(admin.getStore(clusterName, name).getVersion(1).getStatus(), PUSHED);
+    });
+    VeniceParentHelixAdmin admin = recoveryAdmin.get();
+    String name = recoveryStoreName.get();
+    String incomingPushId = Version.generateCompliancePushId("compliance_push");
+    for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+      AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+      response.setExecutionId(11L);
+      doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+    }
+    Map<String, Integer> currentVersions = new HashMap<>();
+    currentVersions.put("dc-0", 0);
+    currentVersions.put("dc-1", 1);
+    doReturn(currentVersions).when(admin)
+        .getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(name), anyLong());
+    expectThrows(
+        ConcurrentBatchPushException.class,
+        () -> admin.incrementVersionIdempotent(clusterName, name, incomingPushId, 1, 1));
+    assertEquals(admin.getStore(clusterName, name).getVersion(1).getStatus(), PUSHED);
+
+    // Recovery waits for every child to serve the version.
+    currentVersions.put("dc-0", 1);
+    assertEquals(admin.incrementVersionIdempotent(clusterName, name, incomingPushId, 1, 1).getNumber(), 2);
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoverySerializesRollbackWithSnapshot() throws Exception {
+    CountDownLatch rollbackAttempted = new CountDownLatch(1);
+    AtomicBoolean rollbackBlocked = new AtomicBoolean();
+    AtomicBoolean rollbackSent = new AtomicBoolean();
+    ReentrantLock adminLock = new ReentrantLock();
+    Thread recoveryThread = Thread.currentThread();
+    CompletableFuture<?>[] rollback = new CompletableFuture<?>[1];
+    try {
+      verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+        doAnswer(invocation -> {
+          if (Thread.currentThread() != recoveryThread) {
+            boolean acquired = adminLock.tryLock();
+            rollbackBlocked.set(!acquired);
+            rollbackAttempted.countDown();
+            if (acquired) {
+              return null;
+            }
+          }
+          adminLock.lock();
+          return null;
+        }).when(admin).acquireAdminMessageLock(clusterName, name);
+        doAnswer(invocation -> {
+          adminLock.unlock();
+          return null;
+        }).when(admin).releaseAdminMessageLock(clusterName, name);
+        doCallRealMethod().when(admin).rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+        doAnswer(invocation -> {
+          rollbackSent.set(true);
+          return null;
+        }).when(admin).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(name), any());
+        doAnswer(invocation -> {
+          rollback[0] = CompletableFuture
+              .runAsync(() -> admin.rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0"));
+          assertTrue(rollbackAttempted.await(10, TimeUnit.SECONDS));
+          assertTrue(rollbackBlocked.get(), "Rollback must not pass the admin lock between snapshot and finalization");
+          Assert.assertFalse(rollbackSent.get());
+          Map<String, Integer> currentVersions = new HashMap<>();
+          currentVersions.put("dc-0", 1);
+          currentVersions.put("dc-1", 1);
+          return currentVersions;
+        }).when(admin).getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(name), anyLong());
+      });
+    } finally {
+      if (rollback[0] != null) {
+        rollback[0].get(10, TimeUnit.SECONDS);
+      }
+    }
+    assertTrue(rollbackSent.get(), "Rollback must proceed after recovery releases the admin lock");
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryUsesOneDeadline() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+      AtomicLong clock = new AtomicLong();
+      doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+      doCallRealMethod().when(admin).getCurrentVersionsForDeferredSwapRecovery(anyString(), anyString(), anyLong());
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        doAnswer(invocation -> {
+          assertTrue(invocation.<Integer>getArgument(1) <= 5000);
+          // Exhaust the global budget inside the first blocking request, without sleeping.
+          clock.set(TimeUnit.SECONDS.toNanos(10));
+          AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+          response.setExecutionId(10);
+          return response;
+        }).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      }
+    });
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryShrinksRequestBudgetAcrossRegions() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+      AtomicLong clock = new AtomicLong();
+      doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+      doCallRealMethod().when(admin).getCurrentVersionsForDeferredSwapRecovery(anyString(), anyString(), anyLong());
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        doAnswer(invocation -> {
+          assertEquals(
+              invocation.<Integer>getArgument(1).intValue(),
+              (int) Math.min(5000, 10000 - TimeUnit.NANOSECONDS.toMillis(clock.get())));
+          clock.addAndGet(TimeUnit.SECONDS.toNanos(2));
+          AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+          response.setExecutionId(10);
+          return response;
+        }).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+        doAnswer(invocation -> {
+          assertEquals(
+              invocation.<Integer>getArgument(1).intValue(),
+              (int) Math.min(5000, 10000 - TimeUnit.NANOSECONDS.toMillis(clock.get())));
+          clock.addAndGet(TimeUnit.SECONDS.toNanos(2));
+          StoreResponse response = new StoreResponse();
+          StoreInfo child = new StoreInfo();
+          child.setCurrentVersion(1);
+          response.setStore(child);
+          return response;
+        }).when(client).getStoreWithTimeout(eq(name), anyInt());
+      }
+    });
+  }
+
+  @DataProvider
+  public Object[][] explicitDeferredSwapRecovery() {
+    return new Object[][] { { "complete", true }, { "allocated", false }, { "child-rollback-pending", false },
+        { "missing-checkpoint", false }, { "checkpoint-error", false }, { "missing-child-id", false },
+        { "missing-store", false }, { "store-error", false }, { "rolled-back", false }, { "deadline", false },
+        { "targeted", false }, { "newer-parent-version", false }, { "empty-regions", false }, { "not-deferred", false },
+        { "not-pushed", false }, { "filtered", true }, { "filtered-lagging", false },
+        { "filtered-rolled-back", false } };
+  }
+
+  @Test(dataProvider = "explicitDeferredSwapRecovery")
+  public void testRollForwardReconcilesAlreadyCurrentDeferredVersion(String state, boolean recover) {
+    VeniceParentHelixAdmin admin = spy(parentAdmin);
+    doNothing().when(admin).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin).releaseAdminMessageLock(clusterName, storeName);
+    doReturn(store).when(admin).getStore(clusterName, storeName);
+    Version version = new VersionImpl(storeName, 5, "synthetic-push");
+    version.setVersionSwapDeferred(true);
+    version.setStatus(PUSHED);
+    if ("targeted".equals(state)) {
+      version.setTargetSwapRegion("dc-0");
+    }
+    if ("not-deferred".equals(state)) {
+      version.setVersionSwapDeferred(false);
+    }
+    if ("not-pushed".equals(state)) {
+      version.setStatus(ONLINE);
+    }
+    if ("newer-parent-version".equals(state)) {
+      doReturn(6).when(store).getCurrentVersion();
+    }
+    doReturn(Collections.singletonList(version)).when(store).getVersions();
+    doReturn(version).when(store).getVersion(5);
+    ExecutionIdAccessor accessor = internalAdmin.getExecutionIdAccessor();
+    doReturn("allocated".equals(state) ? 11L : 10L).when(accessor).getLastGeneratedExecutionId(clusterName);
+    Map<String, ControllerClient> clients = new HashMap<>();
+    clients.put("dc-1", mock(ControllerClient.class));
+    clients.put("dc-0", mock(ControllerClient.class));
+    if ("empty-regions".equals(state)) {
+      clients.clear();
+    }
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(Collections.singletonMap("dc-0", String.valueOf(Store.NON_EXISTING_VERSION))).when(admin)
+        .getFutureVersionsForMultiColos(clusterName, storeName);
+    AtomicLong clock = new AtomicLong();
+    doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+    for (ControllerClient client: clients.values()) {
+      AdminTopicMetadataResponse checkpoint = new AdminTopicMetadataResponse();
+      checkpoint.setExecutionId("child-rollback-pending".equals(state) ? 9 : 10);
+      if ("filtered-lagging".equals(state) && client == clients.get("dc-1")) {
+        checkpoint.setExecutionId(9L);
+      }
+      if ("missing-child-id".equals(state)) {
+        checkpoint.setExecutionId(-1);
+      }
+      if ("checkpoint-error".equals(state)) {
+        checkpoint.setError("Cannot read checkpoint");
+      }
+      if ("missing-checkpoint".equals(state)) {
+        checkpoint = null;
+      }
+      doReturn(checkpoint).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      StoreResponse response = new StoreResponse();
+      StoreInfo child = new StoreInfo();
+      child.setCurrentVersion(
+          "rolled-back".equals(state) || ("filtered-rolled-back".equals(state) && client == clients.get("dc-1"))
+              ? 4
+              : 5);
+      if (!"missing-store".equals(state)) {
+        response.setStore(child);
+      }
+      if ("store-error".equals(state)) {
+        response.setError("Cannot read store");
+      }
+      doAnswer(invocation -> {
+        if ("deadline".equals(state)) {
+          clock.set(TimeUnit.SECONDS.toNanos(10));
+        }
+        return response;
+      }).when(client).getStoreWithTimeout(eq(storeName), anyInt());
+    }
+    String regionFilter = state.startsWith("filtered") ? "dc-0" : "";
+    if (recover) {
+      admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
+      verify(store).updateVersionStatus(5, ONLINE);
+      verify(store).setCurrentVersion(5);
+    } else {
+      expectThrows(VeniceException.class, () -> admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter));
+      verify(store, never()).updateVersionStatus(5, ONLINE);
+      verify(store, never()).setCurrentVersion(5);
+    }
+    verify(admin).releaseAdminMessageLock(clusterName, storeName);
+    verify(admin, never()).sendAdminMessageAndWaitForConsumed(anyString(), anyString(), any());
+    for (ControllerClient client: clients.values()) {
+      verify(client, never()).rollForwardToFutureVersion(anyString(), anyString(), anyInt());
+    }
+  }
+
+  private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
+    String storeName = VeniceSystemStoreUtils.getMetaStoreName("synthetic_store");
+    Store store = new ZKStore(
+        storeName,
+        "test_owner",
+        -1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    for (int v: existing) {
+      store.addVersion(new VersionImpl(storeName, v));
+    }
+    HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
+    doReturn(store).when(storeRepo).getStore(storeName);
+    doReturn(storeRepo).when(resources).getStoreMetadataRepository();
+    doReturn(retention).when(config).getSystemStoreVersionRetentionCount();
+    mockControllerClients(storeName, regionCurrents);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, inFlightVersion);
+    return store;
+  }
+
+  @Test
+  public void testCleanupKeepsInFlightVersionWhenRegionalCurrentsDiffer() {
+    // retention=2, distinct regional currents 6 and 7, and a new in-flight version 9
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 6, 7, 9 }, 6, 7);
+    Assert.assertTrue(store.containsVersion(6));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9), "In-flight version must survive cleanup");
+  }
+
+  @Test
+  public void testCleanupWithAlignedRegionalCurrentsKeepsInFlightVersion() {
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 3, 7, 9 }, 7, 7);
+    Assert.assertFalse(store.containsVersion(3));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9));
+  }
+
+  @Test
+  public void testCleanupStillDeletesEligibleHistoricalVersionsAroundInFlightVersion() {
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 1, 2, 6, 7, 9 }, 6, 7);
+    Assert.assertFalse(store.containsVersion(1));
+    Assert.assertFalse(store.containsVersion(2));
+    Assert.assertTrue(store.containsVersion(6));
+    Assert.assertTrue(store.containsVersion(7));
+    Assert.assertTrue(store.containsVersion(9));
+  }
+
+  @Test
+  public void testCleanupWithoutInFlightVersionStillDeletesOldest() {
+    Store store = runSystemStoreCleanup(2, Store.NON_EXISTING_VERSION, new int[] { 6, 7, 9 }, 6, 7);
+    Assert.assertFalse(store.containsVersion(9));
   }
 
   @Test
@@ -2142,7 +2717,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(testStore).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
     doReturn(5).when(config).getUserStoreVersionRetentionCount();
-    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, Store.NON_EXISTING_VERSION);
     verify(storeRepo).getStore(storeName);
     verify(storeRepo, never()).updateStore(any());
   }
@@ -2168,7 +2743,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(5).when(config).getUserStoreVersionRetentionCount();
     mockControllerClients(storeName);
 
-    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName, Store.NON_EXISTING_VERSION);
     verify(storeRepo).getStore(storeName);
     ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
     verify(storeRepo).updateStore(storeCaptor.capture());
@@ -2320,15 +2895,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   private void mockControllerClients(String storeName) {
+    mockControllerClients(storeName, 4, 5, 6);
+  }
+
+  private void mockControllerClients(String storeName, int... regionCurrentVersions) {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
     Map<String, String> map = new HashMap<>();
     map.put(storeName, "1");
 
-    for (int i = 0; i < NUM_REGIONS; i++) {
+    for (int i = 0; i < regionCurrentVersions.length; i++) {
       ControllerClient client = mock(ControllerClient.class);
       StoreResponse storeResponse = new StoreResponse();
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
-      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
+      s.setCurrentVersion(regionCurrentVersions[i]);
       storeResponse.setStore(StoreInfo.fromStore(s));
       MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
       doReturn(map).when(storeStatusResponse).getStoreStatusMap();
@@ -2602,6 +3181,133 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Admin.OfflinePushStatusInfo offlineJobStatus =
         parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", notCreatedMap);
     assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testDeletedVersionExecutionStatus() {
+    // A client can keep polling job status for a version after it was deleted (e.g. a killed system push whose
+    // stranded version was removed). In that case Store#getVersion returns null and Store#getVersionStatus returns
+    // NOT_CREATED. The job status path must not dereference the null version, otherwise the controller returns HTTP
+    // 500 for every poll instead of a valid execution status. A deleted version is treated as KILLED, so a
+    // non-terminal aggregate status is reported as ERROR and the poller stops instead of waiting for its timeout.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+
+    Map<String, ControllerClient> errorMap = new HashMap<>();
+    errorMap.put("cluster", clientMap.get(ExecutionStatus.ERROR));
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+    errorMap.put("cluster3", clientMap.get(ExecutionStatus.ERROR));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    // Deleted version: getVersion is null and getVersionStatus falls back to NOT_CREATED (see AbstractStore), while the
+    // largest used version number shows that v1 was created before.
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+    doReturn(1).when(store).getLargestUsedVersionNumber();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    // No NullPointerException; the children aggregate to NOT_CREATED (non-terminal), and the deleted version turns it
+    // into a terminal ERROR instead of an HTTP 500.
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // A terminal aggregate status is returned as is, and the terminal handling does not dereference the deleted
+    // version either.
+    errorMap.put("cluster2", clientMap.get(ExecutionStatus.ERROR));
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", errorMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // Same for a target region push with deferred swap, which checks the parent version status separately.
+    doReturn(errorMap).when(internalAdmin).getControllerClientMap(anyString());
+    offlineJobStatus =
+        parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v1", Optional.empty(), null, "cluster", true);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testNotYetCreatedVersionExecutionStatus() {
+    // A client can also poll job status before the push has created the version in the parent, e.g. right after it
+    // started the push job. Store#getVersion returns null for it as well, but its number is larger than the largest
+    // used version number, so it is not a deleted version: the job status has to stay non-terminal so the client keeps
+    // polling, instead of failing the push with ERROR.
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+
+    Map<String, ControllerClient> notCreatedMap = new HashMap<>();
+    notCreatedMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
+    notCreatedMap.put("cluster2", clientMap.get(ExecutionStatus.NOT_CREATED));
+
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isIncrementalPushEnabled();
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    // v1 is the largest used version number, and v2 has not been created yet.
+    doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.NOT_CREATED).when(store).getVersionStatus(anyInt());
+    doReturn(1).when(store).getLargestUsedVersionNumber();
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus =
+        parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v2", notCreatedMap);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+
+    // Same for a target region push with deferred swap.
+    doReturn(notCreatedMap).when(internalAdmin).getControllerClientMap(anyString());
+    offlineJobStatus =
+        parentAdmin.getOffLinePushStatus("IGNORED", "topic1_v2", Optional.empty(), null, "cluster", true);
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+  }
+
+  @Test
+  public void testTargetRegionDeferredSwapFailureHandledInSamePoll() {
+    // In a target region push with deferred swap, the poll that sees the target region fail also moves the parent
+    // version from STARTED to ERROR. The terminal handling in that same poll has to see ERROR, so the version status
+    // must be read after that update, not before it.
+    String storeName = Utils.getUniqueString("testTargetRegionDeferredSwapFailure");
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    Version version = new VersionImpl(storeName, 1, "test_push_job_id");
+    version.setStatus(STARTED);
+    version.setVersionSwapDeferred(true);
+    version.setTargetSwapRegion("cluster-err");
+    version.setPushType(Version.PushType.STREAM_REPROCESSING);
+    store.addVersion(version);
+    doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+
+    HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
+    doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
+    doReturn(resources).when(internalAdmin).getHelixVeniceClusterResources(anyString());
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(resources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(anyString());
+
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    controllerClients.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
+    controllerClients.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
+    doReturn(controllerClients).when(internalAdmin).getControllerClientMap(anyString());
+
+    Admin.OfflinePushStatusInfo offlineJobStatus = parentAdmin.getOffLinePushStatus(
+        clusterName,
+        Version.composeKafkaTopic(storeName, 1),
+        Optional.empty(),
+        null,
+        "cluster-err",
+        true);
+
+    assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    assertEquals(store.getVersionStatus(1), VersionStatus.ERROR);
+    verify(internalAdmin).truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, 1));
   }
 
   @Test
@@ -3161,6 +3867,99 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testGetClusterProvisionedVeniceUnitsUsesLocalStoreMetadata() {
+    Store userStore = TestUtils.createTestStore("user_store", "owner", 0);
+    userStore.setVeniceUnits(20);
+    Store systemStore = TestUtils.createTestStore(Store.SYSTEM_STORE_NAME_PREFIX + "metadata", "owner", 0);
+    systemStore.setVeniceUnits(100);
+    doReturn(Arrays.asList(userStore, systemStore)).when(internalAdmin).getAllStores(clusterName);
+    doCallRealMethod().when(internalAdmin).getClusterProvisionedVeniceUnits(clusterName);
+
+    assertEquals(parentAdmin.getClusterProvisionedVeniceUnits(clusterName), 20L);
+    verify(internalAdmin).getClusterProvisionedVeniceUnits(clusterName);
+    doThrow(new VeniceException("Not the leader")).when(internalAdmin).getAllStores(clusterName);
+    assertThrows(VeniceException.class, () -> parentAdmin.getClusterProvisionedVeniceUnits(clusterName));
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountAcrossChildFabrics() {
+    ControllerClient firstClient = mock(ControllerClient.class);
+    ControllerClient secondClient = mock(ControllerClient.class);
+    Map<String, ControllerClient> clients = new LinkedHashMap<>();
+    clients.put("dc-0", firstClient);
+    clients.put("dc-1", secondClient);
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    LiveStorageNodeCountResponse firstResponse = new LiveStorageNodeCountResponse();
+    firstResponse.setLiveStorageNodeCountPerFabric(Collections.singletonMap("dc-0", 3));
+    LiveStorageNodeCountResponse secondResponse = new LiveStorageNodeCountResponse();
+    secondResponse.setLiveStorageNodeCountPerFabric(Collections.singletonMap("dc-1", 0));
+    doReturn(firstResponse).when(firstClient).getLiveStorageNodeCount();
+    doReturn(secondResponse).when(secondClient).getLiveStorageNodeCount();
+
+    Map<String, Integer> expected = new HashMap<>();
+    expected.put("dc-0", 3);
+    expected.put("dc-1", 0);
+    assertEquals(parentAdmin.getLiveStorageNodeCount(clusterName), expected);
+    verify(firstClient).getLiveStorageNodeCount();
+    verify(secondClient).getLiveStorageNodeCount();
+
+    secondResponse.setError("Child unavailable");
+    VeniceException error = expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(error.getMessage().contains("dc-1"));
+    assertTrue(error.getMessage().contains("Child unavailable"));
+  }
+
+  @DataProvider
+  public Object[][] invalidLiveStorageNodeCounts() {
+    Map<String, Integer> extraFabric = new HashMap<>();
+    extraFabric.put("dc-0", 1);
+    extraFabric.put("dc-1", 2);
+    return new Object[][] { { null }, { Collections.emptyMap() }, { Collections.singletonMap("wrong-fabric", 1) },
+        { Collections.singletonMap("dc-0", null) }, { Collections.singletonMap("dc-0", -1) }, { extraFabric } };
+  }
+
+  @Test(dataProvider = "invalidLiveStorageNodeCounts")
+  public void testGetLiveStorageNodeCountRejectsInvalidChildCounts(Map<String, Integer> counts) {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    LiveStorageNodeCountResponse response = new LiveStorageNodeCountResponse();
+    response.setLiveStorageNodeCountPerFabric(counts);
+    doReturn(response).when(client).getLiveStorageNodeCount();
+
+    VeniceException error = expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(error.getMessage().contains("dc-0"));
+    assertTrue(error.getMessage().contains("invalid fabric counts"));
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountRejectsChildRequestFailures() {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(null).when(client).getLiveStorageNodeCount();
+    VeniceException nullResponseError =
+        expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(nullResponseError.getMessage().contains("dc-0"));
+    assertTrue(nullResponseError.getMessage().contains("null response"));
+
+    VeniceException cause = new VeniceException("Request failed");
+    doThrow(cause).when(client).getLiveStorageNodeCount();
+    VeniceException requestError =
+        expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(requestError.getMessage().contains("dc-0"));
+    assertSame(requestError.getCause(), cause);
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountRequiresParentLeadership() {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    doThrow(new VeniceException("Not the leader")).when(internalAdmin).checkControllerLeadershipFor(clusterName);
+
+    assertThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    verify(client, never()).getLiveStorageNodeCount();
+  }
+
+  @Test
   public void testGetStorageModePerRegion() {
     String storeName = "test_store_per_region_storage_mode";
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
@@ -3336,14 +4135,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void checkNewPushCapacityFromChildrenBlocksWhenChildRolledBackWithinRetention() {
     String store = "npc_from_children_rollback_block";
+    long promotionTimestamp = 1_000_000;
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
     doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+    mockParentAdmin.setTimer(new TestMockTime(promotionTimestamp));
 
     // Child dc-0 still holds a ROLLED_BACK version within retention -> the parent must block the push.
     Map<String, ControllerClient> map = new HashMap<>();
-    map.put("dc-0", childClient(rolledBackOriginStore(store)));
+    map.put("dc-0", childClient(rolledBackOriginStore(store, promotionTimestamp)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
@@ -3352,17 +4153,50 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void checkNewPushCapacityFromChildrenBlocksWhenChildHasPendingBackupWithinDelay() {
     String store = "npc_from_children_backup_block";
+    long currentTimestamp = 1_000_000;
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
     mockNewPushCapacityConfig(mockParentAdmin, TimeUnit.HOURS.toMillis(24), 2, TimeUnit.HOURS.toMillis(1));
     doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+    TestMockTime mockTime = new TestMockTime(currentTimestamp);
+    mockParentAdmin.setTimer(mockTime);
 
     // Child dc-0 has a KILLED backup pending deletion, promoted just now -> parent must block.
     Map<String, ControllerClient> map = new HashMap<>();
-    map.put("dc-0", childClient(backupPendingStore(store)));
+    map.put("dc-0", childClient(backupPendingStore(store, currentTimestamp)));
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
 
     assertThrows(VeniceException.class, () -> mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store));
+    assertEquals(mockTime.getMilliseconds(), currentTimestamp);
+  }
+
+  @Test
+  public void checkNewPushCapacityFromChildrenSamplesTimeAfterFetchingChildSnapshot() {
+    // Fetching the child snapshot costs a cross-region RPC, so a clock read taken before that call
+    // is already stale by the round-trip duration when compared against the child's promotion
+    // timestamp. Simulate a 50ms RPC across a 20ms retention window: the window has expired by the
+    // time the snapshot is in hand, so the rolled-back version must no longer block the push.
+    String store = "npc_from_children_time_sampled_after_fetch";
+    long promotionTimestamp = 1_000_000;
+    long rpcDurationMs = 50;
+    long rolledBackRetentionMs = 20;
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
+    mockNewPushCapacityConfig(mockParentAdmin, rolledBackRetentionMs, 2, TimeUnit.HOURS.toMillis(1));
+    doCallRealMethod().when(mockParentAdmin).checkNewPushCapacityFromChildren(any(), any());
+    TestMockTime mockTime = new TestMockTime(promotionTimestamp);
+    mockParentAdmin.setTimer(mockTime);
+
+    ControllerClient slowClient = mock(ControllerClient.class);
+    StoreResponse response = new StoreResponse();
+    response.setStore(StoreInfo.fromStore(rolledBackOriginStore(store, promotionTimestamp)));
+    doAnswer(invocation -> {
+      mockTime.addMilliseconds(rpcDurationMs);
+      return response;
+    }).when(slowClient).getStore(anyString(), anyInt());
+    doReturn(Collections.singletonMap("dc-0", slowClient)).when(internalAdmin).getControllerClientMap(anyString());
+
+    mockParentAdmin.checkNewPushCapacityFromChildren(clusterName, store);
   }
 
   @Test
@@ -3474,17 +4308,19 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(clusterConfig).when(multiConfig).getControllerConfig(anyString());
     doReturn(minVersions).when(multiConfig).getMinNumberOfStoreVersionsToPreserve();
     doReturn(multiConfig).when(admin).getMultiClusterConfigs();
+    doCallRealMethod().when(admin).setTimer(any());
+    admin.setTimer(new TestMockTime(System.currentTimeMillis()));
   }
 
-  private static Store backupPendingStore(String storeName) {
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+  private static Store backupPendingStore(String storeName, long promotionTimestamp) {
+    Store store = TestUtils.createTestStore(storeName, "owner", promotionTimestamp);
     store.addVersion(new VersionImpl(storeName, 1, "push1"));
     store.addVersion(new VersionImpl(storeName, 2, "push2"));
     // v1 KILLED is always pending deletion (canDelete); v2 was just promoted -> within cleanup delay.
     store.updateVersionStatus(1, VersionStatus.KILLED);
     store.updateVersionStatus(2, VersionStatus.ONLINE);
     store.setCurrentVersion(2);
-    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    store.setLatestVersionPromoteToCurrentTimestamp(promotionTimestamp);
     return store;
   }
 
@@ -3506,14 +4342,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     return client;
   }
 
-  private static Store rolledBackOriginStore(String storeName) {
-    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+  private static Store rolledBackOriginStore(String storeName, long promotionTimestamp) {
+    Store store = TestUtils.createTestStore(storeName, "owner", promotionTimestamp);
     store.addVersion(new VersionImpl(storeName, 1, "push1"));
     store.addVersion(new VersionImpl(storeName, 2, "push2"));
     store.updateVersionStatus(1, VersionStatus.ONLINE);
     store.updateVersionStatus(2, VersionStatus.ROLLED_BACK);
     store.setCurrentVersion(1);
-    store.setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
+    store.setLatestVersionPromoteToCurrentTimestamp(promotionTimestamp);
     return store;
   }
 
@@ -3556,30 +4392,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testGetKafkaTopicsByAge() {
-    String storeName = Utils.getUniqueString("test-store");
-    List<PubSubTopic> versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
-    Assert.assertTrue(versionTopics.isEmpty());
-
-    Set<PubSubTopic> topicList = new HashSet<>();
-    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v1"));
-    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v2"));
-    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v3"));
-    doReturn(topicList).when(topicManager).listTopics();
-    versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
-    Assert.assertFalse(versionTopics.isEmpty());
-    PubSubTopic latestTopic = versionTopics.get(0);
-    assertEquals(latestTopic, pubSubTopicRepository.getTopic(storeName + "_v3"));
-    Assert.assertTrue(topicList.containsAll(versionTopics));
-    Assert.assertTrue(versionTopics.containsAll(topicList));
-  }
-
-  @Test
   public void testGetTopicForCurrentPushJob() {
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
     ControllerClient client = mock(ControllerClient.class);
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", client);
@@ -3590,8 +4406,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
     doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    doCallRealMethod().when(mockParentAdmin)
-        .getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
 
     Store store = new ZKStore(
         storeName,
@@ -3614,8 +4428,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
 
     // Latest version ONLINE: the push already completed, so the parent allows the next push through
-    // (returns empty) WITHOUT polling offline push status. This is the fix that unblocks a stuck
-    // deferred-swap ONLINE version whose push-status resource no longer exists.
+    // (returns empty) WITHOUT polling offline push status. Any pending deferred-swap roll-forward is
+    // orchestrated by DeferredVersionSwapService and a subsequent push simply supersedes it.
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
     verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
 
@@ -3668,19 +4482,37 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     partiallyOnlineStore.addVersion(partiallyOnlineVersion);
     doReturn(partiallyOnlineStore).when(mockParentAdmin).getStore(clusterName, storeName);
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
+
+    // Latest version in NOT_CREATED status (e.g. the rolling-deployment fallback for an unrecognized
+    // status id, see VersionStatus#getVersionStatusFromInt): documented to be inert and non-blocking,
+    // so the parent returns empty and lets a new push proceed.
+    Store notCreatedStore = new ZKStore(
+        storeName,
+        "test_owner",
+        1,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
+        1);
+    VersionImpl notCreatedVersion = new VersionImpl(storeName, 1, "test_push_id");
+    notCreatedVersion.setStatus(VersionStatus.NOT_CREATED);
+    notCreatedStore.addVersion(notCreatedVersion);
+    doReturn(notCreatedStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
   @Test
   public void testGetTopicForCurrentPushJobBlocksInProgressVersion() {
-    // Regression coverage for the in-progress/polling branch of
-    // getTopicForCurrentPushJobParentVersionStatusBasedTracking. Terminal statuses early-exit (see
-    // testGetTopicForCurrentPushJob); a non-terminal latest version must instead block the next push -
-    // either immediately (STARTED/PUSHED/CREATED) or by polling getOffLinePushStatus until the offline
-    // job status is terminal. This guards the stuck-push prevention behavior.
+    // Regression coverage for the in-progress branch of getTopicForCurrentPushJob. Terminal statuses
+    // early-exit (see testGetTopicForCurrentPushJob); a non-terminal latest version must instead block
+    // the next push immediately and return the in-flight topic, without polling getOffLinePushStatus.
+    // STARTED is not polled because a terminal job-status poll only reflects ingestion completion, not
+    // deferred version-swap completion, so polling could let a concurrent push slip in during the
+    // STARTED -> PUSHED transition. This guards the stuck-push prevention behavior.
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(internalAdmin).when(mockParentAdmin).getVeniceHelixAdmin();
-    doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
     ControllerClient client = mock(ControllerClient.class);
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", client);
@@ -3691,38 +4523,45 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
     doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    doCallRealMethod().when(mockParentAdmin)
-        .getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
-    doCallRealMethod().when(mockParentAdmin).setTimer(any());
-    mockParentAdmin.setTimer(new TestMockTime());
 
     String latestTopic = storeName + "_v1";
 
-    // STARTED: push still running -> blocked immediately, without polling offline push status.
+    // CREATED and PUSHED always block the next push immediately and return the in-flight topic, without
+    // polling offline push status.
+    for (VersionStatus status: Arrays.asList(VersionStatus.CREATED, VersionStatus.PUSHED)) {
+      doReturn(inProgressStore(storeName, status)).when(mockParentAdmin).getStore(clusterName, storeName);
+      Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+      Assert.assertTrue(currentPush.isPresent(), "Expected status " + status + " to block the next push");
+      assertEquals(currentPush.get(), latestTopic);
+    }
+
     doReturn(inProgressStore(storeName, VersionStatus.STARTED)).when(mockParentAdmin).getStore(clusterName, storeName);
     Optional<String> currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
+    Assert.assertTrue(currentPush.isPresent(), "Expected non-current STARTED version to block the next push");
+    assertEquals(currentPush.get(), latestTopic);
+
+    Store currentStartedStore = inProgressStore(storeName, VersionStatus.STARTED);
+    currentStartedStore.setCurrentVersion(1);
+    doReturn(currentStartedStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertFalse(
+        currentPush.isPresent(),
+        "A non-deferred STARTED version that is already current should not block the next push");
+
+    Store deferredCurrentStartedStore = inProgressStore(storeName, VersionStatus.STARTED);
+    deferredCurrentStartedStore.setCurrentVersion(1);
+    deferredCurrentStartedStore.deleteVersion(1);
+    VersionImpl deferredVersion = new VersionImpl(storeName, 1, "test_push_id");
+    deferredVersion.setStatus(VersionStatus.STARTED);
+    deferredVersion.setVersionSwapDeferred(true);
+    deferredCurrentStartedStore.addVersion(deferredVersion);
+    doReturn(deferredCurrentStartedStore).when(mockParentAdmin).getStore(clusterName, storeName);
+    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    Assert.assertTrue(
+        currentPush.isPresent(),
+        "A deferred-swap STARTED version should block even if it is already current");
     assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, never()).getOffLinePushStatus(eq(clusterName), anyString());
-
-    // Non-terminal latest version reaches the polling branch. PROGRESS offline status is non-terminal,
-    // so the parent blocks the next push and returns the in-flight topic.
-    doReturn(inProgressStore(storeName, VersionStatus.NOT_CREATED)).when(mockParentAdmin)
-        .getStore(clusterName, storeName);
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    Assert.assertTrue(currentPush.isPresent());
-    assertEquals(currentPush.get(), latestTopic);
-    verify(mockParentAdmin, atLeast(1)).getOffLinePushStatus(clusterName, latestTopic);
-
-    // UNKNOWN in a region triggers retries; once the overall status is terminal (COMPLETED) the parent
-    // stops blocking and allows the next push (returns empty).
-    Map<String, String> extraInfo = new HashMap<>();
-    extraInfo.put("dc-0", ExecutionStatus.UNKNOWN.toString());
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
-        .getOffLinePushStatus(clusterName, latestTopic);
-    Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
   }
 
   private Store inProgressStore(String storeName, VersionStatus status) {
@@ -3741,79 +4580,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     return store;
   }
 
-  @Test
-  public void testTruncateTopicsBasedOnMaxErroredTopicNumToKeep() {
-    String storeName = Utils.getUniqueString("test-store");
-    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    List<String> topics = new ArrayList<>();
-    topics.add(storeName + "_v1");
-    topics.add(storeName + "_v10");
-    topics.add(storeName + "_v8");
-    topics.add(storeName + "_v5");
-    topics.add(storeName + "_v7");
-    doReturn(topics).when(mockParentAdmin).existingVersionTopicsForStore(storeName);
-    // isTopicTruncated will return false for other topics
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName + "_v8");
-    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
-    doCallRealMethod().when(mockParentAdmin).setMaxErroredTopicNumToKeep(anyInt());
-    mockParentAdmin.setMaxErroredTopicNumToKeep(2);
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics, false, null);
-    /**
-     * Since the max error version topics we would like to keep is 2 and the non-truncated version
-     * topics include v1, v5, v7 and v10 (v8 is truncated already), we will truncate v1, v5 and keep
-     * 2 error non-truncated version topics v7 and v10.
-     */
-    verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v1");
-    verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v5");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v7");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v8");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v10");
-
-    // Test with more truncated topics
-    String storeName1 = Utils.getUniqueString("test-store");
-    List<String> topics1 = new ArrayList<>();
-    topics1.add(storeName1 + "_v1");
-    topics1.add(storeName1 + "_v10");
-    topics1.add(storeName1 + "_v8");
-    topics1.add(storeName1 + "_v5");
-    topics1.add(storeName1 + "_v7");
-    doReturn(topics1).when(mockParentAdmin).existingVersionTopicsForStore(storeName1);
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v10");
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v7");
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v8");
-    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics1, false, null);
-    /**
-     * Since the max error version topics we would like to keep is 2 and we only have 2 non-truncated version
-     * topics v1 and v5 (v7, v8 and v10 are truncated already), we will not truncate anything.
-     */
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v1");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v5");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v7");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v8");
-    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v10");
-  }
-
-  @Test
-  public void testAdminCanCleanupLeakingTopics() {
-    String storeName = "test_store";
-
-    List<PubSubTopic> pubSubTopics = Arrays.asList(
-        pubSubTopicRepository.getTopic(storeName + "_v1"),
-        pubSubTopicRepository.getTopic(storeName + "_v2"),
-        pubSubTopicRepository.getTopic(storeName + "_v3"));
-    List<String> topics = Arrays.asList(storeName + "_v1", storeName + "_v2", storeName + "_v3");
-    doReturn(new HashSet(pubSubTopics)).when(topicManager).listTopics();
-
-    parentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics, false, null);
-    verify(internalAdmin).truncateKafkaTopic(storeName + "_v1");
-    verify(internalAdmin).truncateKafkaTopic(storeName + "_v2");
-    verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAdminCanKillLingeringVersion(boolean isIncrementalPush) {
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       long startTime = System.currentTimeMillis();
@@ -3824,6 +4591,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       String existingTopicName = storeName + "_v1";
       Store store = mock(Store.class);
       Version version = new VersionImpl(storeName, 1, "test-push");
+      version.setStatus(VersionStatus.STARTED);
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.STARTED);
       String newPushJobId = "new-test-push";
       Version newVersion = new VersionImpl(storeName, 2, newPushJobId);
@@ -3831,6 +4599,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
       doReturn(-1).when(store).getRmdVersion();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+      doReturn(1).when(store).getLargestUsedVersionNumber();
       doReturn(version).when(store).getVersion(1);
       doReturn(new StoreVersionInfo(store, version)).when(internalAdmin)
           .waitVersion(eq(clusterName), eq(storeName), eq(version.getNumber()), any());
@@ -4233,8 +5002,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
-    doReturn(true).when(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
 
     Map<String, Integer> after = Collections.singletonMap("r1", 5);
     doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
@@ -4249,7 +5016,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
-    verify(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
+    verify(store).updateVersionStatus(5, VersionStatus.ONLINE);
+    verify(store).setCurrentVersion(5);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in the following regions.*")
@@ -4265,9 +5033,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
-    doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       ControllerResponse response = new ControllerResponse();
@@ -4290,8 +5055,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     doNothing().when(adminSpy)
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
-    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
-    doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
 
     // r1 rolled forward to version 5, but r2 is still on version 4
     Map<String, Integer> currentVersions = new HashMap<>();

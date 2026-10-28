@@ -19,6 +19,7 @@ import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -41,6 +42,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -158,6 +160,8 @@ public class ServiceFactory {
     return getService("MockAdminSparkServer", (serviceName) -> {
       Set<String> clusters = new HashSet<>();
       clusters.add(cluster);
+      // The mock listener has no controller owner; its health follows its own lifecycle.
+      AtomicBoolean apiReady = new AtomicBoolean(false);
       AdminSparkServer server = new AdminSparkServer(
           TestUtils.getFreePort(),
           admin,
@@ -171,7 +175,21 @@ public class ServiceFactory {
           null,
           false,
           new PubSubTopicRepository(),
-          requestHandler);
+          requestHandler,
+          AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer(),
+          apiReady::get) {
+        @Override
+        public synchronized void start() {
+          super.start();
+          apiReady.set(isRunning());
+        }
+
+        @Override
+        public synchronized void stop() throws Exception {
+          apiReady.set(false);
+          super.stop();
+        }
+      };
       server.start();
       return server;
     });

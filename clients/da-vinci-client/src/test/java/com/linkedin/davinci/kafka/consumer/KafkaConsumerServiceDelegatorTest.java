@@ -253,6 +253,8 @@ public class KafkaConsumerServiceDelegatorTest {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
+    doReturn(VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY).when(mockVeniceServerConfig)
+        .getWritePathThreadPriority();
 
     PubSubClientsFactory mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
     doReturn(factory).when(mockPubSubClientsFactory).getConsumerAdapterFactory();

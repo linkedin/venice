@@ -12,6 +12,7 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
@@ -54,6 +55,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.jobs.StageMetricsSnapshot;
@@ -281,6 +283,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, type.toString());
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, venice.getZk().getAddress());
+    samzaConfig.put(VENICE_CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, INVALID_PARENT_D2_ZK_HOST);
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
@@ -301,6 +304,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig
         .put(VENICE_CHILD_D2_ZK_HOSTS, clusterWrapper.getChildRegions().get(index).getZkServerWrapper().getAddress());
+    samzaConfig.put(VENICE_CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, INVALID_PARENT_D2_ZK_HOST);
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
@@ -318,6 +322,7 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig
         .put(VENICE_CHILD_D2_ZK_HOSTS, clusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
+    samzaConfig.put(VENICE_CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, clusterWrapper.getZkServerWrapper().getAddress());
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);

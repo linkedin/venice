@@ -1,10 +1,12 @@
 package com.linkedin.venice.helix;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
@@ -12,13 +14,16 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -26,6 +31,36 @@ import org.testng.annotations.Test;
  * Test cases for StoreJsonSerializer.
  */
 public class TestStoreJsonSerializer {
+  @DataProvider(name = "writeQuotaEnabledValues")
+  public Object[][] writeQuotaEnabledValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "writeQuotaEnabledValues")
+  public void testWriteQuotaEnabledJsonRoundTrip(boolean enabled) throws IOException {
+    Store store = TestUtils.createTestStore("writeQuotaStore", "owner", 1L);
+    store.setWriteQuotaEnabled(enabled);
+    StoreJSONSerializer serializer = new StoreJSONSerializer();
+    byte[] bytes = serializer.serialize(store, "");
+    Assert.assertEquals(
+        ObjectMapperFactory.getInstance().readTree(bytes).get("writeQuotaEnabled").booleanValue(),
+        enabled);
+    Assert.assertEquals(serializer.deserialize(bytes, "").isWriteQuotaEnabled(), enabled);
+    StoreInfo info = StoreInfo.fromStore(store);
+    Assert.assertEquals(
+        ObjectMapperFactory.getInstance()
+            .readValue(ObjectMapperFactory.getInstance().writeValueAsBytes(info), StoreInfo.class)
+            .isWriteQuotaEnabled(),
+        enabled);
+  }
+
+  @Test
+  public void testWriteQuotaEnabledDefaultsFalseForOlderJson() throws IOException {
+    byte[] bytes = "{\"name\":\"legacyStore\"}".getBytes(StandardCharsets.UTF_8);
+    Assert.assertFalse(new StoreJSONSerializer().deserialize(bytes, "").isWriteQuotaEnabled());
+    Assert.assertFalse(ObjectMapperFactory.getInstance().readValue(bytes, StoreInfo.class).isWriteQuotaEnabled());
+  }
+
   @Test
   void testRealTimeTopicNameDefault() throws IOException {
     StoreJSONSerializer serializer = new StoreJSONSerializer();
@@ -112,6 +147,55 @@ public class TestStoreJsonSerializer {
             BufferReplayPolicy.REWIND_FROM_EOP));
     Assert.assertNotEquals(store, newStore);
     Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
+  }
+
+  /**
+   * Stores are persisted to ZK as JSON, which is a separate path from the Avro store-properties
+   * schema. These two configs are nullable, so this covers that a value survives the ZK round trip,
+   * that an unset or explicitly cleared config stays null rather than being resurrected as a
+   * default, and that znodes written before these fields existed still deserialize.
+   */
+  @Test
+  public void testSerializeAndDeserializeVeniceUnitsAndWorkloadType() throws IOException {
+    StoreJSONSerializer serializer = new StoreJSONSerializer();
+
+    Store store = TestUtils.createTestStore("s1", "owner", 1L);
+    store.setVeniceUnits(42);
+    store.setWorkloadType("LOW_LATENCY");
+
+    byte[] serialized = serializer.serialize(store, "");
+    // Assert on the persisted znode itself, so a field silently missing from the JSON is caught here
+    // rather than being masked by an in-memory cache on read.
+    JsonNode znode = ObjectMapperFactory.getInstance().readTree(serialized);
+    Assert.assertEquals(znode.get("veniceUnits").intValue(), 42, "veniceUnits must be written to the znode");
+    Assert.assertEquals(
+        znode.get("workloadType").textValue(),
+        "LOW_LATENCY",
+        "workloadType must be written to the znode");
+
+    Store roundTripped = serializer.deserialize(serialized, "");
+    Assert.assertEquals(roundTripped.getVeniceUnits(), Integer.valueOf(42));
+    Assert.assertEquals(roundTripped.getWorkloadType(), "LOW_LATENCY");
+    Assert.assertEquals(store, roundTripped);
+
+    // A store that never had either config set stays null through the round trip.
+    Store unset = TestUtils.createTestStore("s2", "owner", 1L);
+    Store unsetRoundTripped = serializer.deserialize(serializer.serialize(unset, ""), "");
+    Assert.assertNull(unsetRoundTripped.getVeniceUnits());
+    Assert.assertNull(unsetRoundTripped.getWorkloadType());
+
+    // Clearing a previously set config persists as null rather than reverting to the old value.
+    store.setVeniceUnits(null);
+    store.setWorkloadType(null);
+    Store clearedRoundTripped = serializer.deserialize(serializer.serialize(store, ""), "");
+    Assert.assertNull(clearedRoundTripped.getVeniceUnits(), "A cleared veniceUnits must persist as null");
+    Assert.assertNull(clearedRoundTripped.getWorkloadType(), "A cleared workloadType must persist as null");
+    Assert.assertEquals(store, clearedRoundTripped);
+
+    // Znodes written before these fields existed must still deserialize, with both configs unset.
+    Store legacy = serializer.deserialize("{\"name\":\"s1\"}".getBytes(), "");
+    Assert.assertNull(legacy.getVeniceUnits());
+    Assert.assertNull(legacy.getWorkloadType());
   }
 
   @Test

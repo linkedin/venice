@@ -94,10 +94,13 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TO_BE_STOPPED_INSTANCES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPSTREAM_POSITION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION_STORAGE_MODE_UPDATE_REASON;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VOLDEMORT_STORE_NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 
 import com.linkedin.venice.HttpMethod;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
@@ -110,6 +113,7 @@ import java.util.List;
 public enum ControllerRoute implements VeniceDimensionInterface {
   // Fallback route
   UNKNOWN_ROUTE("", HttpMethod.GET, Collections.emptyList()),
+  HEALTH("/health", HttpMethod.GET, Collections.emptyList()),
   // Request a topic that writer should produce to
   REQUEST_TOPIC("/request_topic", HttpMethod.POST, Arrays.asList(NAME, PUSH_TYPE, PUSH_JOB_ID), PUSH_IN_SORTED_ORDER),
   // Do an empty push into a new version for this store
@@ -144,7 +148,8 @@ public enum ControllerRoute implements VeniceDimensionInterface {
       BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
       FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, ETL_STRATEGY, ETL_ACTIVE_FABRICS, DISABLE_META_STORE,
       DISABLE_DAVINCI_PUSH_STATUS_STORE, PERSONA_NAME, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
-      STORE_MIGRATION, ENABLE_STORE_MIGRATION, LARGEST_USED_RT_VERSION_NUMBER
+      STORE_MIGRATION, ENABLE_STORE_MIGRATION, LARGEST_USED_RT_VERSION_NUMBER, VENICE_UNITS, WORKLOAD_TYPE,
+      WRITE_QUOTA_ENABLED
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION(
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER
@@ -168,7 +173,10 @@ public enum ControllerRoute implements VeniceDimensionInterface {
   CLEAN_EXECUTION_IDS("/clean_execution_ids", HttpMethod.GET, Collections.emptyList(), CLUSTER),
   LIST_CHILD_CLUSTERS("/list_child_clusters", HttpMethod.GET, Collections.emptyList()),
   LIST_NODES("/list_instances", HttpMethod.GET, Collections.emptyList()),
-  CLUSTER_HEALTH_STORES("/cluster_health_stores", HttpMethod.GET, Collections.emptyList()),
+  GET_LIVE_STORAGE_NODE_COUNT("/get_live_storage_node_count", HttpMethod.GET, Collections.singletonList(CLUSTER)),
+  GET_CLUSTER_PROVISIONED_VENICE_UNITS(
+      "/get_cluster_provisioned_venice_units", HttpMethod.GET, Collections.singletonList(CLUSTER)
+  ), CLUSTER_HEALTH_STORES("/cluster_health_stores", HttpMethod.GET, Collections.emptyList()),
   ClUSTER_HEALTH_INSTANCES(
       "/cluster_health_instances", HttpMethod.GET, Collections.emptyList(), ENABLE_DISABLED_REPLICAS
   ), LIST_REPLICAS("/list_replicas", HttpMethod.GET, Arrays.asList(NAME, VERSION)),

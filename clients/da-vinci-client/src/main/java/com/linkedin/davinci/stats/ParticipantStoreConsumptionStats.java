@@ -79,7 +79,7 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
     this.heartbeatMetric = MetricEntityStateBase.create(
         ParticipantStoreConsumptionOtelMetricEntity.HEARTBEAT_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensorIfAbsent,
+        (sensorName, stats) -> registerSensorIfAbsent(sensorName, stats),
         TehutiMetricName.HEARTBEAT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -88,7 +88,7 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
     this.failedInitializationMetric = MetricEntityStateBase.create(
         ParticipantStoreConsumptionOtelMetricEntity.FAILED_INITIALIZATION_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensorIfAbsent,
+        (sensorName, stats) -> registerSensorIfAbsent(sensorName, stats),
         TehutiMetricName.FAILED_INITIALIZATION,
         Collections.singletonList(new Count()),
         baseDimensionsMap,
@@ -117,7 +117,7 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
     return MetricEntityStateBase.create(
         metricEntity,
         otelRepository,
-        this::registerSensorIfAbsent,
+        (sensorName, stats) -> registerSensorIfAbsent(sensorName, stats),
         tehutiName,
         tehutiStats,
         storeDimensionsMap,
@@ -147,7 +147,7 @@ public class ParticipantStoreConsumptionStats extends AbstractVeniceStats {
         k -> MetricEntityStateOneEnum.create(
             ParticipantStoreConsumptionOtelMetricEntity.KILL_PUSH_JOB_COUNT.getMetricEntity(),
             otelRepository,
-            this::registerSensorIfAbsent,
+            (sensorName, stats) -> registerSensorIfAbsent(sensorName, stats),
             TehutiMetricName.KILLED_PUSH_JOBS,
             Collections.singletonList(new Count()),
             buildStoreDimensionsMap(k),

@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -121,12 +123,40 @@ public class D2ControllerClient extends ControllerClient {
         break;
       } catch (VeniceException e) {
         LOGGER.warn("Failed to discover leader controller with D2 client: " + d2Client, e);
+        if (Thread.currentThread().isInterrupted()) {
+          // The caller is cancelling this thread; trying the next D2 client would absorb the signal.
+          throw new VeniceException(
+              "Failed to discover leader controller with D2 client" + INTERRUPTED_MESSAGE_SUFFIX,
+              e);
+        }
       }
     }
     if (controllerResponse == null) {
       throw new VeniceException("Failed to discover leader controller with D2 client");
     }
+    return getLeaderUrl(controllerResponse);
+  }
 
+  @Override
+  protected String discoverLeaderController(ControllerTransport transport, long deadlineNs) throws Exception {
+    String requestPath =
+        D2_SCHEME + d2ServiceName + ControllerRoute.LEADER_CONTROLLER.getPath() + "?" + encodeQueryParams(newParams());
+    remainingRequestTimeMs(deadlineNs);
+    Future<RestResponse> response = d2Clients.get(0).restRequest(D2ClientUtils.createD2GetRequest(requestPath));
+    try {
+      RestResponse result = response.get(remainingRequestTimeMs(deadlineNs), TimeUnit.MILLISECONDS);
+      return getLeaderUrl(
+          ObjectMapperFactory.getInstance()
+              .readValue(result.getEntity().asString(StandardCharsets.UTF_8), LeaderControllerResponse.class));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw e;
+    } finally {
+      response.cancel(true);
+    }
+  }
+
+  private String getLeaderUrl(LeaderControllerResponse controllerResponse) {
     /**
      * Current controller D2 announcement is announcing url with http: prefix and the regular HTTP port number (1576);
      * if we change the D2 announcement, the existing Samza users which depend on D2 result would break; if we upgrade
@@ -223,6 +253,9 @@ public class D2ControllerClient extends ControllerClient {
         return discoverCluster(d2Client, d2ServiceName, storeName, 1);
       } catch (Exception e) {
         LOGGER.warn("Failed to discover cluster with D2 client: " + d2Client, e);
+        if (Thread.currentThread().isInterrupted()) {
+          throw new VeniceException("Failed to discover cluster with D2 client" + INTERRUPTED_MESSAGE_SUFFIX, e);
+        }
       }
     }
     throw new VeniceException("Failed to discover cluster with D2 client");

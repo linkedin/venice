@@ -60,7 +60,19 @@ public class ControllerTransport implements AutoCloseable {
 
   @Override
   public void close() {
-    Utils.closeQuietlyWithErrorLogged(this.httpClient);
+    /**
+     * Closing the async client waits for its I/O reactor to shut down and swallows the InterruptedException if the
+     * wait is interrupted (httpcore-nio AbstractMultiworkerIOReactor#shutdown), which clears the caller's interrupt
+     * flag. Restore it, so a request that stopped because its caller was interrupted still reports the interrupt.
+     */
+    boolean interrupted = Thread.currentThread().isInterrupted();
+    try {
+      Utils.closeQuietlyWithErrorLogged(this.httpClient);
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
   }
 
   public <T extends ControllerResponse> T request(
@@ -162,6 +174,13 @@ public class ControllerTransport implements AutoCloseable {
     } catch (ExecutionException | TimeoutException e) {
       throw e;
     } catch (InterruptedException e) {
+      /**
+       * Preserve the interrupt. Callers such as {@link ControllerClient#request} retry on
+       * {@link ExecutionException}, so swallowing the flag here makes an interrupted request
+       * indistinguishable from an unreachable controller and lets a retry loop consume the
+       * caller's cancellation signal instead of unwinding.
+       */
+      Thread.currentThread().interrupt();
       throw new ExecutionException(e);
     } catch (Exception e) {
       throw new VeniceException("Unable to submit controller request", e);

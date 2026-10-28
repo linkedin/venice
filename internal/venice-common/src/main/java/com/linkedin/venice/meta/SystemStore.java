@@ -517,6 +517,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public Integer getVeniceUnits() {
+    return zkSharedStore.getVeniceUnits();
+  }
+
+  @Override
+  public void setVeniceUnits(Integer veniceUnits) {
+    throwUnsupportedOperationException("setVeniceUnits");
+  }
+
+  @Override
+  public String getWorkloadType() {
+    return zkSharedStore.getWorkloadType();
+  }
+
+  @Override
+  public void setWorkloadType(String workloadType) {
+    throwUnsupportedOperationException("setWorkloadType");
+  }
+
+  @Override
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {
     return zkSharedStore.isSchemaAutoRegisterFromPushJobEnabled();
   }
@@ -675,6 +695,16 @@ public class SystemStore extends AbstractStore {
   @Override
   public boolean isStorageNodeReadQuotaEnabled() {
     return zkSharedStore.isStorageNodeReadQuotaEnabled();
+  }
+
+  @Override
+  public boolean isWriteQuotaEnabled() {
+    return zkSharedStore.isWriteQuotaEnabled();
+  }
+
+  @Override
+  public void setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    throwUnsupportedOperationException("setWriteQuotaEnabled");
   }
 
   @Override

@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -40,10 +41,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   private final Client r2Client;
   private final String statsPrefix;
+  private final boolean disableRouteMetrics;
   private final Class<T> specificValueClass;
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final Executor deserializationExecutor;
+  private final ExecutionContextProvider executionContextProvider;
   private final ScheduledExecutorService metadataRefreshExecutor;
   private final ClientRoutingStrategyType clientRoutingStrategyType;
   /**
@@ -75,6 +78,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
   private final String longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
+  private final boolean batchGetRetryRangeExplicit;
+  private final boolean computeRetryRangeExplicit;
   private final ClusterStats clusterStats;
   private final boolean isVsonStore;
   private final StoreMetadataFetchMode storeMetadataFetchMode;
@@ -136,6 +141,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.r2Client = builder.r2Client;
     this.storeName = builder.storeName;
     this.statsPrefix = (builder.statsPrefix == null ? "" : builder.statsPrefix);
+    this.disableRouteMetrics = builder.disableRouteMetrics;
     this.metricsRepository = builder.metricsRepository != null
         ? builder.metricsRepository
         : MetricsRepositoryUtils.createMultiThreadedMetricsRepository();
@@ -144,11 +150,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     for (RequestType requestType: RequestType.values()) {
       clientStatsMap.put(
           requestType,
-          FastClientStats.getClientStats(this.metricsRepository, this.statsPrefix, storeName, requestType));
+          FastClientStats.getClientStats(
+              this.metricsRepository,
+              this.statsPrefix,
+              storeName,
+              requestType,
+              builder.dualReadEnabled,
+              builder.storeLoadControllerEnabled));
     }
     this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
     this.specificValueClass = builder.specificValueClass;
     this.deserializationExecutor = builder.deserializationExecutor;
+    this.executionContextProvider = builder.executionContextProvider;
     this.metadataRefreshExecutor = builder.metadataRefreshExecutor;
     this.clientRoutingStrategyType = builder.clientRoutingStrategyType == null
         ? ClientRoutingStrategyType.LEAST_LOADED
@@ -235,6 +248,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
     this.longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
         builder.longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
+    this.batchGetRetryRangeExplicit = builder.batchGetRetryRangeExplicit;
+    this.computeRetryRangeExplicit = builder.computeRetryRangeExplicit;
     this.keySerializerFactory = Optional.ofNullable(builder.keySerializerFactory);
     this.valueDeserializerFactory = Optional.ofNullable(builder.valueDeserializerFactory);
   }
@@ -249,6 +264,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
+  }
+
+  public boolean isRouteMetricsDisabled() {
+    return disableRouteMetrics;
   }
 
   public FastClientStats getStats(RequestType requestType) {
@@ -273,6 +292,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public Executor getDeserializationExecutor() {
     return deserializationExecutor;
+  }
+
+  public ExecutionContextProvider getExecutionContextProvider() {
+    return executionContextProvider;
   }
 
   public ScheduledExecutorService getMetadataRefreshExecutor() {
@@ -421,6 +444,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
   }
 
+  public boolean isBatchGetRetryRangeExplicit() {
+    return batchGetRetryRangeExplicit;
+  }
+
+  public boolean isComputeRetryRangeExplicit() {
+    return computeRetryRangeExplicit;
+  }
+
   public Optional<SerializerFactory<K>> getKeySerializerFactory() {
     return keySerializerFactory;
   }
@@ -432,9 +463,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
+    private boolean disableRouteMetrics = true;
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
+    private ExecutionContextProvider executionContextProvider = ExecutionContextProvider.NO_OP;
     private ScheduledExecutorService metadataRefreshExecutor;
     private ClientRoutingStrategyType clientRoutingStrategyType;
     private Client r2Client;
@@ -458,6 +491,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
         LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_BATCH_GET_IN_MILLI_SECONDS;
 
+    private boolean batchGetRetryRangeExplicit;
+    private boolean computeRetryRangeExplicit;
     private boolean longTailRetryEnabledForCompute = false;
     private String longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
         LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_COMPUTE_IN_MILLI_SECONDS;
@@ -507,6 +542,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    /**
+     * Disable per-backend-host route metrics for both Tehuti (RRD) and OpenTelemetry.
+     * Defaults to true to avoid high metric cardinality. Store-level request metrics and
+     * aggregate instance-health metrics are unaffected.
+     */
+    public ClientConfigBuilder<K, V, T> setDisableRouteMetrics(boolean disableRouteMetrics) {
+      this.disableRouteMetrics = disableRouteMetrics;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> setSpecificValueClass(Class<T> specificValueClass) {
       this.specificValueClass = specificValueClass;
       return this;
@@ -514,6 +559,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setDeserializationExecutor(Executor deserializationExecutor) {
       this.deserializationExecutor = deserializationExecutor;
+      return this;
+    }
+
+    /**
+     * Propagate application context through retries, response processing, and callbacks run within those task scopes.
+     * Future continuations that execute on other threads require application-managed context propagation.
+     * By default the client does not capture or install application context.
+     */
+    public ClientConfigBuilder<K, V, T> setExecutionContextProvider(ExecutionContextProvider executionContextProvider) {
+      this.executionContextProvider = Objects.requireNonNull(executionContextProvider, "executionContextProvider");
       return this;
     }
 
@@ -702,6 +757,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds) {
       this.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
           longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
+      this.batchGetRetryRangeExplicit = true;
       return this;
     }
 
@@ -709,6 +765,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
         String longTailRangeBasedRetryThresholdForComputeInMilliSeconds) {
       this.longTailRangeBasedRetryThresholdForComputeInMilliSeconds =
           longTailRangeBasedRetryThresholdForComputeInMilliSeconds;
+      this.computeRetryRangeExplicit = true;
       return this;
     }
 
@@ -737,12 +794,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     public ClientConfigBuilder<K, V, T> clone() {
-      return new ClientConfigBuilder().setStoreName(storeName)
+      ClientConfigBuilder<K, V, T> copy = new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
           .setMetricsRepository(metricsRepository)
           .setStatsPrefix(statsPrefix)
+          .setDisableRouteMetrics(disableRouteMetrics)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
+          .setExecutionContextProvider(executionContextProvider)
           .setMetadataRefreshExecutor(metadataRefreshExecutor)
           .setClientRoutingStrategyType(clientRoutingStrategyType)
           .setDualReadEnabled(dualReadEnabled)
@@ -782,6 +841,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setStoreLoadControllerAcceptMultiplier(storeLoadControllerAcceptMultiplier)
           .setKeySerializerFactory(keySerializerFactory)
           .setValueDeserializerFactory(valueDeserializerFactory);
+      // The setters above copy values, but must not turn implicit defaults into explicit overrides.
+      copy.batchGetRetryRangeExplicit = batchGetRetryRangeExplicit;
+      copy.computeRetryRangeExplicit = computeRetryRangeExplicit;
+      return copy;
     }
 
     public ClientConfig<K, V, T> build() {

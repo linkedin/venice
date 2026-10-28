@@ -102,6 +102,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -334,10 +335,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * The consumer and drainer DIV must remain separate. Since the consumer is always ahead of the drainer, the consumer
    * would be validating data ahead of the actual persisted data on the drainer.
    *
-   * NOTE: Currently, the state clearing happens only in drainerDiv which persists its state to disk.
-   * consumerDiv is transient, not persisted to disk, and its state is not expected to grow as large. Thus,
-   * bouncing effectively clears it (which is not the case for drainerDiv). Later on, we could trigger state
-   * cleaning for this consumer DIV as well, if deemed necessary.
+   * NOTE: Currently, the state clearing happens in drainerDiv which persists its state to disk. consumerDiv is
+   * transient and not persisted to disk; its expired state is cleared at checkpoint time (after EOP) using the same
+   * {@value com.linkedin.venice.ConfigKeys#DIV_PRODUCER_STATE_MAX_AGE_MS} max-age rule as the drainer. Before that,
+   * only bouncing or leader promotion clears it.
    *
    * NOTE: When {@link #isGlobalRtDivEnabled()} is enabled, this will be used by leaders to produce Global RT DIV state
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
@@ -2301,6 +2302,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * generation is an expensive operation.
      */
     div.updateOffsetRecordForPartition(PartitionTracker.VERSION_TOPIC, pcs.getPartition(), pcs.getOffsetRecord());
+    /**
+     * consumerDiv is never persisted on this path, so nothing else expires its producers. Only clear after EOP: an
+     * unknown producer appearing mid-segment before EOP is a fatal UNREGISTERED_PRODUCER error.
+     */
+    if (pcs.isEndOfPushReceived()) {
+      consumerDiv.clearExpiredState(PartitionTracker.VERSION_TOPIC, partition, pcs.getLatestMessageTimeInMs());
+    }
     // update the offset metadata in the OffsetRecord.
     updateOffsetMetadataInOffsetRecord(pcs);
     syncOffset(pcs);
@@ -2416,6 +2424,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       getIsRunning().set(false);
     }
 
+    removeAllHeartbeatMonitoring();
     this.missingSOPCheckExecutor.shutdownNow();
 
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
@@ -2791,6 +2800,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         partitionConsumptionStateMap.remove(partition);
         if (consumerAction.isHelixTriggeredAction()) {
+          // Queued role transitions can register monitors after Helix starts teardown.
+          removeHeartbeatMonitoring(partition);
           LOGGER.info(
               "Removing tracking of replica: {} from storage utilization manager as this UNSUBSCRIBE is helix triggered action",
               topicPartition);
@@ -3560,6 +3571,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         : databaseSyncBytesIntervalForTransactionalMode;
   }
 
+  protected void removeAllHeartbeatMonitoring() {
+    // No Op
+  }
+
+  protected void removeHeartbeatMonitoring(int partition) {
+    // No Op
+  }
+
   protected void recordHeartbeatReceived(
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
@@ -4036,10 +4055,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "compression Dictionary should not be empty if CompressionStrategy is ZSTD_WITH_DICT");
       } else if (startOfPush == null) {
         // No SOP available; retrieve the dictionary directly from the VT
-        newStoreVersionState.compressionDictionary = DictionaryUtils.readDictionaryFromKafka(
-            kafkaVersionTopic,
-            new VeniceProperties(kafkaProps),
-            PubSubMessageDeserializer.createDefaultDeserializer());
+        VeniceProperties dictionaryConsumerProps = new VeniceProperties(kafkaProps);
+        Function<String, String> keyUrnLookup = pubSubContext.getPubSubEncryptionKeyUrnLookup();
+        newStoreVersionState.compressionDictionary = keyUrnLookup != null
+            ? DictionaryUtils.readDictionaryFromEncryptedKafka(kafkaVersionTopic, dictionaryConsumerProps, keyUrnLookup)
+            : DictionaryUtils.readDictionaryFromKafka(
+                kafkaVersionTopic,
+                dictionaryConsumerProps,
+                PubSubMessageDeserializer.createDefaultDeserializer());
       }
     }
     newStoreVersionState.batchConflictResolutionPolicy = startOfPush != null ? startOfPush.timestampPolicy : 1;
@@ -4146,12 +4169,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * </ol>
    *
    * <p>If either leg fails: increments {@code batch_push_record_count_mismatch} (informational —
-   * fires regardless of strict-mode state) and logs a tagged error string. On a non-DaVinci
-   * replica, if the server-level config
-   * {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled} is {@code true}
-   * (default), also increments {@code record_count_mismatch_failure} and throws
-   * {@link VeniceException} (failing ingestion). DaVinci replicas skip both the failure sensor
-   * and the throw </p>
+   * fires regardless of strict-mode state). On non-DaVinci replicas, the mismatch is nonfatal when
+   * local-topic compaction is enabled and the persisted SOP age meets its minimum compaction lag, or
+   * for a migration-clone replay (warn-and-continue; see {@link #isPreExistingMigrationCloneReplay(Store)}).
+   * Otherwise, the verifier logs a tagged error string and, on a non-DaVinci replica, if the
+   * server-level config {@code server.batch.push.record.count.verification.fail.on.mismatch.enabled}
+   * is {@code true} (default), also increments {@code record_count_mismatch_failure} and throws
+   * {@link VeniceException} (failing ingestion). DaVinci replicas skip the local-compaction check,
+   * the failure sensor, and the throw.</p>
    *
    * <p>Skip cases (no-op, no metric):</p>
    * <ul>
@@ -4215,11 +4240,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (!counterOk || !hllOk) {
-      String taggedMsg = "RECORD_COUNT_DEFICIT:counterOk=" + counterOk + ":hllOk=" + hllOk + ":expected="
-          + expectedCount + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold
-          + ":replica=" + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
-      LOGGER.error(taggedMsg);
       versionedIngestionStats.recordBatchPushRecordCountMismatch(storeName, versionNumber);
+      if (!isDaVinciClient && isLocalBatchCompacted()) {
+        LOGGER.info(
+            "Skipping batch record count and HLL verification for replica {}: local compaction enabled and SOP age meets minimum compaction lag",
+            pcs.getReplicaId());
+        return;
+      }
+      Store store = storeRepository.getStore(storeName);
+      boolean isMigrationReplay = isPreExistingMigrationCloneReplay(store);
+      boolean migrationDuplicateStore = store != null && store.isMigrationDuplicateStore();
+      long storeCreatedTime = store == null ? -1 : store.getCreatedTime();
+      Version storeVersion = store == null ? null : store.getVersion(versionNumber);
+      long versionCreatedTime = storeVersion == null ? -1 : storeVersion.getCreatedTime();
+      String verificationContext = isMigrationReplay ? "MIGRATION_REPLAY" : "FRESH_PUSH";
+      String taggedMsg = "RECORD_COUNT_DEFICIT:verificationContext=" + verificationContext + ":migrationDuplicateStore="
+          + migrationDuplicateStore + ":storeCreatedTimeMs=" + storeCreatedTime + ":versionCreatedTimeMs="
+          + versionCreatedTime + ":counterOk=" + counterOk + ":hllOk=" + hllOk + ":expected=" + expectedCount
+          + ":actual=" + actualCount + ":hll=" + hllEstimate + ":hllThreshold=" + hllThreshold + ":replica="
+          + pcs.getReplicaId() + ":topic=" + kafkaVersionTopic;
+      if (isMigrationReplay) {
+        LOGGER.warn(taggedMsg + ":reason=PRE_EXISTING_MIGRATION_CLONE");
+        return;
+      }
+      LOGGER.error(taggedMsg);
       // Server-side strict-mode is controlled by the cluster-wide config
       // `server.batch.push.record.count.verification.fail.on.mismatch.enabled` (default: true).
       // DaVinci replicas unconditionally skip the throw — DVC failure aggregation is handled
@@ -4238,6 +4282,58 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           actualCount,
           hllEstimate);
     }
+  }
+
+  /**
+   * Whether an end-of-push record-count deficit is the expected, nonfatal kind produced by a store
+   * migration replaying a pre-existing source version topic that log compaction may have shrunk
+   * below the original end-of-push count.
+   */
+  boolean isPreExistingMigrationCloneReplay(Store store) {
+    if (store == null || !store.isMigrationDuplicateStore()) {
+      return false;
+    }
+    Version storeVersion = store.getVersion(versionNumber);
+    if (storeVersion == null) {
+      return false;
+    }
+    long storeCreatedTime = store.getCreatedTime();
+    long versionCreatedTime = storeVersion.getCreatedTime();
+    return storeCreatedTime > 0 && versionCreatedTime > 0 && versionCreatedTime < storeCreatedTime;
+  }
+
+  /**
+   * Uses the local topic's current compaction policy and persisted producer SOP timestamp to determine
+   * whether batch records are old enough for compaction. This is an eligibility heuristic, not proof
+   * that the broker cleaner ran; current configuration cannot reconstruct earlier policy changes.
+   */
+  private boolean isLocalBatchCompacted() {
+    // Refresh at EOP: a cached false may predate regional push completion and compaction enablement.
+    // Do not hide metadata failures.
+    PubSubTopicConfiguration config =
+        topicManagerRepository.getLocalTopicManager().getTopicConfigWithRetry(versionTopic);
+    if (!config.isLogCompacted()) {
+      return false;
+    }
+    StoreVersionState state = storageEngine.getStoreVersionState();
+    long sopTimestamp = state == null ? 0 : state.startOfPushTimestamp;
+    if (sopTimestamp <= 0) {
+      LOGGER.warn(
+          "Cannot determine batch age for {}: invalid SOP timestamp {}. Retaining record count verification.",
+          kafkaVersionTopic,
+          sopTimestamp);
+      return false;
+    }
+    long batchAgeMs = LatencyUtils.getElapsedTimeFromMsToMs(sopTimestamp);
+    if (batchAgeMs < 0) {
+      LOGGER.warn(
+          "Cannot determine batch age for {}: SOP timestamp {} is in the future. Retaining record count verification.",
+          kafkaVersionTopic,
+          sopTimestamp);
+      return false;
+    }
+    Long minLag = config.minLogCompactionLagMs();
+    return minLag != null && batchAgeMs >= minLag;
   }
 
   protected void processStartOfIncrementalPush(
@@ -4374,7 +4470,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case TOPIC_SWITCH:
         TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
-        validateEndOfPushReceivedBeforeTopicSwitch(partitionConsumptionState, offset);
+        validateEndOfPushReceivedBeforeTopicSwitch(
+            partitionConsumptionState,
+            offset,
+            daVinciClientCustomLifecycleEnabled);
 
         LOGGER.info(
             "Received {} control message. Replica: {}, Offset: {} SourceTopic: {} SourceKafkaServers: {}",
@@ -4679,9 +4778,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (key.isControlMessage() && (Arrays.equals(KafkaKey.HEART_BEAT.getKey(), key.getKey())
         || Arrays.equals(KafkaKey.DOL_STAMP.getKey(), key.getKey()))) {
       return; // Skip validation for ingestion heartbeat and DoL stamp records.
-    } else if (isGlobalRtDivEnabled() && isRecordSelfProduced(consumerRecord)) {
-      // Skip validation for self-produced records. If there were any issues, the followers would've reported it already
+    } else if (isGlobalRtDivEnabled() && partitionConsumptionState.isEndOfPushReceived()
+        && isRecordSelfProduced(consumerRecord) && !validator.hasProducerState(type, consumerRecord)) {
+      // Skip validation for self-produced records that this validator has no state for, since it never tracks its own
+      // producer. If there were any issues, the followers would've reported it already.
       // e.g. Leader->Follower, resubscribe to local VT, consume messages produced by itself (when it was leader)
+      // Self-produced is based on hostname, so it also matches a previous process on the same host. If state exists for
+      // that producer (e.g. inherited via blob transfer), the record must be validated to advance it. Otherwise, the
+      // stale state is checkpointed and later reported as MISSING by replicas that bootstrap from this one.
+      // Before EOP, records come from a push job rather than produced by a leader server, so they need to be validated.
       return;
     }
     // Global RT DIV messages are not skipped. See validateAndFilterOutDuplicateMessagesFromLeaderTopic()
@@ -5756,9 +5861,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @return whether able to gracefully shut down within the waitTime
    */
   public boolean shutdownAndWait(int waitTime) {
+    close();
+    return waitForShutdown(waitTime);
+  }
+
+  /**
+   * Waits for {@link #run()} to finish its cleanup, if it has started.
+   */
+  public boolean waitForShutdown(int waitTime) {
     long startTimeInMs = System.currentTimeMillis();
     boolean timelyShutDown = true;
-    close();
     try {
       if (getGracefulShutdownLatch().isPresent() && !getGracefulShutdownLatch().get().await(waitTime, SECONDS)) {
         LOGGER.warn(
@@ -6570,12 +6682,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *
    * @param partitionConsumptionState The partition consumption state to validate
    * @param position The position/offset for error reporting
-   * @throws VeniceException if END_OF_PUSH has not been received
+   * @param daVinciClientCustomLifecycleEnabled When true, skip the check (seek-resumed consumers may subscribe past
+   *          END_OF_PUSH and never consume the EOP control message)
+   * @throws VeniceMessageException if END_OF_PUSH has not been received and daVinciClientCustomLifecycleEnabled is false
    */
   protected static void validateEndOfPushReceivedBeforeTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
-      PubSubPosition position) {
+      PubSubPosition position,
+      boolean daVinciClientCustomLifecycleEnabled) {
     Objects.requireNonNull(partitionConsumptionState, "PCS cannot be null");
+    // A seek-resumed custom-lifecycle consumer (e.g. a CDC client) can subscribe past END_OF_PUSH, so it never
+    // consumes the EOP control message. A later TOPIC_SWITCH (e.g. written by store migration) must not fail it,
+    // so skip this ordering check for that lifecycle, mirroring the other relaxed custom-lifecycle checks.
+    if (daVinciClientCustomLifecycleEnabled) {
+      return;
+    }
     if (!partitionConsumptionState.isEndOfPushReceived()) {
       String errorMessage = String.format(
           "%s received TOPIC_SWITCH control message before receiving END_OF_PUSH. Position: %s",

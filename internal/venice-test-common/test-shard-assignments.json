@@ -457,6 +457,12 @@
       "com.linkedin.venice.zk.TestMigrateVeniceZKPaths",
       "com.linkedin.venice.helix.StoragePersonaStoreDataListenerTest",
       "com.linkedin.venice.integration.utils.SystemExitPrevention"
+    ],
+    "90": [
+      "com.linkedin.venice.endToEnd.TestStoreMigrationWithCompactedVersionTopic"
+    ],
+    "91": [
+      "com.linkedin.venice.endToEnd.TestCompactedBatchPushRecordCount"
     ]
   }
 }
