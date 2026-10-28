@@ -611,15 +611,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     if (offsetCommitConsumer == null) {
       return;
     }
-    // Collects the last position per partition first, so the shared map is written once per partition, not per record.
-    Map<PubSubTopicPartition, PubSubPosition> batchPositions = new HashMap<>();
     for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
       // Heartbeats carry symbolic positions, which cannot be committed.
       if (!message.getPosition().getPosition().isSymbolic()) {
-        batchPositions.put(message.getTopicPartition(), message.getPosition().getPosition());
+        lastPolledPositions.put(message.getTopicPartition(), message.getPosition().getPosition());
       }
     }
-    lastPolledPositions.putAll(batchPositions);
   }
 
   /**
