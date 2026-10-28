@@ -43,7 +43,6 @@ import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -137,8 +136,7 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     TestableVeniceProducer producer = createProducer(workerCount, 10000);
 
     try {
-      assertNull(producer.capturedWriterOptions.getWriterHook(), "Legacy configuration must remain hook-free");
-      assertTrue(producer.legacyConfigureInvoked);
+      assertNull(producer.capturedWriterOptions.getWriterHook(), "An explicitly null hook must remain hook-free");
       List<CompletableFuture<DurableWrite>> futures = new ArrayList<>();
       for (int i = 0; i < recordCount; i++) {
         futures.add(producer.asyncPut(0, "value-" + i));
@@ -489,7 +487,6 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
 
     try (TestableVeniceProducer producer = createRealWriterProducer(adapter, workerCount, 0, writerHook)) {
       assertSame(producer.capturedWriterOptions.getWriterHook(), writerHook);
-      assertTrue(producer.legacyConfigureInvoked, "Hook-aware configuration must preserve legacy override dispatch");
 
       Consumer<UpdateBuilder> updateFunction = builder -> builder.setNewFieldValue("name", "new-value");
       List<CompletableFuture<DurableWrite>> writes = Arrays.asList(
@@ -702,7 +699,8 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
 
   private TestableVeniceProducer createProducer(int workerCount, int queueCapacity) {
     TestableVeniceProducer producer = new TestableVeniceProducer(mockVeniceWriter);
-    producer.configure(TEST_STORE, getProducerConfigs(workerCount, queueCapacity, 0), null, mockSchemaReader, null);
+    producer
+        .configure(TEST_STORE, getProducerConfigs(workerCount, queueCapacity, 0), null, mockSchemaReader, null, null);
     return producer;
   }
 
@@ -713,7 +711,6 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     private final VeniceWriter<byte[], byte[], byte[]> mockWriter;
     private final PubSubProducerAdapter adapter;
     private VeniceWriterOptions capturedWriterOptions;
-    private boolean legacyConfigureInvoked;
 
     TestableVeniceProducer(VeniceWriter<byte[], byte[], byte[]> mockWriter) {
       this.mockWriter = mockWriter;
@@ -723,17 +720,6 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
     TestableVeniceProducer(PubSubProducerAdapter adapter) {
       this.mockWriter = null;
       this.adapter = adapter;
-    }
-
-    @Override
-    protected void configure(
-        String storeName,
-        VeniceProperties producerConfigs,
-        MetricsRepository metricsRepository,
-        SchemaReader schemaReader,
-        SchemaReader kmeSchemaReader) {
-      legacyConfigureInvoked = true;
-      super.configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
     }
 
     @Override

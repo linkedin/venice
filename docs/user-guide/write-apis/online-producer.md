@@ -65,6 +65,10 @@ The four-argument factory method replaces the three-argument method. This is a s
 change: callers must add the hook argument, using `null` to retain hook-free behavior, and recompile against the updated
 producer library. Previously compiled callers of the three-argument method cannot use the updated library unchanged.
 
+Custom `AbstractVeniceProducer` subclasses must also add a `VeniceWriterHook` as the sixth argument to `configure`,
+updating both calls and overrides. Pass `null` for hook-free initialization and recompile; the five-argument protected
+method is no longer available.
+
 ## Optional Configs
 
 The online Venice producer can be configured by specifying the following optional configs:

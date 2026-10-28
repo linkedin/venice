@@ -105,16 +105,6 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       SchemaReader kmeSchemaReader,
       VeniceWriterHook writerHook) {
     this.writerHook = writerHook;
-    // Preserve dispatch through existing subclass configuration overrides.
-    configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
-  }
-
-  protected void configure(
-      String storeName,
-      VeniceProperties producerConfigs,
-      MetricsRepository metricsRepository,
-      SchemaReader schemaReader,
-      SchemaReader kmeSchemaReader) {
     this.configured = true;
     this.producerConfigs = producerConfigs;
     this.schemaReader = schemaReader;
