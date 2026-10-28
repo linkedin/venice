@@ -575,11 +575,11 @@ public class AbstractVeniceProducerAsyncBehaviorTest {
         assertFalse(durableWrite.isDone(), "Hook completion alone must not complete durability");
         CompletableFuture<Thread> completionThread = durableWrite.thenApply(ignored -> Thread.currentThread());
         acknowledgment.onCompletion(null, null);
-        durableWrite.get(5, TimeUnit.SECONDS);
+        Thread actualCompletionThread = completionThread.get(5, TimeUnit.SECONDS);
         if (callbackThreadCount == 0) {
-          assertSame(completionThread.get(5, TimeUnit.SECONDS), Thread.currentThread());
+          assertSame(actualCompletionThread, Thread.currentThread());
         } else {
-          assertNotSame(completionThread.get(5, TimeUnit.SECONDS), Thread.currentThread());
+          assertNotSame(actualCompletionThread, Thread.currentThread());
         }
       } finally {
         releaseHook.countDown();
