@@ -128,6 +128,7 @@ public class VersionSpecificDaVinciClientTest {
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
           VeniceProperties.empty(),
+          null,
           null)) {
         producer.asyncPut(streamingKey1, customValue).get();
 

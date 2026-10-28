@@ -196,7 +196,7 @@ public class OnlineVeniceProducerOrderingIntegrationTest {
         .setVeniceURL(cluster.getRandomRouterURL())
         .setMetricsRepository(metricsRepository);
 
-    return OnlineProducerFactory.createProducer(clientConfig, producerConfig, null);
+    return OnlineProducerFactory.createProducer(clientConfig, producerConfig, null, null);
   }
 
   /**
