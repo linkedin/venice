@@ -52,6 +52,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_DUAL_WRITE_TARGET_REGIONS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -159,6 +160,7 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.util.AccumulatorV2;
 import org.apache.spark.util.LongAccumulator;
 import org.apache.spark.util.TaskCompletionListener;
+import scala.collection.JavaConverters;
 
 
 /**
@@ -241,6 +243,18 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     sparkContext.setCallSite(jobGroupId);
 
     RuntimeConfig jobConf = sparkSession.conf();
+    new ArrayList<>(JavaConverters.mapAsJavaMap(jobConf.getAll()).keySet()).stream()
+        .filter(key -> key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX))
+        .forEach(jobConf::unset);
+    // Restore current session-prefixed hook settings; raw hook settings take precedence below.
+    for (String key: props.keySet()) {
+      if (key.toLowerCase().startsWith(SPARK_SESSION_CONF_PREFIX)) {
+        String overrideKey = key.substring(SPARK_SESSION_CONF_PREFIX.length());
+        if (overrideKey.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
+          jobConf.set(overrideKey, props.getString(key));
+        }
+      }
+    }
     setupCommonSparkConf(props, jobConf, pushJobSetting);
     jobConf.set(BATCH_NUM_BYTES_PROP, pushJobSetting.batchNumBytes);
     jobConf.set(TOPIC_PROP, pushJobSetting.topic);
@@ -355,6 +369,10 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     // impl-specific keys beyond the two gating ones; everything else is opaque pass-through.
     for (String key: props.keySet()) {
       if (key.startsWith(PUSH_JOB_EXTERNAL_STORAGE_PROP_PREFIX)) {
+        jobConf.set(key, props.getString(key));
+      }
+      // The hook receives these properties when it is constructed in the executor task.
+      if (key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
         jobConf.set(key, props.getString(key));
       }
     }

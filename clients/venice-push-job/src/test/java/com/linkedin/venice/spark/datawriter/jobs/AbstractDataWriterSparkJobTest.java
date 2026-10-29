@@ -17,8 +17,11 @@ import static com.linkedin.venice.spark.SparkConstants.SPARK_SESSION_CONF_PREFIX
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static org.apache.spark.sql.types.DataTypes.BinaryType;
 import static org.apache.spark.sql.types.DataTypes.IntegerType;
@@ -89,26 +92,43 @@ import scala.collection.JavaConverters;
 
 
 public class AbstractDataWriterSparkJobTest {
-  @Test
-  public void testConfigure() throws IOException {
+  @DataProvider
+  public Object[][] writerHookConfigPrefixes() {
+    return new Object[][] { { SPARK_SESSION_CONF_PREFIX, false }, { "", false }, { SPARK_SESSION_CONF_PREFIX, true } };
+  }
+
+  @Test(dataProvider = "writerHookConfigPrefixes")
+  public void testConfigure(String hookConfigPrefix, boolean rawHookOverrides) throws IOException {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
     PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.isIncrementalPush = true;
     String sparkAppNameOverride = "UPDATED_SPARK_APP_NAME";
     String dummyKafkaConfig = "dummy.kafka.config";
     String dummyKafkaConfigValue = "dummy.kafka.config.value";
     String dummyConfig = "some.dummy.config";
     String dummyConfigValue = "some.dummy.config.value";
+    String writerHookClass = "com.example.WriterHook";
+    String writerHookSetting = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting";
 
     Properties properties = new Properties();
     properties.setProperty(SPARK_SESSION_CONF_PREFIX + SPARK_APP_NAME_CONFIG, sparkAppNameOverride);
     properties.setProperty(KAFKA_CONFIG_PREFIX + dummyKafkaConfig, dummyKafkaConfigValue);
     properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + dummyConfig, dummyConfigValue);
+    properties.setProperty(hookConfigPrefix + PUSH_JOB_WRITER_HOOK_CLASS, writerHookClass);
+    properties.setProperty(hookConfigPrefix + writerHookSetting, "test-value");
+    if (rawHookOverrides) {
+      writerHookClass = "com.example.RawWriterHook";
+      properties.setProperty(PUSH_JOB_WRITER_HOOK_CLASS, writerHookClass);
+      properties.setProperty(writerHookSetting, "raw-value");
+    }
 
+    SparkSession firstSession;
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
       dataWriterSparkJob.configure(new VeniceProperties(properties), setting);
 
+      firstSession = dataWriterSparkJob.getSparkSession();
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
       // Builder configs should get applied
       Assert.assertEquals(jobConf.get(SPARK_APP_NAME_CONFIG), sparkAppNameOverride);
@@ -118,6 +138,41 @@ public class AbstractDataWriterSparkJobTest {
 
       // Properties with SPARK_DATA_WRITER_CONF_PREFIX should get applied after stripping the prefix
       Assert.assertEquals(jobConf.get(dummyConfig), dummyConfigValue);
+
+      // VPJ writer-hook config should reach executor task properties.
+      Assert.assertEquals(jobConf.get(PUSH_JOB_WRITER_HOOK_CLASS), writerHookClass);
+      Assert.assertEquals(jobConf.get(writerHookSetting), rawHookOverrides ? "raw-value" : "test-value");
+      Assert.assertEquals(
+          dataWriterSparkJob.getWriterTaskProperties().getProperty(PUSH_JOB_WRITER_HOOK_CLASS),
+          writerHookClass);
+      Assert.assertEquals(
+          dataWriterSparkJob.getWriterTaskProperties().getProperty(writerHookSetting),
+          rawHookOverrides ? "raw-value" : "test-value");
+      Assert.assertEquals(jobConf.get(INCREMENTAL_PUSH), "true");
+    }
+
+    String nextWriterHookSetting = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "next.setting";
+    Properties nextProperties = new Properties();
+    nextProperties.setProperty(hookConfigPrefix + PUSH_JOB_WRITER_HOOK_CLASS, "com.example.NextWriterHook");
+    nextProperties.setProperty(hookConfigPrefix + nextWriterHookSetting, "next-value");
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(nextProperties), setting);
+
+      Assert.assertSame(dataWriterSparkJob.getSparkSession(), firstSession);
+      Properties taskProperties = dataWriterSparkJob.getWriterTaskProperties();
+      Assert.assertEquals(taskProperties.getProperty(PUSH_JOB_WRITER_HOOK_CLASS), "com.example.NextWriterHook");
+      Assert.assertEquals(taskProperties.getProperty(nextWriterHookSetting), "next-value");
+      Assert.assertFalse(taskProperties.containsKey(writerHookSetting));
+    }
+
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(VeniceProperties.empty(), setting);
+
+      Assert.assertSame(dataWriterSparkJob.getSparkSession(), firstSession);
+      RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
+      Assert.assertTrue(jobConf.getOption(PUSH_JOB_WRITER_HOOK_CLASS).isEmpty());
+      Assert.assertTrue(jobConf.getOption(writerHookSetting).isEmpty());
+      Assert.assertTrue(jobConf.getOption(nextWriterHookSetting).isEmpty());
     }
   }
 

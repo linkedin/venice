@@ -1,7 +1,10 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_RMD_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_VALUE_SCHEMA_STRING_PROP;
 import static org.mockito.Mockito.doReturn;
@@ -20,6 +23,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.hadoop.conf.Configuration;
@@ -179,6 +183,31 @@ public class TestDataWriterMRJob {
 
     assertNull(jobConf.get(WRITER_VALUE_SCHEMA_STRING_PROP));
     assertNull(jobConf.get(WRITER_RMD_SCHEMA_STRING_PROP));
+  }
+
+  @Test
+  public void testConfigureForwardsWriterHookPropertiesToTasks() {
+    String writerHookSetting = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting";
+    Properties properties = new Properties();
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_CLASS, "com.example.WriterHook");
+    properties.setProperty(writerHookSetting, "test-value");
+
+    PushJobSetting setting = avroProjectionPushJobSetting();
+    setting.jobId = "test-job";
+    setting.topic = "testStore_v1";
+    setting.isIncrementalPush = true;
+    setting.pushDestinationPubsubBroker = "test-broker";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.dualWriteTargetRegions = Collections.emptyList();
+    setting.partitionCount = 1;
+    setting.vpjEntryClass = VenicePushJob.class;
+
+    DataWriterMRJob mrJob = new DataWriterMRJob();
+    mrJob.configure(new VeniceProperties(properties), setting);
+
+    Assert.assertEquals(mrJob.getJobConf().get(PUSH_JOB_WRITER_HOOK_CLASS), "com.example.WriterHook");
+    Assert.assertEquals(mrJob.getJobConf().get(writerHookSetting), "test-value");
+    assertTrue(mrJob.getJobConf().getBoolean(INCREMENTAL_PUSH, false));
   }
 
   private PushJobSetting avroProjectionPushJobSetting() {
