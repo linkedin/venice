@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
@@ -23,7 +24,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -47,7 +47,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class FabricControllerClientProvider implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(FabricControllerClientProvider.class);
-  private static final int CURRENT_VERSION_QUERY_TIMEOUT_SECONDS = 15;
   private static final int CURRENT_VERSION_QUERY_WORKERS_PER_REGION = 6;
   // Guarded by this, together with closed. Pools are shared across stores and clusters, keyed only by region.
   private final Map<String, ThreadPoolExecutor> currentVersionQueryExecutors = new HashMap<>();
@@ -223,35 +222,24 @@ public class FabricControllerClientProvider implements Closeable {
   }
 
   /**
-   * Queries current versions for the read-only store response with one 15-second budget, including queueing and
-   * discovery. Internal coordination uses the serial {@link #queryAllRegions} policy instead.
+   * Queries current versions concurrently for the read-only store response using ordinary store requests.
+   * Queueing and child calls have no shared deadline; slow requests can outlast the caller's timeout.
+   * Internal coordination uses the serial {@link #queryAllRegions} policy instead.
    * Only the caller assembles the result; cancellation cannot allow a worker to modify a returned map.
    */
   public Map<String, Integer> queryCurrentVersions(
       Map<String, ControllerClient> controllerClients,
       String clusterName,
       String storeName) {
-    return queryCurrentVersions(
-        controllerClients,
-        clusterName,
-        storeName,
-        System.nanoTime() + TimeUnit.SECONDS.toNanos(CURRENT_VERSION_QUERY_TIMEOUT_SECONDS));
-  }
-
-  Map<String, Integer> queryCurrentVersions(
-      Map<String, ControllerClient> controllerClients,
-      String clusterName,
-      String storeName,
-      long deadlineNs) {
-    Map<String, Future<StoreResponse>> tasks = new HashMap<>();
+    Map<String, Future<StoreResponse>> tasks = new LinkedHashMap<>();
     Map<String, ThreadPoolExecutor> executors = new HashMap<>();
     Map<String, Integer> result = new HashMap<>();
     try {
       controllerClients.forEach((region, client) -> {
         result.put(region, IGNORED_CURRENT_VERSION);
-        if (Thread.currentThread().isInterrupted() || deadlineNs - System.nanoTime() <= 0) {
+        if (Thread.currentThread().isInterrupted()) {
           LOGGER.warn(
-              "Current-version query budget exhausted before submission for region: {} cluster: {}",
+              "Interrupted before submitting current-version query for region: {} cluster: {}",
               region,
               clusterName);
           return;
@@ -259,30 +247,11 @@ public class FabricControllerClientProvider implements Closeable {
         try {
           ThreadPoolExecutor executor = getCurrentVersionQueryExecutor(region);
           executors.put(region, executor);
-          tasks.put(region, executor.submit(() -> {
-            if (deadlineNs - System.nanoTime() <= 0 || Thread.currentThread().isInterrupted()) {
-              throw new TimeoutException("Current-version query budget exhausted before request");
-            }
-            return client.getStoreWithDeadline(storeName, deadlineNs);
-          }));
+          tasks.put(region, executor.submit(() -> client.getStore(storeName)));
         } catch (RejectedExecutionException e) {
           LOGGER.warn("Could not submit current-version query for region: {} cluster: {}", region, clusterName, e);
         }
       });
-
-      for (Future<StoreResponse> task: tasks.values()) {
-        try {
-          task.get(Math.max(0, deadlineNs - System.nanoTime()), TimeUnit.NANOSECONDS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          break;
-        } catch (TimeoutException e) {
-          break;
-        } catch (ExecutionException | CancellationException e) {
-          // Collect every completed response below, including successes behind a slow region.
-        }
-      }
-      cancelUnfinishedQueries(tasks);
 
       for (Map.Entry<String, Future<StoreResponse>> entry: tasks.entrySet()) {
         String region = entry.getKey();
@@ -300,8 +269,7 @@ public class FabricControllerClientProvider implements Closeable {
           }
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
-          if (!(cause instanceof TimeoutException || cause instanceof CancellationException
-              || cause instanceof RejectedExecutionException)) {
+          if (!(cause instanceof CancellationException || cause instanceof RejectedExecutionException)) {
             if (cause instanceof RuntimeException) {
               throw (RuntimeException) cause;
             }
@@ -316,6 +284,7 @@ public class FabricControllerClientProvider implements Closeable {
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
           LOGGER.warn("Interrupted querying current version from region: {} for cluster: {}", region, clusterName, e);
+          cancelUnfinishedQueries(tasks);
         }
         result.put(region, version);
       }

@@ -114,11 +114,6 @@ public class D2ControllerClient extends ControllerClient {
   @Override
   protected String discoverLeaderController() {
     long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_TIMEOUT_MS);
-    return discoverLeaderControllerWithDeadline(null, deadlineNs);
-  }
-
-  @Override
-  protected String discoverLeaderControllerWithDeadline(ControllerTransport transport, long deadlineNs) {
     List<D2Client> candidates = new ArrayList<>(d2Clients);
     if (!candidates.isEmpty()) {
       // Rotate a private snapshot so repeated bounded discovery does not always exhaust the same prefix.

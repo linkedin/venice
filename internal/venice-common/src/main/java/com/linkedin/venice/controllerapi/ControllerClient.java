@@ -218,47 +218,45 @@ public class ControllerClient implements Closeable {
 
   protected String discoverLeaderController() {
     long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_TIMEOUT_MS);
-    try (ControllerTransport transport = getNewControllerTransport()) {
-      return discoverLeaderControllerWithDeadline(transport, deadlineNs);
-    }
-  }
-
-  /** Multi-candidate discovery sharing the caller's monotonic deadline; unlike the single-candidate overload. */
-  protected String discoverLeaderControllerWithDeadline(ControllerTransport transport, long deadlineNs) {
     List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
     Collections.shuffle(urls);
 
     Exception lastConnectException = null;
     Exception lastException = null;
-    for (String url: urls) {
-      if (deadlineNs - requestTimeNs() <= 0 || Thread.currentThread().isInterrupted()) {
-        break;
-      }
-      try {
-        String leaderControllerUrl =
-            transport
-                .request(
-                    url,
-                    ControllerRoute.LEADER_CONTROLLER,
-                    newParams(),
-                    LeaderControllerResponse.class,
-                    Math.min(LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS, remainingRequestTimeMs(deadlineNs)),
-                    null)
-                .getUrl();
-        LOGGER
-            .debug("Discovered leader controller: {} from: {} for cluster: {}", leaderControllerUrl, url, clusterName);
-        return leaderControllerUrl;
-      } catch (Exception e) {
-        LOGGER.warn("Unable to discover leader controller from {}", url);
-        if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
-          lastConnectException = e;
-        } else {
-          lastException = e;
+    try (ControllerTransport transport = getNewControllerTransport()) {
+      for (String url: urls) {
+        if (deadlineNs - requestTimeNs() <= 0 || Thread.currentThread().isInterrupted()) {
+          break;
         }
-      }
-      // Interrupted by the caller: stop walking the URL list rather than absorbing the interrupt.
-      if (Thread.currentThread().isInterrupted()) {
-        break;
+        try {
+          String leaderControllerUrl =
+              transport
+                  .request(
+                      url,
+                      ControllerRoute.LEADER_CONTROLLER,
+                      newParams(),
+                      LeaderControllerResponse.class,
+                      Math.min(LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS, remainingRequestTimeMs(deadlineNs)),
+                      null)
+                  .getUrl();
+          LOGGER.debug(
+              "Discovered leader controller: {} from: {} for cluster: {}",
+              leaderControllerUrl,
+              url,
+              clusterName);
+          return leaderControllerUrl;
+        } catch (Exception e) {
+          LOGGER.warn("Unable to discover leader controller from {}", url);
+          if (ExceptionUtils.recursiveClassEquals(e, ConnectException.class)) {
+            lastConnectException = e;
+          } else {
+            lastException = e;
+          }
+        }
+        // Interrupted by the caller: stop walking the URL list rather than absorbing the interrupt.
+        if (Thread.currentThread().isInterrupted()) {
+          break;
+        }
       }
     }
     /**
@@ -293,19 +291,6 @@ public class ControllerClient implements Closeable {
   /** Single attempt, with one budget shared by leader discovery and the store query. */
   public StoreResponse getStoreWithTimeout(String storeName, int timeoutMs) {
     return requestWithTimeout(ControllerRoute.STORE, newParams().add(NAME, storeName), StoreResponse.class, timeoutMs);
-  }
-
-  /**
-   * One store request with multi-candidate leader discovery. The absolute {@link System#nanoTime()} deadline
-   * includes the fanout caller's submission and executor queueing; it is never reset per candidate.
-   */
-  public StoreResponse getStoreWithDeadline(String storeName, long deadlineNs) {
-    return requestWithDeadline(
-        ControllerRoute.STORE,
-        newParams().add(NAME, storeName),
-        StoreResponse.class,
-        deadlineNs,
-        true);
   }
 
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
@@ -1816,20 +1801,8 @@ public class ControllerClient implements Closeable {
       Class<T> responseType,
       int timeoutMs) {
     long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
-    return requestWithDeadline(route, params, responseType, deadlineNs, false);
-  }
-
-  private <T extends ControllerResponse> T requestWithDeadline(
-      ControllerRoute route,
-      QueryParams params,
-      Class<T> responseType,
-      long deadlineNs,
-      boolean multiCandidateDiscovery) {
     try (ControllerTransport transport = getNewControllerTransport()) {
-      remainingRequestTimeMs(deadlineNs);
-      String leader = multiCandidateDiscovery
-          ? discoverLeaderControllerWithDeadline(transport, deadlineNs)
-          : discoverLeaderController(transport, deadlineNs);
+      String leader = discoverLeaderController(transport, deadlineNs);
       return transport.request(leader, route, params, responseType, remainingRequestTimeMs(deadlineNs), null);
     } catch (Exception e) {
       return makeErrorResponse("Single-attempt controller query failed for " + route.getPath(), e, responseType);

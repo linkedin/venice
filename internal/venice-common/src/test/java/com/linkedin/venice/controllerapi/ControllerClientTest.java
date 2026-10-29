@@ -22,14 +22,11 @@ import org.testng.annotations.Test;
 public class ControllerClientTest {
   @DataProvider
   public Object[][] discoveryDurations() {
-    return new Object[][] { { false, 15_000, new int[] { 5000, 5000, 5000 } },
-        { false, 15_000, new int[] { 2000, 5000, 5000, 3000 } }, { true, 8000, new int[] { 5000, 3000 } },
-        { true, 8000, new int[] { 2000, 5000, 1000 } } };
+    return new Object[][] { { new int[] { 5000, 5000, 5000 } }, { new int[] { 2000, 5000, 5000, 3000 } } };
   }
 
   @Test(dataProvider = "discoveryDurations")
-  public void testDiscoverySharesDeadlineAcrossCandidates(boolean fanout, int budgetMs, int[] durationsMs)
-      throws Exception {
+  public void testDiscoverySharesDeadlineAcrossCandidates(int[] durationsMs) throws Exception {
     ControllerClient client = Mockito
         .spy(new ControllerClient("cluster", "http://first,http://second,http://third,http://fourth,http://fifth"));
     ControllerTransport transport = Mockito.mock(ControllerTransport.class);
@@ -38,7 +35,7 @@ public class ControllerClientTest {
     Mockito.doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
     AtomicInteger attempts = new AtomicInteger();
     Mockito.doAnswer(invocation -> {
-      int remainingMs = budgetMs - (int) TimeUnit.NANOSECONDS.toMillis(clock.get());
+      int remainingMs = 15_000 - (int) TimeUnit.NANOSECONDS.toMillis(clock.get());
       Assert.assertEquals(invocation.<Integer>getArgument(4).intValue(), Math.min(5000, remainingMs));
       clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(durationsMs[attempts.getAndIncrement()]));
       throw new TimeoutException("candidate timed out");
@@ -51,71 +48,10 @@ public class ControllerClientTest {
             Mockito.eq(LeaderControllerResponse.class),
             Mockito.anyInt(),
             Mockito.isNull());
-    if (fanout) {
-      Assert.assertTrue(client.getStoreWithDeadline("store", TimeUnit.MILLISECONDS.toNanos(budgetMs)).isError());
-      Mockito.verify(transport, Mockito.never())
-          .request(
-              Mockito.anyString(),
-              Mockito.eq(ControllerRoute.STORE),
-              Mockito.any(),
-              Mockito.any(),
-              Mockito.anyInt(),
-              Mockito.isNull());
-    } else {
-      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
-    }
+    Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
     Assert.assertEquals(attempts.get(), durationsMs.length);
-    Assert.assertEquals(clock.get(), TimeUnit.MILLISECONDS.toNanos(budgetMs));
+    Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(15));
     Mockito.verify(transport).close();
-  }
-
-  @Test
-  public void testFanoutFallsBackWithCandidateCapAndRemainingStoreBudget() throws Exception {
-    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://first,http://second"));
-    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
-    Mockito.doReturn(transport).when(client).getNewControllerTransport();
-    // Nine seconds have already elapsed in submission/queueing; discovery must not start a new 15 seconds.
-    AtomicLong clock = new AtomicLong(TimeUnit.SECONDS.toNanos(9));
-    Mockito.doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
-    AtomicInteger attempts = new AtomicInteger();
-    LeaderControllerResponse leader = new LeaderControllerResponse();
-    leader.setUrl("http://leader");
-    Mockito.doAnswer(invocation -> {
-      if (attempts.getAndIncrement() == 0) {
-        Assert.assertEquals(invocation.<Integer>getArgument(4).intValue(), 5000);
-        clock.addAndGet(TimeUnit.SECONDS.toNanos(5));
-        throw new TimeoutException("first candidate stalled");
-      }
-      Assert.assertEquals(invocation.<Integer>getArgument(4).intValue(), 1000);
-      clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(400));
-      return leader;
-    })
-        .when(transport)
-        .request(
-            Mockito.anyString(),
-            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
-            Mockito.any(),
-            Mockito.eq(LeaderControllerResponse.class),
-            Mockito.anyInt(),
-            Mockito.isNull());
-    StoreResponse success = new StoreResponse();
-    Mockito.doReturn(success)
-        .when(transport)
-        .request(
-            Mockito.eq("http://leader"),
-            Mockito.eq(ControllerRoute.STORE),
-            Mockito.any(),
-            Mockito.eq(StoreResponse.class),
-            Mockito.eq(600),
-            Mockito.isNull());
-    Assert.assertSame(client.getStoreWithDeadline("store", TimeUnit.SECONDS.toNanos(15)), success);
-    Assert.assertEquals(attempts.get(), 2);
-    Mockito.verify(transport).close();
-  }
-
-  @DataProvider
-  public Object[][] discoveryModes() {
-    return new Object[][] { { false }, { true } };
   }
 
   @Test
@@ -168,8 +104,8 @@ public class ControllerClientTest {
     Assert.assertSame(failure.getCause(), actionable);
   }
 
-  @Test(dataProvider = "discoveryModes")
-  public void testDiscoveryStopsOnInterruption(boolean fanout) throws Exception {
+  @Test
+  public void testDiscoveryStopsOnInterruption() throws Exception {
     ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://first,http://second"));
     ControllerTransport transport = Mockito.mock(ControllerTransport.class);
     Mockito.doReturn(transport).when(client).getNewControllerTransport();
@@ -186,12 +122,7 @@ public class ControllerClientTest {
             Mockito.anyInt(),
             Mockito.isNull());
     try {
-      if (fanout) {
-        Assert.assertTrue(
-            client.getStoreWithDeadline("store", System.nanoTime() + TimeUnit.SECONDS.toNanos(15)).isError());
-      } else {
-        Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
-      }
+      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
       Assert.assertTrue(Thread.currentThread().isInterrupted());
       Mockito.verify(transport)
           .request(

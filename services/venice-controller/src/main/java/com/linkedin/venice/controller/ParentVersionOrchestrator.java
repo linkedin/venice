@@ -149,7 +149,7 @@ class ParentVersionOrchestrator {
             controllerClients,
             clusterName,
             1,
-            client -> client.getStore(storeName),
+            controllerClient -> controllerClient.getStore(storeName),
             response -> response.getStore().getCurrentVersion(),
             IGNORED_CURRENT_VERSION);
   }

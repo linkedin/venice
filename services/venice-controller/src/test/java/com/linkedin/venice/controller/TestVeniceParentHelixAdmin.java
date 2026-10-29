@@ -3865,12 +3865,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 0; i < regionCount; i++) {
       assertEquals(result.get("region" + i).intValue(), i);
       verify(controllerClientMap.get("region" + i)).getStore("test");
-      verify(controllerClientMap.get("region" + i), never()).getStoreWithDeadline(anyString(), anyLong());
     }
   }
 
   @Test
-  public void testInternalCurrentVersionsRemainSerialWhileStoreResponseUsesBoundedQuery() {
+  public void testInternalCurrentVersionsRemainSerialWhileStoreResponseUsesConcurrentQuery() {
     Map<String, ControllerClient> clients = prepareForCurrentVersionTest(2);
     doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
     Thread caller = Thread.currentThread();
@@ -3898,7 +3897,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(provider).queryCurrentVersions(clients, clusterName, "test");
     clients.values().forEach(client -> {
       verify(client).getStore("test");
-      verify(client, never()).getStoreWithDeadline(anyString(), anyLong());
     });
   }
 
@@ -3936,7 +3934,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       assertEquals(readOnly.get("region0").intValue(), IGNORED_CURRENT_VERSION);
       assertEquals(internal.get("region0").intValue(), 0);
       verify(clients.get("region0")).getStore("internal");
-      verify(clients.get("region0"), never()).getStoreWithDeadline(anyString(), anyLong());
     } finally {
       release.countDown();
     }

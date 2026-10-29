@@ -43,11 +43,13 @@ Internal current-version queries use serial, single-attempt `getStore` calls, pr
 rollout, cleanup, repush, and other coordination. The remaining fan-out sites still hand-roll their loops because their
 error policy is bespoke (fail-fast, throw, region-filtered, error-collecting, first-success-wins, fold/max, etc.).
 
-Only the read-only parent store response uses `queryCurrentVersions`: concurrent, single-attempt `getStoreWithDeadline`
-calls with a fixed **15-second shared deadline**, including submission, queueing, discovery, and the store request. HTTP
-`StoresRoutes.getStore` and gRPC `StoreGrpcServiceImpl.getStore` both dispatch through `StoreRequestHandler.getStore`,
-which calls `Admin.getCurrentVersionsForStoreResponse`. The parent overrides this read-only entry point; the default
-delegates to the original API, preserving the child's null regional map.
+Only the read-only parent store response uses `queryCurrentVersions`: concurrent, ordinary `ControllerClient.getStore`
+calls with their existing store-request timeout and retry behavior, without an additional fan-out retry policy. There is
+**no total fan-out deadline** for submission, queueing, or child `/store` waits. A slow ordinary call or queued work can
+keep the parent request waiting beyond the caller's **60-second timeout**; parallelism does not provide an end-to-end
+latency bound. HTTP `StoresRoutes.getStore` and gRPC `StoreGrpcServiceImpl.getStore` both dispatch through
+`StoreRequestHandler.getStore`, which calls `Admin.getCurrentVersionsForStoreResponse`. The parent overrides this
+read-only entry point; the default delegates to the original API, preserving the child's null regional map.
 
 The provider lazily creates a bounded executor for each queried region: **six workers and 256 queued tasks per region**.
 Pools are shared across overlapping requests, stores, and clusters on that provider, keyed only by region, with no
@@ -56,23 +58,21 @@ new work immediately. Unlike a global pool, total capacity grows with the number
 and 256 queued tasks each); idle pools remain until provider close, and threads start only when work is submitted. This
 fixed sizing was user-selected, **not production-validated**; there are no new configurations or feature flags.
 
-Returned errors, timeouts, cancelled work, and executor rejections are logged and produce `-1` for the affected region;
-unexpected exceptions still propagate. Completed healthy responses are retained even when another region times out. On
-deadline or caller interruption, unfinished tasks are cancelled with interruption and the caller's interrupt flag is
-preserved. Actual submitted futures are cancelled and cancelled queued work is purged; workers check the same deadline
-before starting I/O and never modify the returned map. I/O that ignores interruption still occupies its regional worker
-until it exits, without affecting healthy regions. Pool creation and close share a lock, preventing creation after close
-or a pool escaping shutdown. Close shuts down every pool, interrupts workers, and cancels drained queued futures before
-closing the clients. No custom admission counters or cancellation ownership are needed.
+Returned errors, cancelled work, and executor rejections are logged and produce `-1` for the affected region; unexpected
+exceptions still propagate. Healthy responses are retained when another region returns an error. The caller waits on the
+real executor futures without an additional timeout. On caller interruption or exceptional exit, unfinished tasks are
+cancelled with interruption and the caller's interrupt flag is preserved. Cancelled queued work is purged; workers never
+modify the returned map. I/O that ignores interruption still occupies its regional worker until it exits, without
+affecting healthy regions. Pool creation and close share a lock, preventing creation after close or a pool escaping
+shutdown. Close shuts down every pool, interrupts workers, and cancels drained queued futures before closing the
+clients. No custom admission counters or cancellation ownership are needed.
 
 Normal HTTP and D2 leader discovery each have a fixed **15-second cumulative budget** and a **5-second per-candidate
-cap** to permit fallback. Current-version fanout reuses their multi-candidate discovery loops, with candidate waits
-capped at `min(5 seconds, remaining fanout budget)` and the store request using only the remainder of the same absolute
-monotonic deadline. Neither discovery nor a new candidate starts another independent 15 seconds. D2 multi-candidate
-discovery rotates its starting candidate once per invocation using a thread-safe, overflow-safe counter and a private
-snapshot; it does not reorder the caller's list. Normal discovery and deadline fanout share this rotation so a fixed
-stalled prefix cannot indefinitely starve later healthy candidates. Each invocation still visits each candidate at most
-once and stops at its original deadline. The existing bounded APIs (`getStoreWithTimeout`,
+cap** to permit fallback. Candidate waits are capped at `min(5 seconds, remaining discovery budget)`. A new candidate
+does not start another independent 15 seconds. D2 multi-candidate discovery rotates its starting candidate once per
+invocation using a thread-safe, overflow-safe counter and a private snapshot; it does not reorder the caller's list.
+This rotation prevents a fixed stalled prefix from indefinitely starving later healthy candidates. Each invocation still
+visits each candidate at most once and stops at its original deadline. The existing bounded APIs (`getStoreWithTimeout`,
 `getAdminTopicMetadataWithTimeout`) and their protected discovery overloads remain **single-candidate** operations for
 deferred recovery and other callers; D2 single-candidate discovery remains fixed on the original first client and does
 not advance the rotation. Other controller request retry counts and request timeouts are unchanged: the discovery budget
@@ -110,12 +110,12 @@ There is **no single retry policy**. Cross-region calls that retry use one of tw
 | `pollChildRegionsForRollbackStatus`           | Parent:2603 | `getStore`                   | `RetryUtils` exp-backoff (5)              | 1 s → 10 s cap, 30 s max      | fold + full re-poll                 |
 | `isRTTopicDeletionPermittedByAllControllers`  | Child:4267  | `getStore`                   | `RetryUtils` exp-backoff (5)              | 10 ms → 500 ms cap, 5 s max   | skip-missing; fail-fast → false     |
 
-### Fan-out sites with no retry (single attempt)
+### Fan-out sites with no additional fan-out retry
 
 | Method                                    | Class:line  | RPC                                            | Error policy              |
 | ----------------------------------------- | ----------- | ---------------------------------------------- | ------------------------- |
 | `getCurrentVersionForMultiRegions`        | Parent      | `getStore` (serial, internal coordination)     | sentinel                  |
-| `getCurrentVersionsForStoreResponse`      | Parent      | `getStoreWithDeadline` (parallel, shared 15 s) | partial results, sentinel |
+| `getCurrentVersionsForStoreResponse`      | Parent      | `getStore` (parallel, ordinary client retries) | partial results, sentinel |
 | `getBackupVersionsForMultiColos`          | Parent:2276 | `getBackupVersions`                            | sentinel                  |
 | `getInUseValueSchemaIds`                  | Parent:764  | `getInUseSchemaIds`                            | fail-fast → empty set     |
 | `getOffLineJobStatus`                     | Parent:3451 | `getLeaderControllerUrl` / `queryJobStatus`    | log → UNKNOWN, aggregate  |
@@ -143,10 +143,10 @@ except `isStoreVersionReadyForDataRecovery` (collect) and `getCurrentVersionInRe
 - **The three sibling version queries disagree on retry:** `getFutureVersionsForMultiColos` retries (5× / fixed 2 s),
   while `getCurrentVersionForMultiRegions` and `getBackupVersionsForMultiColos` do not. The future-version retry was
   added deliberately (it gates a "don't start a push when a future version exists" decision), so unifying is a semantic
-  choice, not a pure cleanup. Current-version queries also use a separate parallel deadline-aware helper; changing their
-  retry policy requires preserving the shared budget.
+  choice, not a pure cleanup. Read-only current-version queries use a separate parallel helper with ordinary client
+  retries and no total fan-out deadline; internal current-version queries retain their serial policy.
 - **Two engines, four profiles:** any "unify retry" effort must pick both an engine (fixed-delay `retryableRequest` vs
   exponential `RetryUtils`) and a delay profile; the five retrying sites currently use four different profiles.
-- **Bespoke loops remain hand-rolled:** only future- and backup-version queries use `queryAllRegions`; the rest keep
-  their own loops or dedicated helpers because their error policy differs. Consolidating them further would require a
-  more configurable helper and careful behavior preservation.
+- **Bespoke loops remain hand-rolled:** internal current-, future-, and backup-version queries use `queryAllRegions`;
+  the rest keep their own loops or dedicated helpers because their error policy differs. Consolidating them further
+  would require a more configurable helper and careful behavior preservation.
