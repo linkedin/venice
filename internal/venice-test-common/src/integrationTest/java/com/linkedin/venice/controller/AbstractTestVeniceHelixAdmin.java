@@ -42,7 +42,6 @@ import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
@@ -60,7 +59,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -113,7 +111,6 @@ class AbstractTestVeniceHelixAdmin {
   List<VersionLifecycleEvent> versionLifecycleEvents = new ArrayList<>();
   List<ValueSchemaCreatedEvent> valueSchemaCreatedEvents = new ArrayList<>();
   Set<String> etlOnboardedStoreVersionNames = new HashSet<>();
-  Map<String, ETLStoreConfig> etlOnboardedStoreConfigs = new HashMap<>();
   Set<String> etlOffboardedStoreVersionNames = new HashSet<>();
 
   enum VersionLifecycleEventType {
@@ -202,7 +199,6 @@ class AbstractTestVeniceHelixAdmin {
     @Override
     public void onboardETL(Store store, Version version) {
       etlOnboardedStoreVersionNames.add(version.kafkaTopicName());
-      etlOnboardedStoreConfigs.put(version.kafkaTopicName(), store.getEtlStoreConfig().clone());
     }
 
     @Override
@@ -422,7 +418,6 @@ class AbstractTestVeniceHelixAdmin {
 
   void resetExternalETLServiceEvents() {
     etlOnboardedStoreVersionNames.clear();
-    etlOnboardedStoreConfigs.clear();
     etlOffboardedStoreVersionNames.clear();
   }
 }

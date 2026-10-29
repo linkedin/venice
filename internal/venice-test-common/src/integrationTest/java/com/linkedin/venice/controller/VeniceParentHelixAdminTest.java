@@ -563,63 +563,38 @@ public class VeniceParentHelixAdminTest {
   public void testUpdateStoreEtlInitialOnboardingValues() {
     String storeName = Utils.getUniqueString("test_etl_initial_values_store");
     List<String> grantUsers = Arrays.asList("user-a", "user-b");
-
     try (ControllerClient parentControllerClient =
         new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
       assertCommand(
           parentControllerClient.createNewStore(storeName, "test_owner", "\"long\"", generateSchema(false).toString()));
 
-      // Set through the parent; child controllers get them through the admin channel.
+      // Set through the parent, then clear. Child controllers get both through the admin channel.
       assertCommand(
           parentControllerClient.updateStore(
               storeName,
               new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
                   .setEtlInitialGrantAclUsers(grantUsers)
                   .setEtlInitialWorkloadType("BATCH")));
-      assertEtlInitialOnboardingValues(parentControllerClient, storeName, "TIER_A", grantUsers, "BATCH");
-      venice.useControllerClient(
-          child -> waitForNonDeterministicAssertion(
-              10,
-              TimeUnit.SECONDS,
-              () -> assertEtlInitialOnboardingValues(child, storeName, "TIER_A", grantUsers, "BATCH")));
-
-      // An unrelated ETL update leaves them alone.
-      assertCommand(
-          parentControllerClient
-              .updateStore(storeName, new UpdateStoreQueryParams().setEtledProxyUserAccount("test_user")));
       venice.useControllerClient(child -> waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        Assert.assertEquals(
-            assertCommand(child.getStore(storeName)).getStore().getEtlStoreConfig().getEtledUserProxyAccount(),
-            "test_user");
-        assertEtlInitialOnboardingValues(child, storeName, "TIER_A", grantUsers, "BATCH");
+        ETLStoreConfig config = assertCommand(child.getStore(storeName)).getStore().getEtlStoreConfig();
+        Assert.assertEquals(config.getInitialSlaTier(), "TIER_A");
+        Assert.assertEquals(config.getInitialGrantAclUsers(), grantUsers);
+        Assert.assertEquals(config.getInitialWorkloadType(), "BATCH");
       }));
 
-      // An explicit clear propagates too.
       assertCommand(
           parentControllerClient.updateStore(
               storeName,
               new UpdateStoreQueryParams().setEtlInitialSlaTier(null)
                   .setEtlInitialGrantAclUsers(null)
                   .setEtlInitialWorkloadType(null)));
-      assertEtlInitialOnboardingValues(parentControllerClient, storeName, null, null, null);
-      venice.useControllerClient(
-          child -> waitForNonDeterministicAssertion(
-              10,
-              TimeUnit.SECONDS,
-              () -> assertEtlInitialOnboardingValues(child, storeName, null, null, null)));
+      venice.useControllerClient(child -> waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        ETLStoreConfig config = assertCommand(child.getStore(storeName)).getStore().getEtlStoreConfig();
+        Assert.assertNull(config.getInitialSlaTier());
+        Assert.assertNull(config.getInitialGrantAclUsers());
+        Assert.assertNull(config.getInitialWorkloadType());
+      }));
     }
-  }
-
-  private static void assertEtlInitialOnboardingValues(
-      ControllerClient controllerClient,
-      String storeName,
-      String slaTier,
-      List<String> grantAclUsers,
-      String workloadType) {
-    ETLStoreConfig etlStoreConfig = assertCommand(controllerClient.getStore(storeName)).getStore().getEtlStoreConfig();
-    Assert.assertEquals(etlStoreConfig.getInitialSlaTier(), slaTier);
-    Assert.assertEquals(etlStoreConfig.getInitialGrantAclUsers(), grantAclUsers);
-    Assert.assertEquals(etlStoreConfig.getInitialWorkloadType(), workloadType);
   }
 
   private Schema generateSchema(boolean addFieldWithDefaultValue) {

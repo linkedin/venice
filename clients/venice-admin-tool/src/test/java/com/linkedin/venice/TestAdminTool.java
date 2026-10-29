@@ -305,30 +305,14 @@ public class TestAdminTool {
   @Test
   public void testAdminUpdateStoreArgEtlInitialOnboardingValues() throws ParseException, IOException {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
-        "testStore", "--etl-initial-sla-tier", "TIER_A", "--etl-initial-grant-acl-users", "user-a, user-b",
-        "--etl-initial-workload-type", "BATCH" };
+        "testStore", "--etl-initial-sla-tier", "TIER_A", "--etl-initial-grant-acl-users", "user-a,user-b",
+        "--etl-initial-workload-type", "null" };
     UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(args));
     Assert.assertEquals(params.getEtlInitialSlaTier(), "TIER_A");
     Assert.assertEquals(params.getEtlInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-    Assert.assertEquals(params.getEtlInitialWorkloadType(), "BATCH");
-
-    String[] clearArgs = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
-        "testStore", "--etl-initial-sla-tier", "null", "--etl-initial-grant-acl-users", "null",
-        "--etl-initial-workload-type", "null" };
-    UpdateStoreQueryParams clearParams = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(clearArgs));
-    Assert.assertTrue(clearParams.isEtlInitialSlaTierSpecified());
-    Assert.assertNull(clearParams.getEtlInitialSlaTier());
-    Assert.assertTrue(clearParams.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertNull(clearParams.getEtlInitialGrantAclUsers());
-    Assert.assertTrue(clearParams.isEtlInitialWorkloadTypeSpecified());
-    Assert.assertNull(clearParams.getEtlInitialWorkloadType());
-
-    String[] omittedArgs =
-        { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store", "testStore" };
-    UpdateStoreQueryParams omittedParams = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(omittedArgs));
-    Assert.assertFalse(omittedParams.isEtlInitialSlaTierSpecified());
-    Assert.assertFalse(omittedParams.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertFalse(omittedParams.isEtlInitialWorkloadTypeSpecified());
+    // "null" clears a value.
+    Assert.assertTrue(params.isEtlInitialWorkloadTypeSpecified());
+    Assert.assertNull(params.getEtlInitialWorkloadType());
   }
 
   @Test

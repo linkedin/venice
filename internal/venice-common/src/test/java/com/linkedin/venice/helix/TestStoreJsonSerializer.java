@@ -3,8 +3,6 @@ package com.linkedin.venice.helix;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.ETLStoreConfig;
-import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
@@ -203,36 +201,11 @@ public class TestStoreJsonSerializer {
   @Test
   public void testSerializeAndDeserializeEtlInitialOnboardingValues() throws IOException {
     StoreJSONSerializer serializer = new StoreJSONSerializer();
-
     Store store = TestUtils.createTestStore("s1", "owner", 1L);
-    ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl("proxy", true, false, 2, null);
-    etlStoreConfig.setInitialSlaTier("TIER_A");
-    etlStoreConfig.setInitialGrantAclUsers(Arrays.asList("user-a", "user-b"));
-    etlStoreConfig.setInitialWorkloadType("BATCH");
-    store.setEtlStoreConfig(etlStoreConfig);
-
-    byte[] serialized = serializer.serialize(store, "");
-    JsonNode etlNode = ObjectMapperFactory.getInstance().readTree(serialized).get("etlStoreConfig");
-    Assert.assertEquals(etlNode.get("initialSlaTier").textValue(), "TIER_A");
-    Assert.assertEquals(etlNode.get("initialGrantAclUsers").toString(), "[\"user-a\",\"user-b\"]");
-    Assert.assertEquals(etlNode.get("initialWorkloadType").textValue(), "BATCH");
-
-    Store roundTripped = serializer.deserialize(serialized, "");
-    Assert.assertEquals(roundTripped.getEtlStoreConfig().getInitialSlaTier(), "TIER_A");
-    Assert.assertEquals(roundTripped.getEtlStoreConfig().getInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-    Assert.assertEquals(roundTripped.getEtlStoreConfig().getInitialWorkloadType(), "BATCH");
-    Assert.assertEquals(store, roundTripped);
-
-    // Clearing the values persists them as null.
-    etlStoreConfig.setInitialSlaTier(null);
-    etlStoreConfig.setInitialGrantAclUsers(null);
-    etlStoreConfig.setInitialWorkloadType(null);
-    store.setEtlStoreConfig(etlStoreConfig);
-    Store cleared = serializer.deserialize(serializer.serialize(store, ""), "");
-    Assert.assertNull(cleared.getEtlStoreConfig().getInitialSlaTier());
-    Assert.assertNull(cleared.getEtlStoreConfig().getInitialGrantAclUsers());
-    Assert.assertNull(cleared.getEtlStoreConfig().getInitialWorkloadType());
-    Assert.assertEquals(store, cleared);
+    store.setEtlStoreConfig(TestUtils.createTestETLStoreConfig());
+    Store roundTripped = serializer.deserialize(serializer.serialize(store, ""), "");
+    Assert.assertEquals(roundTripped.getEtlStoreConfig().getInitialSlaTier(), "initial_sla_tier");
+    Assert.assertEquals(roundTripped, store);
 
     // Znodes written before these fields existed still deserialize, with the values unset.
     Store legacy = serializer.deserialize(

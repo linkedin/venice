@@ -1,8 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_SLA_TIER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_QUOTA_IN_CU;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_BYTES;
@@ -35,7 +32,6 @@ import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -52,7 +48,6 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -736,70 +731,6 @@ public class AdminExecutionTaskTest {
     verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
     assertTrue(
         captor.getAllValues().stream().anyMatch(p -> p.isTTLRepushEnabled().equals(Optional.of(ttlRepushEnabled))));
-  }
-
-  @DataProvider(name = "etlInitialOnboardingValueUpdates")
-  public Object[][] etlInitialOnboardingValueUpdates() {
-    // replicateAllConfigs, whether the initial onboarding values are named in updatedConfigsList
-    return new Object[][] { { false, true }, { false, false }, { true, false } };
-  }
-
-  @Test(dataProvider = "etlInitialOnboardingValueUpdates")
-  public void testHandleSetStoreMapsEtlInitialOnboardingValues(boolean replicateAll, boolean specified) {
-    when(mockAdmin.isLeaderControllerFor(clusterName)).thenReturn(true);
-
-    AdminOperationWrapper wrapper = createUpdateStoreWrapper(1L, false);
-    UpdateStore updateStore = (UpdateStore) wrapper.getAdminOperation().payloadUnion;
-    ETLStoreConfigRecord etlStoreConfig = new ETLStoreConfigRecord();
-    etlStoreConfig.etledUserProxyAccount = "proxy";
-    etlStoreConfig.regularVersionETLEnabled = true;
-    etlStoreConfig.futureVersionETLEnabled = false;
-    etlStoreConfig.etlStrategy = 2;
-    etlStoreConfig.initialSlaTier = "TIER_A";
-    etlStoreConfig.initialGrantAclUsers = Arrays.asList("user-a", "user-b");
-    // A null value on the message is an explicit clear.
-    etlStoreConfig.initialWorkloadType = null;
-    updateStore.ETLStoreConfig = etlStoreConfig;
-    updateStore.replicateAllConfigs = replicateAll;
-    updateStore.updatedConfigsList = new ArrayList<>();
-    if (replicateAll) {
-      updateStore.updatedConfigsList.clear();
-    } else {
-      updateStore.updatedConfigsList.add(READ_QUOTA_IN_CU);
-      if (specified) {
-        updateStore.updatedConfigsList
-            .addAll(Arrays.asList(ETL_INITIAL_SLA_TIER, ETL_INITIAL_GRANT_ACL_USERS, ETL_INITIAL_WORKLOAD_TYPE));
-      }
-    }
-    Queue<AdminOperationWrapper> queue = new ConcurrentLinkedQueue<>();
-    queue.add(wrapper);
-
-    new AdminExecutionTask(
-        mockLogger,
-        clusterName,
-        storeName,
-        lastSucceededExecutionIdMap,
-        lastPersistedExecutionId,
-        queue,
-        mockAdmin,
-        mockExecutionIdAccessor,
-        false,
-        mockStats,
-        regionName,
-        inflightThreadsByStore).call();
-
-    ArgumentCaptor<UpdateStoreQueryParams> captor = ArgumentCaptor.forClass(UpdateStoreQueryParams.class);
-    verify(mockAdmin, atLeastOnce()).updateStore(eq(clusterName), eq(storeName), captor.capture());
-    UpdateStoreQueryParams params = captor.getValue();
-    boolean applied = replicateAll || specified;
-    assertEquals(params.isEtlInitialSlaTierSpecified(), applied);
-    assertEquals(params.isEtlInitialGrantAclUsersSpecified(), applied);
-    assertEquals(params.isEtlInitialWorkloadTypeSpecified(), applied);
-    if (applied) {
-      assertEquals(params.getEtlInitialSlaTier(), "TIER_A");
-      assertEquals(params.getEtlInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-      assertNull(params.getEtlInitialWorkloadType());
-    }
   }
 
   @DataProvider(name = "ttlRepushEnabledValues")

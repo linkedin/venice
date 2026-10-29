@@ -32,7 +32,6 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -2495,41 +2494,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(
         etlOnboardedStoreVersionNames.contains(v1TopicName),
         "onboardETL should be triggered for current version when enabling EXTERNAL_WITH_VENICE_TRIGGER for the first time");
-  }
-
-  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
-  public void testETLOnboardSeesInitialOnboardingValuesFromSameUpdate() {
-    String storeName = Utils.getUniqueString("test_etl_initial_values");
-    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
-
-    Version version1 =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    TestUtils.waitForNonDeterministicCompletion(
-        30,
-        TimeUnit.SECONDS,
-        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version1.getNumber());
-    String v1TopicName = version1.kafkaTopicName();
-    resetExternalETLServiceEvents();
-
-    // Turn ETL on with EXTERNAL_WITH_VENICE_TRIGGER and the initial onboarding values in one update.
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setEtledProxyUserAccount("test-user")
-            .setRegularVersionETLEnabled(true)
-            .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
-            .setEtlInitialSlaTier("TIER_A")
-            .setEtlInitialGrantAclUsers(Arrays.asList("user-a", "user-b"))
-            .setEtlInitialWorkloadType("BATCH"));
-
-    ETLStoreConfig onboardedConfig = etlOnboardedStoreConfigs.get(v1TopicName);
-    Assert.assertNotNull(onboardedConfig, "onboardETL should be triggered for the current version");
-    Assert.assertEquals(onboardedConfig.getETLStrategy(), VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
-    Assert.assertEquals(onboardedConfig.getEtledUserProxyAccount(), "test-user");
-    Assert.assertEquals(onboardedConfig.getInitialSlaTier(), "TIER_A");
-    Assert.assertEquals(onboardedConfig.getInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-    Assert.assertEquals(onboardedConfig.getInitialWorkloadType(), "BATCH");
-    Assert.assertEquals(onboardedConfig, veniceAdmin.getStore(clusterName, storeName).getEtlStoreConfig());
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)

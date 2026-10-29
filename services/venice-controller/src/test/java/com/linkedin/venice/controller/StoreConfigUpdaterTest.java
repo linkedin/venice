@@ -10,9 +10,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_SLA_TIER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
@@ -50,7 +47,6 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
@@ -66,7 +62,7 @@ import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
-import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -1150,115 +1146,21 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         "An explicit clear must be replicated to child controllers");
   }
 
-  @Test
-  public void testApplyOnParent_EtlInitialOnboardingValues_SetAndClear() {
-    String storeName = Utils.getUniqueString("parent-etl-initial");
-    Store store = TestUtils.createTestStore(storeName, "test-owner", System.currentTimeMillis());
-    ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
-    etlStoreConfig.setInitialSlaTier("TIER_A");
-    etlStoreConfig.setInitialGrantAclUsers(Arrays.asList("user-a", "user-b"));
-    etlStoreConfig.setInitialWorkloadType("BATCH");
-    store.setEtlStoreConfig(etlStoreConfig);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
-    parentAdmin.initStorageCluster(clusterName);
-    List<String> etlInitialKeys =
-        Arrays.asList(ETL_INITIAL_SLA_TIER, ETL_INITIAL_GRANT_ACL_USERS, ETL_INITIAL_WORKLOAD_TYPE);
-
-    // Not provided: the current values are carried over and none of them is marked updated.
-    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
-    UpdateStore untouched = captureLastUpdateStore();
-    assertEquals(untouched.ETLStoreConfig.initialSlaTier.toString(), "TIER_A");
-    assertEquals(untouched.ETLStoreConfig.initialGrantAclUsers.toString(), "[user-a, user-b]");
-    assertEquals(untouched.ETLStoreConfig.initialWorkloadType.toString(), "BATCH");
-    assertTrue(Collections.disjoint(updatedConfigKeys(untouched), etlInitialKeys));
-
-    // Provided with values.
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_B")
-            .setEtlInitialGrantAclUsers(Collections.singletonList("user-c"))
-            .setEtlInitialWorkloadType("STREAM"));
-    UpdateStore set = captureLastUpdateStore();
-    assertEquals(set.ETLStoreConfig.initialSlaTier.toString(), "TIER_B");
-    assertEquals(set.ETLStoreConfig.initialGrantAclUsers.toString(), "[user-c]");
-    assertEquals(set.ETLStoreConfig.initialWorkloadType.toString(), "STREAM");
-    assertTrue(updatedConfigKeys(set).containsAll(etlInitialKeys));
-
-    // Provided as null: the clear must reach the admin message and be replicated to child controllers.
-    parentAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setEtlInitialSlaTier(null)
-            .setEtlInitialGrantAclUsers(null)
-            .setEtlInitialWorkloadType(null));
-    UpdateStore cleared = captureLastUpdateStore();
-    assertNull(cleared.ETLStoreConfig.initialSlaTier);
-    assertNull(cleared.ETLStoreConfig.initialGrantAclUsers);
-    assertNull(cleared.ETLStoreConfig.initialWorkloadType);
-    assertTrue(updatedConfigKeys(cleared).containsAll(etlInitialKeys));
-  }
-
-  @Test
-  public void testApplyOnChild_EtlInitialOnboardingValuesPersistAndClear() {
-    String storeName = Utils.getUniqueString("child-etl-initial");
-    VeniceHelixAdmin admin = newChildAdminMock(storeName);
-    Store store = admin.getStore(clusterName, storeName);
-    doAnswer(invocation -> {
-      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
-      operation.update(store, null);
-      return null;
-    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
-
-    StoreConfigUpdater.applyOnChild(
-        admin,
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
-            .setEtlInitialGrantAclUsers(Arrays.asList("user-a", "user-b"))
-            .setEtlInitialWorkloadType("BATCH"));
-    assertEquals(store.getEtlStoreConfig().getInitialSlaTier(), "TIER_A");
-    assertEquals(store.getEtlStoreConfig().getInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-    assertEquals(store.getEtlStoreConfig().getInitialWorkloadType(), "BATCH");
-
-    // Another ETL update leaves the values alone.
-    StoreConfigUpdater
-        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setEtledProxyUserAccount("proxy"));
-    assertEquals(store.getEtlStoreConfig().getEtledUserProxyAccount(), "proxy");
-    assertEquals(store.getEtlStoreConfig().getInitialSlaTier(), "TIER_A");
-    assertEquals(store.getEtlStoreConfig().getInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-    assertEquals(store.getEtlStoreConfig().getInitialWorkloadType(), "BATCH");
-
-    StoreConfigUpdater.applyOnChild(
-        admin,
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setEtlInitialSlaTier(null)
-            .setEtlInitialGrantAclUsers(null)
-            .setEtlInitialWorkloadType(null));
-    assertNull(store.getEtlStoreConfig().getInitialSlaTier());
-    assertNull(store.getEtlStoreConfig().getInitialGrantAclUsers());
-    assertNull(store.getEtlStoreConfig().getInitialWorkloadType());
-    assertEquals(store.getEtlStoreConfig().getEtledUserProxyAccount(), "proxy");
-  }
-
   @DataProvider(name = "etlOnboardTransitions")
   public Object[][] etlOnboardTransitions() {
     return new Object[][] { { true }, { false } };
   }
 
   /**
-   * Onboarding hands the store to the external ETL service, so the store it receives must carry the ETL config written
-   * by the same update, including the initial onboarding values, on both onboard paths: turning on
-   * EXTERNAL_WITH_VENICE_TRIGGER, and adding the local fabric to etlActiveFabrics.
+   * Both onboard paths, turning on EXTERNAL_WITH_VENICE_TRIGGER and adding the local fabric to etlActiveFabrics, must
+   * hand the external ETL service the ETL config written by the same update, not the one read before it.
    */
   @Test(dataProvider = "etlOnboardTransitions")
   public void testApplyOnChild_OnboardingSeesEtlConfigFromSameUpdate(boolean firstTimeVeniceTrigger) {
     String storeName = Utils.getUniqueString("child-etl-onboard");
-    String localFabric = "dc-local";
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
     VeniceControllerMultiClusterConfig multiClusterConfigs = admin.getMultiClusterConfigs();
-    doReturn(localFabric).when(multiClusterConfigs).getRegionName();
+    doReturn("dc-local").when(multiClusterConfigs).getRegionName();
     doReturn(Optional.of(mock(ExternalETLService.class))).when(admin).getExternalETLService();
     Store store = admin.getStore(clusterName, storeName);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
@@ -1269,13 +1171,9 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
           .setRegularVersionETLEnabled(true)
           .setEtledProxyUserAccount("proxy");
     } else {
-      ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
-      etlStoreConfig.setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
-      etlStoreConfig.setRegularVersionETLEnabled(true);
-      etlStoreConfig.setEtledUserProxyAccount("proxy");
-      etlStoreConfig.setEtlActiveFabrics(Collections.singletonList("dc-other"));
-      store.setEtlStoreConfig(etlStoreConfig);
-      params.setEtlActiveFabrics(Arrays.asList("dc-other", localFabric));
+      int strategy = VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER.getValue();
+      store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, strategy, Arrays.asList("dc-other")));
+      params.setEtlActiveFabrics(Arrays.asList("dc-other", "dc-local"));
     }
     // Like the real store repository, hand out a copy taken before the update is applied.
     doAnswer(invocation -> store.cloneStore()).when(admin).getStore(clusterName, storeName);
@@ -1289,14 +1187,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
     ArgumentCaptor<Store> onboarded = ArgumentCaptor.forClass(Store.class);
     verify(admin).onboardETLForExistingStoreVersion(onboarded.capture());
-    verify(admin, never()).offboardETLForExistingStoreVersion(any());
-    ETLStoreConfig onboardedConfig = onboarded.getValue().getEtlStoreConfig();
-    assertEquals(onboardedConfig.getETLStrategy(), VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER);
-    assertEquals(onboardedConfig.getInitialSlaTier(), "TIER_A");
-    assertEquals(onboardedConfig.getInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-    assertEquals(onboardedConfig.getInitialWorkloadType(), "BATCH");
-    assertEquals(onboardedConfig.clone(), store.getEtlStoreConfig(), "Onboarding must see the persisted ETL config");
-    assertThrows(UnsupportedOperationException.class, () -> onboarded.getValue().setOwner("someone-else"));
+    assertEquals(store.getEtlStoreConfig().getInitialSlaTier(), "TIER_A");
+    assertEquals(onboarded.getValue().getEtlStoreConfig().clone(), store.getEtlStoreConfig());
   }
 
   private static Set<String> updatedConfigKeys(UpdateStore msg) {

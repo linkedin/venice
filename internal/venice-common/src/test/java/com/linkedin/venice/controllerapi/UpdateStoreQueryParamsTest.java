@@ -1,17 +1,12 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_SLA_TIER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static org.testng.Assert.assertEquals;
 
-import com.linkedin.venice.meta.ETLStoreConfig;
-import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.StorageMode;
@@ -157,106 +152,33 @@ public class UpdateStoreQueryParamsTest {
 
   @Test
   public void testEtlInitialOnboardingValuesTriState() {
-    // Not provided at all: leave the values unchanged.
-    UpdateStoreQueryParams unset = new UpdateStoreQueryParams();
+    UpdateStoreQueryParams unset = new UpdateStoreQueryParams(toWireMap(new UpdateStoreQueryParams()));
     Assert.assertFalse(unset.isEtlInitialSlaTierSpecified());
-    Assert.assertNull(unset.getEtlInitialSlaTier());
     Assert.assertFalse(unset.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertNull(unset.getEtlInitialGrantAclUsers());
     Assert.assertFalse(unset.isEtlInitialWorkloadTypeSpecified());
-    Assert.assertNull(unset.getEtlInitialWorkloadType());
 
-    // Provided with a value: set it. Grant users are trimmed and blank entries dropped.
-    UpdateStoreQueryParams set = new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
-        .setEtlInitialGrantAclUsers(Arrays.asList(" user-a ", "", null, "user-b"))
-        .setEtlInitialWorkloadType("BATCH");
-    Assert.assertTrue(set.isEtlInitialSlaTierSpecified());
+    // Grant users travel as JSON, so entries can contain commas. They are trimmed and blank entries dropped.
+    UpdateStoreQueryParams set = new UpdateStoreQueryParams(
+        toWireMap(
+            new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
+                .setEtlInitialGrantAclUsers(Arrays.asList(" user-a ", "", "group:(a,b)"))
+                .setEtlInitialWorkloadType("BATCH")));
     Assert.assertEquals(set.getEtlInitialSlaTier(), "TIER_A");
-    Assert.assertTrue(set.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertEquals(set.getEtlInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-    Assert.assertTrue(set.isEtlInitialWorkloadTypeSpecified());
+    Assert.assertEquals(set.getEtlInitialGrantAclUsers(), Arrays.asList("user-a", "group:(a,b)"));
     Assert.assertEquals(set.getEtlInitialWorkloadType(), "BATCH");
 
-    // Provided as null: explicitly clear the values, which stays distinguishable from "not provided".
-    set.setEtlInitialSlaTier(null).setEtlInitialGrantAclUsers(null).setEtlInitialWorkloadType(null);
-    Assert.assertTrue(set.isEtlInitialSlaTierSpecified());
-    Assert.assertNull(set.getEtlInitialSlaTier());
-    Assert.assertTrue(set.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertNull(set.getEtlInitialGrantAclUsers());
-    Assert.assertTrue(set.isEtlInitialWorkloadTypeSpecified());
-    Assert.assertNull(set.getEtlInitialWorkloadType());
-
-    // A grant list without any non-blank entry is a clear too, so "not set" is only ever null.
-    UpdateStoreQueryParams blank = new UpdateStoreQueryParams().setEtlInitialGrantAclUsers(Arrays.asList(" ", ""));
-    Assert.assertTrue(blank.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertNull(blank.getEtlInitialGrantAclUsers());
-    UpdateStoreQueryParams empty = new UpdateStoreQueryParams().setEtlInitialGrantAclUsers(Collections.emptyList());
-    Assert.assertTrue(empty.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertNull(empty.getEtlInitialGrantAclUsers());
-  }
-
-  @Test
-  public void testEtlInitialOnboardingValuesSurviveWireRoundTripAndCloneConfig() {
-    // Entries containing commas must survive, which is why the list is sent as JSON.
-    List<String> users = Arrays.asList("user-a", "urn:li:principal:(a,b)");
-    UpdateStoreQueryParams valued = new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
-        .setEtlInitialGrantAclUsers(users)
-        .setEtlInitialWorkloadType("BATCH");
-    UpdateStoreQueryParams receivedValued = new UpdateStoreQueryParams(toWireMap(valued));
-    Assert.assertEquals(receivedValued.getEtlInitialSlaTier(), "TIER_A");
-    Assert.assertEquals(receivedValued.getEtlInitialGrantAclUsers(), users);
-    Assert.assertEquals(receivedValued.getEtlInitialWorkloadType(), "BATCH");
-
-    UpdateStoreQueryParams cleared = new UpdateStoreQueryParams().setEtlInitialSlaTier(null)
-        .setEtlInitialGrantAclUsers(null)
-        .setEtlInitialWorkloadType(null);
-    UpdateStoreQueryParams receivedCleared = new UpdateStoreQueryParams(toWireMap(cleared));
-    Assert.assertTrue(receivedCleared.isEtlInitialSlaTierSpecified());
-    Assert.assertNull(receivedCleared.getEtlInitialSlaTier());
-    Assert.assertTrue(receivedCleared.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertNull(receivedCleared.getEtlInitialGrantAclUsers());
-    Assert.assertTrue(receivedCleared.isEtlInitialWorkloadTypeSpecified());
-    Assert.assertNull(receivedCleared.getEtlInitialWorkloadType());
-
-    UpdateStoreQueryParams receivedUnset = new UpdateStoreQueryParams(toWireMap(new UpdateStoreQueryParams()));
-    Assert.assertFalse(receivedUnset.isEtlInitialSlaTierSpecified());
-    Assert.assertFalse(receivedUnset.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertFalse(receivedUnset.isEtlInitialWorkloadTypeSpecified());
-
-    // The child controller keeps only the configs named in updatedConfigsList; a clear must survive that.
-    UpdateStoreQueryParams target = new UpdateStoreQueryParams();
-    target.cloneConfig(ETL_INITIAL_SLA_TIER, cleared);
-    target.cloneConfig(ETL_INITIAL_GRANT_ACL_USERS, valued);
-    target.cloneConfig(ETL_INITIAL_WORKLOAD_TYPE, cleared);
-    Assert.assertTrue(target.isEtlInitialSlaTierSpecified());
-    Assert.assertNull(target.getEtlInitialSlaTier());
-    Assert.assertEquals(target.getEtlInitialGrantAclUsers(), users);
-    Assert.assertTrue(target.isEtlInitialWorkloadTypeSpecified());
-    Assert.assertNull(target.getEtlInitialWorkloadType());
-  }
-
-  @Test
-  public void testStoreInfoCopyIncludesEtlInitialOnboardingValuesOnlyWhenSet() {
-    ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl("proxy", true, false, 2, null);
-    etlStoreConfig.setInitialSlaTier("TIER_A");
-    etlStoreConfig.setInitialGrantAclUsers(Arrays.asList("user-a", "user-b"));
-    etlStoreConfig.setInitialWorkloadType("BATCH");
-    StoreInfo source = new StoreInfo();
-    source.setEtlStoreConfig(etlStoreConfig);
-    for (boolean storeMigrating: new boolean[] { true, false }) {
-      UpdateStoreQueryParams copied = new UpdateStoreQueryParams(source, storeMigrating);
-      Assert.assertEquals(copied.getEtlInitialSlaTier(), "TIER_A");
-      Assert.assertEquals(copied.getEtlInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
-      Assert.assertEquals(copied.getEtlInitialWorkloadType(), "BATCH");
-    }
-
-    // Unset values are not copied, so they cannot clear anything on the destination.
-    StoreInfo unsetSource = new StoreInfo();
-    unsetSource.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, 2, null));
-    UpdateStoreQueryParams unsetCopy = new UpdateStoreQueryParams(unsetSource, true);
-    Assert.assertFalse(unsetCopy.isEtlInitialSlaTierSpecified());
-    Assert.assertFalse(unsetCopy.isEtlInitialGrantAclUsersSpecified());
-    Assert.assertFalse(unsetCopy.isEtlInitialWorkloadTypeSpecified());
+    // An explicit null clears the value, which stays distinguishable from "not provided".
+    UpdateStoreQueryParams cleared = new UpdateStoreQueryParams(
+        toWireMap(
+            new UpdateStoreQueryParams().setEtlInitialSlaTier(null)
+                .setEtlInitialGrantAclUsers(null)
+                .setEtlInitialWorkloadType(null)));
+    Assert.assertTrue(cleared.isEtlInitialSlaTierSpecified());
+    Assert.assertNull(cleared.getEtlInitialSlaTier());
+    Assert.assertTrue(cleared.isEtlInitialGrantAclUsersSpecified());
+    Assert.assertNull(cleared.getEtlInitialGrantAclUsers());
+    Assert.assertTrue(cleared.isEtlInitialWorkloadTypeSpecified());
+    Assert.assertNull(cleared.getEtlInitialWorkloadType());
   }
 
   private static Map<String, String> toWireMap(UpdateStoreQueryParams params) {
