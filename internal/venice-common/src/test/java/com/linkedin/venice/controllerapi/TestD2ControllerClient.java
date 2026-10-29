@@ -49,11 +49,14 @@ public class TestD2ControllerClient {
 
   @DataProvider
   public Object[][] discoveryDurations() {
-    return new Object[][] { { new int[] { 5000, 5000, 5000 } }, { new int[] { 2000, 5000, 5000, 3000 } } };
+    return new Object[][] { { false, 15_000, new int[] { 5000, 5000, 5000 } },
+        { false, 15_000, new int[] { 2000, 5000, 5000, 3000 } }, { true, 8000, new int[] { 5000, 3000 } },
+        { true, 8000, new int[] { 2000, 5000, 1000 } } };
   }
 
   @Test(dataProvider = "discoveryDurations")
-  public void testD2DiscoverySharesDeadlineAndCancelsReads(int[] durationsMs) throws Exception {
+  public void testD2DiscoverySharesDeadlineAndCancelsReads(boolean fanout, int budgetMs, int[] durationsMs)
+      throws Exception {
     D2Client d2Client = mock(D2Client.class);
     D2ControllerClient client = Mockito.spy(
         new D2ControllerClient(
@@ -63,23 +66,95 @@ public class TestD2ControllerClient {
             Optional.empty()));
     AtomicLong clock = new AtomicLong();
     doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    ControllerTransport transport = mock(ControllerTransport.class);
+    doReturn(transport).when(client).getNewControllerTransport();
     Future<RestResponse> response = mock(Future.class);
     doReturn(response).when(d2Client).restRequest(any());
     AtomicInteger attempts = new AtomicInteger();
     doAnswer(invocation -> {
-      long remainingMs = 15_000 - TimeUnit.NANOSECONDS.toMillis(clock.get());
+      long remainingMs = budgetMs - TimeUnit.NANOSECONDS.toMillis(clock.get());
       Assert.assertEquals(invocation.<Long>getArgument(0).longValue(), Math.min(5000, remainingMs));
       clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(durationsMs[attempts.getAndIncrement()]));
       throw new TimeoutException("candidate timed out");
     }).when(response).get(Mockito.anyLong(), Mockito.eq(TimeUnit.MILLISECONDS));
     try {
-      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      if (fanout) {
+        Assert.assertTrue(client.getStoreWithDeadline("store", TimeUnit.MILLISECONDS.toNanos(budgetMs)).isError());
+        Mockito.verify(transport, Mockito.never())
+            .request(
+                Mockito.anyString(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.anyInt(),
+                Mockito.isNull());
+      } else {
+        Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      }
       Assert.assertEquals(attempts.get(), durationsMs.length);
+      Assert.assertEquals(clock.get(), TimeUnit.MILLISECONDS.toNanos(budgetMs));
       Mockito.verify(d2Client, Mockito.times(durationsMs.length)).restRequest(any());
       Mockito.verify(response, Mockito.times(durationsMs.length)).cancel(true);
     } finally {
       client.close();
     }
+  }
+
+  @Test
+  public void testD2FanoutFallbackSharesDeadlineAndConvertsSecureLeaderUrl() throws Exception {
+    D2Client first = mock(D2Client.class);
+    D2Client second = mock(D2Client.class);
+    Future<RestResponse> firstResponse = mock(Future.class);
+    Future<RestResponse> secondResponse = mock(Future.class);
+    doReturn(firstResponse).when(first).restRequest(any());
+    doReturn(secondResponse).when(second).restRequest(any());
+    D2ControllerClient client = Mockito.spy(
+        new D2ControllerClient(
+            "service",
+            "cluster",
+            Arrays.asList(first, second),
+            Optional.of(mock(SSLFactory.class))));
+    AtomicLong clock = new AtomicLong(TimeUnit.SECONDS.toNanos(9));
+    doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    ControllerTransport transport = mock(ControllerTransport.class);
+    doReturn(transport).when(client).getNewControllerTransport();
+    doAnswer(invocation -> {
+      clock.addAndGet(TimeUnit.SECONDS.toNanos(5));
+      throw new TimeoutException("first candidate stalled");
+    }).when(firstResponse).get(5000, TimeUnit.MILLISECONDS);
+    RestResponse leader = mock(RestResponse.class);
+    doReturn(
+        ByteString.copyString(
+            "{\"url\":\"http://leader:1576\",\"secureUrl\":\"https://leader:1578\"}",
+            StandardCharsets.UTF_8)).when(leader).getEntity();
+    doAnswer(invocation -> {
+      clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(400));
+      return leader;
+    }).when(secondResponse).get(1000, TimeUnit.MILLISECONDS);
+    StoreResponse success = new StoreResponse();
+    doReturn(success).when(transport)
+        .request(
+            Mockito.eq("https://leader:1578"),
+            Mockito.eq(ControllerRoute.STORE),
+            any(),
+            Mockito.eq(StoreResponse.class),
+            Mockito.eq(600),
+            Mockito.isNull());
+    try {
+      Assert.assertSame(client.getStoreWithDeadline("store", TimeUnit.SECONDS.toNanos(15)), success);
+      Mockito.verify(firstResponse).get(5000, TimeUnit.MILLISECONDS);
+      Mockito.verify(secondResponse).get(1000, TimeUnit.MILLISECONDS);
+      Mockito.verify(firstResponse).cancel(true);
+      Mockito.verify(secondResponse).cancel(true);
+      Mockito.verify(transport).close();
+    } finally {
+      client.close();
+    }
+  }
+
+  @DataProvider
+  public Object[][] discoveryModes() {
+    return new Object[][] { { false }, { true } };
   }
 
   @Test
@@ -102,8 +177,8 @@ public class TestD2ControllerClient {
     }
   }
 
-  @Test
-  public void testD2DiscoveryStopsAndCancelsOnInterruption() throws Exception {
+  @Test(dataProvider = "discoveryModes")
+  public void testD2DiscoveryStopsAndCancelsOnInterruption(boolean fanout) throws Exception {
     D2Client first = mock(D2Client.class);
     D2Client second = mock(D2Client.class);
     Future<RestResponse> response = mock(Future.class);
@@ -113,7 +188,12 @@ public class TestD2ControllerClient {
     }).when(response).get(Mockito.anyLong(), Mockito.eq(TimeUnit.MILLISECONDS));
     try (D2ControllerClient client =
         new D2ControllerClient("service", "cluster", Arrays.asList(first, second), Optional.empty())) {
-      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      if (fanout) {
+        Assert.assertTrue(
+            client.getStoreWithDeadline("store", System.nanoTime() + TimeUnit.SECONDS.toNanos(15)).isError());
+      } else {
+        Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      }
       Assert.assertTrue(Thread.currentThread().isInterrupted());
       Mockito.verify(response).cancel(true);
       Mockito.verify(second, Mockito.never()).restRequest(any());

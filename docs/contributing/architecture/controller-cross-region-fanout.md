@@ -42,19 +42,33 @@ For each region it runs `request` (retried when `maxAttempts > 1`), and on a per
 their loops because their error policy is bespoke (fail-fast, throw, region-filtered, error-collecting,
 first-success-wins, fold/max, etc.).
 
-`getCurrentVersionForMultiRegions` instead uses `queryCurrentVersions`: concurrent, single-attempt `getStoreWithTimeout`
-calls with a fixed **15-second shared deadline**, including submission, queueing, discovery, and the store request. The
-provider owns a dedicated bounded executor (16 workers, 256 queued tasks). Returned errors, timeouts, cancelled work,
-and executor rejections produce `-1` for the affected region; unexpected exceptions still propagate. Completed healthy
-responses are retained even when another region times out. On deadline or caller interruption, unfinished tasks are
-cancelled with interruption and the caller's interrupt flag is preserved. Workers never modify the returned map, and the
-executor is shut down before the provider closes its clients.
+`getCurrentVersionForMultiRegions` instead uses `queryCurrentVersions`: concurrent, single-attempt
+`getStoreWithDeadline` calls with a fixed **15-second shared deadline**, including submission, queueing, discovery, and
+the store request. The provider owns a dedicated bounded executor (**16 global workers, 256 queued tasks**) and admits
+at most **six queued or running tasks per region** before submission. The region key is shared across overlapping
+requests, stores, and clusters on that provider; there is no hardcoded region list. Six is an admission cap, **not six
+reserved threads** per region. A saturated region is rejected immediately without occupying a worker or entering the
+global queue. This fixed sizing was user-selected, **not production-validated**; there are no new configurations or
+feature flags.
+
+Returned errors, timeouts, cancelled work, regional saturation, and executor rejections are logged and produce `-1` for
+the affected region; unexpected exceptions still propagate. Completed healthy responses are retained even when another
+region times out. On deadline or caller interruption, unfinished tasks are cancelled with interruption and the caller's
+interrupt flag is preserved. Workers never modify the returned map, and the executor is shut down before the provider
+closes its clients. Admission is released on submission rejection, cancellation before start, or actual worker exit
+(including exceptions). Cancelling a response future does not prove that running I/O stopped: an executing task retains
+admission until its worker exits, even if it ignores interruption. Start/cancel ownership is synchronized to prevent
+early or double release; shutdown cancels drained queued tasks. Idle region counters are removed rather than
+accumulating keys indefinitely.
 
 Normal HTTP and D2 leader discovery each have a fixed **15-second cumulative budget** and a **5-second per-candidate
-cap** to permit fallback. The existing deadline-aware discovery overloads used by `getStoreWithTimeout` remain
-single-candidate operations. Other controller request retry counts and request timeouts are unchanged: the discovery
-budget bounds each discovery invocation, not the entire retry sequence. These budgets bound request waits; transport
-setup, parsing, and cleanup can add wall-clock overhead.
+cap** to permit fallback. Current-version fanout reuses their multi-candidate discovery loops, with candidate waits
+capped at `min(5 seconds, remaining fanout budget)` and the store request using only the remainder of the same absolute
+monotonic deadline. Neither discovery nor a new candidate starts another independent 15 seconds. The existing bounded
+APIs (`getStoreWithTimeout`, `getAdminTopicMetadataWithTimeout`) and their protected discovery overloads remain
+**single-candidate** operations for deferred recovery and other callers. Other controller request retry counts and
+request timeouts are unchanged: the discovery budget bounds each discovery invocation, not the entire retry sequence.
+These budgets bound request waits; transport setup, parsing, and cleanup can add wall-clock overhead.
 
 ## The two retry engines
 
@@ -89,22 +103,22 @@ There is **no single retry policy**. Cross-region calls that retry use one of tw
 
 ### Fan-out sites with no retry (single attempt)
 
-| Method                                    | Class:line  | RPC                                           | Error policy             |
-| ----------------------------------------- | ----------- | --------------------------------------------- | ------------------------ |
-| `getCurrentVersionForMultiRegions`        | Parent:2301 | `getStoreWithTimeout` (parallel, shared 15 s) | sentinel                 |
-| `getBackupVersionsForMultiColos`          | Parent:2276 | `getBackupVersions`                           | sentinel                 |
-| `getInUseValueSchemaIds`                  | Parent:764  | `getInUseSchemaIds`                           | fail-fast → empty set    |
-| `getOffLineJobStatus`                     | Parent:3451 | `getLeaderControllerUrl` / `queryJobStatus`   | log → UNKNOWN, aggregate |
-| `getClusterStaleStores`                   | Parent:4835 | `getClusterStores`                            | throw                    |
-| `getLargestUsedVersionFromStoreGraveyard` | Parent:4906 | `getStoreLargestUsedVersion`                  | fold/max                 |
-| `getLargestUsedVersion`                   | Parent:4919 | `getStoreLargestUsedVersion`                  | fold/max                 |
-| `listStorePushInfo`                       | Parent:4955 | `getRegionPushDetails`                        | skip null/continue       |
-| `checkResourceCleanupBeforeStoreCreation` | Parent:4982 | `checkResourceCleanupForStoreCreation`        | fail-fast throw          |
-| `removeStoreFromGraveyard`                | Parent:5519 | `removeStoreFromGraveyard`                    | fail-fast throw          |
-| `validateStoreDeleted`                    | Parent:5585 | `validateStoreDeleted`                        | collect errors           |
-| `sendPushJobDetails`                      | Child:1623  | `sendPushJobDetails`                          | first-success-wins       |
-| `getStoreInfoInChildColos`                | Child:1963  | `getStore`                                    | fail-fast throw          |
-| `deleteRTTopicFromAllFabrics`             | Child:4335  | `deleteKafkaTopic`                            | log + continue           |
+| Method                                    | Class:line  | RPC                                            | Error policy             |
+| ----------------------------------------- | ----------- | ---------------------------------------------- | ------------------------ |
+| `getCurrentVersionForMultiRegions`        | Parent:2301 | `getStoreWithDeadline` (parallel, shared 15 s) | sentinel                 |
+| `getBackupVersionsForMultiColos`          | Parent:2276 | `getBackupVersions`                            | sentinel                 |
+| `getInUseValueSchemaIds`                  | Parent:764  | `getInUseSchemaIds`                            | fail-fast → empty set    |
+| `getOffLineJobStatus`                     | Parent:3451 | `getLeaderControllerUrl` / `queryJobStatus`    | log → UNKNOWN, aggregate |
+| `getClusterStaleStores`                   | Parent:4835 | `getClusterStores`                             | throw                    |
+| `getLargestUsedVersionFromStoreGraveyard` | Parent:4906 | `getStoreLargestUsedVersion`                   | fold/max                 |
+| `getLargestUsedVersion`                   | Parent:4919 | `getStoreLargestUsedVersion`                   | fold/max                 |
+| `listStorePushInfo`                       | Parent:4955 | `getRegionPushDetails`                         | skip null/continue       |
+| `checkResourceCleanupBeforeStoreCreation` | Parent:4982 | `checkResourceCleanupForStoreCreation`         | fail-fast throw          |
+| `removeStoreFromGraveyard`                | Parent:5519 | `removeStoreFromGraveyard`                     | fail-fast throw          |
+| `validateStoreDeleted`                    | Parent:5585 | `validateStoreDeleted`                         | collect errors           |
+| `sendPushJobDetails`                      | Child:1623  | `sendPushJobDetails`                           | first-success-wins       |
+| `getStoreInfoInChildColos`                | Child:1963  | `getStore`                                     | fail-fast throw          |
+| `deleteRTTopicFromAllFabrics`             | Child:4335  | `deleteKafkaTopic`                             | log + continue           |
 
 ### Single-region calls (pick one region's client) — all no-retry
 

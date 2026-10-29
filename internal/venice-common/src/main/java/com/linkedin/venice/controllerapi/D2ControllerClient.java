@@ -111,14 +111,19 @@ public class D2ControllerClient extends ControllerClient {
   @Override
   protected String discoverLeaderController() {
     long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_TIMEOUT_MS);
+    return discoverLeaderControllerWithDeadline(null, deadlineNs);
+  }
+
+  @Override
+  protected String discoverLeaderControllerWithDeadline(ControllerTransport transport, long deadlineNs) {
     Exception lastException = null;
     for (D2Client d2Client: d2Clients) {
       if (deadlineNs - requestTimeNs() <= 0 || Thread.currentThread().isInterrupted()) {
         break;
       }
       try {
-        long candidateDeadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS
-            .toNanos(Math.min(LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS, remainingRequestTimeMs(deadlineNs)));
+        long candidateDeadlineNs = Math
+            .min(deadlineNs, requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS));
         return discoverLeaderController(d2Client, candidateDeadlineNs);
       } catch (Exception e) {
         lastException = e;

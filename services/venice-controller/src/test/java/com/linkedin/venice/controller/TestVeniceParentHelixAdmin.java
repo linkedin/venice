@@ -2913,7 +2913,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       doReturn(map).when(storeStatusResponse).getStoreStatusMap();
       doReturn(storeStatusResponse).when(client).getFutureVersions(anyString(), anyString());
       doReturn(storeResponse).when(client).getStore(anyString());
-      doReturn(storeResponse).when(client).getStoreWithTimeout(anyString(), anyInt());
+      doReturn(storeResponse).when(client).getStoreWithDeadline(anyString(), anyLong());
       controllerClientMap.put("region" + i, client);
     }
 
@@ -4361,7 +4361,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ControllerClient errorClient = mock(ControllerClient.class);
     StoreResponse errorResponse = new StoreResponse();
     errorResponse.setError("Error getting store for testing.");
-    doReturn(errorResponse).when(errorClient).getStoreWithTimeout(anyString(), anyInt());
+    doReturn(errorResponse).when(errorClient).getStoreWithDeadline(anyString(), anyLong());
     controllerClientMap.put("region4", errorClient);
 
     ParentVersionOrchestrator versionOrchestrator = new ParentVersionOrchestrator(parentAdmin);
@@ -4386,7 +4386,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
       s.setCurrentVersion(i);
       storeResponse.setStore(StoreInfo.fromStore(s));
-      doReturn(storeResponse).when(client).getStoreWithTimeout(anyString(), anyInt());
+      doReturn(storeResponse).when(client).getStoreWithDeadline(anyString(), anyLong());
       controllerClientMap.put("region" + i, client);
     }
     return controllerClientMap;

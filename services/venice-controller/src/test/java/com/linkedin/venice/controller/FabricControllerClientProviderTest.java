@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -17,15 +19,22 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.Test;
 
 
@@ -61,13 +70,347 @@ public class FabricControllerClientProviderTest {
     return clusterConfig;
   }
 
+  private static ThreadPoolExecutor executor(int workers, int queueCapacity) {
+    return new ThreadPoolExecutor(workers, workers, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(queueCapacity));
+  }
+
+  private static FabricControllerClientProvider providerWith(ThreadPoolExecutor executor) {
+    return new FabricControllerClientProvider(
+        mock(VeniceControllerMultiClusterConfig.class),
+        Optional.empty(),
+        null,
+        executor);
+  }
+
+  private static void awaitIdle(ThreadPoolExecutor executor) {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      assertEquals(executor.getActiveCount(), 0);
+      assertTrue(executor.getQueue().isEmpty());
+    });
+  }
+
+  @Test(timeOut = 15_000)
+  public void testCancellationRacingWorkerStartReleasesAdmissionExactlyOnce() throws Exception {
+    CountDownLatch dequeued = new CountDownLatch(1);
+    CountDownLatch allowRun = new CountDownLatch(1);
+    CountDownLatch cancelledRunExited = new CountDownLatch(1);
+    AtomicReference<Runnable> firstTask = new AtomicReference<>();
+    ThreadPoolExecutor executor =
+        new ThreadPoolExecutor(7, 7, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(256)) {
+          @Override
+          protected void beforeExecute(Thread thread, Runnable task) {
+            if (firstTask.compareAndSet(null, task)) {
+              dequeued.countDown();
+              try {
+                allowRun.await();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            }
+          }
+
+          @Override
+          protected void afterExecute(Runnable task, Throwable failure) {
+            if (task == firstTask.get()) {
+              cancelledRunExited.countDown();
+            }
+          }
+        };
+    CountDownLatch running = new CountDownLatch(6);
+    CountDownLatch release = new CountDownLatch(1);
+    ControllerClient stalled = mock(ControllerClient.class);
+    when(stalled.getStoreWithDeadline(anyString(), anyLong())).thenAnswer(invocation -> {
+      running.countDown();
+      release.await();
+      return successStore(1);
+    });
+    ControllerClient healthy = mock(ControllerClient.class);
+    when(healthy.getStoreWithDeadline(anyString(), anyLong())).thenReturn(successStore(2));
+    List<Thread> callers = new ArrayList<>();
+    List<FutureTask<Map<String, Integer>>> queries = new ArrayList<>();
+    try (FabricControllerClientProvider provider = providerWith(executor)) {
+      FutureTask<Map<String, Integer>> firstQuery = new FutureTask<>(
+          () -> provider.queryCurrentVersions(Collections.singletonMap("region", healthy), CLUSTER, STORE));
+      Thread firstCaller = new Thread(firstQuery);
+      callers.add(firstCaller);
+      firstCaller.start();
+      assertTrue(dequeued.await(5, TimeUnit.SECONDS));
+      firstCaller.interrupt();
+      assertEquals(firstQuery.get(5, TimeUnit.SECONDS).get("region").intValue(), SENTINEL);
+
+      for (int i = 0; i < 6; i++) {
+        FutureTask<Map<String, Integer>> query = new FutureTask<>(
+            () -> provider.queryCurrentVersions(Collections.singletonMap("region", stalled), CLUSTER, STORE));
+        queries.add(query);
+        Thread caller = new Thread(query);
+        callers.add(caller);
+        caller.start();
+      }
+      assertTrue(running.await(5, TimeUnit.SECONDS), "Cancellation before run must return the original admission");
+      allowRun.countDown();
+      assertTrue(cancelledRunExited.await(5, TimeUnit.SECONDS));
+      assertEquals(
+          provider.queryCurrentVersions(Collections.singletonMap("region", healthy), CLUSTER, STORE)
+              .get("region")
+              .intValue(),
+          SENTINEL,
+          "A cancelled task subsequently entering run must not release another task's admission");
+      verify(healthy, never()).getStoreWithDeadline(anyString(), anyLong());
+      release.countDown();
+      for (FutureTask<Map<String, Integer>> query: queries) {
+        assertEquals(query.get(5, TimeUnit.SECONDS).get("region").intValue(), 1);
+      }
+      for (Thread caller: callers) {
+        caller.join(5000);
+      }
+      awaitIdle(executor);
+      assertEquals(
+          provider.queryCurrentVersions(Collections.singletonMap("region", healthy), CLUSTER, STORE)
+              .get("region")
+              .intValue(),
+          2);
+    } finally {
+      allowRun.countDown();
+      release.countDown();
+      callers.forEach(Thread::interrupt);
+      for (Thread caller: callers) {
+        caller.join(5000);
+      }
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+    }
+  }
+
+  @Test(timeOut = 15_000)
+  public void testSixRegionAdmissionsSharedAcrossStoresAndClustersAndHeldUntilWorkerExit() throws Exception {
+    CountDownLatch started = new CountDownLatch(6);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch interrupted = new CountDownLatch(6);
+    ControllerClient stalled = mock(ControllerClient.class);
+    when(stalled.getStoreWithDeadline(anyString(), anyLong())).thenAnswer(invocation -> {
+      started.countDown();
+      // Model I/O that has received cancellation but has not actually stopped.
+      while (release.getCount() != 0) {
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          interrupted.countDown();
+        }
+      }
+      return successStore(99);
+    });
+    ControllerClient healthy = mock(ControllerClient.class);
+    when(healthy.getStoreWithDeadline(anyString(), anyLong())).thenReturn(successStore(7));
+    ThreadPoolExecutor executor = executor(16, 256);
+    List<Thread> callers = new ArrayList<>();
+    List<FutureTask<Map<String, Integer>>> queries = new ArrayList<>();
+    try (FabricControllerClientProvider provider = providerWith(executor)) {
+      for (int i = 0; i < 6; i++) {
+        String cluster = "cluster-" + i;
+        String store = "store-" + i;
+        FutureTask<Map<String, Integer>> query = new FutureTask<>(
+            () -> provider.queryCurrentVersions(Collections.singletonMap("stalled", stalled), cluster, store));
+        Thread caller = new Thread(query);
+        queries.add(query);
+        callers.add(caller);
+        caller.start();
+      }
+      assertTrue(started.await(5, TimeUnit.SECONDS), "All six slots must be admitted");
+      Map<String, ControllerClient> clients = new LinkedHashMap<>();
+      clients.put("stalled", stalled);
+      clients.put("healthy-a", healthy);
+      clients.put("healthy-b", healthy);
+      Map<String, Integer> result = provider.queryCurrentVersions(clients, "other-cluster", "other-store");
+      assertEquals(result.get("stalled").intValue(), SENTINEL, "The seventh task must be rejected");
+      assertEquals(result.get("healthy-a").intValue(), 7);
+      assertEquals(result.get("healthy-b").intValue(), 7);
+
+      callers.forEach(Thread::interrupt);
+      for (FutureTask<Map<String, Integer>> query: queries) {
+        assertEquals(query.get(5, TimeUnit.SECONDS).get("stalled").intValue(), SENTINEL);
+      }
+      assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+      assertEquals(
+          provider.queryCurrentVersions(Collections.singletonMap("stalled", healthy), CLUSTER, STORE)
+              .get("stalled")
+              .intValue(),
+          SENTINEL,
+          "Cancelled responses must not release permits while their workers are still executing");
+      release.countDown();
+      awaitIdle(executor);
+      for (int i = 0; i < 12; i++) {
+        assertEquals(
+            provider.queryCurrentVersions(Collections.singletonMap("stalled", healthy), CLUSTER, STORE)
+                .get("stalled")
+                .intValue(),
+            7,
+            "Worker exit and normal completion must return admission");
+        awaitIdle(executor);
+      }
+    } finally {
+      release.countDown();
+      callers.forEach(Thread::interrupt);
+      for (Thread caller: callers) {
+        caller.join(5000);
+      }
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+    }
+  }
+
+  @Test(timeOut = 15_000)
+  public void testQueuedCancellationRejectionAndShutdownReturnAdmission() throws Exception {
+    ThreadPoolExecutor executor = executor(1, 6);
+    CountDownLatch workerStarted = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    executor.execute(() -> {
+      workerStarted.countDown();
+      try {
+        release.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    assertTrue(workerStarted.await(5, TimeUnit.SECONDS));
+    ControllerClient client = mock(ControllerClient.class);
+    when(client.getStoreWithDeadline(anyString(), anyLong())).thenReturn(successStore(8));
+    List<Thread> callers = new ArrayList<>();
+    List<FutureTask<Map<String, Integer>>> queries = new ArrayList<>();
+    try (FabricControllerClientProvider provider = providerWith(executor)) {
+      for (int i = 0; i < 6; i++) {
+        FutureTask<Map<String, Integer>> query = new FutureTask<>(
+            () -> provider.queryCurrentVersions(Collections.singletonMap("queued", client), CLUSTER, STORE));
+        Thread caller = new Thread(query);
+        queries.add(query);
+        callers.add(caller);
+        caller.start();
+      }
+      TestUtils
+          .waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertEquals(executor.getQueue().size(), 6));
+      assertEquals(
+          provider.queryCurrentVersions(Collections.singletonMap("queued", client), CLUSTER, STORE)
+              .get("queued")
+              .intValue(),
+          SENTINEL);
+      assertEquals(executor.getQueue().size(), 6, "Regional rejection must not enqueue work");
+      // This region has admission but is rejected by the full global queue. Repeat to expose permit leaks.
+      for (int i = 0; i < 12; i++) {
+        assertEquals(
+            provider.queryCurrentVersions(Collections.singletonMap("rejected", client), CLUSTER, STORE)
+                .get("rejected")
+                .intValue(),
+            SENTINEL);
+      }
+      verify(client, never()).getStoreWithDeadline(anyString(), anyLong());
+      callers.forEach(Thread::interrupt);
+      for (FutureTask<Map<String, Integer>> query: queries) {
+        assertEquals(query.get(5, TimeUnit.SECONDS).get("queued").intValue(), SENTINEL);
+      }
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertTrue(executor.getQueue().isEmpty()));
+      release.countDown();
+      awaitIdle(executor);
+      for (String region: new String[] { "queued", "rejected" }) {
+        for (int i = 0; i < 6; i++) {
+          assertEquals(
+              provider.queryCurrentVersions(Collections.singletonMap(region, client), CLUSTER, STORE)
+                  .get(region)
+                  .intValue(),
+              8);
+          awaitIdle(executor);
+        }
+      }
+      provider.close();
+      assertEquals(
+          provider.queryCurrentVersions(Collections.singletonMap("queued", client), CLUSTER, STORE)
+              .get("queued")
+              .intValue(),
+          SENTINEL);
+    } finally {
+      release.countDown();
+      callers.forEach(Thread::interrupt);
+      for (Thread caller: callers) {
+        caller.join(5000);
+      }
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+    }
+  }
+
+  @Test(timeOut = 10_000)
+  public void testExceptionalAndPreSubmissionExitsDoNotLeakAdmission() throws Exception {
+    ControllerClient client = mock(ControllerClient.class);
+    when(client.getStoreWithDeadline(anyString(), anyLong())).thenThrow(new IllegalStateException("unexpected"));
+    ThreadPoolExecutor executor = executor(1, 6);
+    try (FabricControllerClientProvider provider = providerWith(executor)) {
+      Map<String, ControllerClient> clients = Collections.singletonMap("region", client);
+      for (int i = 0; i < 12; i++) {
+        assertThrows(IllegalStateException.class, () -> provider.queryCurrentVersions(clients, CLUSTER, STORE));
+        awaitIdle(executor);
+        assertEquals(
+            provider.queryCurrentVersions(clients, CLUSTER, STORE, System.nanoTime()).get("region").intValue(),
+            SENTINEL);
+        try {
+          Thread.currentThread().interrupt();
+          assertEquals(provider.queryCurrentVersions(clients, CLUSTER, STORE).get("region").intValue(), SENTINEL);
+          assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+          Thread.interrupted();
+        }
+      }
+      doReturn(successStore(3)).when(client).getStoreWithDeadline(anyString(), anyLong());
+      assertEquals(provider.queryCurrentVersions(clients, CLUSTER, STORE).get("region").intValue(), 3);
+    } finally {
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+    }
+  }
+
+  @Test(timeOut = 10_000)
+  public void testShutdownCancelsDrainedQueuedTasksAndUnblocksCaller() throws Exception {
+    ThreadPoolExecutor executor = executor(1, 6);
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    executor.execute(() -> {
+      started.countDown();
+      try {
+        release.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    ControllerClient client = mock(ControllerClient.class);
+    try (FabricControllerClientProvider provider = providerWith(executor)) {
+      assertTrue(started.await(5, TimeUnit.SECONDS));
+      FutureTask<Map<String, Integer>> query = new FutureTask<>(
+          () -> provider.queryCurrentVersions(Collections.singletonMap("region", client), CLUSTER, STORE));
+      Thread caller = new Thread(query);
+      caller.start();
+      try {
+        TestUtils
+            .waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertEquals(executor.getQueue().size(), 1));
+        Future<?> queuedTask = (Future<?>) executor.getQueue().peek();
+        provider.close();
+        assertTrue(queuedTask.isCancelled(), "Draining a queue alone does not cancel its FutureTasks");
+        assertEquals(query.get(5, TimeUnit.SECONDS).get("region").intValue(), SENTINEL);
+        verify(client, never()).getStoreWithDeadline(anyString(), anyLong());
+      } finally {
+        caller.interrupt();
+        caller.join(5000);
+      }
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+    }
+  }
+
   @Test(timeOut = 10_000)
   public void testCurrentVersionDeadlineRetainsHealthyRegionsAndInterruptsSlowWorker() throws Exception {
     CountDownLatch slowStarted = new CountDownLatch(1);
     CountDownLatch healthyFinished = new CountDownLatch(1);
     CountDownLatch slowInterrupted = new CountDownLatch(1);
     ControllerClient slow = mock(ControllerClient.class);
-    when(slow.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+    when(slow.getStoreWithDeadline(eq(STORE), anyLong())).thenAnswer(invocation -> {
       slowStarted.countDown();
       try {
         new CountDownLatch(1).await();
@@ -78,7 +421,7 @@ public class FabricControllerClientProviderTest {
       return successStore(99);
     });
     ControllerClient healthy = mock(ControllerClient.class);
-    when(healthy.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+    when(healthy.getStoreWithDeadline(eq(STORE), anyLong())).thenAnswer(invocation -> {
       assertTrue(slowStarted.await(5, TimeUnit.SECONDS), "Both regions must run concurrently");
       healthyFinished.countDown();
       return successStore(7);
@@ -101,13 +444,13 @@ public class FabricControllerClientProviderTest {
   @Test
   public void testCurrentVersionsEmptyErrorsAndUnexpectedExceptions() {
     ControllerClient good = mock(ControllerClient.class);
-    when(good.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
-      int timeoutMs = invocation.getArgument(1);
-      assertTrue(timeoutMs > 0 && timeoutMs <= 15_000);
+    when(good.getStoreWithDeadline(eq(STORE), anyLong())).thenAnswer(invocation -> {
+      long remainingNs = invocation.<Long>getArgument(1) - System.nanoTime();
+      assertTrue(remainingNs > 0 && remainingNs <= TimeUnit.SECONDS.toNanos(15));
       return successStore(9);
     });
     ControllerClient bad = mock(ControllerClient.class);
-    when(bad.getStoreWithTimeout(eq(STORE), anyInt())).thenReturn(errorStore());
+    when(bad.getStoreWithDeadline(eq(STORE), anyLong())).thenReturn(errorStore());
     Map<String, ControllerClient> clients = new LinkedHashMap<>();
     clients.put("good", good);
     clients.put("bad", bad);
@@ -116,7 +459,7 @@ public class FabricControllerClientProviderTest {
       Map<String, Integer> result = provider.queryCurrentVersions(clients, CLUSTER, STORE);
       assertEquals(result.get("good").intValue(), 9);
       assertEquals(result.get("bad").intValue(), SENTINEL);
-      when(bad.getStoreWithTimeout(eq(STORE), anyInt())).thenThrow(new IllegalStateException("unexpected"));
+      when(bad.getStoreWithDeadline(eq(STORE), anyLong())).thenThrow(new IllegalStateException("unexpected"));
       assertThrows(IllegalStateException.class, () -> provider.queryCurrentVersions(clients, CLUSTER, STORE));
     }
   }
@@ -127,7 +470,7 @@ public class FabricControllerClientProviderTest {
     CountDownLatch interrupted = new CountDownLatch(1);
     AtomicBoolean callerInterrupted = new AtomicBoolean();
     ControllerClient client = mock(ControllerClient.class);
-    when(client.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+    when(client.getStoreWithDeadline(eq(STORE), anyLong())).thenAnswer(invocation -> {
       started.countDown();
       try {
         new CountDownLatch(1).await();
@@ -164,7 +507,7 @@ public class FabricControllerClientProviderTest {
     CountDownLatch running = new CountDownLatch(16);
     CountDownLatch interrupted = new CountDownLatch(16);
     ControllerClient slow = mock(ControllerClient.class);
-    when(slow.getStoreWithTimeout(eq(STORE), anyInt())).thenAnswer(invocation -> {
+    when(slow.getStoreWithDeadline(eq(STORE), anyLong())).thenAnswer(invocation -> {
       running.countDown();
       try {
         new CountDownLatch(1).await();
@@ -190,9 +533,9 @@ public class FabricControllerClientProviderTest {
       assertEquals(result.size(), clients.size());
       result.values().forEach(version -> assertEquals(version.intValue(), SENTINEL));
       assertTrue(interrupted.await(5, TimeUnit.SECONDS));
-      verify(queued, never()).getStoreWithTimeout(eq(STORE), anyInt());
+      verify(queued, never()).getStoreWithDeadline(eq(STORE), anyLong());
       // Cancelled queued work must not prevent a subsequent healthy call from being admitted.
-      when(queued.getStoreWithTimeout(eq(STORE), anyInt())).thenReturn(successStore(4));
+      when(queued.getStoreWithDeadline(eq(STORE), anyLong())).thenReturn(successStore(4));
       assertEquals(
           provider.queryCurrentVersions(Collections.singletonMap("healthy", queued), CLUSTER, STORE)
               .get("healthy")
@@ -214,7 +557,7 @@ public class FabricControllerClientProviderTest {
       provider.close();
     }
     assertEquals(provider.queryCurrentVersions(clients, CLUSTER, STORE).get("region").intValue(), SENTINEL);
-    verify(client, never()).getStoreWithTimeout(eq(STORE), anyInt());
+    verify(client, never()).getStoreWithDeadline(eq(STORE), anyLong());
   }
 
   @Test
