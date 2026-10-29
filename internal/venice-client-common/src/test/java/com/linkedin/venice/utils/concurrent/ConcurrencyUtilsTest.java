@@ -5,6 +5,9 @@ import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.times;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -16,6 +19,55 @@ import org.testng.annotations.Test;
 
 
 public class ConcurrencyUtilsTest {
+  @Test
+  public void testGetOrRethrowCause() {
+    Assert.assertEquals(
+        ConcurrencyUtils.getOrRethrowCause(CompletableFuture.completedFuture("value"), "unused"),
+        "value");
+
+    // A RuntimeException or an Error is rethrown as is.
+    IllegalStateException runtimeFailure = new IllegalStateException("runtime failure");
+    CompletableFuture<String> runtimeFailed = new CompletableFuture<>();
+    runtimeFailed.completeExceptionally(runtimeFailure);
+    Assert.assertSame(
+        Assert.expectThrows(
+            IllegalStateException.class,
+            () -> ConcurrencyUtils.getOrRethrowCause(runtimeFailed, "unused")),
+        runtimeFailure);
+
+    AssertionError errorFailure = new AssertionError("error failure");
+    CompletableFuture<String> errorFailed = new CompletableFuture<>();
+    errorFailed.completeExceptionally(errorFailure);
+    Assert.assertSame(
+        Assert.expectThrows(AssertionError.class, () -> ConcurrencyUtils.getOrRethrowCause(errorFailed, "unused")),
+        errorFailure);
+
+    // Any other exception is wrapped in a VeniceException.
+    IOException checkedFailure = new IOException("checked failure");
+    CompletableFuture<String> checkedFailed = new CompletableFuture<>();
+    checkedFailed.completeExceptionally(checkedFailure);
+    VeniceException wrapped =
+        Assert.expectThrows(VeniceException.class, () -> ConcurrencyUtils.getOrRethrowCause(checkedFailed, "unused"));
+    Assert.assertSame(wrapped.getCause(), checkedFailure);
+  }
+
+  @Test
+  public void testGetOrRethrowCauseWhenInterrupted() {
+    CompletableFuture<String> neverCompleted = new CompletableFuture<>();
+    Thread.currentThread().interrupt();
+    try {
+      VeniceException thrown = Assert.expectThrows(
+          VeniceException.class,
+          () -> ConcurrencyUtils.getOrRethrowCause(neverCompleted, "Interrupted while waiting"));
+      Assert.assertEquals(thrown.getMessage(), "Interrupted while waiting");
+      Assert.assertTrue(thrown.getCause() instanceof InterruptedException);
+      // The interrupt status is kept.
+      Assert.assertTrue(Thread.currentThread().isInterrupted());
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
   @Test
   public void testExecuteUnderConditionalLock() throws InterruptedException {
     int numRunnables = 1000;

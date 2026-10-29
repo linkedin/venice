@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATOR_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIMEOUT_MINUTES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEGRADED_DCS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_RECOVERY_PROGRESS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MARK_DC_DEGRADED;
@@ -20,6 +21,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.RecoveryProgress;
+import com.linkedin.venice.controllerapi.ClusterProvisionedVeniceUnitsResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.DegradedDcResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -55,6 +57,18 @@ public class ClusterRoutes extends AbstractRoute {
       ClusterAdminOpsRequestHandler clusterAdminOpsRequestHandler) {
     super(sslEnabled, accessController);
     this.clusterAdminOpsRequestHandler = clusterAdminOpsRequestHandler;
+  }
+
+  public Route getClusterProvisionedVeniceUnits(Admin admin) {
+    return new VeniceRouteHandler<ClusterProvisionedVeniceUnitsResponse>(ClusterProvisionedVeniceUnitsResponse.class) {
+      @Override
+      public void internalHandle(Request request, ClusterProvisionedVeniceUnitsResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, GET_CLUSTER_PROVISIONED_VENICE_UNITS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setProvisionedVeniceUnits(admin.getClusterProvisionedVeniceUnits(clusterName));
+      }
+    };
   }
 
   /**

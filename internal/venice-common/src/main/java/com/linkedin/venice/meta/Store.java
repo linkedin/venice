@@ -218,6 +218,20 @@ public interface Store {
 
   void setStorageMode(StorageMode storageMode);
 
+  /**
+   * The forecasted Venice Units (VU) capacity ask for this store, or null when it has not been provided.
+   */
+  Integer getVeniceUnits();
+
+  void setVeniceUnits(Integer veniceUnits);
+
+  /**
+   * The requested class of service for this store, or null when it has not been provided.
+   */
+  String getWorkloadType();
+
+  void setWorkloadType(String workloadType);
+
   boolean isSchemaAutoRegisterFromPushJobEnabled();
 
   void setSchemaAutoRegisterFromPushJobEnabled(boolean value);
@@ -344,6 +358,10 @@ public interface Store {
   boolean isStorageNodeReadQuotaEnabled();
 
   void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
+
+  boolean isWriteQuotaEnabled();
+
+  void setWriteQuotaEnabled(boolean writeQuotaEnabled);
 
   boolean isCompactionEnabled();
 

@@ -74,6 +74,29 @@ public class VeniceParentHelixAdminTest {
   }
 
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
+  public void testParentCreationEnablesWriteQuotaThroughUpdate() {
+    String storeName = Utils.getUniqueString("write-quota-store");
+    try (ControllerClient parent =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      assertCommand(parent.createNewStore(storeName, "owner", "\"string\"", "\"string\""));
+      assertTrue(assertCommand(parent.getStore(storeName)).getStore().isWriteQuotaEnabled());
+      venice.useControllerClient(child -> {
+        waitForNonDeterministicAssertion(
+            30,
+            TimeUnit.SECONDS,
+            () -> assertTrue(assertCommand(child.getStore(storeName)).getStore().isWriteQuotaEnabled()));
+        assertCommand(parent.updateStore(storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(false)));
+        assertCommand(parent.updateStore(storeName, new UpdateStoreQueryParams().setOwner("updated-owner")));
+        assertFalse(assertCommand(parent.getStore(storeName)).getStore().isWriteQuotaEnabled());
+        waitForNonDeterministicAssertion(
+            30,
+            TimeUnit.SECONDS,
+            () -> assertFalse(assertCommand(child.getStore(storeName)).getStore().isWriteQuotaEnabled()));
+      });
+    }
+  }
+
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testTerminalStateTopicChecker() {
     try (ControllerClient parentControllerClient =
         new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {

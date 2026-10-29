@@ -56,6 +56,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
@@ -115,6 +116,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -138,6 +140,11 @@ public class ControllerClient implements Closeable {
   // on the controller while it waits for the new version's replicas to be assigned, so a shorter client
   // timeout would expire first and retry the non-idempotent create.
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 17 * Time.MS_PER_MINUTE;
+  /**
+   * Appended to errors when a request stops because the calling thread was interrupted, so a cancellation is not
+   * misread as an unreachable controller.
+   */
+  static final String INTERRUPTED_MESSAGE_SUFFIX = ", aborted because the calling thread was interrupted";
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
@@ -234,6 +241,10 @@ public class ControllerClient implements Closeable {
             lastException = e;
           }
         }
+        // Interrupted by the caller: stop walking the URL list rather than absorbing the interrupt.
+        if (Thread.currentThread().isInterrupted()) {
+          break;
+        }
       }
     }
 
@@ -250,7 +261,8 @@ public class ControllerClient implements Closeable {
       lastException = lastConnectException;
     }
 
-    String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls;
+    String message = "Unable to discover leader controller from " + this.controllerDiscoveryUrls
+        + (Thread.currentThread().isInterrupted() ? INTERRUPTED_MESSAGE_SUFFIX : "");
     LOGGER.error(message, lastException);
     throw new VeniceException(message, lastException);
   }
@@ -263,6 +275,11 @@ public class ControllerClient implements Closeable {
   public StoreResponse getStore(String storeName, int timeoutMs) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null, null);
+  }
+
+  /** Single attempt, with one budget shared by leader discovery and the store query. */
+  public StoreResponse getStoreWithTimeout(String storeName, int timeoutMs) {
+    return requestWithTimeout(ControllerRoute.STORE, newParams().add(NAME, storeName), StoreResponse.class, timeoutMs);
   }
 
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
@@ -335,6 +352,7 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
+        -1,
         false,
         null,
         -1,
@@ -369,6 +387,7 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
+        -1,
         deferVersionSwap,
         null,
         -1,
@@ -415,6 +434,7 @@ public class ControllerClient implements Closeable {
       Optional<String> sourceGridFabric,
       boolean batchJobHeartbeatEnabled,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       boolean deferVersionSwap,
       String targetedRegions,
       int repushSourceVersion,
@@ -433,6 +453,7 @@ public class ControllerClient implements Closeable {
         .add(SOURCE_GRID_FABRIC, sourceGridFabric)
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
+        .add(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, rewindEpochTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
         .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
         .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic)
@@ -466,6 +487,7 @@ public class ControllerClient implements Closeable {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId) {
     QueryParams params = newParams().add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
@@ -473,6 +495,7 @@ public class ControllerClient implements Closeable {
         .add(PARTITION_COUNT, partitionCount)
         .add(PUSH_TYPE, pushType.toString())
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
+        .add(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, rewindEpochTimeInSecondsOverride)
         .add(REPLICATION_METADATA_VERSION_ID, replicationMetadataVersionId);
     if (remoteKafkaBootstrapServers != null) {
       params.add(REMOTE_KAFKA_BOOTSTRAP_SERVERS, remoteKafkaBootstrapServers);
@@ -855,9 +878,28 @@ public class ControllerClient implements Closeable {
               totalAttempts,
               response.getError());
         }
+        // An interrupt is the caller cancelling this thread; spending more attempts on it would absorb the signal.
+        boolean interrupted = Thread.currentThread().isInterrupted();
         // Back off before the next attempt; skip after the final attempt since no retry follows.
-        if (currentAttempt < totalAttempts) {
-          Utils.sleep(retryBackoffMs);
+        if (!interrupted && currentAttempt < totalAttempts) {
+          interrupted = !Utils.sleep(retryBackoffMs);
+        }
+        if (interrupted) {
+          LOGGER.warn(
+              "Stopping Controller query retries after attempt {}/{} because the calling thread was interrupted",
+              currentAttempt,
+              totalAttempts);
+          if (exception != null) {
+            throw new VeniceException(
+                "Could not execute query after attempt " + currentAttempt + "/" + totalAttempts
+                    + INTERRUPTED_MESSAGE_SUFFIX,
+                exception);
+          }
+          // Without the suffix, an error that ended on an interrupted backoff reads like exhausted retries.
+          if (!response.getError().contains(INTERRUPTED_MESSAGE_SUFFIX)) {
+            response.setError(response.getError() + INTERRUPTED_MESSAGE_SUFFIX);
+          }
+          return response;
         }
       }
     }
@@ -1053,6 +1095,23 @@ public class ControllerClient implements Closeable {
 
   public MultiNodeResponse listStorageNodes() {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
+  }
+
+  /**
+   * Returns the configured VU total across non-system stores in this client's cluster.
+   */
+  public ClusterProvisionedVeniceUnitsResponse getClusterProvisionedVeniceUnits() {
+    return request(
+        ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS,
+        newParams(),
+        ClusterProvisionedVeniceUnitsResponse.class);
+  }
+
+  /**
+   * Returns live, enabled storage-node counts for the local fabric (child) or all child fabrics (parent).
+   */
+  public LiveStorageNodeCountResponse getLiveStorageNodeCount() {
+    return request(ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT, newParams(), LiveStorageNodeCountResponse.class);
   }
 
   public StoppableNodeStatusResponse getAggregatedHealthStatus(
@@ -1463,6 +1522,10 @@ public class ControllerClient implements Closeable {
             lastException = e;
           }
         }
+        // Interrupted by the caller: stop walking the URL list rather than absorbing the interrupt.
+        if (Thread.currentThread().isInterrupted()) {
+          break;
+        }
       }
     }
 
@@ -1479,7 +1542,8 @@ public class ControllerClient implements Closeable {
       lastException = lastConnectException;
     }
 
-    String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls;
+    String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls
+        + (Thread.currentThread().isInterrupted() ? INTERRUPTED_MESSAGE_SUFFIX : "");
     return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }
 
@@ -1580,6 +1644,15 @@ public class ControllerClient implements Closeable {
   public AdminTopicMetadataResponse getAdminTopicMetadata(Optional<String> storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
+  }
+
+  /** Single attempt, including leader discovery in the supplied budget. */
+  public AdminTopicMetadataResponse getAdminTopicMetadataWithTimeout(Optional<String> storeName, int timeoutMs) {
+    return requestWithTimeout(
+        ControllerRoute.GET_ADMIN_TOPIC_METADATA,
+        newParams().add(NAME, storeName),
+        AdminTopicMetadataResponse.class,
+        timeoutMs);
   }
 
   public AdminTopicMetadataResponse updateAdminTopicMetadata(
@@ -1691,6 +1764,46 @@ public class ControllerClient implements Closeable {
     return URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
   }
 
+  protected long requestTimeNs() {
+    return System.nanoTime();
+  }
+
+  protected int remainingRequestTimeMs(long deadlineNs) throws TimeoutException {
+    long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - requestTimeNs());
+    if (remainingMs <= 0 || Thread.currentThread().isInterrupted()) {
+      throw new TimeoutException("Controller query budget exhausted or interrupted");
+    }
+    return (int) Math.min(Integer.MAX_VALUE, remainingMs);
+  }
+
+  protected String discoverLeaderController(ControllerTransport transport, long deadlineNs) throws Exception {
+    List<String> urls = new ArrayList<>(controllerDiscoveryUrls);
+    Collections.shuffle(urls);
+    return transport
+        .request(
+            urls.get(0),
+            ControllerRoute.LEADER_CONTROLLER,
+            newParams(),
+            LeaderControllerResponse.class,
+            remainingRequestTimeMs(deadlineNs),
+            null)
+        .getUrl();
+  }
+
+  private <T extends ControllerResponse> T requestWithTimeout(
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs) {
+    long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+    try (ControllerTransport transport = getNewControllerTransport()) {
+      String leader = discoverLeaderController(transport, deadlineNs);
+      return transport.request(leader, route, params, responseType, remainingRequestTimeMs(deadlineNs), null);
+    } catch (Exception e) {
+      return makeErrorResponse("Single-attempt controller query failed for " + route.getPath(), e, responseType);
+    }
+  }
+
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {
     return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, null, null);
   }
@@ -1724,6 +1837,7 @@ public class ControllerClient implements Closeable {
       String controllerUrl) {
     Exception lastException = null;
     boolean logErrorMessage = true;
+    boolean interrupted = false;
     boolean requireLeaderDiscovery = controllerUrl == null || controllerUrl.isEmpty();
     try (ControllerTransport transport = getNewControllerTransport()) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
@@ -1755,6 +1869,16 @@ public class ControllerClient implements Closeable {
           lastException = e;
         }
 
+        /**
+         * The caller interrupted us; the controller is not necessarily unhealthy. Retrying here would
+         * consume the interrupt and make this thread effectively uncancellable, so stop immediately and
+         * let the caller observe the interrupt.
+         */
+        if (Thread.currentThread().isInterrupted()) {
+          interrupted = true;
+          break;
+        }
+
         if (attempt < maxAttempts) {
           LOGGER.info(
               "Retrying controller request, attempt = {}/{}, controller = {}, route = {}, params = {}, timeout = {}",
@@ -1765,7 +1889,11 @@ public class ControllerClient implements Closeable {
               params.getNameValuePairs(),
               timeoutMs,
               lastException);
-          Utils.sleep(5 * Time.MS_PER_SECOND);
+          if (!Utils.sleep(5 * Time.MS_PER_SECOND)) {
+            // Interrupted during backoff. Same reasoning as above.
+            interrupted = true;
+            break;
+          }
         }
       }
     } catch (Exception e) {
@@ -1774,7 +1902,8 @@ public class ControllerClient implements Closeable {
 
     String message = "An error occurred during controller request." + " controller = "
         + (requireLeaderDiscovery ? this.leaderControllerUrl : controllerUrl) + ", route = " + route.getPath()
-        + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
+        + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs
+        + (interrupted ? INTERRUPTED_MESSAGE_SUFFIX : "");
     return makeErrorResponse(message, lastException, responseType, logErrorMessage);
   }
 

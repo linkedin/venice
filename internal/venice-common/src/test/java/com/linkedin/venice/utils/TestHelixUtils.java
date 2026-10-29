@@ -4,9 +4,11 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -24,6 +26,8 @@ import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
+import org.apache.helix.zookeeper.zkclient.exception.ZkInterruptedException;
+import org.apache.helix.zookeeper.zkclient.exception.ZkTimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -68,14 +72,13 @@ public class TestHelixUtils {
 
     CloudConfig cloudConfig = HelixUtils.getCloudConfig(
         CloudProvider.CUSTOMIZED,
-        "NA",
         cloudInfoSources,
         "com.linkedin.venice.controller.helix",
         "TestProcessor");
 
     assertTrue(cloudConfig.isCloudEnabled());
     assertEquals(cloudConfig.getCloudProvider(), "CUSTOMIZED");
-    assertEquals(cloudConfig.getCloudID(), "NA");
+    assertFalse(cloudConfig.getRecord().getSimpleFields().containsKey("CLOUD_ID"));
     assertEquals(cloudConfig.getCloudInfoSources().size(), 1);
     assertEquals(cloudConfig.getCloudInfoSources().get(0), "TestSource");
     assertEquals(cloudConfig.getCloudInfoProcessorPackage(), "com.linkedin.venice.controller.helix");
@@ -88,7 +91,6 @@ public class TestHelixUtils {
         HelixException.class,
         () -> HelixUtils.getCloudConfig(
             CloudProvider.CUSTOMIZED,
-            "NA",
             Collections.emptyList(),
             "com.linkedin.venice.controller.helix",
             "TestProcessor"));
@@ -101,12 +103,8 @@ public class TestHelixUtils {
 
     assertThrows(
         HelixException.class,
-        () -> HelixUtils.getCloudConfig(
-            CloudProvider.CUSTOMIZED,
-            "NA",
-            cloudInfoSources,
-            "com.linkedin.venice.controller.helix",
-            ""));
+        () -> HelixUtils
+            .getCloudConfig(CloudProvider.CUSTOMIZED, cloudInfoSources, "com.linkedin.venice.controller.helix", ""));
   }
 
   @Test
@@ -234,6 +232,95 @@ public class TestHelixUtils {
     HelixUtils.create(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
 
     verify(mockDataAccessor, times(TEST_RETRY_COUNT)).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCreateIfAbsentCreatesNewData() {
+    doReturn(true).when(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+
+    assertTrue(HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, 1, String::equals));
+
+    verify(mockDataAccessor, never()).get(TEST_PATH, null, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCreateIfAbsentAcceptsMatchingDataWithoutRetry() {
+    doReturn(TEST_DATA).when(mockDataAccessor).get(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    assertFalse(HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT, String::equals));
+
+    verify(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCreateIfAbsentRejectsConflictingDataWithoutRetry() {
+    doReturn("differentData").when(mockDataAccessor).get(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    assertThrows(
+        VeniceException.class,
+        () -> HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT, String::equals));
+
+    verify(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCreateIfAbsentRetriesTransientCreateFailure() {
+    doReturn(false).doReturn(true).when(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+
+    assertTrue(HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, 2, String::equals));
+
+    verify(mockDataAccessor, times(2)).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).get(TEST_PATH, null, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCreateIfAbsentRetriesFailedVerification() {
+    doThrow(new ZkTimeoutException("Read timed out")).doReturn(TEST_DATA)
+        .when(mockDataAccessor)
+        .get(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    assertFalse(HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, 2, String::equals));
+
+    verify(mockDataAccessor, times(2)).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(2)).get(TEST_PATH, null, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCreateIfAbsentPropagatesInterruptedVerificationWithoutRetry() {
+    doThrow(mock(ZkInterruptedException.class)).when(mockDataAccessor).get(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    assertThrows(
+        ZkInterruptedException.class,
+        () -> HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT, String::equals));
+
+    verify(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCreateIfAbsentFailsWhenAttemptsExhausted() {
+    doThrow(new ZkTimeoutException("Read timed out")).when(mockDataAccessor)
+        .get(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    assertThrows(
+        VeniceException.class,
+        () -> HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, 1, String::equals));
+  }
+
+  @Test
+  public void testCreateIfAbsentRejectsInvalidAttempts() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, 0, String::equals));
+    assertThrows(
+        NullPointerException.class,
+        () -> HelixUtils.createIfAbsent(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT, null));
+  }
+
+  @Test
+  public void testCreateDoesNotAcceptExistingData() {
+    assertThrows(VeniceException.class, () -> HelixUtils.create(mockDataAccessor, TEST_PATH, TEST_DATA, 1));
+
+    verify(mockDataAccessor, never()).get(TEST_PATH, null, AccessOption.PERSISTENT);
   }
 
   @Test

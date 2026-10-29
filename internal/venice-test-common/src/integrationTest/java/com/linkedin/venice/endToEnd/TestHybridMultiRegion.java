@@ -331,6 +331,7 @@ public class TestHybridMultiRegion {
           Version.PushType.BATCH,
           null,
           -1,
+          -1,
           1);
       assertFalse(
           versionResponse.isError(),

@@ -74,8 +74,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPU
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.THROUGHPUT_QUOTA_IN_RECORDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_QUOTA_ENABLED;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -91,6 +94,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreLifecycleHooksRe
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -123,6 +127,7 @@ import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -131,6 +136,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -330,6 +336,13 @@ public final class StoreConfigUpdater {
     Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
     Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
     Optional<StorageMode> storageMode = params.getStorageMode();
+    // These two configs are nullable, so presence of the param and the value it carries are tracked
+    // separately: an absent param means "leave unchanged", while a present param with a null value
+    // means "clear back to null".
+    boolean veniceUnitsSpecified = params.isVeniceUnitsSpecified();
+    Integer veniceUnits = params.getVeniceUnits();
+    boolean workloadTypeSpecified = params.isWorkloadTypeSpecified();
+    String workloadType = params.getWorkloadType();
     Optional<ExternalStorageReadMode> externalStorageReadMode = params.getExternalStorageReadMode();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
@@ -796,6 +809,20 @@ public final class StoreConfigUpdater {
             return store;
           }));
 
+      if (veniceUnitsSpecified) {
+        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          store.setVeniceUnits(veniceUnits);
+          return store;
+        });
+      }
+
+      if (workloadTypeSpecified) {
+        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          store.setWorkloadType(workloadType);
+          return store;
+        });
+      }
+
       throughputQuotaInBytes
           .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setThroughputQuotaInBytes(aLong);
@@ -816,6 +843,12 @@ public final class StoreConfigUpdater {
 
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> admin.setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
+
+      params.getWriteQuotaEnabled()
+          .ifPresent(enabled -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setWriteQuotaEnabled(enabled);
+            return store;
+          }));
 
       blobTransferEnabled
           .ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -987,6 +1020,13 @@ public final class StoreConfigUpdater {
     Optional<IngestionPauseMode> ingestionPauseMode = params.getIngestionPauseMode();
     Optional<List<String>> ingestionPausedRegions = params.getIngestionPausedRegions();
     Optional<StorageMode> storageMode = params.getStorageMode();
+    // These two configs are nullable, so presence of the param and the value it carries are tracked
+    // separately: an absent param means "leave unchanged", while a present param with a null value
+    // means "clear back to null".
+    boolean veniceUnitsSpecified = params.isVeniceUnitsSpecified();
+    Integer veniceUnits = params.getVeniceUnits();
+    boolean workloadTypeSpecified = params.isWorkloadTypeSpecified();
+    String workloadType = params.getWorkloadType();
     Optional<ExternalStorageReadMode> externalStorageReadMode = params.getExternalStorageReadMode();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
@@ -1399,6 +1439,9 @@ public final class StoreConfigUpdater {
     setStore.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled
         .map(admin.addToUpdatedConfigList(updatedConfigsList, STORAGE_NODE_READ_QUOTA_ENABLED))
         .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
+    setStore.writeQuotaEnabled = params.getWriteQuotaEnabled()
+        .map(admin.addToUpdatedConfigList(updatedConfigsList, WRITE_QUOTA_ENABLED))
+        .orElseGet(currStore::isWriteQuotaEnabled);
     setStore.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled
         .map(admin.addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
         .orElseGet(currStore::isUnusedSchemaDeletionEnabled);
@@ -1429,6 +1472,18 @@ public final class StoreConfigUpdater {
     setStore.maxNearlineRecordSizeBytes =
         maxNearlineRecordSizeBytes.map(admin.addToUpdatedConfigList(updatedConfigsList, MAX_NEARLINE_RECORD_SIZE_BYTES))
             .orElseGet(currStore::getMaxNearlineRecordSizeBytes);
+    if (veniceUnitsSpecified) {
+      updatedConfigsList.add(VENICE_UNITS);
+      setStore.veniceUnits = veniceUnits;
+    } else {
+      setStore.veniceUnits = currStore.getVeniceUnits();
+    }
+    if (workloadTypeSpecified) {
+      updatedConfigsList.add(WORKLOAD_TYPE);
+      setStore.workloadType = workloadType;
+    } else {
+      setStore.workloadType = currStore.getWorkloadType();
+    }
     setStore.throughputQuotaInBytes =
         throughputQuotaInBytes.map(admin.addToUpdatedConfigList(updatedConfigsList, THROUGHPUT_QUOTA_IN_BYTES))
             .orElseGet(currStore::getThroughputQuotaInBytes);
@@ -1580,12 +1635,22 @@ public final class StoreConfigUpdater {
 
     final boolean readComputeJustEnabled =
         readComputationEnabled.orElse(false) && !currStore.isReadComputationEnabled();
-    boolean needToGenerateSupersetSchema =
+    final boolean migrationDestination =
+        admin.getVeniceHelixAdmin().isStoreMigrationDestination(clusterName, storeName);
+    final boolean needToValidateSupersetSchema =
         !currStore.isSystemStore() && (readComputeJustEnabled || partialUpdateJustEnabled);
-    if (needToGenerateSupersetSchema) {
+    if (needToValidateSupersetSchema) {
       // dry run to make sure superset schema generation can work
-      admin.getSupersetSchemaGenerator(clusterName)
-          .generateSupersetSchemaFromSchemas(admin.getValueSchemas(clusterName, storeName));
+      SupersetSchemaGenerator generator = admin.getSupersetSchemaGenerator(clusterName);
+      Collection<SchemaEntry> valueSchemas = admin.getValueSchemas(clusterName, storeName);
+      SchemaEntry requiredSuperset = generator.generateSupersetSchemaFromSchemas(valueSchemas);
+      // Compute must reuse an imported superset during migration, rather than allocate a destination-only ID.
+      boolean missingImportedSuperset = migrationDestination && valueSchemas.stream()
+          .noneMatch(entry -> generator.compareSchema(entry.getSchema(), requiredSuperset.getSchema()));
+      if (missingImportedSuperset) {
+        throw new VeniceException(
+            "Required superset schema is missing from imported source schemas for store " + storeName);
+      }
     }
 
     AdminOperation message = new AdminOperation();
@@ -1593,7 +1658,7 @@ public final class StoreConfigUpdater {
     message.payloadUnion = setStore;
     admin.sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
-    if (needToGenerateSupersetSchema) {
+    if (needToValidateSupersetSchema && !migrationDestination) {
       admin.addSupersetSchemaForStore(clusterName, storeName, currStore.isActiveActiveReplicationEnabled());
     }
     if (partialUpdateJustEnabled) {

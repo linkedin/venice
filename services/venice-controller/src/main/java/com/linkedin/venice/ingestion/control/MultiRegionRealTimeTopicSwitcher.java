@@ -1,6 +1,7 @@
 package com.linkedin.venice.ingestion.control;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -29,9 +30,9 @@ import org.apache.logging.log4j.Logger;
 
 public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
   private static final Logger LOGGER = LogManager.getLogger(MultiRegionRealTimeTopicSwitcher.class);
-  private static final int DEFAULT_BROADCAST_TIMEOUT_IN_SECONDS = 60;
   private final Map<String, String> allAASourceDataCenterBrokerAddressMap;
   private final String localDataCenterName;
+  private final int broadcastTimeoutInSeconds;
 
   public MultiRegionRealTimeTopicSwitcher(
       TopicManager topicManager,
@@ -39,10 +40,15 @@ public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
       VeniceProperties veniceProperties,
       PubSubTopicRepository pubSubTopicRepository,
       Map<String, String> activeActiveRealTimeSourceFabricBrokerUrlMap,
-      String localDataCenterName) {
+      String localDataCenterName,
+      int broadcastTimeoutInSeconds) {
     super(topicManager, localVeniceWriterFactory, veniceProperties, pubSubTopicRepository);
+    if (broadcastTimeoutInSeconds <= 0) {
+      throw new IllegalArgumentException("Version Swap broadcast timeout must be greater than 0.");
+    }
     this.allAASourceDataCenterBrokerAddressMap = new HashMap<>(activeActiveRealTimeSourceFabricBrokerUrlMap);
     this.localDataCenterName = localDataCenterName;
+    this.broadcastTimeoutInSeconds = broadcastTimeoutInSeconds;
   }
 
   @Override
@@ -69,7 +75,7 @@ public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
         new DaemonThreadFactory("Version-Swap-" + storeName));
     Map<String, CompletableFuture<Void>> dataCenterBroadcastFutureMap = new HashMap<>();
     Map<String, VeniceWriter> dataCenterWriterMap = new ConcurrentHashMap<>();
-    long deadlineNs = System.nanoTime() + TimeUnit.SECONDS.toNanos(DEFAULT_BROADCAST_TIMEOUT_IN_SECONDS);
+    long deadlineNs = System.nanoTime() + TimeUnit.SECONDS.toNanos(broadcastTimeoutInSeconds);
     AtomicBoolean broadcastAborted = new AtomicBoolean(false);
     boolean broadcastCompleted = false;
     try {
@@ -156,8 +162,8 @@ public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
               dataCenterName,
               generationId,
               Collections.emptyMap());
-      CompletableFuture.allOf(partitionFutures.toArray(new CompletableFuture[0]))
-          .get(getRemainingTimeInMs(deadlineNs), TimeUnit.MILLISECONDS);
+      VeniceWriter
+          .waitForControlMessageBroadcast(partitionFutures, ControlMessageType.VERSION_SWAP, topicName, deadlineNs);
       partitionBroadcastCompleted = true;
       LOGGER.info(
           "Successfully sent Version Swap message with generation id: {}, source data center: {} for store: {} from version: {} to version: {} to topic: {} in data center: {}",
@@ -168,11 +174,6 @@ public class MultiRegionRealTimeTopicSwitcher extends RealTimeTopicSwitcher {
           nextStoreVersion.getNumber(),
           topicName,
           dataCenterName);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException("Interrupted while broadcasting Version Swap message to " + dataCenterName, e);
-    } catch (ExecutionException | TimeoutException e) {
-      throw new VeniceException("Failed to broadcast Version Swap message to " + dataCenterName, e);
     } finally {
       if (veniceWriter != null && (!partitionBroadcastCompleted || broadcastAborted.get())
           && dataCenterWriterMap.remove(dataCenterName, veniceWriter)) {

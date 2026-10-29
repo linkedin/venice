@@ -7,12 +7,19 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.NOT_SET;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGET_WRITER_VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -28,6 +35,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
@@ -93,6 +101,56 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
       PushJobSetting pushJobSetting = vpj.getPushJobSetting();
       assertNotNull(pushJobSetting);
       assertTrue(pushJobSetting.d2Routing);
+    }
+  }
+
+  /** The epoch override is stashed, not converted, at job-build time; the relative duration stays unset until later. */
+  @Test
+  public void testEpochRewindOverrideIsDeferredNotConvertedAtBuildTime() {
+    long epoch = (System.currentTimeMillis() / 1000) - 3600;
+    Properties props = getVpjRequiredProperties();
+    props.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, Long.toString(epoch));
+    props.put(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, Long.toString(120));
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      PushJobSetting setting = vpj.getPushJobSetting();
+      assertEquals(setting.rewindEpochTimeInSecondsOverride, epoch);
+      assertEquals(setting.rewindEpochTimeBufferInSecondsOverride, 120L);
+      // Not converted yet -- the relative duration is computed later, right before version creation.
+      assertEquals(setting.rewindTimeInSecondsOverride, (long) NOT_SET);
+    }
+  }
+
+  /** The deferred conversion anchors "now" just before version creation, yielding (now - epoch) + buffer. */
+  @Test
+  public void testConvertEpochRewindOverrideToRelativeDuration() {
+    long bufferSeconds = 120;
+    long epochSecondsAgo = 3600;
+    long epoch = (System.currentTimeMillis() / 1000) - epochSecondsAgo;
+    Properties props = getVpjRequiredProperties();
+    props.put(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, Long.toString(epoch));
+    props.put(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, Long.toString(bufferSeconds));
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      PushJobSetting setting = vpj.getPushJobSetting();
+      vpj.convertEpochRewindOverrideToRelativeDuration(setting);
+      long expected = epochSecondsAgo + bufferSeconds;
+      // Allow a few seconds of slack for wall-clock advance during the test.
+      assertTrue(
+          setting.rewindTimeInSecondsOverride >= expected && setting.rewindTimeInSecondsOverride <= expected + 5,
+          "Expected rewindTimeInSecondsOverride ~" + expected + " but was " + setting.rewindTimeInSecondsOverride);
+      // The absolute epoch carried downstream is buffered back by the same amount so the A/A absolute path
+      // lands at epoch - buffer, absorbing clock skew consistently with the relative path.
+      assertEquals(setting.rewindEpochTimeInSecondsOverride, epoch - bufferSeconds);
+    }
+  }
+
+  /** The conversion is a no-op when no epoch override was supplied. */
+  @Test
+  public void testConvertEpochRewindOverrideIsNoOpWithoutEpoch() {
+    Properties props = getVpjRequiredProperties();
+    try (VenicePushJob vpj = new VenicePushJob(PUSH_JOB_ID, props)) {
+      PushJobSetting setting = vpj.getPushJobSetting();
+      vpj.convertEpochRewindOverrideToRelativeDuration(setting);
+      assertEquals(setting.rewindTimeInSecondsOverride, (long) NOT_SET);
     }
   }
 
@@ -199,5 +257,47 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
     VenicePushJob pushJob = new VenicePushJob(TEST_PUSH, baseProps, mockD2Client);
     D2Client resolved = pushJob.resolveD2Client("someZkHost", Optional.empty());
     assertEquals(resolved, mockD2Client);
+  }
+
+  @Test(dataProvider = "encryptionEnabled", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testStoreValidationResolvesEncryptionWithoutJobOverride(boolean enabled, String expectedUrn) {
+    ControllerClient client = getClient(store -> {
+      store.setEncryptionEnabled(enabled);
+      store.setPubSubEncryptionKeyUrn(PubSubEncryptionUtilsTest.KEY_URN);
+    });
+    Properties properties = getVpjRequiredProperties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(!enabled));
+    properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, "urn:li:stale-job-key");
+    try (VenicePushJob job = getSpyVenicePushJob(properties, client)) {
+      PushJobSetting setting = job.getPushJobSetting();
+      setting.isStoreEncryptionEnabled = !enabled;
+      setting.pubSubEncryptionKeyUrn = "urn:li:stale-setting";
+
+      job.validateStoreSettingAndPopulate(client, setting);
+
+      assertEquals(setting.isStoreEncryptionEnabled, enabled);
+      assertEquals(setting.pubSubEncryptionKeyUrn, expectedUrn);
+      verify(client, times(1)).getStore(TEST_STORE);
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*encryption enabled but the pubSubEncryptionKeyUrn is not set.*")
+  public void testEncryptionEnabledStoreWithUnprovisionedKeyUrnThrows() {
+    // StoreInfo defaults pubSubEncryptionKeyUrn to "", not null, so a null-only check would not fire here.
+    ControllerClient client = getClient(storeInfo -> storeInfo.setEncryptionEnabled(true));
+    try (VenicePushJob pushJob = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      pushJob.run();
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*encryption enabled but the pubSubEncryptionKeyUrn is not set.*")
+  public void testEncryptionEnabledStoreWithWhitespaceKeyUrnThrows() {
+    ControllerClient client = getClient(storeInfo -> {
+      storeInfo.setEncryptionEnabled(true);
+      storeInfo.setPubSubEncryptionKeyUrn("   ");
+    });
+    try (VenicePushJob pushJob = getSpyVenicePushJob(getVpjRequiredProperties(), client)) {
+      pushJob.run();
+    }
   }
 }

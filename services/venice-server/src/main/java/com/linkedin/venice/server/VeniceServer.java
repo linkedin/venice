@@ -487,7 +487,8 @@ public class VeniceServer {
         veniceMetadataRepositoryBuilder.getStoreConfigRepo(),
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture),
-        sslFactory.isPresent());
+        sslFactory.isPresent(),
+        serverConfig.getFastClientMultiKeyLongTailRetryThresholdsMs());
 
     // create and add ListenerServer for handling GET requests
     ListenerService listenerService = createListenerService(
@@ -536,7 +537,9 @@ public class VeniceServer {
           serverConfig.getMaxConcurrentBlobReceiveReplicas(),
           serverConfig.getBlobTransferClientNettyWorkerThreadCount(),
           serverConfig.getBlobTransferClientCapacityPercent(),
-          serverConfig.isServerAcceptClientBlobRequestEnabled());
+          serverConfig.isServerAcceptClientBlobRequestEnabled(),
+          serverConfig.isBlobTransferDedicatedAllocatorEnabled(),
+          serverConfig.getWritePathThreadPriority());
       VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
       VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
       if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {

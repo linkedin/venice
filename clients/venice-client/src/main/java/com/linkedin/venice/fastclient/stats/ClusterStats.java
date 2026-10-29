@@ -19,8 +19,10 @@ import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Arrays;
@@ -42,6 +44,7 @@ public class ClusterStats extends AbstractVeniceStats {
 
   private final String storeName;
   private final MetricEntityStateBase versionUpdateFailureCount;
+  private final Sensor invalidMultiKeyRetryPolicy;
   private final AsyncMetricEntityStateBase currentVersionNumber;
 
   // OTel metrics for instance error counts
@@ -58,6 +61,7 @@ public class ClusterStats extends AbstractVeniceStats {
   public ClusterStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
     this.storeName = storeName;
+    this.invalidMultiKeyRetryPolicy = registerSensor("invalid_multi_key_retry_policy", new Count());
 
     OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
         OpenTelemetryMetricsSetup.builder(metricsRepository)
@@ -73,7 +77,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.versionUpdateFailureCount = MetricEntityStateBase.create(
         STORE_VERSION_UPDATE_FAILURE_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.VERSION_UPDATE_FAILURE,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -82,7 +86,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.currentVersionNumber = AsyncMetricEntityStateBase.create(
         STORE_VERSION_CURRENT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.CURRENT_VERSION,
         Collections.singletonList(
             new AsyncGauge(
@@ -96,7 +100,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.blockedInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.BLOCKED_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -105,7 +109,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.unhealthyInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.UNHEALTHY_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -114,7 +118,7 @@ public class ClusterStats extends AbstractVeniceStats {
     this.overloadedInstanceErrorCount = MetricEntityStateOneEnum.create(
         INSTANCE_ERROR_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClusterTehutiMetricName.OVERLOADED_INSTANCE_COUNT,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -139,6 +143,10 @@ public class ClusterStats extends AbstractVeniceStats {
 
   public void recordVersionUpdateFailure() {
     versionUpdateFailureCount.record(1);
+  }
+
+  public void recordInvalidMultiKeyRetryPolicy() {
+    invalidMultiKeyRetryPolicy.record();
   }
 
   public List<Double> getMetricValues(String sensorName, String... stats) {

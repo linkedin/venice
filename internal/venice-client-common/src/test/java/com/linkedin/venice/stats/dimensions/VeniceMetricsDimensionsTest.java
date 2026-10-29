@@ -103,8 +103,17 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_PUSH_JOB_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.push_job.type");
           break;
+        case VENICE_PUSH_JOB_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.source");
+          break;
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.push_job.status");
+          break;
+        case VENICE_PUSH_JOB_DURATION_BUCKET:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.duration_bucket");
+          break;
+        case VENICE_PUSH_JOB_EXECUTION_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.push_job.execution_state");
           break;
         case VENICE_PUSH_JOB_DATA_WRITER_SINK:
           assertEquals(dimension.getDimensionName(format), "venice.push_job.data_writer.sink");
@@ -303,8 +312,17 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_PUSH_JOB_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.pushJob.type");
           break;
+        case VENICE_PUSH_JOB_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.source");
+          break;
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "venice.pushJob.status");
+          break;
+        case VENICE_PUSH_JOB_DURATION_BUCKET:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.durationBucket");
+          break;
+        case VENICE_PUSH_JOB_EXECUTION_STATE:
+          assertEquals(dimension.getDimensionName(format), "venice.pushJob.executionState");
           break;
         case VENICE_PUSH_JOB_DATA_WRITER_SINK:
           assertEquals(dimension.getDimensionName(format), "venice.pushJob.dataWriter.sink");
@@ -503,8 +521,17 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_PUSH_JOB_TYPE:
           assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Type");
           break;
+        case VENICE_PUSH_JOB_SOURCE:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Source");
+          break;
         case VENICE_PUSH_JOB_STATUS:
           assertEquals(dimension.getDimensionName(format), "Venice.PushJob.Status");
+          break;
+        case VENICE_PUSH_JOB_DURATION_BUCKET:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.DurationBucket");
+          break;
+        case VENICE_PUSH_JOB_EXECUTION_STATE:
+          assertEquals(dimension.getDimensionName(format), "Venice.PushJob.ExecutionState");
           break;
         case VENICE_PUSH_JOB_DATA_WRITER_SINK:
           assertEquals(dimension.getDimensionName(format), "Venice.PushJob.DataWriter.Sink");

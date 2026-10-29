@@ -47,6 +47,7 @@ import java.util.Optional;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -226,6 +227,7 @@ public class TestVeniceVersionFinder {
 
     // for a new store, the versionFinder returns no version
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
 
     // When the current version changes, without any online replicas for either version,
     // the versionFinder returns NON_EXISTING_VERSION (existing version's resources aren't ready either)
@@ -308,55 +310,85 @@ public class TestVeniceVersionFinder {
     }
   }
 
-  @Test
-  public void returnsNoVersionWhenNewStoreNewVersionNotReadyToServe() {
-    // When the router doesn't know of any other versions and the dictionary of the existing version is not downloaded,
-    // it will return no version.
+  @DataProvider
+  public Object[][] bootstrapReadiness() {
+    return new Object[][] { { CompressionStrategy.NO_OP, false, false, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, true, false, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, false, true, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, false, false, false },
+        { CompressionStrategy.ZSTD_WITH_DICT, true, false, true } };
+  }
+
+  @Test(dataProvider = "bootstrapReadiness")
+  public void returnsNoVersionWhenNewStoreNewVersionNotReadyToServe(
+      CompressionStrategy compressionStrategy,
+      boolean routingReady,
+      boolean dictionaryReady,
+      boolean promoteDuringBootstrap) {
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     String storeName = Utils.getUniqueString("version-finder-test-store");
-    int firstVersion = 1;
+    int currentVersion = 1;
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
-    store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
-    store.addVersion(new VersionImpl(storeName, firstVersion));
-    store.setCurrentVersion(firstVersion);
-    store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+    store.setCompressionStrategy(compressionStrategy);
+    store.addVersion(new VersionImpl(storeName, currentVersion));
+    store.setCurrentVersion(currentVersion);
+    store.updateVersionStatus(currentVersion, VersionStatus.ONLINE);
 
     doReturn(store).when(storeRepository).getStore(storeName);
-
-    List<Instance> instances = new LinkedList<>();
-    instances.add(new Instance("id1", "host", 1234));
 
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
 
-    HelixCustomizedViewOfflinePushRepository routingDataRepo = mock(HelixCustomizedViewOfflinePushRepository.class);
-    doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
-    doReturn(instances).when(routingDataRepo).getReadyToServeInstances(anyString(), anyInt());
+    HelixCustomizedViewOfflinePushRepository routingDataRepo = getCVBasedMockedRoutingRepo();
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
 
-    // Object under test
-    VeniceVersionFinder versionFinder = spy(
-        new VeniceVersionFinder(
-            storeRepository,
-            routingDataRepo,
-            stats,
-            storeConfigRepo,
-            clusterToD2Map,
-            CLUSTER,
-            compressorFactory,
-            mock(VeniceMetricsRepository.class)));
+    try (VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository()) {
+      VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+          storeRepository,
+          routingDataRepo,
+          stats,
+          storeConfigRepo,
+          clusterToD2Map,
+          CLUSTER,
+          compressorFactory,
+          metricsRepository);
 
-    String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
-    doReturn(true).when(versionFinder).isPartitionResourcesReady(firstVersionKafkaTopic);
+      String currentVersionKafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
+      doReturn(routingReady).when(routingDataRepo).containsKafkaTopic(currentVersionKafkaTopic);
+      doReturn(dictionaryReady).when(compressorFactory).versionSpecificCompressorExists(currentVersionKafkaTopic);
 
-    Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
-    Assert.assertNull(compressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
+      for (int i = 0; i < 3; i++) {
+        Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
+      }
+      verify(stats, Mockito.never()).recordNotStale();
 
-    doReturn(true).when(compressorFactory).versionSpecificCompressorExists(firstVersionKafkaTopic);
-    Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
+      if (promoteDuringBootstrap) {
+        currentVersion = 2;
+        store.addVersion(new VersionImpl(storeName, currentVersion));
+        store.setCurrentVersion(currentVersion);
+        currentVersionKafkaTopic = Version.composeKafkaTopic(storeName, currentVersion);
+        doReturn(true).when(routingDataRepo).containsKafkaTopic(currentVersionKafkaTopic);
+        for (int i = 0; i < 3; i++) {
+          Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
+        }
+      }
+      doReturn(true).when(routingDataRepo).containsKafkaTopic(currentVersionKafkaTopic);
+      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !dictionaryReady) {
+        Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
+      }
+
+      doReturn(true).when(compressorFactory).versionSpecificCompressorExists(currentVersionKafkaTopic);
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), currentVersion);
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), currentVersion);
+      verify(stats, times(2)).recordNotStale();
+      verify(stats, Mockito.never()).recordStale(anyInt(), anyInt());
+      verify(stats, Mockito.never()).recordStalenessReason(any());
+      verify(routingDataRepo, Mockito.never())
+          .containsKafkaTopic(Version.composeKafkaTopic(storeName, Store.NON_EXISTING_VERSION));
+    }
   }
 
   @Test
@@ -525,9 +557,6 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
 
-    // Verify refreshOneStore is called only once
-    verify(storeRepository, times(1)).refreshOneStore(storeName);
-
     // Update the store's version to 1
     store.setCurrentVersion(firstVersion);
     doReturn(true).when(versionFinder).isDecompressorReady(any(), anyString());
@@ -535,6 +564,8 @@ public class TestVeniceVersionFinder {
 
     // Call getVersion() again and verify it returns the updated version
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
+    verify(storeRepository, times(1)).refreshOneStore(storeName);
+    verify(stats, Mockito.never()).recordStale(anyInt(), anyInt());
   }
 
   @Test
@@ -603,8 +634,13 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
   }
 
-  @Test
-  public void testReturnExistingVersionWhenItIsStillHealthy() {
+  @DataProvider
+  public Object[][] fallbackCompressionStrategies() {
+    return new Object[][] { { CompressionStrategy.NO_OP }, { CompressionStrategy.ZSTD_WITH_DICT } };
+  }
+
+  @Test(dataProvider = "fallbackCompressionStrategies")
+  public void testReturnExistingVersionWhenItIsStillHealthy(CompressionStrategy compressionStrategy) {
     // When the existing version's Helix resources are still available, continue serving it
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     String storeName = Utils.getUniqueString("version-finder-test-store");
@@ -613,6 +649,7 @@ public class TestVeniceVersionFinder {
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
+    store.setCompressionStrategy(compressionStrategy);
     store.addVersion(new VersionImpl(storeName, firstVersion));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
@@ -636,6 +673,8 @@ public class TestVeniceVersionFinder {
     doReturn(true).when(mocksMetricsConfig).emitTehutiMetrics();
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
+    doReturn(true).when(compressorFactory).versionSpecificCompressorExists(firstVersionKafkaTopic);
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         storeRepository,
         routingDataRepo,
@@ -657,6 +696,15 @@ public class TestVeniceVersionFinder {
 
     // v1 Helix resources still exist -> should return v1 (existing behavior preserved)
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
+
+    doReturn(false).when(compressorFactory).versionSpecificCompressorExists(firstVersionKafkaTopic);
+    int expectedVersion =
+        compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT ? Store.NON_EXISTING_VERSION : firstVersion;
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), expectedVersion);
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), expectedVersion);
+
+    store.deleteVersion(firstVersion);
+    Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
   }
 
   @Test
@@ -667,6 +715,7 @@ public class TestVeniceVersionFinder {
     String storeName = Utils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
     int secondVersion = 2;
+    int thirdVersion = 3;
 
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
@@ -685,14 +734,8 @@ public class TestVeniceVersionFinder {
     doReturn(3).when(routingDataRepo).getNumberOfPartitions(anyString());
     doReturn(true).when(routingDataRepo).containsKafkaTopic(anyString());
 
-    VeniceMetricsRepository mockMetricsRepository = mock(VeniceMetricsRepository.class);
-    final Sensor mockSensor = mock(Sensor.class);
-    doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
-    VeniceMetricsConfig mocksMetricsConfig = mock(VeniceMetricsConfig.class);
-    doReturn(mocksMetricsConfig).when(mockMetricsRepository).getVeniceMetricsConfig();
-    doReturn(true).when(mocksMetricsConfig).emitTehutiMetrics();
-
-    try (CompressorFactory compressorFactory = new CompressorFactory()) {
+    try (VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository();
+        CompressorFactory compressorFactory = new CompressorFactory()) {
       VeniceVersionFinder versionFinder = new VeniceVersionFinder(
           storeRepository,
           routingDataRepo,
@@ -701,33 +744,42 @@ public class TestVeniceVersionFinder {
           clusterToD2Map,
           CLUSTER,
           compressorFactory,
-          mockMetricsRepository);
+          metricsRepository);
 
       // Establish v1
       Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
-      // Push v2 with ZSTD_WITH_DICT, decompressor not ready yet
-      store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      // Establish a version swap and its current version metric.
       store.addVersion(new VersionImpl(storeName, secondVersion));
       store.setCurrentVersion(secondVersion);
       store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), secondVersion);
+      String currentVersionMetric = "." + storeName + "--current_version.Gauge";
+      Assert.assertEquals(metricsRepository.getMetric(currentVersionMetric).value(), (double) secondVersion);
 
-      // Retire v1 Helix resource
-      String v1KafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
-      doReturn(false).when(routingDataRepo).containsKafkaTopic(v1KafkaTopic);
+      // Push v3 with ZSTD_WITH_DICT, decompressor not ready yet.
+      store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+      store.addVersion(new VersionImpl(storeName, thirdVersion));
+      store.setCurrentVersion(thirdVersion);
+      store.updateVersionStatus(thirdVersion, VersionStatus.ONLINE);
+
+      // Retire v2 Helix resource.
+      String v2KafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
+      doReturn(false).when(routingDataRepo).containsKafkaTopic(v2KafkaTopic);
 
       // Should return NON_EXISTING_VERSION
       Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
 
-      // Now dictionary arrives for v2
-      String v2KafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
+      // Now dictionary arrives for v3.
+      String v3KafkaTopic = Version.composeKafkaTopic(storeName, thirdVersion);
       compressorFactory.createVersionSpecificCompressorIfNotExist(
           CompressionStrategy.ZSTD_WITH_DICT,
-          v2KafkaTopic,
+          v3KafkaTopic,
           ByteBuffer.allocate(1).array());
 
-      // Next call should pick up v2 since lastCurrentVersionMap was reset to NON_EXISTING_VERSION
-      Assert.assertEquals(versionFinder.getVersion(storeName, request), secondVersion);
+      // Recovery must update both the serving version and its metric.
+      Assert.assertEquals(versionFinder.getVersion(storeName, request), thirdVersion);
+      Assert.assertEquals(metricsRepository.getMetric(currentVersionMetric).value(), (double) thirdVersion);
     }
   }
 

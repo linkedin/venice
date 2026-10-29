@@ -14,6 +14,12 @@ public class ConfigKeys {
   public static final String CLUSTER_NAME = "cluster.name";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
+  /**
+   * Optional cluster-wide Fast Client compute/batch-get retry ranges in milliseconds. Empty advertises no policy.
+   */
+  public static final String SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS =
+      "server.fast.client.multi.key.long.tail.retry.thresholds.ms";
+
   public static final String ADMIN_PORT = "admin.port";
   public static final String ADMIN_HOSTNAME = "admin.hostname";
 
@@ -358,12 +364,17 @@ public class ConfigKeys {
    */
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
-  public static final String CONCURRENT_PUSH_DETECTION_STRATEGY = "concurrent.push.detection.strategy";
   /**
    * Minimum interval between admitted user-store version-creation attempts in the leader parent controller. A value of
    * 0 disables the process-local cooldown.
    */
   public static final String CONTROLLER_PUSH_RETRY_COOLDOWN_MS = "controller.push.retry.cooldown.ms";
+
+  /**
+   * Positive duration threshold in milliseconds for the push_job.count duration bucket, defaulting to 24 hours.
+   * This classifies push-job metrics only; it does not change push timeouts or cancellation behavior.
+   */
+  public static final String CONTROLLER_PUSH_JOB_SLA_MS = "controller.push.job.sla.ms";
 
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
@@ -504,6 +515,21 @@ public class ConfigKeys {
    * Duplicate key threshold to decide when a store should be nominated for compaction
    */
   public static final String LOG_COMPACTION_DUPLICATE_KEY_THRESHOLD = "log.compaction.duplicate.key.threshold";
+
+  /**
+   * When on, the controller moves a store to the {@link #LOG_COMPACTION_BACKUP_STRATEGY} strategy before a scheduled
+   * log-compaction repush, so the store's existing backup is not deleted at repush start and survives a failed repush.
+   */
+  public static final String LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED =
+      "log.compaction.preserve.backup.version.enabled";
+
+  /**
+   * The {@link com.linkedin.venice.meta.BackupStrategy} (as its integer id, see
+   * {@link com.linkedin.venice.meta.BackupStrategy#getValue()}) applied to a store before a scheduled log-compaction
+   * repush when {@link #LOG_COMPACTION_PRESERVE_BACKUP_VERSION_ENABLED} is on. Configurable so the preservation policy
+   * can change without a code change. Defaults to {@link com.linkedin.venice.meta.BackupStrategy#KEEP_MIN_VERSIONS}.
+   */
+  public static final String LOG_COMPACTION_BACKUP_STRATEGY = "log.compaction.backup.strategy";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
@@ -654,11 +680,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_PROVIDER = "controller.helix.cloud.provider";
 
   /**
-   * Specific id in cloud environment that belongs to this cluster. Default is empty string.
-   */
-  public static final String CONTROLLER_HELIX_CLOUD_ID = "controller.helix.cloud.id";
-
-  /**
    * Sources for retrieving the cloud information. Default is empty list.
    */
   public static final String CONTROLLER_HELIX_CLOUD_INFO_SOURCES = "controller.helix.cloud.info.sources";
@@ -679,6 +700,20 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS =
       "controller.helix.participant.deregistration.timeout.ms";
+
+  /**
+   * Timeout for a controller's STANDBY to LEADER state transition in milliseconds.
+   */
+  public static final String CONTROLLER_STANDBY_TO_LEADER_TRANSITION_TIMEOUT_MS =
+      "controller.standby.to.leader.transition.timeout.ms";
+
+  /**
+   * Number of threads a controller uses to read offline push statuses from ZK and subscribe to their partition status
+   * changes when it becomes the leader of a cluster and loads all pushes. With 1, the default, pushes are loaded one at
+   * a time. Clusters with thousands of push statuses spend most of the leader initialization in these ZK calls, and
+   * the cluster has no ready leader until it finishes.
+   */
+  public static final String CONTROLLER_PUSH_STATUS_LOAD_THREAD_COUNT = "controller.push.status.load.thread.count";
 
   /**
    * Base URL for customized health checks triggered by Helix. Default is empty string.
@@ -827,8 +862,19 @@ public class ConfigKeys {
   public static final String LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY =
       "leader.follower.state.transition.thread.pool.strategy";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
+  public static final String WRITE_PATH_THREAD_PRIORITY = "write.path.thread.priority";
   public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
+
+  /**
+   * How long a drainer may hold a single queue node before it is reported as stalled. Only time spent holding a
+   * node counts; a drainer waiting for work is idle, not stalled. Healthy drainers finish a node in
+   * milliseconds, so this sits several orders of magnitude above normal.
+   *
+   * Defaults to 300000 ms. Set to zero or a negative value to disable the background monitor, per-record
+   * stall tracking and blocked-time metrics. This is read at construction time; changes require a restart.
+   */
+  public static final String SERVER_BLOCKED_DRAINER_THRESHOLD_MS = "server.blocked.drainer.threshold.ms";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
 
@@ -1007,9 +1053,21 @@ public class ConfigKeys {
    *
    * To mitigate this issue, we will add a delay in state transition: 'OFFLINE' -> 'DROPPED' to drain all the incoming
    * requests to the to-drop partition, and we will enable error-retry on Router as well.
+   * The delay applies to the current version and the newest ONLINE version below it (the backup version), since
+   * routers may still query the backup until they observe a version swap. Time already spent OFFLINE counts toward
+   * this delay; older and future versions are dropped without this delay. Backup-version draining can be disabled
+   * independently via {@link #SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED}.
    */
   public static final String SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS =
       "server.partition.graceful.drop.time.in.seconds";
+
+  /**
+   * Enables the graceful drop delay for the newest ONLINE version below current, regardless of when it last served.
+   * Defaults to true. Set to false to avoid backup drain waits occupying state-transition threads during cleanup;
+   * current-version draining is unaffected. Read at server startup, so changing this setting requires a restart.
+   */
+  public static final String SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED =
+      "server.backup.version.graceful.drop.enabled";
 
   /**
    * When a BDB partition is dropped, the disk space is not released immediately; a checkpoint is needed to release the disk space;
@@ -2311,11 +2369,26 @@ public class ConfigKeys {
   // size, so this config only caps the ceiling; it does not change the 16KB floor. Tune this down to keep large
   // chunks poolable by Netty's heap arena (see io.netty.allocator.maxOrder) at the cost of more, smaller writes.
   public static final String BLOB_TRANSFER_MAX_CHUNK_SIZE_BYTES = "blob.transfer.max.chunk.size.bytes";
+  // this is a config to decide whether blob transfer channels allocate from a Netty PooledByteBufAllocator of their
+  // own rather than the process-wide default, so their memory usage becomes attributable to blob transfer. The chunk
+  // size is unchanged, so the same allocations stay poolable either way.
+  // The two pools are additive to the default one and never release the first chunk they reserve per arena, which is
+  // negligible at the 128KB chunk -Dio.netty.allocator.maxOrder=4 produces and hundreds of MB at Netty's stock 16MB
+  // chunk, so do not enable this where that property is unset.
+  public static final String BLOB_TRANSFER_DEDICATED_ALLOCATOR_ENABLED = "blob.transfer.dedicated.allocator.enabled";
   // this is a config to decide the max allowed concurrent blob receive replicas per host level, it is used to limit how
   // many
   // replicas can be concurrently receiving blobs for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS =
       "blob.transfer.max.concurrent.blob.receive.replicas";
+  // this is a config to cap how many replicas may hold a blob transfer receive channel at the same time. It bounds a
+  // different quantity than BLOB_TRANSFER_MAX_CONCURRENT_BLOB_RECEIVE_REPLICAS above, which sizes the fetch executor's
+  // thread pool: a fetch worker hands the transfer to a Netty event loop and returns within milliseconds, so the pool
+  // is free again long before the bytes stop arriving, and in-flight channels can outnumber its threads several times
+  // over. The receiver's direct memory scales with the channels that are streaming, so this is the one that bounds it.
+  // A value of 0 or less leaves the count unbounded.
+  public static final String BLOB_TRANSFER_MAX_CONCURRENT_IN_FLIGHT_RECEIVE_REPLICAS =
+      "blob.transfer.max.concurrent.in.flight.receive.replicas";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max file receive timeout time in minutes in client side.
@@ -2814,6 +2887,22 @@ public class ConfigKeys {
    * Default: 100000. Ignored if callback thread count is 0.
    */
   public static final String CLIENT_PRODUCER_CALLBACK_QUEUE_CAPACITY = "client.producer.callback.queue.capacity";
+
+  /**
+   * Number of partition worker threads (stripes) for the VeniceSystemProducer async STREAM dispatch path.
+   * Records route to a worker by their Venice partition, so a partition blocked by leader rebalance does not
+   * stall partitions on other stripes. Default: 4. Set to 0 to DISABLE async dispatch (writes execute inline
+   * on the caller thread, the legacy synchronous behavior).
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_COUNT = "venice.system.producer.worker.count";
+
+  /**
+   * Bounded queue capacity per VeniceSystemProducer worker (stripe) for backpressure. When a worker's queue
+   * is full the submitting thread blocks until space frees up; writes are never dropped. Default: 100000.
+   * Ignored when the worker count is 0.
+   */
+  public static final String VENICE_SYSTEM_PRODUCER_WORKER_QUEUE_CAPACITY =
+      "venice.system.producer.worker.queue.capacity";
 
   /**
    * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
@@ -3612,6 +3701,13 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_USE_MULTI_REGION_REAL_TIME_TOPIC_SWITCHER_ENABLED =
       "controller.use.multi.region.real.time.topic.switcher.enabled";
+
+  /**
+   * Maximum time in seconds for a multi-region Version Swap Message broadcast, including partition acknowledgements
+   * across all regions. Default is 120 seconds.
+   */
+  public static final String CONTROLLER_VERSION_SWAP_BROADCAST_TIMEOUT_SECONDS =
+      "controller.version.swap.broadcast.timeout.seconds";
 
   /**
    * Number of consecutive cycles to wait before removing a replica that does not have a corresponding entry in local

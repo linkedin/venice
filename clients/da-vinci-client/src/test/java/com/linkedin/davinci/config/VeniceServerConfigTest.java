@@ -9,10 +9,13 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_THROTTLER_FACTORS_PER_S
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_DCR_BUG_INJECTION_STORE_TO_REGION_MAP;
+import static com.linkedin.venice.ConfigKeys.SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_FUTURE_VERSION_STANDBY_LAG_CHECK_POLL_INTERVAL_MINUTES;
@@ -27,6 +30,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURREN
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.WRITE_PATH_THREAD_PRIORITY;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -48,6 +52,21 @@ import org.testng.annotations.Test;
 
 
 public class VeniceServerConfigTest {
+  @Test
+  public void testMultiKeyRetryPolicyConfig() {
+    Properties props = populatedBasicProperties();
+    assertEquals(
+        new VeniceServerConfig(new VeniceProperties(props)).getFastClientMultiKeyLongTailRetryThresholdsMs(),
+        "");
+    String ranges = "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
+    props.setProperty(SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS, ranges);
+    assertEquals(
+        new VeniceServerConfig(new VeniceProperties(props)).getFastClientMultiKeyLongTailRetryThresholdsMs(),
+        ranges);
+    props.setProperty(SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS, "1-:2147484");
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+  }
+
   private Properties populatedBasicProperties() {
     Properties props = new Properties();
     props.setProperty(CLUSTER_NAME, "test_cluster");
@@ -69,6 +88,31 @@ public class VeniceServerConfigTest {
     assertEquals(jvmArgs.size(), 2);
     assertEquals(jvmArgs.get(0), "-Xms256M");
     assertEquals(jvmArgs.get(1), "-Xmx256G");
+  }
+
+  @Test
+  public void testBlockedDrainerThresholdDefaultAndOverrides() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getBlockedDrainerThresholdMs(), 300000L);
+
+    for (long thresholdMs: new long[] { 50L, 0L, -1L }) {
+      props.setProperty(SERVER_BLOCKED_DRAINER_THRESHOLD_MS, Long.toString(thresholdMs));
+      VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+      assertEquals(config.getBlockedDrainerThresholdMs(), thresholdMs);
+    }
+  }
+
+  @Test
+  public void testBackupVersionGracefulDropEnabledConfig() {
+    Properties props = populatedBasicProperties();
+    assertTrue(new VeniceServerConfig(new VeniceProperties(props)).isBackupVersionGracefulDropEnabled());
+
+    props.setProperty(SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED, "false");
+    assertFalse(new VeniceServerConfig(new VeniceProperties(props)).isBackupVersionGracefulDropEnabled());
+
+    props.setProperty(SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED, "true");
+    assertTrue(new VeniceServerConfig(new VeniceProperties(props)).isBackupVersionGracefulDropEnabled());
   }
 
   @Test
@@ -170,6 +214,23 @@ public class VeniceServerConfigTest {
       assertEquals(consumerPoolRecordsLimitFactors.size(), 4);
       assertEquals(consumerPoolRecordsLimitFactors.toArray(), factors);
     }
+  }
+
+  @Test
+  public void testWritePathThreadPriority() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig defaultConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(defaultConfig.getWritePathThreadPriority(), VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+
+    props.put(WRITE_PATH_THREAD_PRIORITY, String.valueOf(Thread.NORM_PRIORITY));
+    VeniceServerConfig overriddenConfig = new VeniceServerConfig(new VeniceProperties(props));
+    assertEquals(overriddenConfig.getWritePathThreadPriority(), Thread.NORM_PRIORITY);
+
+    props.put(WRITE_PATH_THREAD_PRIORITY, String.valueOf(Thread.MIN_PRIORITY - 1));
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+
+    props.put(WRITE_PATH_THREAD_PRIORITY, String.valueOf(Thread.MAX_PRIORITY + 1));
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
   }
 
   @Test

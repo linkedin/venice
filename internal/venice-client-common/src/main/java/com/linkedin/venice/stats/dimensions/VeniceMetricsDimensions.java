@@ -101,8 +101,17 @@ public enum VeniceMetricsDimensions {
   /** Venice push job type (e.g. batch, incremental). See Version.PushType */
   VENICE_PUSH_JOB_TYPE("venice.push_job.type"),
 
+  /** {@link VenicePushJobSource} */
+  VENICE_PUSH_JOB_SOURCE("venice.push_job.source"),
+
   /** {@link VenicePushJobStatus} */
   VENICE_PUSH_JOB_STATUS("venice.push_job.status"),
+
+  /** {@link VenicePushJobDurationBucket} */
+  VENICE_PUSH_JOB_DURATION_BUCKET("venice.push_job.duration_bucket"),
+
+  /** PushJobDetailsStatus reported by the push job. */
+  VENICE_PUSH_JOB_EXECUTION_STATE("venice.push_job.execution_state"),
 
   /** {@link VenicePushJobDataWriterSink} */
   VENICE_PUSH_JOB_DATA_WRITER_SINK("venice.push_job.data_writer.sink"),

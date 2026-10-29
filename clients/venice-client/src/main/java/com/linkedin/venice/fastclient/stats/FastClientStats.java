@@ -40,6 +40,7 @@ import java.util.stream.IntStream;
 
 public class FastClientStats extends ClientStats {
   private final String storeName;
+  private final boolean storeLoadControllerEnabled;
 
   private volatile MetricEntityStateOneEnum<RejectionReason> noAvailableReplicaRequestCount;
   private volatile MetricEntityStateOneEnum<RejectionReason> rejectedRequestCountByLoadController;
@@ -61,42 +62,73 @@ public class FastClientStats extends ClientStats {
   private volatile MetricEntityStateOneEnum<RequestFanoutType> originalFanoutSize;
   private long cacheTimeStampInMs = 0;
 
+  /**
+   * Preserves registration of all optional feature metrics for callers without client feature flags.
+   */
   public static FastClientStats getClientStats(
       MetricsRepository metricsRepository,
       String statsPrefix,
       String storeName,
       RequestType requestType) {
-    String metricName = statsPrefix.isEmpty() ? storeName : statsPrefix + "." + storeName;
-    return new FastClientStats(metricsRepository, metricName, requestType);
+    return getClientStats(metricsRepository, statsPrefix, storeName, requestType, true, true);
   }
 
-  private FastClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
+  /**
+   * Registers optional feature metrics only when the corresponding client feature is enabled.
+   */
+  public static FastClientStats getClientStats(
+      MetricsRepository metricsRepository,
+      String statsPrefix,
+      String storeName,
+      RequestType requestType,
+      boolean dualReadEnabled,
+      boolean storeLoadControllerEnabled) {
+    String metricName = statsPrefix.isEmpty() ? storeName : statsPrefix + "." + storeName;
+    return new FastClientStats(metricsRepository, metricName, requestType, dualReadEnabled, storeLoadControllerEnabled);
+  }
+
+  private FastClientStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      RequestType requestType,
+      boolean dualReadEnabled,
+      boolean storeLoadControllerEnabled) {
     super(metricsRepository, storeName, requestType, FAST_CLIENT);
 
     this.storeName = storeName;
+    this.storeLoadControllerEnabled = storeLoadControllerEnabled;
 
     buildFastClientOtelStats();
 
-    Rate requestRate = getRequestRate();
-    Rate fastClientSlowerRequestRate = new OccurrenceRate();
-    this.dualReadFastClientSlowerRequestCountSensor =
-        registerSensor("dual_read_fastclient_slower_request_count", fastClientSlowerRequestRate);
-    this.dualReadFastClientSlowerRequestRatioSensor = registerSensor(
-        new TehutiUtils.SimpleRatioStat(
-            fastClientSlowerRequestRate,
-            requestRate,
-            "dual_read_fastclient_slower_request_ratio"));
-    Rate fastClientErrorThinClientSucceedRequestRate = new OccurrenceRate();
-    this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = registerSensor(
-        "dual_read_fastclient_error_thinclient_succeed_request_count",
-        fastClientErrorThinClientSucceedRequestRate);
-    this.dualReadFastClientErrorThinClientSucceedRequestRatioSensor = registerSensor(
-        new TehutiUtils.SimpleRatioStat(
-            fastClientErrorThinClientSucceedRequestRate,
-            requestRate,
-            "dual_read_fastclient_error_thinclient_succeed_request_ratio"));
-    this.dualReadThinClientFastClientLatencyDeltaSensor =
-        registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
+    if (dualReadEnabled) {
+      Rate requestRate = getRequestRate();
+      Rate fastClientSlowerRequestRate = new OccurrenceRate();
+      this.dualReadFastClientSlowerRequestCountSensor =
+          registerSensor("dual_read_fastclient_slower_request_count", fastClientSlowerRequestRate);
+      this.dualReadFastClientSlowerRequestRatioSensor = registerSensor(
+          new TehutiUtils.SimpleRatioStat(
+              fastClientSlowerRequestRate,
+              requestRate,
+              "dual_read_fastclient_slower_request_ratio"));
+      Rate fastClientErrorThinClientSucceedRequestRate = new OccurrenceRate();
+      this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = registerSensor(
+          "dual_read_fastclient_error_thinclient_succeed_request_count",
+          fastClientErrorThinClientSucceedRequestRate);
+      this.dualReadFastClientErrorThinClientSucceedRequestRatioSensor = registerSensor(
+          new TehutiUtils.SimpleRatioStat(
+              fastClientErrorThinClientSucceedRequestRate,
+              requestRate,
+              "dual_read_fastclient_error_thinclient_succeed_request_ratio"));
+      this.dualReadThinClientFastClientLatencyDeltaSensor =
+          registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
+    } else {
+      Sensor noopSensor = metricsRepository.getNoopSensor("dual_read");
+      this.dualReadFastClientSlowerRequestCountSensor = noopSensor;
+      this.dualReadFastClientSlowerRequestRatioSensor = noopSensor;
+      this.dualReadFastClientErrorThinClientSucceedRequestCountSensor = noopSensor;
+      this.dualReadFastClientErrorThinClientSucceedRequestRatioSensor = noopSensor;
+      this.dualReadThinClientFastClientLatencyDeltaSensor = noopSensor;
+    }
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
   }
 
@@ -110,34 +142,42 @@ public class FastClientStats extends ClientStats {
     this.noAvailableReplicaRequestCount = MetricEntityStateOneEnum.create(
         FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.NO_AVAILABLE_REPLICA_REQUEST_COUNT,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
         RejectionReason.class);
 
-    this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
-        FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
-        Collections.singletonList(new OccurrenceRate()),
-        baseDimensionsMap,
-        RejectionReason.class);
+    if (storeLoadControllerEnabled) {
+      this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum.create(
+          FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(),
+          otelRepository,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
+          FastClientTehutiMetricName.REJECTED_REQUEST_COUNT_BY_LOAD_CONTROLLER,
+          Collections.singletonList(new OccurrenceRate()),
+          baseDimensionsMap,
+          RejectionReason.class);
 
-    this.rejectionRatio = MetricEntityStateOneEnum.create(
-        FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        FastClientTehutiMetricName.REJECTION_RATIO,
-        Arrays.asList(new Avg(), new Max()),
-        baseDimensionsMap,
-        RejectionReason.class);
+      this.rejectionRatio = MetricEntityStateOneEnum.create(
+          FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(),
+          otelRepository,
+          (sensorName, stats) -> registerSensor(sensorName, stats),
+          FastClientTehutiMetricName.REJECTION_RATIO,
+          Arrays.asList(new Avg(), new Max()),
+          baseDimensionsMap,
+          RejectionReason.class);
+    } else {
+      // Omitting the OTel repository and Tehuti registration makes these states no-ops for both backends.
+      this.rejectedRequestCountByLoadController = MetricEntityStateOneEnum
+          .create(FastClientMetricEntity.REQUEST_REJECTION_COUNT.getMetricEntity(), null, null, RejectionReason.class);
+      this.rejectionRatio = MetricEntityStateOneEnum
+          .create(FastClientMetricEntity.REQUEST_REJECTION_RATIO.getMetricEntity(), null, null, RejectionReason.class);
+    }
 
     this.longTailRetry = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -145,7 +185,7 @@ public class FastClientStats extends ClientStats {
     this.errorRetry = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.ERROR_RETRY_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -154,7 +194,7 @@ public class FastClientStats extends ClientStats {
     this.retryRequestWin = MetricEntityStateBase.create(
         RETRY_REQUEST_WIN_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.RETRY_REQUEST_WIN,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -165,7 +205,7 @@ public class FastClientStats extends ClientStats {
     this.retryFanoutSize = MetricEntityStateOneEnum.create(
         REQUEST_FANOUT_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.RETRY_FANOUT_SIZE,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -174,7 +214,7 @@ public class FastClientStats extends ClientStats {
     this.originalFanoutSize = MetricEntityStateOneEnum.create(
         REQUEST_FANOUT_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.FANOUT_SIZE,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -202,7 +242,7 @@ public class FastClientStats extends ClientStats {
     this.metadataStalenessHighWatermark = AsyncMetricEntityStateBase.create(
         METADATA_STALENESS_DURATION.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         FastClientTehutiMetricName.METADATA_STALENESS_HIGH_WATERMARK_MS,
         Collections.singletonList(
             new AsyncGauge(

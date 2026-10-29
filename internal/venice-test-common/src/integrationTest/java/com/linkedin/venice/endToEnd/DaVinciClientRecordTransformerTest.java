@@ -147,6 +147,7 @@ public class DaVinciClientRecordTransformerTest {
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
           VeniceProperties.empty(),
+          null,
           null)) {
         producer.asyncDelete(1).get();
 
@@ -379,6 +380,7 @@ public class DaVinciClientRecordTransformerTest {
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
           VeniceProperties.empty(),
+          null,
           null)) {
         int key = numKeys + 1;
         String value = "a" + key;

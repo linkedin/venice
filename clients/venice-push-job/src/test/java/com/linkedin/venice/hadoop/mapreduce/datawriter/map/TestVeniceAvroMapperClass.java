@@ -9,6 +9,10 @@ import java.nio.ByteBuffer;
  * {@link VeniceAvroMapper} object seemed to be not working.
  */
 public class TestVeniceAvroMapperClass extends VeniceAvroMapper {
+  ByteBuffer readActualDictionary(String topicName, VeniceProperties props) {
+    return super.readDictionaryFromKafka(topicName, props);
+  }
+
   @Override
   protected ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
     return ByteBuffer.wrap("TEST_DICT".getBytes());

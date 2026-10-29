@@ -401,8 +401,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   protected CompletableFuture<Void> internalSeek(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
-      SeekFunction seekAction) {
-    return super.internalSeek(partitions, targetTopic, seekAction);
+      SeekPositionResolver positionResolver,
+      boolean isInclusive) {
+    return super.internalSeek(partitions, targetTopic, positionResolver, isInclusive);
   }
 
   @Override

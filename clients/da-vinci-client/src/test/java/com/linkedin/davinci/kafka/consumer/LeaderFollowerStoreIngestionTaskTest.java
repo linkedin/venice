@@ -49,6 +49,7 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatKey;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -123,6 +124,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
@@ -473,6 +475,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     topicSwitch.rewindStartTimestamp = System.currentTimeMillis();
     TopicSwitchWrapper topicSwitchWrapper = new TopicSwitchWrapper(topicSwitch, rtTopic);
     when(mockPartitionConsumptionState.getTopicSwitch()).thenReturn(topicSwitchWrapper);
+    when(mockPartitionConsumptionState.isEndOfPushReceived()).thenReturn(true);
+
+    // A queued demotion can re-register monitoring after Helix starts teardown.
+    HeartbeatMonitoringService service = leaderFollowerStoreIngestionTask.getHeartbeatMonitoringService();
+    service.updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.REMOVE_MONITOR, "test-topic_v1-0");
 
     // Process LEADER_TO_STANDBY transition
     leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
@@ -485,6 +492,40 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // mockStorageMetadataService is a Mockito mock (created by TestUtils.getStoreIngestionTaskBuilder).
     verify(mockStorageMetadataService)
         .put(eq(leaderFollowerStoreIngestionTask.kafkaVersionTopic), eq(0), eq(mockOffsetRecord));
+    InOrder heartbeatUpdates = inOrder(service);
+    heartbeatUpdates.verify(service)
+        .updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.REMOVE_MONITOR, "test-topic_v1-0");
+    heartbeatUpdates.verify(service)
+        .updateLagMonitor("test-topic", 0, HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR, "test-topic_v1-0");
+
+    when(mockConsumerAction.getType()).thenReturn(ConsumerActionType.UNSUBSCRIBE);
+    doNothing().when(leaderFollowerStoreIngestionTask).consumerUnSubscribeAllTopics(any());
+    doNothing().when(leaderFollowerStoreIngestionTask).waitForAllMessageToBeProcessedFromTopicPartition(any(), any());
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    verify(service, never()).removeLagMonitor(any(), anyInt(), anyString());
+
+    when(mockConsumerAction.isHelixTriggeredAction()).thenReturn(true);
+    leaderFollowerStoreIngestionTask.processConsumerAction(mockConsumerAction, mockStore);
+    Version version = mockStore.getVersion(1);
+    String replicaId = Utils.getReplicaId(leaderFollowerStoreIngestionTask.getKafkaVersionTopic(), 0);
+    heartbeatUpdates.verify(service).removeLagMonitor(version, 0, replicaId);
+  }
+
+  @Test
+  public void testClosedIngestionTaskRemovesHeartbeatMonitoring() throws InterruptedException {
+    setUp(true);
+    HeartbeatMonitoringService service = leaderFollowerStoreIngestionTask.getHeartbeatMonitoringService();
+    Version version = mockStore.getVersion(1);
+    // Error-unsubscribed partitions have no PCS but still need task-wide cleanup.
+    leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().clear();
+    String threadName = Thread.currentThread().getName();
+    try {
+      leaderFollowerStoreIngestionTask.close();
+      leaderFollowerStoreIngestionTask.run();
+      verify(service).removeLagMonitors(version);
+    } finally {
+      Thread.currentThread().setName(threadName);
+    }
   }
 
   @Test
@@ -687,6 +728,52 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertTrue(leaderFollowerStoreIngestionTask.isRecordSelfProduced(consumerRecord));
   }
 
+  /**
+   * Before EOP, historical own-host records must reconstruct producer state. After EOP, self-produced records are
+   * skipped only without producer state; inherited state must still advance.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 60_000)
+  public void testValidateMessageSkipsSelfProducedRecordsOnlyAfterEopWithoutProducerState(boolean endOfPushReceived)
+      throws InterruptedException {
+    setUp();
+    PartitionConsumptionState pcs = leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().get(0);
+    doReturn(endOfPushReceived).when(pcs).isEndOfPushReceived();
+    DataIntegrityValidator validator = mock(DataIntegrityValidator.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(new KafkaKey(MessageType.PUT, new byte[] { 0 })).when(record).getKey();
+    PartitionTracker.TopicType type = PartitionTracker.VERSION_TOPIC;
+
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+
+    // Self-produced without producer state: skipped only after EOP
+    doReturn(false).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    int initialValidationCount = endOfPushReceived ? 0 : 1;
+    verify(validator, times(initialValidationCount))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
+
+    // Self-produced with producer state: validated
+    doReturn(true).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(initialValidationCount + 1))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
+
+    // Not self-produced: validated regardless of producer state
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+    doReturn(false).when(validator).hasProducerState(type, record);
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(initialValidationCount + 2))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
+
+    // Global RT DIV disabled: validated even if self-produced
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isRecordSelfProduced(record);
+    doReturn(false).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    leaderFollowerStoreIngestionTask.validateMessage(type, validator, record, pcs, false);
+    verify(validator, times(initialValidationCount + 3))
+        .validateMessage(eq(type), eq(record), eq(endOfPushReceived), any());
+  }
+
   @Test
   public void testGetIngestionProgressPercentage() throws InterruptedException {
     setUp();
@@ -729,8 +816,9 @@ public class LeaderFollowerStoreIngestionTaskTest {
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     PubSubPosition p3 = ApacheKafkaOffsetPosition.of(offset);
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
-    // The graceful-shutdown flush produces the GlobalRtDivState to the LOCAL VT, so the callback's synthetic source
-    // record sits on a non-RT (VT) topic-partition, while the leader's upstream (leaderTopic) is the RT topic whose
+    // The synthetic source record of a flush can sit on a non-RT (VT) topic-partition (flushGlobalRtDivCheckpoint uses
+    // the
+    // local VT when the leader topic is not RT), while the leader's upstream (leaderTopic) here is the RT topic whose
     // LCRP is carried as the consumed position. The remote-LCVP stamp in sendVtDivSnapshotOnCompletion keys off
     // leaderTopic (RT here) and must skip the stamp, since that RT-domain position is checkpointed separately as the
     // LCRP; keying off the source record's topic would cross-write the RT LCRP into the remote-VT LCVP field.
@@ -816,6 +904,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
     doReturn(partition).when(mockPartitionConsumptionState).getPartition();
     doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
 
     String brokerA = "brokerA:1234";
     String brokerB = "brokerB:1234";
@@ -848,10 +937,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     future.get(30, TimeUnit.SECONDS);
     assertTrue(future.isDone());
 
-    // One produce per broker, each carrying that broker's LCRP and the local VT topic-partition.
+    // One produce per broker, each carrying that broker's LCRP and tagged with the leader's RT topic-partition (not the
+    // local VT), so the leader's own drainer persists it.
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrpA),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(brokerA),
@@ -859,7 +949,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         eq(0));
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrpB),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(brokerB),
@@ -883,6 +973,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
     doReturn(partition).when(mockPartitionConsumptionState).getPartition();
     doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
 
     String earliestBroker = "earliest:1234";
     String progressedBroker = "progressed:1234";
@@ -916,7 +1007,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), eq(earliestBroker), anyLong(), anyInt());
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrp),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(progressedBroker),
@@ -943,6 +1034,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
     doReturn(partition).when(mockPartitionConsumptionState).getPartition();
     doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
 
     // Non-A/A has a single RT source. The LCRP is stored under the NON_AA key, not the broker URL. Let the real non-A/A
     // accessor (leaderFollowerStoreIngestionTask is a non-A/A spy) run so it reads the NON_AA-keyed value.
@@ -969,7 +1061,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // it.
     verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
         eq(lcrp),
-        eq(localVtTp),
+        eq(rtTp),
         eq(mockPartitionConsumptionState),
         eq(partition),
         eq(broker),
@@ -1004,6 +1096,166 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(leaderFollowerStoreIngestionTask, never())
         .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
     verify(mockStoreBufferService, times(1)).execSyncGlobalRtDivAsync(localVtTp, leaderFollowerStoreIngestionTask);
+  }
+
+  private static final PubSubTopicRepository FLUSH_TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopic RT_TOPIC_FOR_FLUSH =
+      FLUSH_TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic("flushStore"));
+
+  /**
+   * Stubs the PCS so the leader topic is {@code leaderTopic} and its source topic-partition is a real
+   * {@link PubSubTopicPartitionImpl}; returns that topic-partition.
+   */
+  private PubSubTopicPartition stubLeaderTopicForFlush(PubSubTopic leaderTopic, int partition) {
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(leaderTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    PubSubTopicPartition leaderTp = new PubSubTopicPartitionImpl(leaderTopic, partition);
+    doReturn(leaderTp).when(mockPartitionConsumptionState).getSourceTopicPartition(leaderTopic);
+    return leaderTp;
+  }
+
+  /**
+   * A separate-RT source broker (URL suffixed with {@code _sep}) is consumed from the {@code _sep} RT topic, so the
+   * flush record for that broker must be tagged with the {@code _sep} RT topic-partition, matching the steady-state
+   * GlobalRtDivState produced from a consumed {@code _sep} record.
+   */
+  @Test
+  public void testFlushGlobalRtDivCheckpointTagsSeparateRtBrokerWithSeparateRtTopic() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    PubSubTopicPartition rtTp = stubLeaderTopicForFlush(RT_TOPIC_FOR_FLUSH, partition);
+
+    String broker = "broker:1234";
+    String sepBroker = broker + Utils.SEPARATE_TOPIC_SUFFIX;
+    PubSubPosition lcrp = InMemoryPubSubPosition.of(4L);
+    PubSubPosition sepLcrp = InMemoryPubSubPosition.of(8L);
+    doReturn(lcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, broker);
+    doReturn(sepLcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, sepBroker);
+    doReturn(new LinkedHashSet<>(Arrays.asList(broker, sepBroker))).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(broker, 0);
+    urlToIdMap.put(sepBroker, 1);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState)
+        .get(30, TimeUnit.SECONDS);
+
+    PubSubTopicPartition sepRtTp = new PubSubTopicPartitionImpl(
+        FLUSH_TOPIC_REPOSITORY.getTopic(RT_TOPIC_FOR_FLUSH.getName() + Utils.SEPARATE_TOPIC_SUFFIX),
+        partition);
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrp),
+        eq(rtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(broker),
+        anyLong(),
+        eq(0));
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(sepLcrp),
+        eq(sepRtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(sepBroker),
+        anyLong(),
+        eq(1));
+  }
+
+  /**
+   * A leader whose leader topic is not RT (e.g. still consuming a remote VT) keeps tagging the flush record with the
+   * local VT topic-partition.
+   */
+  @Test
+  public void testFlushGlobalRtDivCheckpointNonRtLeaderTopicKeepsLocalVtTp() throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition localVtTp = mock(PubSubTopicPartition.class);
+    doReturn(partition).when(localVtTp).getPartitionNumber();
+    doReturn(localVtTp).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    stubLeaderTopicForFlush(FLUSH_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic("flushStore", 1)), partition);
+
+    String broker = "broker:1234";
+    PubSubPosition lcrp = InMemoryPubSubPosition.of(6L);
+    doReturn(lcrp).when(leaderFollowerStoreIngestionTask)
+        .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, broker);
+    doReturn(Collections.singleton(broker)).when(leaderFollowerStoreIngestionTask)
+        .getRealTimeDataSourceKafkaAddress(mockPartitionConsumptionState);
+    Object2IntMap<String> urlToIdMap = new Object2IntOpenHashMap<>();
+    urlToIdMap.put(broker, 0);
+    doReturn(urlToIdMap).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), anyString(), anyLong(), anyInt());
+
+    leaderFollowerStoreIngestionTask.flushGlobalRtDivCheckpoint(mockPartitionConsumptionState)
+        .get(30, TimeUnit.SECONDS);
+
+    verify(leaderFollowerStoreIngestionTask, times(1)).sendGlobalRtDivMessage(
+        eq(lcrp),
+        eq(localVtTp),
+        eq(mockPartitionConsumptionState),
+        eq(partition),
+        eq(broker),
+        anyLong(),
+        eq(0));
+    verify(mockPartitionConsumptionState, never()).getSourceTopicPartition(any());
+  }
+
+  /**
+   * The leader's drainer only persists records from its leader topic. A GlobalRtDivState record tagged with the RT
+   * topic-partition (or its {@code _sep} variant), as flushGlobalRtDivCheckpoint now does, is persisted; one tagged with
+   * the local VT topic-partition is dropped, which would leave the leader's GLOBAL_RT_DIV_KEY stale across a restart.
+   */
+  @Test
+  public void testLeaderShouldPersistGlobalRtDivRecordOnlyFromLeaderTopic() throws InterruptedException {
+    setUp();
+    int partition = 0;
+    PubSubTopicRepository topicRepository = new PubSubTopicRepository();
+    String storeName = "persistStore";
+    PubSubTopic rtTopic = topicRepository.getTopic(Utils.composeRealTimeTopic(storeName));
+    PubSubTopic sepRtTopic = topicRepository.getTopic(rtTopic.getName() + Utils.SEPARATE_TOPIC_SUFFIX);
+    PubSubTopic vtTopic = topicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic(any());
+    doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(true).when(mockPartitionConsumptionState).isSubscribed();
+    doReturn(false).when(mockPartitionConsumptionState).isErrorReported();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldPersistRecord(
+            globalRtDivRecord(new PubSubTopicPartitionImpl(rtTopic, partition)),
+            mockPartitionConsumptionState));
+    assertTrue(
+        leaderFollowerStoreIngestionTask.shouldPersistRecord(
+            globalRtDivRecord(new PubSubTopicPartitionImpl(sepRtTopic, partition)),
+            mockPartitionConsumptionState));
+    assertFalse(
+        leaderFollowerStoreIngestionTask.shouldPersistRecord(
+            globalRtDivRecord(new PubSubTopicPartitionImpl(vtTopic, partition)),
+            mockPartitionConsumptionState));
+  }
+
+  private static DefaultPubSubMessage globalRtDivRecord(PubSubTopicPartition topicPartition) {
+    KafkaKey key = new KafkaKey(
+        MessageType.GLOBAL_RT_DIV,
+        LeaderFollowerStoreIngestionTask.getGlobalRtDivKeyName(topicPartition.getPartitionNumber(), "broker:1234")
+            .getBytes(StandardCharsets.UTF_8));
+    KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+    envelope.messageType = MessageType.PUT.getValue();
+    return new ImmutablePubSubMessage(key, envelope, topicPartition, InMemoryPubSubPosition.of(1L), 0, 0);
   }
 
   /**
@@ -3194,7 +3446,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testBatchUnsubscribeClosesVeniceWriterPartitions() {
+  public void testBatchUnsubscribeClosesVeniceWriterPartitionsUnlessInterrupted() {
     LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
 
@@ -3223,6 +3475,17 @@ public class LeaderFollowerStoreIngestionTaskTest {
     task.consumerBatchUnsubscribeAllTopics();
 
     verify(veniceWriter).closePartition(7);
+
+    clearInvocations(veniceWriter);
+    Thread.currentThread().interrupt();
+    try {
+      task.consumerBatchUnsubscribeAllTopics();
+      verify(veniceWriter, never()).closePartition(anyInt());
+      verify(task, times(2)).consumerBatchUnsubscribe(any());
+      assertTrue(Thread.currentThread().isInterrupted());
+    } finally {
+      Thread.interrupted();
+    }
   }
 
   @Test
@@ -3703,6 +3966,41 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
     // Negative threshold means always use blob transfer
     when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferIsRefusedOnceInFlightLimitIsReached() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    // A negative lag threshold keeps every other condition satisfied, so the in-flight count is the only thing
+    // deciding the outcome below.
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+    when(mockVeniceServerConfig.getMaxConcurrentInFlightReceiveReplicas()).thenReturn(2);
+
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(1);
+    assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(2);
+    assertFalse(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
+  }
+
+  @Test
+  public void testShouldStartBlobTransferIgnoresInFlightCountWhenLimitIsZero() throws InterruptedException {
+    setUpWithBlobTransfer(false);
+    when(mockStore.getBlobTransferInServerEnabled()).thenReturn("ENABLED");
+    when(mockPartitionConsumptionState.getReplicaId()).thenReturn("test_v1-0");
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(mockOffset).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt(), any());
+    when(mockVeniceServerConfig.getBlobTransferDisabledOffsetLagThreshold()).thenReturn(-1L);
+    // Zero is the shipped default and has to leave the count unbounded, otherwise enabling this code would change
+    // behaviour before anyone chose a limit.
+    when(mockVeniceServerConfig.getMaxConcurrentInFlightReceiveReplicas()).thenReturn(0);
+    when(mockBlobTransferManager.getInFlightReceiveCount()).thenReturn(100);
 
     assertTrue(leaderFollowerStoreIngestionTask.shouldStartBlobTransfer(0, "test_v1-0", mockConsumerAction));
   }
@@ -4541,6 +4839,92 @@ public class LeaderFollowerStoreIngestionTaskTest {
         () -> "remote-broker-url",
         false);
     verify(vtUpdateLocal, times(1)).apply(localVtPosition);
+  }
+
+  @Test
+  public void testUpdateLeaderTopicOnFollowerAppliesTopicSwitchOnlyAfterEndOfPush() throws InterruptedException {
+    setUp(true);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    TopicSwitchWrapper topicSwitch = mock(TopicSwitchWrapper.class);
+    doReturn(rtTopic).when(topicSwitch).getNewSourceTopic();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(offsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(topicSwitch).when(mockPartitionConsumptionState).getTopicSwitch();
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    // A follower still replaying batch data must not adopt the version-wide TS.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.updateLeaderTopicOnFollower(mockPartitionConsumptionState);
+    verify(offsetRecord, never()).setLeaderTopic(any());
+
+    doReturn(true).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    leaderFollowerStoreIngestionTask.updateLeaderTopicOnFollower(mockPartitionConsumptionState);
+    verify(offsetRecord).setLeaderTopic(rtTopic);
+  }
+
+  @Test
+  public void testFollowerUpstreamPositionBeforeEndOfPushIsNotTrackedAsRt() throws InterruptedException {
+    setUp(true);
+    PubSubTopic rtTopic = TOPIC_REPOSITORY.getTopic("test-topic_rt");
+    PubSubTopic versionTopic = leaderFollowerStoreIngestionTask.getVersionTopic();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(rtTopic).when(offsetRecord).getLeaderTopic(any());
+    doReturn(offsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
+    doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
+
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    KafkaKey dataKey = new KafkaKey(MessageType.PUT, new byte[] { 0 });
+    doReturn(dataKey).when(record).getKey();
+    doReturn(new PubSubTopicPartitionImpl(versionTopic, 0)).when(record).getTopicPartition();
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.producerMetadata = new ProducerMetadata();
+    doReturn(kafkaValue).when(record).getValue();
+    PubSubPosition upstreamPosition = mock(PubSubPosition.class);
+    doReturn(upstreamPosition).when(leaderFollowerStoreIngestionTask).extractUpstreamPosition(record);
+    doReturn(0).when(leaderFollowerStoreIngestionTask).extractUpstreamClusterId(record);
+    LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset upstreamUpdate =
+        mock(LeaderFollowerStoreIngestionTask.UpdateUpstreamTopicOffset.class);
+    Runnable processRecord = () -> leaderFollowerStoreIngestionTask.updateOffsetsFromConsumerRecord(
+        mockPartitionConsumptionState,
+        record,
+        null,
+        mock(LeaderFollowerStoreIngestionTask.UpdateVersionTopicOffset.class),
+        upstreamUpdate,
+        mock(LeaderFollowerStoreIngestionTask.GetLastKnownUpstreamTopicOffset.class),
+        () -> NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        false);
+
+    // A follower still replaying batch data tracks and checkpoints upstream positions as remote VT, not RT.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    processRecord.run();
+    leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
+    verify(upstreamUpdate).apply(any(), eq(versionTopic), eq(upstreamPosition));
+    verify(offsetRecord).checkpointRemoteVtPosition(any());
+    verify(offsetRecord, never()).checkpointRtPositions(any());
+
+    // processEndOfPush sets the EOP flag before the EOP record's own offsets are recorded; it stays remote VT.
+    doReturn(true).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    ControlMessage endOfPush = new ControlMessage();
+    endOfPush.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    kafkaValue.payloadUnion = endOfPush;
+    doReturn(new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[0])).when(record).getKey();
+    processRecord.run();
+    verify(upstreamUpdate, times(2)).apply(any(), eq(versionTopic), eq(upstreamPosition));
+    verify(upstreamUpdate, never()).apply(any(), eq(rtTopic), any());
+
+    // Records after EOP use the RT leader topic.
+    doReturn(dataKey).when(record).getKey();
+    processRecord.run();
+    leaderFollowerStoreIngestionTask.updateOffsetMetadataInOffsetRecord(mockPartitionConsumptionState);
+    verify(upstreamUpdate).apply(any(), eq(rtTopic), eq(upstreamPosition));
+    verify(offsetRecord).checkpointRtPositions(any());
+
+    // Leaders are unaffected.
+    doReturn(false).when(mockPartitionConsumptionState).isEndOfPushReceived();
+    doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+    assertEquals(
+        leaderFollowerStoreIngestionTask.getUpstreamTopicForPositionTracking(mockPartitionConsumptionState),
+        rtTopic);
   }
 
   private static final int NEARLINE_LIMIT_BYTES = 5 * 1024 * 1024;

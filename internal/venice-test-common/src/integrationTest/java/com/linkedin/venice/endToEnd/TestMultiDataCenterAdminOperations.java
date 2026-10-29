@@ -207,15 +207,17 @@ public class TestMultiDataCenterAdminOperations extends AbstractMultiRegionTest 
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     ControllerClient parentControllerClient =
         new ControllerClient(clusterName, leaderParentController.getControllerUrl());
+    // Create the fixture before pinning the protocol, then restore legacy quota semantics.
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+    Assert.assertFalse(newStoreResponse.isError(), newStoreResponse.getError());
+    TestUtils.assertCommand(
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteQuotaEnabled(false)));
+
     // Update the admin operation version to new version - 85 - to test bad message
     AdminTopicMetadataResponse updateProtocolVersionResponse =
         parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 85L);
     assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
-
-    // Create store
-    NewStoreResponse newStoreResponse =
-        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
-    Assert.assertFalse(newStoreResponse.isError());
     emptyPushToStore(parentControllerClient, storeName, 1);
 
     // Get current execution ID

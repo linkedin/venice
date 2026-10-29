@@ -45,6 +45,8 @@ public class StoreInfo {
     storeInfo.setEtlStoreConfig(store.getEtlStoreConfig());
     storeInfo.setExternalStorageReadMode(store.getExternalStorageReadMode());
     storeInfo.setStorageMode(store.getStorageMode());
+    storeInfo.setVeniceUnits(store.getVeniceUnits());
+    storeInfo.setWorkloadType(store.getWorkloadType());
     if (store.isHybrid()) {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
@@ -76,6 +78,7 @@ public class StoreInfo {
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    storeInfo.setWriteQuotaEnabled(store.isWriteQuotaEnabled());
     storeInfo.setCompactionEnabled(store.isCompactionEnabled());
     storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
     storeInfo.setEncryptionEnabled(store.isEncryptionEnabled());
@@ -355,6 +358,7 @@ public class StoreInfo {
    * Whether storage node read quota is enabled for this store.
    */
   private boolean storageNodeReadQuotaEnabled;
+  private boolean writeQuotaEnabled;
 
   /**
    * Reasons for why or why not the store is dead
@@ -412,6 +416,14 @@ public class StoreInfo {
   private boolean separateRealTimeTopicEnabled = false;
   private ExternalStorageReadMode externalStorageReadMode = ExternalStorageReadMode.VENICE_ONLY;
   private StorageMode storageMode = StorageMode.INTERNAL;
+  /**
+   * The forecasted Venice Units (VU) capacity ask for this store, or null when it has not been provided.
+   */
+  private Integer veniceUnits = null;
+  /**
+   * The requested class of service for this store, or null when it has not been provided.
+   */
+  private String workloadType = null;
 
   public StoreInfo() {
   }
@@ -759,6 +771,22 @@ public class StoreInfo {
     this.storageMode = storageMode == null ? StorageMode.INTERNAL : storageMode;
   }
 
+  public Integer getVeniceUnits() {
+    return veniceUnits;
+  }
+
+  public void setVeniceUnits(Integer veniceUnits) {
+    this.veniceUnits = veniceUnits;
+  }
+
+  public String getWorkloadType() {
+    return workloadType;
+  }
+
+  public void setWorkloadType(String workloadType) {
+    this.workloadType = workloadType;
+  }
+
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {
     return schemaAutoRegisterFromPushJobEnabled;
   }
@@ -889,6 +917,14 @@ public class StoreInfo {
 
   public boolean isStorageNodeReadQuotaEnabled() {
     return storageNodeReadQuotaEnabled;
+  }
+
+  public boolean isWriteQuotaEnabled() {
+    return writeQuotaEnabled;
+  }
+
+  public void setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    this.writeQuotaEnabled = writeQuotaEnabled;
   }
 
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {

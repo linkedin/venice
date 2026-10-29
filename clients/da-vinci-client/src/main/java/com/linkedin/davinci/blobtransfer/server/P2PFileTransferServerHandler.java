@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.BlobSnapshotManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferPartitionMetadata;
 import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
+import com.linkedin.davinci.blobtransfer.BlobTransferPooledByteBufAllocator;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.stats.AggBlobTransferStats;
 import com.linkedin.venice.meta.Version;
@@ -202,7 +203,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           String errMessage =
               "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
                   + ", won't be able to process the request for " + blobTransferRequest.getFullResourceName();
-          LOGGER.error(errMessage);
+          LOGGER.warn(errMessage);
           setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
           return;
         }
@@ -217,7 +218,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
               String errMessage =
                   "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
                       + ", won't be able to process the request for " + blobTransferRequest.getFullResourceName();
-              LOGGER.error(errMessage);
+              LOGGER.warn(errMessage);
               setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
               return;
             }
@@ -267,7 +268,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(blobTransferMaxTimeoutInMin)) {
         String errMessage =
             String.format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
-        LOGGER.error(errMessage);
+        LOGGER.warn(errMessage);
         setupResponseAndFlush(
             HttpResponseStatus.REQUEST_TIMEOUT,
             errMessage.getBytes(),
@@ -289,7 +290,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       if (future.isSuccess()) {
         LOGGER.info("All files sent successfully for {} to host {}", replicaInfo, ctx.channel().remoteAddress());
       } else {
-        LOGGER.error(
+        LOGGER.warn(
             "Failed to send all files for {} to host {}",
             replicaInfo,
             ctx.channel().remoteAddress(),
@@ -317,13 +318,48 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           globalConcurrentTransferRequests.decrementAndGet();
         }
       } catch (Exception e) {
-        LOGGER.error("Failed to decrease the snapshot concurrent user count for request {}", blobTransferRequest, e);
+        LOGGER.warn("Failed to decrease the snapshot concurrent user count for request {}", blobTransferRequest, e);
       }
     }
     if (clientOrigin) {
       admissionController.releaseClient();
     }
+    logTransferFootprint(ctx, blobTransferRequest);
     ctx.fireChannelInactive();
+  }
+
+  /**
+   * Records what the dedicated allocator holds as a transfer releases its slot, alongside the concurrency that
+   * produced it. Both are whole-sender samples of the instant they are read: the memory covers every channel this
+   * sender is serving, not the one being logged, so it is not this transfer's own footprint and cannot be divided
+   * by the count to produce one.
+   */
+  private void logTransferFootprint(ChannelHandlerContext ctx, BlobTransferPayload blobTransferRequest) {
+    // Reporting must never interfere with the transfer itself. channelInactive still has to reach
+    // ctx.fireChannelInactive() so the rest of the pipeline is torn down.
+    try {
+      String allocatorUsage = BlobTransferPooledByteBufAllocator.describeUsage(ctx.alloc());
+      if (allocatorUsage == null || blobTransferRequest == null) {
+        return;
+      }
+      // Server-origin and client-origin transfers are admitted against separate budgets and a transfer is counted in
+      // exactly one of them, so they sum to the population the memory figures cover. The total has no single
+      // denominator, which is why both components are reported.
+      int serverOriginTransfers = globalConcurrentTransferRequests.get();
+      int clientOriginTransfers = admissionController == null ? 0 : admissionController.getClientInFlight();
+      int maxClientTransfers = admissionController == null ? 0 : admissionController.getMaxClientTransfers();
+      LOGGER.info(
+          "Blob transfer sender finished serving {}, concurrentTransfers={} (serverOrigin={}/{}, clientOrigin={}/{}), {}",
+          blobTransferRequest.getFullResourceName(),
+          serverOriginTransfers + clientOriginTransfers,
+          serverOriginTransfers,
+          maxAllowedConcurrentSnapshotUsers,
+          clientOriginTransfers,
+          maxClientTransfers,
+          allocatorUsage);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to log the blob transfer footprint", e);
+    }
   }
 
   private boolean isAdmittedClientOrigin(ChannelHandlerContext ctx) {
@@ -406,7 +442,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
             replicaInfo,
             ctx.channel().remoteAddress());
       } else {
-        LOGGER.error(
+        LOGGER.debug(
             "Failed to send file: {} for replica: {} to host: {}",
             file.getName(),
             replicaInfo,
@@ -442,7 +478,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
             Utils.getReplicaId(metadata.getTopicName(), metadata.getPartitionId()),
             metadataBytes.length);
       } else {
-        LOGGER.error(
+        LOGGER.warn(
             "Failed to send metadata for {}",
             Utils.getReplicaId(metadata.getTopicName(), metadata.getPartitionId()),
             future.cause());

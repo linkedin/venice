@@ -104,7 +104,7 @@ public class ClientStats extends BasicClientStats {
     errorRetryRequest = MetricEntityStateOneEnum.create(
         RETRY_CALL_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClientTehutiMetricName.REQUEST_RETRY_COUNT,
         Collections.singletonList(requestRetryCountRate),
         baseDimensionsMap,
@@ -113,7 +113,7 @@ public class ClientStats extends BasicClientStats {
     successRequestDuplicateKeyCount = MetricEntityStateOneEnum.create(
         ClientMetricEntity.REQUEST_DUPLICATE_KEY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         SUCCESS_REQUEST_DUPLICATE_KEY_COUNT,
         Collections.singletonList(new Rate()),
         baseDimensionsMap,
@@ -125,7 +125,7 @@ public class ClientStats extends BasicClientStats {
     requestSerializationTime = MetricEntityStateBase.create(
         ClientMetricEntity.REQUEST_SERIALIZATION_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         ClientTehutiMetricName.REQUEST_SERIALIZATION_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -137,7 +137,7 @@ public class ClientStats extends BasicClientStats {
     requestSubmissionToResponseHandlingTime = MetricEntityStateBase.create(
         ClientMetricEntity.CALL_SUBMISSION_TO_HANDLING_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         ClientTehutiMetricName.REQUEST_SUBMISSION_TO_RESPONSE_HANDLING_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -149,7 +149,7 @@ public class ClientStats extends BasicClientStats {
     responseDeserializationTime = MetricEntityStateBase.create(
         ClientMetricEntity.RESPONSE_DESERIALIZATION_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         ClientTehutiMetricName.RESPONSE_DESERIALIZATION_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -159,7 +159,7 @@ public class ClientStats extends BasicClientStats {
     responseDecompressionTime = MetricEntityStateBase.create(
         ClientMetricEntity.RESPONSE_DECOMPRESSION_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         ClientTehutiMetricName.RESPONSE_DECOMPRESSION_TIME,
         Arrays.asList(new Avg(), new Max()),
         baseDimensionsMap,
@@ -171,7 +171,7 @@ public class ClientStats extends BasicClientStats {
     batchStreamProgressTimeToReceiveFirstRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         ClientTehutiMetricName.RESPONSE_TTFR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
@@ -180,7 +180,7 @@ public class ClientStats extends BasicClientStats {
     batchStreamProgressTimeToReceiveP50thRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         ClientTehutiMetricName.RESPONSE_TT50PR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
@@ -189,7 +189,7 @@ public class ClientStats extends BasicClientStats {
     batchStreamProgressTimeToReceiveP90thRecord = MetricEntityStateOneEnum.create(
         ClientMetricEntity.RESPONSE_BATCH_STREAM_PROGRESS_TIME.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         ClientTehutiMetricName.RESPONSE_TT90PR,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
@@ -206,7 +206,7 @@ public class ClientStats extends BasicClientStats {
     appTimedOutRequestCount = MetricEntityStateBase.create(
         ClientMetricEntity.REQUEST_TIMEOUT_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         APP_TIMED_OUT_REQUEST,
         Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap,
@@ -215,7 +215,7 @@ public class ClientStats extends BasicClientStats {
     appTimedOutRequestResultRatio = MetricEntityStateBase.create(
         ClientMetricEntity.REQUEST_TIMEOUT_PARTIAL_RESPONSE_RATIO.getMetricEntity(),
         otelRepository,
-        this::registerSensorWithDetailedPercentiles,
+        (sensorName, stats) -> registerSensorWithDetailedPercentiles(sensorName, stats),
         APP_TIMED_OUT_REQUEST_RESULT_RATIO,
         Arrays.asList(new Avg(), new Min(), new Max()),
         baseDimensionsMap,
@@ -224,7 +224,7 @@ public class ClientStats extends BasicClientStats {
     clientFutureTimeout = MetricEntityStateBase.create(
         ClientMetricEntity.REQUEST_TIMEOUT_REQUESTED_DURATION.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         CLIENT_FUTURE_TIMEOUT,
         Arrays.asList(new Avg(), new Min(), new Max()),
         baseDimensionsMap,
@@ -234,7 +234,7 @@ public class ClientStats extends BasicClientStats {
     retryKeyCount = MetricEntityStateBase.create(
         ClientMetricEntity.RETRY_REQUEST_KEY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClientTehutiMetricName.RETRY_REQUEST_KEY_COUNT,
         Arrays.asList(retryRequestKeyCount, new Avg(), new Max()),
         baseDimensionsMap,
@@ -243,7 +243,7 @@ public class ClientStats extends BasicClientStats {
     retrySuccessKeyCount = MetricEntityStateBase.create(
         ClientMetricEntity.RETRY_RESPONSE_KEY_COUNT.getMetricEntity(),
         otelRepository,
-        this::registerSensor,
+        (sensorName, stats) -> registerSensor(sensorName, stats),
         ClientTehutiMetricName.RETRY_REQUEST_SUCCESS_KEY_COUNT,
         Arrays.asList(retryRequestSuccessKeyCount, new Avg(), new Max()),
         baseDimensionsMap,

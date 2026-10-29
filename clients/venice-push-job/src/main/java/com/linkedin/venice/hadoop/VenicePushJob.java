@@ -69,6 +69,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_BYTES_PER_REGION_PER_SECOND;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITE_QUOTA_RECORDS_PER_REGION_PER_SECOND;
@@ -175,6 +177,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -186,6 +189,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.vpj.PubSubEncryptionUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -291,7 +295,7 @@ public class VenicePushJob implements AutoCloseable {
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
   private InputStorageQuotaTracker inputStorageQuotaTracker;
-  private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
+  private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
   private ScheduledFuture<?> pushJobKillCheckScheduledFuture;
@@ -577,6 +581,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.inputURI = pushJobSettingToReturn.isSourceKafka ? "" : getInputURI(props);
     pushJobSettingToReturn.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSettingToReturn.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
+    pushJobSettingToReturn.rewindEpochTimeInSecondsOverride = NOT_SET;
+    pushJobSettingToReturn.rewindEpochTimeBufferInSecondsOverride = NOT_SET;
 
     // If we didn't specify a rewind time
     if (pushJobSettingToReturn.rewindTimeInSecondsOverride == NOT_SET) {
@@ -593,11 +599,12 @@ public class VenicePushJob implements AutoCloseable {
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE,
                   REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE));
         }
-        // Set the rewindTimeInSecondsOverride to be the time that is now - the provided timestamp so that we rewind
-        // from start of push to the provided timestamp with some extra buffer time since things aren't perfectly
-        // instantaneous
-        long bufferTime = props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
-        pushJobSettingToReturn.rewindTimeInSecondsOverride = (nowInSeconds - rewindTimestamp) + bufferTime;
+        // Defer the epoch -> relative-duration conversion until right before version creation (see
+        // convertEpochRewindOverrideToRelativeDuration) so the pre-SOP work (input sampling + dictionary build) is
+        // not folded into the rewind.
+        pushJobSettingToReturn.rewindEpochTimeInSecondsOverride = rewindTimestamp;
+        pushJobSettingToReturn.rewindEpochTimeBufferInSecondsOverride =
+            props.getLong(REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE, 60);
         // In order for this config to make sense to the user, the remote rewind policy needs to be validated to be
         // REWIND_FROM_SOP
         pushJobSettingToReturn.validateRemoteReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
@@ -719,6 +726,11 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
+  protected void setPushJobHeartbeatSenderFactory(PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory) {
+    this.pushJobHeartbeatSenderFactory = pushJobHeartbeatSenderFactory;
+  }
+
+  // Visible for testing
   protected void setVeniceWriter(VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter) {
     this.veniceWriter = veniceWriter;
   }
@@ -762,6 +774,7 @@ public class VenicePushJob implements AutoCloseable {
    * @throws VeniceException
    */
   public void run() {
+    boolean interruptedWhenFailing = false;
     try {
       initControllerClient(pushJobSetting.storeName);
       pushJobSetting.clusterName = controllerClient.getClusterName();
@@ -869,11 +882,14 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.topicDictionary = ByteUtils.extractByteArray(optionalCompressionDictionary.get());
       }
 
+      // Convert the epoch-rewind override now, after sampling and dictionary build, so pre-SOP time is excluded from
+      // the rewind. Before the Kafka-input re-push default below so a user-provided epoch takes precedence.
+      convertEpochRewindOverrideToRelativeDuration(pushJobSetting);
+
       if (pushJobSetting.isSourceKafka) {
         if (pushJobSetting.sourceVersionCompressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
           LOGGER.info("Source version uses ZSTD_WITH_DICT. Fetching source dictionary.");
-          ByteBuffer sourceDict = DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          ByteBuffer sourceDict = readSourceDictionaryFromKafka();
           if (sourceDict != null) {
             pushJobSetting.sourceDictionary = ByteUtils.extractByteArray(sourceDict);
           }
@@ -995,10 +1011,11 @@ public class VenicePushJob implements AutoCloseable {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
       // Do not mark completed yet as for target region push it will be marked inside postValidationConsumption
       if (!pushJobSetting.isTargetedRegionPushEnabled) {
-        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
+        sendTerminalPushJobDetailsToController(PushJobDetailsStatus.COMPLETED);
+      } else {
+        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
+        sendPushJobDetailsToController();
       }
-      pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-      sendPushJobDetailsToController();
 
       // only kick off the validation and post-validation flow when everything has to be done in a single VPJ
       if (!pushJobSetting.isTargetedRegionPushEnabled || pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled) {
@@ -1025,6 +1042,13 @@ public class VenicePushJob implements AutoCloseable {
       timeoutExecutor.shutdownNow();
     } catch (Throwable e) {
       LOGGER.error("Failed to run job.", e);
+      /**
+       * Report and kill the failed push even if this thread was interrupted: the controller client stops at the first
+       * interrupted attempt, and a failed push that is not killed can block new pushes to the store. The interrupt is
+       * restored at the end of the finally block below, after all cleanup: stopping the heartbeat sender, for one, can
+       * swallow an interrupt.
+       */
+      interruptedWhenFailing = Thread.interrupted();
       // Make sure all the logic before killing the failed push jobs is captured in the following block
       try {
         if (e instanceof VeniceResourceAccessException) {
@@ -1038,11 +1062,9 @@ public class VenicePushJob implements AutoCloseable {
         } else if (e instanceof VeniceSchemaFieldNotFoundException || e instanceof VeniceSchemaMismatchException) {
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
         }
-        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
-        pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-        sendPushJobDetailsToController();
-        closeVeniceWriter();
+        sendTerminalPushJobDetailsToController(PushJobDetailsStatus.ERROR);
+        closeVeniceWriter(false);
       } catch (Exception ex) {
         LOGGER.error(
             "Error before killing the failed push job; still issue the kill job command to clean up states in backend",
@@ -1057,18 +1079,24 @@ public class VenicePushJob implements AutoCloseable {
       }
       throwVeniceException(e);
     } finally {
-      Utils.closeQuietlyWithErrorLogged(inputDataInfoProvider);
-      if (pushJobHeartbeatSender != null) {
-        pushJobHeartbeatSender.stop();
-        pushJobHeartbeatSender = null;
+      try {
+        Utils.closeQuietlyWithErrorLogged(inputDataInfoProvider);
+        if (pushJobHeartbeatSender != null) {
+          pushJobHeartbeatSender.stop();
+          pushJobHeartbeatSender = null;
+        }
+        inputDataInfoProvider = null;
+        if (pushJobSetting.rmdSchemaDir != null) {
+          HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
+        }
+        LOGGER.info("Started shutdown for timeoutExecutor");
+        timeoutExecutor.shutdownNow();
+        LOGGER.info("Completed shutdown for timeoutExecutor");
+      } finally {
+        if (interruptedWhenFailing) {
+          Thread.currentThread().interrupt();
+        }
       }
-      inputDataInfoProvider = null;
-      if (pushJobSetting.rmdSchemaDir != null) {
-        HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
-      }
-      LOGGER.info("Started shutdown for timeoutExecutor");
-      timeoutExecutor.shutdownNow();
-      LOGGER.info("Completed shutdown for timeoutExecutor");
     }
   }
 
@@ -1283,8 +1311,8 @@ public class VenicePushJob implements AutoCloseable {
           false,
           false);
     }
-    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
-    sendPushJobDetailsToController();
+    // Report completion only after post-validation and the data recovery push to the remaining regions.
+    sendTerminalPushJobDetailsToController(PushJobDetailsStatus.COMPLETED);
   }
 
   private PushJobHeartbeatSender createPushJobHeartbeatSender(final boolean sslEnabled) {
@@ -1637,18 +1665,22 @@ public class VenicePushJob implements AutoCloseable {
     return externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
   }
 
-  private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
+  @VisibleForTesting
+  Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
     if (!pushJobSetting.isZstdDictCreationRequired) {
       return Optional.empty();
     }
 
+    throwIfDictionaryBuildInterrupted(null);
     ByteBuffer compressionDictionary;
     try {
       compressionDictionary = fetchOrBuildCompressionDictionary();
     } catch (Exception e) {
+      throwIfDictionaryBuildInterrupted(e);
       LOGGER.warn("Failed to fetch or build compression dictionary", e);
       compressionDictionary = null;
     }
+    throwIfDictionaryBuildInterrupted(null);
 
     if (compressionDictionary != null && compressionDictionary.remaining() > 0) {
       pushJobSetting.isZstdDictCreationSuccess = true;
@@ -1668,16 +1700,44 @@ public class VenicePushJob implements AutoCloseable {
     return Optional.of(emptyPushZstdDictionary.get());
   }
 
+  private static void throwIfDictionaryBuildInterrupted(Throwable cause) {
+    if (Thread.currentThread().isInterrupted()
+        || ExceptionUtils.recursiveClassEquals(cause, InterruptedException.class)) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Dictionary build interrupted", cause);
+    }
+  }
+
   private VeniceProperties getSourceDictionaryConsumerProperties() {
     return getSourceDictionaryConsumerProperties(pushJobSetting.repushSourcePubsubBroker);
   }
 
   @VisibleForTesting
+  ByteBuffer readSourceDictionaryFromKafka() {
+    VeniceProperties consumerProperties = getSourceDictionaryConsumerProperties();
+    if (consumerProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)) {
+      return DictionaryUtils.readDictionaryFromEncryptedKafka(
+          pushJobSetting.kafkaInputTopic,
+          consumerProperties,
+          PubSubEncryptionUtils.getRequiredKeyUrnLookup(consumerProperties));
+    }
+    return DictionaryUtils.readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, consumerProperties);
+  }
+
+  @VisibleForTesting
   VeniceProperties getSourceDictionaryConsumerProperties(String sourcePubsubBroker) {
-    return buildSourceDictionaryConsumerProperties(
+    VeniceProperties consumerProperties = buildSourceDictionaryConsumerProperties(
         props,
         pushJobSetting.enableSSL ? sslProperties.get() : new Properties(),
         sourcePubsubBroker);
+    Properties properties = consumerProperties.toProperties();
+    properties.setProperty(PUB_SUB_ENCRYPTION_ENABLED, Boolean.toString(pushJobSetting.isStoreEncryptionEnabled));
+    if (pushJobSetting.isStoreEncryptionEnabled && pushJobSetting.pubSubEncryptionKeyUrn != null) {
+      properties.setProperty(PUB_SUB_ENCRYPTION_KEY_URN, pushJobSetting.pubSubEncryptionKeyUrn);
+    } else {
+      properties.remove(PUB_SUB_ENCRYPTION_KEY_URN);
+    }
+    return new VeniceProperties(properties);
   }
 
   @VisibleForTesting
@@ -1692,7 +1752,8 @@ public class VenicePushJob implements AutoCloseable {
     return new VeniceProperties(consumerProperties);
   }
 
-  private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
+  @VisibleForTesting
+  ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
@@ -1717,8 +1778,7 @@ public class VenicePushJob implements AutoCloseable {
           return ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
           LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
-          return DictionaryUtils
-              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, getSourceDictionaryConsumerProperties());
+          return readSourceDictionaryFromKafka();
         }
       }
       LOGGER.info(
@@ -2313,6 +2373,15 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
+  /**
+   * Reports a terminal push status with the total elapsed duration at the point the terminal state is reached.
+   */
+  private void sendTerminalPushJobDetailsToController(PushJobDetailsStatus terminalStatus) {
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(terminalStatus.getValue()));
+    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
+    sendPushJobDetailsToController();
+  }
+
   private SentPushJobDetailsTracker getSentPushJobDetailsTracker() {
     if (sentPushJobDetailsTracker == null) {
       sentPushJobDetailsTracker = new NoOpSentPushJobDetailsTracker();
@@ -2375,6 +2444,34 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void validateRemoteHybridSettings() {
     validateRemoteHybridSettings(pushJobSetting);
+  }
+
+  /**
+   * Convert a user-provided rewind-epoch override into a relative {@link PushJobSetting#rewindTimeInSecondsOverride},
+   * anchored just before version creation rather than at job start, so the job's pre-SOP work (input sampling and
+   * ZSTD dictionary build) is not folded into the rewind. The configured epoch buffer is also subtracted from the
+   * absolute {@link PushJobSetting#rewindEpochTimeInSecondsOverride} carried downstream, so the A/A absolute-epoch
+   * path ({@code RealTimeTopicSwitcher.getRewindStartTime}) lands at {@code epoch - buffer} to absorb clock skew
+   * between the snapshot-timestamp source and RT producers, consistent with the relative path. No-op when no epoch
+   * override was provided.
+   */
+  void convertEpochRewindOverrideToRelativeDuration(PushJobSetting setting) {
+    if (setting.rewindEpochTimeInSecondsOverride == NOT_SET) {
+      return;
+    }
+    long nowInSeconds = System.currentTimeMillis() / 1000;
+    long bufferedEpochInSeconds =
+        setting.rewindEpochTimeInSecondsOverride - setting.rewindEpochTimeBufferInSecondsOverride;
+    setting.rewindTimeInSecondsOverride =
+        (nowInSeconds - setting.rewindEpochTimeInSecondsOverride) + setting.rewindEpochTimeBufferInSecondsOverride;
+    LOGGER.info(
+        "Converted rewind epoch override {} (buffer {}s) to rewindTimeInSecondsOverride {}s and buffered epoch {} at "
+            + "version-creation time",
+        setting.rewindEpochTimeInSecondsOverride,
+        setting.rewindEpochTimeBufferInSecondsOverride,
+        setting.rewindTimeInSecondsOverride,
+        bufferedEpochInSeconds);
+    setting.rewindEpochTimeInSecondsOverride = bufferedEpochInSeconds;
   }
 
   protected void validateRemoteHybridSettings(PushJobSetting setting) {
@@ -2515,6 +2612,9 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
+      if (getValueSchemaIdResponse.getErrorType() == ErrorType.INVALID_SCHEMA) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
+      }
       MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
       if (response.isError()) {
         LOGGER.error("Failed to fetch all value schemas, so they will not be printed. " + response.getError());
@@ -2685,6 +2785,7 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("Unable to fetch store to validate if regular push is allowed with TTL re-push");
     }
     if (storeResponse.getStore().isTTLRepushEnabled()) {
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED);
       String errorMessage = "Store: %s is TTL re-push enabled and regular batch push is not allowed with TTL re-push";
       throw new VeniceException(String.format(errorMessage, storeResponse.getName()));
     }
@@ -2711,7 +2812,8 @@ public class VenicePushJob implements AutoCloseable {
    * @param jobSetting
    * @return
    */
-  private void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
+  @VisibleForTesting
+  void validateStoreSettingAndPopulate(ControllerClient controllerClient, PushJobSetting jobSetting) {
     StoreResponse storeResponse = getStoreResponse(jobSetting.storeName);
     jobSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
 
@@ -2812,6 +2914,16 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException("Source version has chunking enabled while chunking is disabled in store config.");
       }
     }
+
+    jobSetting.isStoreEncryptionEnabled = storeResponse.getStore().isEncryptionEnabled();
+    jobSetting.pubSubEncryptionKeyUrn = null;
+    if (jobSetting.isStoreEncryptionEnabled) {
+      if (StringUtils.isBlank(storeResponse.getStore().getPubSubEncryptionKeyUrn())) {
+        throw new VeniceException(
+            "Store is encryption enabled but the pubSubEncryptionKeyUrn is not set in the store config.");
+      }
+      jobSetting.pubSubEncryptionKeyUrn = storeResponse.getStore().getPubSubEncryptionKeyUrn();
+    }
   }
 
   private Map<String, Integer> getCurrentStoreVersions(StoreResponse storeResponse) {
@@ -2889,6 +3001,7 @@ public class VenicePushJob implements AutoCloseable {
             Optional.ofNullable(setting.sourceGridFabric),
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
+            setting.rewindEpochTimeInSecondsOverride,
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,
@@ -3004,7 +3117,13 @@ public class VenicePushJob implements AutoCloseable {
 
   synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(PushJobSetting pushJobSetting) {
     if (veniceWriter == null) {
-      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(pushJobSetting));
+      Properties veniceWriterProperties = getVeniceWriterProperties(pushJobSetting);
+      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(
+          veniceWriterProperties,
+          null,
+          null,
+          null,
+          PubSubEncryptionUtils.getKeyUrnLookup(pushJobSetting.pubSubEncryptionKeyUrn));
       Properties partitionerProperties = new Properties();
       partitionerProperties.putAll(pushJobSetting.partitionerParams);
       VenicePartitioner partitioner = PartitionUtils
@@ -3054,9 +3173,17 @@ public class VenicePushJob implements AutoCloseable {
     return veniceWriterProperties;
   }
 
-  private synchronized void closeVeniceWriter() {
+  private void closeVeniceWriter() {
+    closeVeniceWriter(true);
+  }
+
+  private synchronized void closeVeniceWriter(boolean gracefulClose) {
     if (veniceWriter != null) {
-      veniceWriter.close();
+      if (gracefulClose) {
+        veniceWriter.close();
+      } else {
+        veniceWriter.close(false, false);
+      }
       veniceWriter = null;
     }
   }
@@ -3477,13 +3604,13 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void cancel() {
     killJob(pushJobSetting, controllerClient);
+    PushJobDetailsStatus terminalStatus;
     if (StringUtils.isEmpty(pushJobSetting.topic)) {
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
+      terminalStatus = PushJobDetailsStatus.ERROR;
     } else {
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
+      terminalStatus = PushJobDetailsStatus.KILLED;
     }
-    pushJobDetails.jobDurationInMs = LatencyUtils.getElapsedTimeFromMsToMs(pushJobSetting.jobStartTimeMs);
-    sendPushJobDetailsToController();
+    sendTerminalPushJobDetailsToController(terminalStatus);
   }
 
   void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {

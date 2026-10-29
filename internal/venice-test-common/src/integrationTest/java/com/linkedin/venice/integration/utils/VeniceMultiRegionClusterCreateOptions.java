@@ -9,6 +9,10 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 
 
@@ -30,6 +34,7 @@ public class VeniceMultiRegionClusterCreateOptions {
   private final String parentVeniceZkBasePath;
   private final String childVeniceZkBasePath;
   private final DynamicAccessController accessController;
+  private final Map<String, String> additionalBrokerConfiguration;
 
   public int getNumberOfRegions() {
     return numberOfRegions;
@@ -97,6 +102,10 @@ public class VeniceMultiRegionClusterCreateOptions {
 
   public DynamicAccessController getAccessController() {
     return accessController;
+  }
+
+  public Map<String, String> getAdditionalBrokerConfiguration() {
+    return additionalBrokerConfiguration;
   }
 
   @Override
@@ -170,6 +179,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     parentVeniceZkBasePath = builder.parentVeniceZkBasePath;
     childVeniceZkBasePath = builder.childVeniceZkBasePath;
     accessController = builder.accessController;
+    additionalBrokerConfiguration = Collections.unmodifiableMap(new HashMap<>(builder.additionalBrokerConfiguration));
   }
 
   public static class Builder {
@@ -190,6 +200,7 @@ public class VeniceMultiRegionClusterCreateOptions {
     private String parentVeniceZkBasePath = "/";
     private String childVeniceZkBasePath = "/";
     private DynamicAccessController accessController;
+    private Map<String, String> additionalBrokerConfiguration = Collections.emptyMap();
 
     public Builder numberOfRegions(int numberOfRegions) {
       this.numberOfRegions = numberOfRegions;
@@ -281,6 +292,12 @@ public class VeniceMultiRegionClusterCreateOptions {
 
     public Builder accessController(DynamicAccessController accessController) {
       this.accessController = accessController;
+      return this;
+    }
+
+    public Builder additionalBrokerConfiguration(Map<String, String> additionalBrokerConfiguration) {
+      this.additionalBrokerConfiguration =
+          new HashMap<>(Objects.requireNonNull(additionalBrokerConfiguration, "additionalBrokerConfiguration"));
       return this;
     }
 

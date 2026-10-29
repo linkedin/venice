@@ -5,8 +5,11 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_REPUSH_SOURCE_PUBSUB_BROKER;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -15,10 +18,13 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.spark.SparkExecutorTestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.util.Properties;
+import java.util.function.Function;
 import org.apache.spark.sql.connector.read.InputPartition;
 import org.apache.spark.sql.connector.read.PartitionReader;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -47,14 +53,10 @@ public class SparkPubSubPartitionReaderFactoryTest {
     factory.createReader(invalidPartition);
   }
 
-  /**
-   * Ported from PR #2955's SparkPubSubPartitionReaderFactoryTest.testCreateReaderMaterializesExecutorSSL().
-   * Confirms this simplified fix does not regress the already-working reader path: the SSL configurator
-   * and PubSub consumer factory are still invoked with correctly materialized SSL properties.
-   */
-  @Test
-  public void testCreateReaderMaterializesExecutorSSL() throws Exception {
-    Properties properties = new Properties();
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testCreateReaderMaterializesSslAndUsesEncryptionFlag(Boolean enabled, String keyUrn, String expectedUrn)
+      throws Exception {
+    Properties properties = PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn);
     properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, "localhost:9092");
     properties.setProperty(KAFKA_INPUT_TOPIC, "test-topic");
     properties.setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, "false");
@@ -74,11 +76,20 @@ public class SparkPubSubPartitionReaderFactoryTest {
     SparkExecutorTestUtils.withTokenFile(() -> {
       SparkPubSubPartitionReaderFactory factory =
           new SparkPubSubPartitionReaderFactory(new VeniceProperties(properties));
+      if (Boolean.TRUE.equals(enabled) && expectedUrn == null) {
+        Assert.expectThrows(VeniceException.class, () -> factory.createReader(inputPartition));
+        assertNull(SparkExecutorTestUtils.getObservedContext());
+        return;
+      }
       try (PartitionReader<?> reader = factory.createReader(inputPartition)) {
         assertTrue(reader instanceof SparkPubSubInputPartitionReader);
       }
       assertTrue(SparkExecutorTestUtils.getSslConfiguratorInvocations() > 0);
       assertTrue(SparkExecutorTestUtils.getConsumerFactoryInvocations() > 0);
+      Function<String, String> observedLookup =
+          SparkExecutorTestUtils.getObservedContext().getPubSubEncryptionKeyUrnLookup();
+      assertEquals(observedLookup != null, expectedUrn != null);
+      assertEquals(observedLookup == null ? null : observedLookup.apply("any-store"), expectedUrn);
     });
   }
 }

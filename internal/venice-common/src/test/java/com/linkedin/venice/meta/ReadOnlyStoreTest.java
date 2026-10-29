@@ -3,6 +3,8 @@ package com.linkedin.venice.meta;
 import static com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -109,6 +111,8 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getMaxCompactionLagSeconds(), store.getMaxCompactionLagSeconds());
     assertEquals(storeProperties.getMaxRecordSizeBytes(), store.getMaxRecordSizeBytes());
     assertEquals(storeProperties.getMaxNearlineRecordSizeBytes(), store.getMaxNearlineRecordSizeBytes());
+    assertEquals(storeProperties.getVeniceUnits(), store.getVeniceUnits());
+    assertEquals(storeProperties.getWorkloadType().toString(), store.getWorkloadType());
     assertEquals(storeProperties.getUnusedSchemaDeletionEnabled(), store.isUnusedSchemaDeletionEnabled());
     assertEquals(storeProperties.getVersions().size(), store.getVersions().size());
     assertEqualsSystemStores(storeProperties.getSystemStores(), store.getSystemStores());
@@ -324,6 +328,38 @@ public class ReadOnlyStoreTest {
     assertEquals(cloned.getBlobDbEnabled(), ActivationState.DISABLED.name());
     assertEquals(cloned.getVersions().size(), 1);
     assertEquals(cloned.getVersions().get(0).getBlobDbEnabled(), ActivationState.DISABLED.name());
+  }
+
+  @Test
+  public void testVeniceUnitsAndWorkloadTypeDefaultToNullAndRoundTrip() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore(
+        Long.toString(RANDOM.nextLong()),
+        Long.toString(RANDOM.nextLong()),
+        System.currentTimeMillis());
+
+    // Unset fields stay null rather than falling back to a sentinel value.
+    assertNull(store.getVeniceUnits());
+    assertNull(store.getWorkloadType());
+    StoreProperties unsetProperties = new ReadOnlyStore(store).cloneStoreProperties();
+    assertNull(unsetProperties.getVeniceUnits());
+    assertNull(unsetProperties.getWorkloadType());
+
+    store.setVeniceUnits(42);
+    store.setWorkloadType("LOW_LATENCY");
+    assertEquals(store.getVeniceUnits(), Integer.valueOf(42));
+    assertEquals(store.getWorkloadType(), "LOW_LATENCY");
+
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    assertEquals(readOnlyStore.getVeniceUnits(), Integer.valueOf(42));
+    assertEquals(readOnlyStore.getWorkloadType(), "LOW_LATENCY");
+    assertThrows(UnsupportedOperationException.class, () -> readOnlyStore.setVeniceUnits(1));
+    assertThrows(UnsupportedOperationException.class, () -> readOnlyStore.setWorkloadType("GENERIC"));
+
+    // Explicitly clearing the fields is honored.
+    store.setVeniceUnits(null);
+    store.setWorkloadType(null);
+    assertNull(store.getVeniceUnits());
+    assertNull(store.getWorkloadType());
   }
 
   @Test

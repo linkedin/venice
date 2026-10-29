@@ -55,7 +55,8 @@ public class TestBlobTransferManagerBuilder {
         5,
         Math.max(4, Runtime.getRuntime().availableProcessors() / 5),
         25,
-        true);
+        true,
+        false);
 
     BlobTransferManager blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
         .setServerFallbackEnabled(true)
@@ -105,7 +106,8 @@ public class TestBlobTransferManagerBuilder {
         5,
         Math.max(4, Runtime.getRuntime().availableProcessors() / 5),
         25,
-        true);
+        true,
+        false);
 
     // Case 1: expect exception is thrown due to both clientConfig and customizedViewFuture are not null
     try {

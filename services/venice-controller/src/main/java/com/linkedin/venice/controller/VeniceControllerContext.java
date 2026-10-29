@@ -8,6 +8,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controller.placement.TopicPlacement;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.meta.ValueSchemaCreatedListener;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -40,6 +41,12 @@ public class VeniceControllerContext {
   private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
   private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
   private ExternalETLService externalETLService;
+  private StoreUpdateHandler storeUpdateHandler;
+  private TopicPlacement topicPlacement;
+
+  public TopicPlacement getTopicPlacement() {
+    return topicPlacement;
+  }
 
   public List<VeniceProperties> getPropertiesList() {
     return propertiesList;
@@ -97,7 +104,12 @@ public class VeniceControllerContext {
     return externalETLService;
   }
 
+  public StoreUpdateHandler getStoreUpdateHandler() {
+    return storeUpdateHandler;
+  }
+
   public VeniceControllerContext(Builder builder) {
+    this.topicPlacement = builder.topicPlacement;
     this.propertiesList = builder.propertiesList;
     this.metricsRepository = builder.metricsRepository;
     this.serviceDiscoveryAnnouncers = builder.serviceDiscoveryAnnouncers;
@@ -112,6 +124,8 @@ public class VeniceControllerContext {
     this.versionLifecycleEventListeners = builder.versionLifecycleEventListeners;
     this.valueSchemaCreatedListeners = builder.valueSchemaCreatedListeners;
     this.externalETLService = builder.externalETLService;
+    this.storeUpdateHandler =
+        builder.storeUpdateHandler == null ? StoreUpdateHandler.NO_OP : builder.storeUpdateHandler;
   }
 
   public static class Builder {
@@ -132,6 +146,13 @@ public class VeniceControllerContext {
     private List<VeniceVersionLifecycleEventListener> versionLifecycleEventListeners;
     private List<ValueSchemaCreatedListener> valueSchemaCreatedListeners;
     private ExternalETLService externalETLService;
+    private StoreUpdateHandler storeUpdateHandler;
+    private TopicPlacement topicPlacement;
+
+    public Builder setTopicPlacement(TopicPlacement topicPlacement) {
+      this.topicPlacement = topicPlacement;
+      return this;
+    }
 
     public Builder setPropertiesList(List<VeniceProperties> propertiesList) {
       this.propertiesList = propertiesList;
@@ -207,6 +228,11 @@ public class VeniceControllerContext {
       return this;
     }
 
+    public Builder setStoreUpdateHandler(StoreUpdateHandler storeUpdateHandler) {
+      this.storeUpdateHandler = storeUpdateHandler;
+      return this;
+    }
+
     private void addDefaultValues() {
       if (metricsRepository == null && !isMetricsRepositorySet) {
 
@@ -222,6 +248,9 @@ public class VeniceControllerContext {
       }
       if (serviceDiscoveryAnnouncers == null && !isServiceDiscoveryAnnouncerSet) {
         serviceDiscoveryAnnouncers = Collections.emptyList();
+      }
+      if (storeUpdateHandler == null) {
+        storeUpdateHandler = StoreUpdateHandler.NO_OP;
       }
     }
 

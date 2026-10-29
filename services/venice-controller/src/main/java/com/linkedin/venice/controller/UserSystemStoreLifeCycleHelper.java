@@ -13,7 +13,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -108,6 +107,7 @@ public class UserSystemStoreLifeCycleHelper {
           null,
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -166,7 +166,8 @@ public class UserSystemStoreLifeCycleHelper {
       }
       // skip truncating system store RT topics if it's parent fabric as it's not created for parent fabric
       if (!admin.isParent()) {
-        admin.truncateKafkaTopic(Utils.composeRealTimeTopic(systemStoreName));
+        // Confirm retention updates so failures keep user-store deletion pending rather than leak RT topics.
+        admin.cleanupRealTimeTopicsForStoreDeletion(clusterName, systemStoreName, false);
       }
     } else {
       LOGGER.info("The RT topic for: {} will not be deleted since the user store is migrating", systemStoreName);

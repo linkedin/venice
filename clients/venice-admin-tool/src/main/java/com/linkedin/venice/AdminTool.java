@@ -189,6 +189,12 @@ public class AdminTool {
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
+
+  /**
+   * Value an operator passes to a nullable store config's flag to clear it back to null, for example
+   * {@code --workload-type null}. Omitting the flag leaves the config unchanged instead.
+   */
+  private static final String CLEAR_CONFIG_TOKEN = "null";
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
   private static ControllerClient controllerClient;
@@ -403,6 +409,14 @@ public class AdminTool {
           break;
         case LIST_STORAGE_NODES:
           printStorageNodeList();
+          break;
+        case GET_CLUSTER_PROVISIONED_VENICE_UNITS:
+          response = controllerClient.getClusterProvisionedVeniceUnits();
+          printObject(response);
+          break;
+        case GET_LIVE_STORAGE_NODE_COUNT:
+          response = controllerClient.getLiveStorageNodeCount();
+          printObject(response);
           break;
         case CLUSTER_HEALTH_INSTANCES:
           printInstancesStatuses(cmd);
@@ -1282,6 +1296,20 @@ public class AdminTool {
     }
   }
 
+  /**
+   * Same as {@link #genericParam}, but for configs that are nullable. Passing
+   * {@link #CLEAR_CONFIG_TOKEN} as the argument value records an explicit request to clear the
+   * config back to null, which is distinct from omitting the flag altogether (leave unchanged).
+   */
+  private static <TYPE> void nullableParam(
+      CommandLine cmd,
+      Arg param,
+      Function<String, TYPE> parser,
+      Consumer<TYPE> setter,
+      Set<Arg> argSet) {
+    genericParam(cmd, param, s -> CLEAR_CONFIG_TOKEN.equalsIgnoreCase(s) ? null : parser.apply(s), setter, argSet);
+  }
+
   private static void updateStore(CommandLine cmd) {
     UpdateStoreQueryParams params = getUpdateStoreQueryParams(cmd);
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
@@ -1334,6 +1362,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
     booleanParam(cmd, Arg.STORAGE_NODE_READ_QUOTA_ENABLED, p -> params.setStorageNodeReadQuotaEnabled(p), argSet);
+    booleanParam(cmd, Arg.WRITE_QUOTA_ENABLED, p -> params.setWriteQuotaEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_OVERHEAD_BYPASS, p -> params.setHybridStoreOverheadBypass(p), argSet);
     longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
     longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
@@ -1436,6 +1465,13 @@ public class AdminTool {
     longParam(cmd, Arg.MAX_COMPACTION_LAG_SECONDS, p -> params.setMaxCompactionLagSeconds(p), argSet);
     integerParam(cmd, Arg.MAX_RECORD_SIZE_BYTES, params::setMaxRecordSizeBytes, argSet);
     integerParam(cmd, Arg.MAX_NEARLINE_RECORD_SIZE_BYTES, params::setMaxNearlineRecordSizeBytes, argSet);
+    nullableParam(
+        cmd,
+        Arg.VENICE_UNITS,
+        s -> Utils.parseIntFromString(s, Arg.VENICE_UNITS.toString()),
+        params::setVeniceUnits,
+        argSet);
+    nullableParam(cmd, Arg.WORKLOAD_TYPE, s -> s, params::setWorkloadType, argSet);
     longParam(cmd, Arg.THROUGHPUT_QUOTA_IN_BYTES, params::setThroughputQuotaInBytes, argSet);
     longParam(cmd, Arg.THROUGHPUT_QUOTA_IN_RECORDS, params::setThroughputQuotaInRecords, argSet);
     booleanParam(cmd, Arg.UNUSED_SCHEMA_DELETION_ENABLED, p -> params.setUnusedSchemaDeletionEnabled(p), argSet);

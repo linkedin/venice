@@ -567,4 +567,123 @@ public class PartitionedProducerExecutorTest {
       executor.shutdown();
     }
   }
+
+  // ==================== Interrupt-Resistant Drain Tests ====================
+
+  @Test
+  public void testAwaitTerminationAbsorbsInterruptAndDrainsBeforeForceShutdown() throws InterruptedException {
+    // An interrupted close() must drain queued worker writes before surfacing InterruptedException.
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(1, 100, 0, 100, TEST_STORE, null);
+
+    CountDownLatch inFlightEntered = new CountDownLatch(1);
+    CountDownLatch releaseWorker = new CountDownLatch(1);
+    AtomicBoolean queuedTaskRan = new AtomicBoolean(false);
+
+    // Task A parks the single worker; Task B (same partition) queues behind it and must not be dropped.
+    executor.submit(0, () -> {
+      inFlightEntered.countDown();
+      try {
+        assertTrue(releaseWorker.await(5, TimeUnit.SECONDS));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    executor.submit(0, () -> queuedTaskRan.set(true));
+    assertTrue(inFlightEntered.await(5, TimeUnit.SECONDS), "in-flight worker task should start");
+
+    executor.shutdown();
+
+    AtomicBoolean interruptObserved = new AtomicBoolean(false);
+    AtomicBoolean queuedRanBeforeForce = new AtomicBoolean(false);
+    CountDownLatch readyToAwait = new CountDownLatch(1);
+    CountDownLatch closeReturned = new CountDownLatch(1);
+    Thread closer = new Thread(() -> {
+      readyToAwait.countDown();
+      try {
+        executor.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        interruptObserved.set(true);
+        queuedRanBeforeForce.set(queuedTaskRan.get());
+        executor.shutdownNow();
+      } finally {
+        closeReturned.countDown();
+      }
+    });
+    closer.start();
+    assertTrue(readyToAwait.await(5, TimeUnit.SECONDS), "close thread should be ready to await termination");
+    closer.interrupt();
+
+    assertFalse(
+        closeReturned.await(300, TimeUnit.MILLISECONDS),
+        "awaitTermination must keep draining despite the interrupt");
+
+    releaseWorker.countDown();
+    assertTrue(closeReturned.await(5, TimeUnit.SECONDS), "awaitTermination must surface the interrupt after draining");
+    closer.join();
+
+    assertTrue(interruptObserved.get(), "awaitTermination must surface the interrupt it absorbed");
+    assertTrue(queuedTaskRan.get(), "the queued worker write must not be dropped");
+    assertTrue(queuedRanBeforeForce.get(), "the queued write must drain before the force shutdownNow");
+
+    executor.shutdownNow();
+  }
+
+  @Test
+  public void testAwaitTerminationAbsorbsInterruptAndDrainsCallbackPoolBeforeForceShutdown()
+      throws InterruptedException {
+    // Callback-pool variant: an interrupted close() must drain still-queued callbacks before surfacing the interrupt.
+    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(0, 100, 1, 100, TEST_STORE, null);
+
+    CountDownLatch inFlightEntered = new CountDownLatch(1);
+    CountDownLatch releaseCallback = new CountDownLatch(1);
+    AtomicBoolean queuedCallbackRan = new AtomicBoolean(false);
+
+    // Callback A parks the single callback thread; callback B queues behind it and must not be dropped.
+    executor.executeCallback(() -> {
+      inFlightEntered.countDown();
+      try {
+        assertTrue(releaseCallback.await(5, TimeUnit.SECONDS));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    });
+    executor.executeCallback(() -> queuedCallbackRan.set(true));
+    assertTrue(inFlightEntered.await(5, TimeUnit.SECONDS), "in-flight callback task should start");
+
+    executor.shutdown();
+
+    AtomicBoolean interruptObserved = new AtomicBoolean(false);
+    AtomicBoolean queuedRanBeforeForce = new AtomicBoolean(false);
+    CountDownLatch readyToAwait = new CountDownLatch(1);
+    CountDownLatch closeReturned = new CountDownLatch(1);
+    Thread closer = new Thread(() -> {
+      readyToAwait.countDown();
+      try {
+        executor.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        interruptObserved.set(true);
+        queuedRanBeforeForce.set(queuedCallbackRan.get());
+        executor.shutdownNow();
+      } finally {
+        closeReturned.countDown();
+      }
+    });
+    closer.start();
+    assertTrue(readyToAwait.await(5, TimeUnit.SECONDS), "close thread should be ready to await termination");
+    closer.interrupt();
+
+    assertFalse(
+        closeReturned.await(300, TimeUnit.MILLISECONDS),
+        "awaitTermination must keep draining the callback pool despite the interrupt");
+
+    releaseCallback.countDown();
+    assertTrue(closeReturned.await(5, TimeUnit.SECONDS), "awaitTermination must surface the interrupt after draining");
+    closer.join();
+
+    assertTrue(interruptObserved.get(), "awaitTermination must surface the interrupt it absorbed");
+    assertTrue(queuedCallbackRan.get(), "the queued callback must not be dropped");
+    assertTrue(queuedRanBeforeForce.get(), "the queued callback must drain before the force shutdownNow");
+
+    executor.shutdownNow();
+  }
 }

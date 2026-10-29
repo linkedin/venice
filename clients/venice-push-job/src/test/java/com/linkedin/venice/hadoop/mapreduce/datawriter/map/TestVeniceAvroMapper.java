@@ -20,9 +20,14 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtilsTest;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputUtilsTest.RecordingPubSubConsumerAdapterFactory;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -47,6 +52,27 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
 
   protected VeniceAvroMapper newMapper() {
     return new TestVeniceAvroMapperClass();
+  }
+
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testDictionaryReaderUsesConfigFlag(Boolean enabled, String keyUrn, String expectedUrn) {
+    RecordingPubSubConsumerAdapterFactory.reset();
+    TestVeniceAvroMapperClass mapper = new TestVeniceAvroMapperClass();
+    VeniceProperties config = new VeniceProperties(KafkaInputUtilsTest.consumerProperties(enabled, keyUrn));
+    if (Boolean.TRUE.equals(enabled) && expectedUrn == null) {
+      Assert.expectThrows(VeniceException.class, () -> mapper.readActualDictionary("test_store_v1", config));
+      Assert.assertNull(RecordingPubSubConsumerAdapterFactory.getObservedContext());
+      return;
+    }
+
+    Assert.assertEquals(
+        mapper.readActualDictionary("test_store_v1", config).array(),
+        RecordingPubSubConsumerAdapterFactory.getDictionaryToServe());
+
+    Function<String, String> lookup =
+        RecordingPubSubConsumerAdapterFactory.getObservedContext().getPubSubEncryptionKeyUrnLookup();
+    Assert.assertEquals(lookup != null, expectedUrn != null);
+    Assert.assertEquals(lookup == null ? null : lookup.apply("store"), expectedUrn);
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)

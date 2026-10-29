@@ -1,5 +1,6 @@
 package com.linkedin.davinci.blobtransfer;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.netty.handler.traffic.GlobalChannelTrafficShapingHandler;
@@ -22,10 +23,13 @@ public class BlobTransferGlobalTrafficShapingHandlerHolder {
 
   private static volatile long readLimit = 0; // default unlimited, will update based on the config setting.
   private static volatile long writeLimit = 0; // default unlimited, will update based on the config setting.
+  private static volatile int writePathThreadPriority = VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY;
 
   private static final Lazy<GlobalChannelTrafficShapingHandler> GLOBAL_CHANNEL_TRAFFIC_SHAPING_HANDLER = Lazy.of(() -> {
     return new GlobalChannelTrafficShapingHandler(
-        Executors.newScheduledThreadPool(1, new DaemonThreadFactory("blob-transfer-global-traffic-shaper")),
+        Executors.newScheduledThreadPool(
+            1,
+            new DaemonThreadFactory("blob-transfer-global-traffic-shaper", writePathThreadPriority, null)),
         writeLimit, // writeGlobalLimit
         readLimit, // readGlobalLimit
         DEFAULT_WRITE_CHANNEL_LIMIT,
@@ -46,9 +50,28 @@ public class BlobTransferGlobalTrafficShapingHandlerHolder {
   public static GlobalChannelTrafficShapingHandler getGlobalChannelTrafficShapingHandlerInstance(
       long readLimit,
       long writeLimit) {
+    return getGlobalChannelTrafficShapingHandlerInstance(
+        readLimit,
+        writeLimit,
+        VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+  }
+
+  /**
+   * Gets the singleton instance of GlobalChannelTrafficShapingHandler.
+   * Handler is lazily created on first access.
+   * @param readLimit maximum number of bytes to read per second
+   * @param writeLimit maximum number of bytes to write per second
+   * @param writePathThreadPriority thread priority for the traffic shaper scheduler when the singleton is initialized
+   * @return the global traffic shaping handler
+   */
+  public static GlobalChannelTrafficShapingHandler getGlobalChannelTrafficShapingHandlerInstance(
+      long readLimit,
+      long writeLimit,
+      int writePathThreadPriority) {
     // Set limits before getting the instance to ensure they're used during initialization
     BlobTransferGlobalTrafficShapingHandlerHolder.readLimit = readLimit;
     BlobTransferGlobalTrafficShapingHandlerHolder.writeLimit = writeLimit;
+    BlobTransferGlobalTrafficShapingHandlerHolder.writePathThreadPriority = writePathThreadPriority;
     GlobalChannelTrafficShapingHandler handler = GLOBAL_CHANNEL_TRAFFIC_SHAPING_HANDLER.get();
 
     return handler;

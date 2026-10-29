@@ -218,6 +218,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setIngestionPausedRegions(store.getIngestionPausedRegions());
     setExternalStorageReadMode(store.getExternalStorageReadMode());
     setStorageMode(store.getStorageMode());
+    setVeniceUnits(store.getVeniceUnits());
+    setWorkloadType(store.getWorkloadType());
     setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
     setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
@@ -234,6 +236,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setRmdVersion(store.getRmdVersion());
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    setWriteQuotaEnabled(store.isWriteQuotaEnabled());
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     setCompactionEnabled(store.isCompactionEnabled());
     setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
@@ -783,6 +786,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public Integer getVeniceUnits() {
+    return this.storeProperties.veniceUnits;
+  }
+
+  @Override
+  public void setVeniceUnits(Integer veniceUnits) {
+    this.storeProperties.veniceUnits = veniceUnits;
+  }
+
+  @Override
+  public String getWorkloadType() {
+    return this.storeProperties.workloadType == null ? null : this.storeProperties.workloadType.toString();
+  }
+
+  @Override
+  public void setWorkloadType(String workloadType) {
+    this.storeProperties.workloadType = workloadType;
+  }
+
+  @Override
   public boolean isSchemaAutoRegisterFromPushJobEnabled() {
     return this.storeProperties.schemaAutoRegisteFromPushJobEnabled;
   }
@@ -957,6 +980,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isStorageNodeReadQuotaEnabled() {
     return this.storeProperties.storageNodeReadQuotaEnabled;
+  }
+
+  @Override
+  public boolean isWriteQuotaEnabled() {
+    return this.storeProperties.writeQuotaEnabled;
+  }
+
+  @Override
+  public void setWriteQuotaEnabled(boolean writeQuotaEnabled) {
+    this.storeProperties.writeQuotaEnabled = writeQuotaEnabled;
   }
 
   @Override

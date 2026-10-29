@@ -6,6 +6,8 @@ import io.tehuti.metrics.MetricsRepository;
 
 public abstract class AbstractVeniceStatsReporter<STATS> extends AbstractVeniceStats {
   private STATS stats;
+  // Stats keyed by version role at record time; never re-pointed on swap. Null if not enabled.
+  private volatile STATS roleStats;
   protected String storeName;
 
   public AbstractVeniceStatsReporter(MetricsRepository metricsRepository, String storeName) {
@@ -30,5 +32,13 @@ public abstract class AbstractVeniceStatsReporter<STATS> extends AbstractVeniceS
 
   public STATS getStats() {
     return stats;
+  }
+
+  public void setRoleStats(STATS roleStats) {
+    this.roleStats = roleStats;
+  }
+
+  public STATS getRoleStats() {
+    return roleStats;
   }
 }

@@ -38,7 +38,9 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -50,6 +52,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -81,6 +84,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   public static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
   private static final long ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS = 10;
+  /** Number of distinct replicas to try before giving up on a dictionary fetch for a given refresh. */
+  private static final int MAX_DICTIONARY_FETCH_ATTEMPTS = 3;
   public static final long DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT = 20;
   static final long INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS = 5;
 
@@ -123,6 +128,18 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final FastClientStats clientStats;
   private final ClientConfig clientConfig;
   private final AtomicInteger batchGetLimit = new AtomicInteger();
+  private volatile RetryPolicySnapshot retryPolicySnapshot = new RetryPolicySnapshot(null, null);
+
+  private static final class RetryPolicySnapshot {
+    private final String cluster;
+    private final MultiKeyLongTailRetryThresholds policy;
+
+    private RetryPolicySnapshot(String cluster, MultiKeyLongTailRetryThresholds policy) {
+      this.cluster = cluster;
+      this.policy = policy;
+    }
+  }
+
   // Only read/written under the synchronized monitor of updateCache(boolean) — same model as lastStoreConfigSnapshot
   private int externalStorageReadModeRaw = ExternalStorageReadMode.VENICE_ONLY.getValue();
   private RouterBackedSchemaReader metadataResponseSchemaReader;
@@ -159,7 +176,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
     this.metadataResponseSchemaReader =
         new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
-    this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
+    /**
+     * When gRPC is enabled the top-level {@code r2Client} is allowed to be null: the R2 client used for non-storage
+     * requests lives in {@link GrpcClientConfig} instead. Both the connection warmup and the dictionary fetch below
+     * go over R2, so resolve the transport against whichever client is actually populated.
+     */
+    this.r2TransportClient = new R2TransportClient(
+        clientConfig.useGrpc() ? clientConfig.getGrpcClientConfig().getR2Client() : clientConfig.getR2Client());
     this.harClusters = clientConfig.getHarClusters();
     this.scheduler = Optional.ofNullable(clientConfig.getMetadataRefreshExecutor())
         .orElseGet(() -> Executors.newScheduledThreadPool(1));
@@ -446,17 +469,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer =
           FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(writerSchema, MetadataResponseRecord.class);
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
+      String policyCluster = serverClusterName.get();
+      RetryPolicySnapshot candidateRetryPolicy =
+          parseRetryPolicy(metadataResponse.getMultiKeyLongTailRetryThresholdsInMs().toString(), policyCluster);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
       batchGetLimit.set(metadataResponse.getBatchGetLimit());
       externalStorageReadModeRaw = metadataResponse.getExternalStorageReadMode();
       int fetchedCurrentVersion = versionMetadata.getCurrentVersion();
-
-      // call the DICTIONARY endpoint if needed
-      CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
-      if (!versionZstdDictionaryMap.containsKey(fetchedCurrentVersion)
-          && versionMetadata.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
-        dictionaryFetchFuture = fetchCompressionDictionary(fetchedCurrentVersion);
-      }
 
       // Update partitioner pair map (versionPartitionerMap)
       int partitionCount = versionMetadata.getPartitionCount();
@@ -481,10 +500,31 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
       for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
         String key = getVersionPartitionMapKey(fetchedCurrentVersion, partitionId);
+        /*
+         * The server builds the routing info from the partitions present in its customized view, so a partition that
+         * has no assignment yet (e.g. mid-rebalance) is simply absent from the map rather than mapped to an empty
+         * list.
+         */
         List<String> replicas = routingInfo.get(partitionId);
-        if (!replicas.isEmpty()) {
+        if (replicas != null && !replicas.isEmpty()) {
           readyToServeInstancesMap.put(key, replicas);
+        } else {
+          /*
+           * The partition has no ready-to-serve replica any more. The eviction below is version scoped, so without
+           * this the previous entry would survive for as long as the version stays active and requests would keep
+           * being routed to replicas that have since stopped serving this partition.
+           */
+          readyToServeInstancesMap.remove(key);
         }
+      }
+
+      // This has to happen after the routing info above has been parsed: the dictionary lives in the node-local
+      // {@code StoreVersionState} of the servers hosting this specific store-version, so the request must be sent to
+      // one of those replicas rather than to an arbitrary member of the cluster-wide server D2 service.
+      CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
+      if (!versionZstdDictionaryMap.containsKey(fetchedCurrentVersion)
+          && versionMetadata.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+        dictionaryFetchFuture = fetchCompressionDictionary(fetchedCurrentVersion, collectReplicas(routingInfo));
       }
 
       // Update schemas
@@ -515,13 +555,27 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         if (dictionaryFetchFuture != null) {
           dictionaryFetchFuture.get(ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS);
         }
-      } catch (ExecutionException | TimeoutException e) {
+      } catch (TimeoutException e) {
+        /*
+         * Completing the future here stops any in-flight retry chain from issuing further requests in the background
+         * once this thread has stopped waiting on it, so it cannot overlap with the fetch started by the next refresh.
+         */
+        dictionaryFetchFuture.completeExceptionally(e);
         LOGGER.warn(
             "Dictionary fetch operation could not complete in time for some of the versions. "
                 + "Will be retried on next refresh",
             e);
         // throw exception to make the start() blocking till the dictionary is fetched in case
         // of initial fetch. For other cases: returning an exception doesn't make any difference.
+        throw new VeniceException(e);
+      } catch (ExecutionException e) {
+        /*
+         * The fetch failed outright rather than running out of time (e.g. every replica returned 404). Log the
+         * underlying cause instead of reporting it as a timeout, which would hide the real reason.
+         */
+        LOGGER.warn(
+            "Dictionary fetch operation failed for some of the versions. Will be retried on next refresh",
+            e.getCause() == null ? e : e.getCause());
         throw new VeniceException(e);
       }
 
@@ -603,6 +657,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       StoreConfigSnapshot previousSnapshot = lastStoreConfigSnapshot;
       lastStoreConfigSnapshot = newSnapshot;
       pendingCallbacks.add(buildStoreConfigChangeCallback(previousSnapshot, newSnapshot));
+      // Only this immutable policy is atomically published; the rest of metadata is not transactional.
+      retryPolicySnapshot = candidateRetryPolicy;
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
@@ -629,6 +685,27 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       }
     }
     return pendingCallbacks;
+  }
+
+  private RetryPolicySnapshot parseRetryPolicy(String ranges, String cluster) {
+    try {
+      return new RetryPolicySnapshot(cluster, ranges.isEmpty() ? null : MultiKeyLongTailRetryThresholds.parse(ranges));
+    } catch (RuntimeException e) {
+      clusterStats.recordInvalidMultiKeyRetryPolicy();
+      String message = "Invalid multi-key retry policy for store " + storeName + " in cluster " + cluster;
+      if (!RedundantExceptionFilter.getRedundantExceptionFilter().isRedundantException(message)) {
+        LOGGER.warn("{}; retaining only the last valid policy from the same cluster.", message, e);
+      }
+      RetryPolicySnapshot previous = retryPolicySnapshot;
+      return new RetryPolicySnapshot(cluster, Objects.equals(cluster, previous.cluster) ? previous.policy : null);
+    }
+  }
+
+  @Override
+  public MultiKeyLongTailRetryThresholds getMultiKeyLongTailRetryThresholds() {
+    RetryPolicySnapshot snapshot = retryPolicySnapshot;
+    // Discovery can change cluster before the first successful refresh there. Never leak the old origin's policy.
+    return Objects.equals(serverClusterName.get(), snapshot.cluster) ? snapshot.policy : null;
   }
 
   public static boolean whetherToSwitchToFetchedCurrentVersion(
@@ -803,27 +880,155 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     return metadataFuture;
   }
 
-  private CompletableFuture<TransportClientResponse> fetchCompressionDictionary(int version) {
+  /**
+   * Flatten the per-partition routing info into the distinct set of replicas hosting this store-version, in a random
+   * order so that repeated refreshes across a fleet of clients do not all hammer the same replica.
+   */
+  private static List<String> collectReplicas(Map<Integer, List<String>> routingInfo) {
+    Set<String> distinctReplicas = new HashSet<>();
+    for (List<String> replicas: routingInfo.values()) {
+      distinctReplicas.addAll(replicas);
+    }
+    List<String> shuffledReplicas = new ArrayList<>(distinctReplicas);
+    Collections.shuffle(shuffledReplicas);
+    return shuffledReplicas;
+  }
+
+  /**
+   * Fetch the zstd compression dictionary for the given version from a replica that actually hosts it.
+   *
+   * The server answers a dictionary request purely from node-local state and returns 404 when it does not host the
+   * store-version, so the request is sent to a replica taken from the routing table of that version (mirroring what
+   * the router's {@code DictionaryRetrievalService} does) instead of load balancing over every server in the cluster.
+   * Failures are retried against a different replica.
+   *
+   * The returned future is always completed: any non-200 response, empty body, or unexpected error terminates it
+   * exceptionally rather than leaving the caller to hit the refresh timeout.
+   */
+  private CompletableFuture<TransportClientResponse> fetchCompressionDictionary(int version, List<String> replicas) {
     CompletableFuture<TransportClientResponse> compressionDictionaryFuture = new CompletableFuture<>();
-    String url = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
+    if (replicas.isEmpty()) {
+      compressionDictionaryFuture.completeExceptionally(
+          new VeniceClientException(
+              "Cannot fetch zstd compression dictionary for store: " + storeName + ", version: " + version
+                  + " because no ready-to-serve replica was found in the metadata response"));
+      return compressionDictionaryFuture;
+    }
+    /*
+     * The refresh thread only waits ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS for this future and then gives up and retries
+     * on the next refresh, so the retry chain is bounded by the same deadline. Without it the chain would keep
+     * issuing requests in the background after the caller has moved on, overlapping with the chain started by the
+     * next refresh.
+     */
+    long deadlineMs = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(ZSTD_DICT_FETCH_TIMEOUT_IN_SECONDS);
+    attemptDictionaryFetch(version, replicas, 0, deadlineMs, compressionDictionaryFuture);
+    return compressionDictionaryFuture;
+  }
+
+  private void attemptDictionaryFetch(
+      int version,
+      List<String> replicas,
+      int attempt,
+      long deadlineMs,
+      CompletableFuture<TransportClientResponse> compressionDictionaryFuture) {
+    if (compressionDictionaryFuture.isDone()) {
+      // The caller already gave up (or another attempt won the race); do not issue further requests.
+      return;
+    }
+    int maxAttempts = Math.min(replicas.size(), MAX_DICTIONARY_FETCH_ATTEMPTS);
+    String replica = replicas.get(attempt % replicas.size());
+    String url = replica + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
     LOGGER.debug("Fetching compression dictionary for version {} from URL {} ", version, url);
-    d2TransportClient.get(url).whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        String message = String.format(
-            "Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d",
+    try {
+      r2TransportClient.get(url).whenComplete((response, throwable) -> {
+        Throwable failure = throwable;
+        if (failure == null) {
+          try {
+            /*
+             * A 404 is surfaced as a null response by TransportClientCallback, which is how the server reports that
+             * it does not hold this store-version locally. It must not be dereferenced, and it must not be swallowed
+             * either, otherwise the future below would never complete.
+             */
+            if (response == null) {
+              failure = new VeniceClientException(
+                  "Received 404 while fetching zstd compression dictionary from URL: " + url + " for store: "
+                      + storeName + ", version: " + version
+                      + ". The replica does not host this store version locally.");
+            } else if (response.getBody() == null || response.getBody().length == 0) {
+              failure = new VeniceClientException(
+                  "Received an empty zstd compression dictionary from URL: " + url + " for store: " + storeName
+                      + ", version: " + version);
+            } else {
+              versionZstdDictionaryMap.put(version, ByteBuffer.wrap(response.getBody()));
+              compressionDictionaryFuture.complete(response);
+              return;
+            }
+          } catch (Throwable t) {
+            failure = t;
+          }
+        }
+        handleDictionaryFetchFailure(
+            version,
+            replicas,
+            attempt,
+            maxAttempts,
             url,
-            storeName,
-            version);
-        LOGGER.warn(message, throwable);
-        compressionDictionaryFuture.completeExceptionally(throwable);
-      } else {
-        byte[] dictionary = response.getBody();
-        versionZstdDictionaryMap.put(version, ByteBuffer.wrap(dictionary));
-        compressionDictionaryFuture.complete(response);
-      }
-    });
-    return compressionDictionaryFuture;
+            failure,
+            deadlineMs,
+            compressionDictionaryFuture);
+      });
+    } catch (Throwable t) {
+      /*
+       * The transport can fail synchronously while building the URI or dispatching the request, in which case no
+       * future is ever returned. Route it through the same failure path so the dictionary future is still completed.
+       */
+      handleDictionaryFetchFailure(
+          version,
+          replicas,
+          attempt,
+          maxAttempts,
+          url,
+          t,
+          deadlineMs,
+          compressionDictionaryFuture);
+    }
+  }
+
+  private void handleDictionaryFetchFailure(
+      int version,
+      List<String> replicas,
+      int attempt,
+      int maxAttempts,
+      String url,
+      Throwable failure,
+      long deadlineMs,
+      CompletableFuture<TransportClientResponse> compressionDictionaryFuture) {
+    int nextAttempt = attempt + 1;
+    boolean deadlineExpired = System.currentTimeMillis() >= deadlineMs;
+    if (nextAttempt < maxAttempts && !deadlineExpired && !compressionDictionaryFuture.isDone()) {
+      LOGGER.warn(
+          "Problem fetching zstd compression dictionary from URL: {} for store: {}, version: {}. "
+              + "Retrying against another replica ({}/{}).",
+          url,
+          storeName,
+          version,
+          nextAttempt + 1,
+          maxAttempts,
+          failure);
+      attemptDictionaryFetch(version, replicas, nextAttempt, deadlineMs, compressionDictionaryFuture);
+      return;
+    }
+
+    String message = String.format(
+        "Problem fetching zstd compression dictionary for store:%s , version:%d after %d attempt(s)%s, last URL:%s",
+        storeName,
+        version,
+        nextAttempt,
+        deadlineExpired ? " (gave up because the dictionary fetch deadline expired)" : "",
+        url);
+    LOGGER.warn(message, failure);
+    compressionDictionaryFuture.completeExceptionally(new VeniceClientException(message, failure));
   }
 
   @Override

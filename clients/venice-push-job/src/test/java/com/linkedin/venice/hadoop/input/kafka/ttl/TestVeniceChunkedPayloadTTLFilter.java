@@ -18,8 +18,13 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.schema.SchemaUtils;
+import com.linkedin.davinci.schema.merge.AvroCollectionElementComparator;
+import com.linkedin.davinci.schema.merge.SortBasedCollectionFieldOpHandler;
+import com.linkedin.davinci.schema.merge.UpdateResultStatus;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerializer;
+import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.venice.common.ChunkAssembler;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -32,6 +37,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
+import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -61,6 +67,11 @@ public class TestVeniceChunkedPayloadTTLFilter {
   private static final Schema VALUE_SCHEMA =
       AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR);
   private static final Schema RMD_SCHEMA = RmdSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA, 1);
+  private static final Schema MAP_VALUE_SCHEMA = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(
+      "{\"type\":\"record\",\"name\":\"MapRecord\",\"fields\":["
+          + "{\"name\":\"map\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"int\"}],\"default\":null}]}");
+  private static final Schema MAP_RMD_SCHEMA =
+      SchemaUtils.annotateRmdSchema(RmdSchemaGenerator.generateMetadataSchema(MAP_VALUE_SCHEMA, 1));
   private VeniceChunkedPayloadTTLFilter filter;
 
   private final ChunkAssembler chunkAssembler = new ChunkAssembler(true);
@@ -171,6 +182,51 @@ public class TestVeniceChunkedPayloadTTLFilter {
   }
 
   @Test
+  public void testTTLDeletePreservesNewerMapTombstones() {
+    GenericRecord valueRecord = new GenericData.Record(MAP_VALUE_SCHEMA);
+    valueRecord.put("map", new IndexedHashMap<>(Collections.singletonMap("active", 1)));
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(
+        MAP_RMD_SCHEMA,
+        Collections.singletonMap("map", 1L),
+        Collections.singletonMap("map", 1));
+    GenericRecord timestamps = (GenericRecord) rmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
+    CollectionRmdTimestamp<String> metadata = new CollectionRmdTimestamp<>((GenericRecord) timestamps.get("map"));
+    metadata.setDeletedElementsAndTimestamps(Collections.singletonList("deleted"), Collections.singletonList(20L));
+    List<byte[]> values = Collections.singletonList(
+        createRegularValue(
+            MapOrderPreservingSerDeFactory.getSerializer(MAP_VALUE_SCHEMA).serialize(valueRecord),
+            MapOrderPreservingSerDeFactory.getSerializer(MAP_RMD_SCHEMA).serialize(rmdRecord),
+            2,
+            POSITION_1,
+            MapperValueType.PUT));
+    ChunkAssembler.ValueBytesAndSchemaId assembled =
+        chunkAssembler.assembleAndGetValue(createChunkBytes(0, 5), values.iterator());
+    Assert.assertFalse(filter.checkAndMaybeFilterValue(assembled));
+
+    GenericRecord filteredValue = MapOrderPreservingSerDeFactory.getDeserializer(MAP_VALUE_SCHEMA, MAP_VALUE_SCHEMA)
+        .deserialize(assembled.getBytes());
+    GenericRecord filteredRmd = MapOrderPreservingSerDeFactory.getDeserializer(MAP_RMD_SCHEMA, MAP_RMD_SCHEMA)
+        .deserialize(assembled.getReplicationMetadataPayload());
+    Assert.assertNull(filteredValue.get("map"));
+    GenericRecord filteredTimestamps = (GenericRecord) filteredRmd.get(RmdConstants.TIMESTAMP_FIELD_NAME);
+    CollectionRmdTimestamp<String> filteredMetadata =
+        new CollectionRmdTimestamp<>((GenericRecord) filteredTimestamps.get("map"));
+    metadata.setTopLevelFieldTimestamp(9L);
+    metadata.setPutOnlyPartLength(0);
+    Assert.assertEquals(filteredMetadata, metadata);
+    Assert.assertEquals(
+        new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE).handleModifyMap(
+            15L,
+            filteredMetadata,
+            filteredValue,
+            MAP_VALUE_SCHEMA.getField("map"),
+            Collections.singletonMap("deleted", 2),
+            Collections.emptyList()),
+        UpdateResultStatus.NOT_UPDATED_AT_ALL);
+    Assert.assertNull(filteredValue.get("map"));
+  }
+
+  @Test
   public void testTTLFilterHandleValuePayloadOfDelete() {
     byte[] rmdBytes = "dummyString".getBytes();
     List<byte[]> values =
@@ -209,10 +265,10 @@ public class TestVeniceChunkedPayloadTTLFilter {
   private void setupHDFS(VeniceProperties props) throws IOException {
     ControllerClient client = mock(ControllerClient.class);
     MultiSchemaResponse rmdResponse = new MultiSchemaResponse();
-    rmdResponse.setSchemas(generateRmdSchemas(1));
+    rmdResponse.setSchemas(generateRmdSchemas(2));
     doReturn(rmdResponse).when(client).getAllReplicationMetadataSchemas(TEST_STORE);
     MultiSchemaResponse valueResponse = new MultiSchemaResponse();
-    valueResponse.setSchemas(generateValueSchema(1));
+    valueResponse.setSchemas(generateValueSchema(2));
     doReturn(valueResponse).when(client).getAllValueSchema(TEST_STORE);
     HDFSSchemaSource source =
         new HDFSSchemaSource(props.getString(VALUE_SCHEMA_DIR), props.getString(RMD_SCHEMA_DIR), TEST_STORE);
@@ -224,9 +280,9 @@ public class TestVeniceChunkedPayloadTTLFilter {
     for (int i = 1; i <= n; i++) {
       MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
       schema.setRmdValueSchemaId(i);
-      schema.setDerivedSchemaId(i);
-      schema.setId(i);
-      schema.setSchemaStr(RMD_SCHEMA.toString());
+      schema.setDerivedSchemaId(1);
+      schema.setId(1);
+      schema.setSchemaStr((i == 1 ? RMD_SCHEMA : MAP_RMD_SCHEMA).toString());
       response[i - 1] = schema;
     }
     return response;
@@ -237,7 +293,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
     for (int i = 1; i <= n; i++) {
       MultiSchemaResponse.Schema schema = new MultiSchemaResponse.Schema();
       schema.setId(i);
-      schema.setSchemaStr(VALUE_SCHEMA.toString());
+      schema.setSchemaStr((i == 1 ? VALUE_SCHEMA : MAP_VALUE_SCHEMA).toString());
       response[i - 1] = schema;
     }
     return response;

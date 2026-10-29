@@ -7,6 +7,8 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.StoreUpdateCallbackException;
+import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
@@ -53,6 +55,7 @@ import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
+import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceETLStrategy;
@@ -63,6 +66,7 @@ import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -96,6 +100,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private final long lastPersistedExecutionId;
 
   private final ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore;
+  private final StoreUpdateHandler storeUpdateHandler;
 
   AdminExecutionTask(
       Logger LOGGER,
@@ -110,6 +115,36 @@ public class AdminExecutionTask implements Callable<Void> {
       AdminConsumptionStats stats,
       String regionName,
       ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore) {
+    this(
+        LOGGER,
+        clusterName,
+        storeName,
+        lastSucceededExecutionIdMap,
+        lastPersistedExecutionId,
+        internalTopic,
+        admin,
+        executionIdAccessor,
+        isParentController,
+        stats,
+        regionName,
+        inflightThreadsByStore,
+        StoreUpdateHandler.NO_OP);
+  }
+
+  AdminExecutionTask(
+      Logger LOGGER,
+      String clusterName,
+      String storeName,
+      ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap,
+      long lastPersistedExecutionId,
+      Queue<AdminOperationWrapper> internalTopic,
+      VeniceHelixAdmin admin,
+      ExecutionIdAccessor executionIdAccessor,
+      boolean isParentController,
+      AdminConsumptionStats stats,
+      String regionName,
+      ConcurrentHashMap<String, AtomicInteger> inflightThreadsByStore,
+      StoreUpdateHandler storeUpdateHandler) {
     this.LOGGER = LOGGER;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -122,6 +157,7 @@ public class AdminExecutionTask implements Callable<Void> {
     this.stats = stats;
     this.regionName = regionName;
     this.inflightThreadsByStore = inflightThreadsByStore;
+    this.storeUpdateHandler = storeUpdateHandler;
   }
 
   @Override
@@ -251,6 +287,8 @@ public class AdminExecutionTask implements Callable<Void> {
           lastSucceededExecutionId);
       return;
     }
+    boolean storeUpdated = false;
+    Set<String> updatedConfigs = Collections.emptySet();
     try {
       switch (AdminMessageType.valueOf(adminOperation)) {
         case STORE_CREATION:
@@ -287,7 +325,10 @@ public class AdminExecutionTask implements Callable<Void> {
           handleSetStorePartitionCount((SetStorePartitionCount) adminOperation.payloadUnion);
           break;
         case UPDATE_STORE:
-          handleSetStore((UpdateStore) adminOperation.payloadUnion);
+          UpdateStore updateStore = (UpdateStore) adminOperation.payloadUnion;
+          updatedConfigs = extractUpdatedConfigs(updateStore);
+          handleSetStore(updateStore);
+          storeUpdated = true;
           break;
         case DELETE_STORE:
           handleDeleteStore((DeleteStore) adminOperation.payloadUnion);
@@ -355,8 +396,42 @@ public class AdminExecutionTask implements Callable<Void> {
           AdminMessageType.valueOf(adminOperation),
           e.getMessage());
     }
+    if (storeUpdated && isParentController && storeUpdateHandler != StoreUpdateHandler.NO_OP) {
+      Store store = admin.getStore(clusterName, storeName);
+      if (store == null) {
+        // Retriable so this intentionally retained queue entry is classified like callback retries,
+        // rather than NPE'ing on a null store snapshot.
+        throw new VeniceRetriableException(
+            "Cannot invoke store update handler for cluster: " + clusterName + ", store: " + storeName
+                + " because the store could not be found after a successful UPDATE_STORE admin operation");
+      }
+      Store finalStore = store.cloneStore();
+      // Invoke before advancing checkpoints so callback failures leave the admin operation eligible for retry.
+      try {
+        storeUpdateHandler.handleStoreUpdate(clusterName, new ReadOnlyStore(finalStore), updatedConfigs);
+      } catch (Exception e) {
+        // Wrap so a handler that throws VeniceNoStoreException cannot be misclassified as the UPDATE_STORE target
+        // being absent, which would otherwise trigger the admin consumer's missing-store auto-skip path.
+        throw new StoreUpdateCallbackException(clusterName, storeName, e);
+      }
+    }
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
     lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);
+  }
+
+  /**
+   * Copies the config keys from the durable UPDATE_STORE message so callbacks cannot mutate the Avro collection.
+   * The durable message is retried unchanged, so the returned set is deterministic and stable across retry attempts.
+   */
+  private Set<String> extractUpdatedConfigs(UpdateStore updateStore) {
+    if (updateStore.updatedConfigsList == null || updateStore.updatedConfigsList.isEmpty()) {
+      return Collections.emptySet();
+    }
+    Set<String> updatedConfigs = new LinkedHashSet<>();
+    for (CharSequence config: updateStore.updatedConfigsList) {
+      updatedConfigs.add(config.toString());
+    }
+    return Collections.unmodifiableSet(updatedConfigs);
   }
 
   private void handleStoreCreation(StoreCreation message) {
@@ -659,6 +734,7 @@ public class AdminExecutionTask implements Callable<Void> {
     }
 
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
+    params.setWriteQuotaEnabled(message.writeQuotaEnabled);
     params.setCompactionEnabled(message.compactionEnabled);
     params.setCompactionThresholdMilliseconds(message.compactionThresholdMilliseconds);
     if (message.encryptionEnabled && message.pubSubEncryptionKeyUrn != null
@@ -671,6 +747,11 @@ public class AdminExecutionTask implements Callable<Void> {
     params.setMaxNearlineRecordSizeBytes(message.maxNearlineRecordSizeBytes);
     params.setThroughputQuotaInBytes(message.throughputQuotaInBytes);
     params.setThroughputQuotaInRecords(message.throughputQuotaInRecords);
+    // Both configs are nullable, so map them unconditionally: a null on the message means the field
+    // should be cleared, and the setters encode that as an explicit clear rather than dropping it.
+    // Whether the clear is actually applied is still gated by updatedConfigsList below.
+    params.setVeniceUnits(message.veniceUnits);
+    params.setWorkloadType(message.workloadType == null ? null : message.workloadType.toString());
 
     final UpdateStoreQueryParams finalParams;
     if (message.replicateAllConfigs) {
@@ -778,6 +859,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String remoteKafkaBootstrapServers =
         message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     long rewindTimeInSecondsOverride = message.rewindTimeInSecondsOverride;
+    long rewindEpochTimeInSecondsOverride = message.rewindEpochTimeInSecondsOverride;
     int replicationMetadataVersionId = message.timestampMetadataVersionId;
     int repushTtlSeconds = message.repushTtlSeconds;
     // Log the message
@@ -798,6 +880,7 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId);
       }
     } else {
@@ -831,6 +914,7 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId,
             message.versionSwapDeferred,
             targetedRegions,

@@ -283,31 +283,23 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       String schemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     int schemaId = preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType);
-    SchemaEntry result = addValueSchemaLocked(storeName, schemaStr, schemaId);
-    Store storeAfterWrite = storeRepository.getStore(storeName);
-    maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
-    return result;
+    return addValueSchemaLocked(storeName, schemaStr, schemaId);
   }
 
   @Override
   public synchronized SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId) {
-    SchemaEntry result = addValueSchemaLocked(storeName, schemaStr, schemaId);
-    Store storeAfterWrite = storeRepository.getStore(storeName);
-    maybeNotifyValueSchemaCreated(storeName, storeAfterWrite, result);
-    return result;
+    return addValueSchemaLocked(storeName, schemaStr, schemaId);
   }
 
   /**
    * Pre-condition: caller holds {@code this} monitor.
    *
-   * <p>Returns the schema entry the caller should propagate. A returned entry whose id equals
-   * {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE} signals "true duplicate, nothing was persisted"
-   * — listeners must NOT be notified in that case. Any other id means a new entry was written to
-   * ZK; the caller fires listeners while still holding the lock so persist order matches dispatch
-   * order.
+   * <p>Listeners fire only when this call creates a new schema, while still holding the lock
+   * so persist order matches dispatch order. Explicit IDs are preserved for idempotent registrations.
    */
   private SchemaEntry addValueSchemaLocked(String storeName, String schemaStr, int schemaId) {
     SchemaEntry newValueSchemaEntry = new SchemaEntry(schemaId, schemaStr);
+    boolean created = false;
 
     if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       int dupSchemaId = getNextAvailableSchemaId(
@@ -319,17 +311,20 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         logger.info("Value schema already exists. Skipping adding it to the schema repository. Schema: {}.", schemaStr);
       } else { // there is some doc field update
         newValueSchemaEntry = new SchemaEntry(dupSchemaId, schemaStr);
-        accessor.addValueSchema(storeName, newValueSchemaEntry);
+        created = accessor.addValueSchemaIfAbsent(storeName, newValueSchemaEntry);
         logger.info("Adding similar schema to the schema repository for doc field update. Schema: {}.", schemaStr);
       }
     } else {
-      accessor.addValueSchema(storeName, newValueSchemaEntry);
+      created = accessor.addValueSchemaIfAbsent(storeName, newValueSchemaEntry);
     }
     // Check whether meta system store is enabled or not
     Store store = storeRepository.getStoreOrThrow(storeName);
     if (store.isStoreMetaSystemStoreEnabled() && metaStoreWriter.isPresent()) {
       Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
       metaStoreWriter.get().writeStoreValueSchemas(storeName, valueSchemas);
+    }
+    if (created) {
+      maybeNotifyValueSchemaCreated(storeName, storeRepository.getStore(storeName), newValueSchemaEntry);
     }
     return newValueSchemaEntry;
   }
@@ -442,7 +437,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public DerivedSchemaEntry addDerivedSchema(String storeName, String schemaStr, int valueSchemaId) {
+  public synchronized DerivedSchemaEntry addDerivedSchema(String storeName, String schemaStr, int valueSchemaId) {
     preCheckStoreCondition(storeName);
 
     DerivedSchemaEntry newDerivedSchemaEntry =
@@ -459,7 +454,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public DerivedSchemaEntry addDerivedSchema(
+  public synchronized DerivedSchemaEntry addDerivedSchema(
       String storeName,
       String schemaStr,
       int valueSchemaId,

@@ -253,6 +253,7 @@ public class RecoverStoreMetadata {
             .setNativeReplicationSourceFabric(deletedStore.getNativeReplicationSourceFabric())
             .setActiveActiveReplicationEnabled(deletedStore.isActiveActiveReplicationEnabled())
             .setStorageNodeReadQuotaEnabled(deletedStore.isStorageNodeReadQuotaEnabled())
+            .setWriteQuotaEnabled(deletedStore.isWriteQuotaEnabled())
             .setMinCompactionLagSeconds(deletedStore.getMinCompactionLagSeconds())
             .setMaxCompactionLagSeconds(deletedStore.getMaxCompactionLagSeconds())
             .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())
@@ -265,6 +266,12 @@ public class RecoverStoreMetadata {
             .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported())
             .setGlobalRtDivEnabled(deletedStore.isGlobalRtDivEnabled())
             .setFlinkVeniceViewsEnabled(deletedStore.isFlinkVeniceViewsEnabled());
+        if (deletedStore.getVeniceUnits() != null) {
+          updateParams.setVeniceUnits(deletedStore.getVeniceUnits());
+        }
+        if (deletedStore.getWorkloadType() != null) {
+          updateParams.setWorkloadType(deletedStore.getWorkloadType());
+        }
         System.out.println(
             "Updating store: " + storeName + " in cluster: " + recoverCluster + " with params: "
                 + updateParams.toString());

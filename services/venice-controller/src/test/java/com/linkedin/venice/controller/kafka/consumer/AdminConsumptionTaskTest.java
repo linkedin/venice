@@ -1411,6 +1411,7 @@ public class AdminConsumptionTaskTest {
             Version.PushType.BATCH,
             null,
             -1,
+            -1,
             1,
             false,
             "",
@@ -1631,6 +1632,7 @@ public class AdminConsumptionTaskTest {
             Version.PushType.BATCH,
             null,
             -1,
+            -1,
             1,
             false,
             "",
@@ -1793,6 +1795,7 @@ public class AdminConsumptionTaskTest {
           Version.PushType.BATCH,
           null,
           -1,
+          -1,
           1,
           false,
           "dc-0",
@@ -1839,6 +1842,7 @@ public class AdminConsumptionTaskTest {
           numberOfPartitions,
           Version.PushType.BATCH,
           null,
+          -1,
           -1,
           1,
           true,
@@ -1939,6 +1943,7 @@ public class AdminConsumptionTaskTest {
     addVersion.versionNum = versionNum;
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.rewindTimeInSecondsOverride = -1;
+    addVersion.rewindEpochTimeInSecondsOverride = -1;
     addVersion.timestampMetadataVersionId = 1;
     addVersion.versionSwapDeferred = deferredSwap;
     if (targetedRegions != null) {
@@ -2090,6 +2095,7 @@ public class AdminConsumptionTaskTest {
         sysStorePartition,
         Version.PushType.BATCH,
         null,
+        -1,
         -1,
         1,
         false,

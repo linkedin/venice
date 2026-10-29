@@ -4,6 +4,7 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -14,6 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * This class is used to include all the intermediate fields required for the communication between the different tiers.
  */
 public abstract class RequestContext {
+  ExecutionContextProvider.CapturedContext executionContext;
+
   int currentVersion = -1;
   boolean noAvailableReplica = false;
 
@@ -54,6 +57,14 @@ public abstract class RequestContext {
   double requestRejectionRatio = 0;
 
   public RequestContext() {
+  }
+
+  // Initialize on the calling thread before dispatch or scheduling, then reuse across layers and retries.
+  final ExecutionContextProvider.CapturedContext getOrCaptureExecutionContext(ExecutionContextProvider provider) {
+    if (executionContext == null) {
+      executionContext = Objects.requireNonNull(provider.capture(), "Execution context capture must not return null");
+    }
+    return executionContext;
   }
 
   public abstract RequestType getRequestType();

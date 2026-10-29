@@ -1,5 +1,6 @@
 package com.linkedin.venice.vpj.pubsub.input;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_MAX_MESSAGES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION;
@@ -10,9 +11,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -21,6 +24,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -29,9 +33,11 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.PubSubEncryptionUtilsTest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -50,6 +56,26 @@ public class PubSubSplitPlannerTest {
     this.mockTopicManager = mock(TopicManager.class);
     when(mockTopicManager.getTopicRepository()).thenReturn(TOPIC_REPO);
     this.planner = spy(new PubSubSplitPlanner());
+  }
+
+  @Test(dataProvider = "encryptionConfigurations", dataProviderClass = PubSubEncryptionUtilsTest.class)
+  public void testEncryptionIsValidatedBeforeTopicManagerCreation(Boolean enabled, String keyUrn, String expectedUrn) {
+    Properties properties = PubSubEncryptionUtilsTest.encryptionProperties(enabled, keyUrn);
+    properties.setProperty(KAFKA_INPUT_TOPIC, TEST_TOPIC_NAME);
+    properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, TEST_BROKER_URL);
+    VeniceProperties config = new VeniceProperties(properties);
+    doReturn(mockTopicManager).when(planner).createTopicManager(any(VeniceProperties.class), anyString());
+    when(mockTopicManager.getPartitionCount(any(PubSubTopic.class))).thenReturn(0);
+
+    if (Boolean.TRUE.equals(enabled) && expectedUrn == null) {
+      VeniceException error = expectThrows(VeniceException.class, () -> planner.plan(config));
+      assertTrue(error.getMessage().contains("missing or blank"));
+      verify(planner, never()).createTopicManager(any(VeniceProperties.class), anyString());
+      verifyNoInteractions(mockTopicManager);
+    } else {
+      assertTrue(planner.plan(config).isEmpty());
+      verify(planner).createTopicManager(config, TEST_BROKER_URL);
+    }
   }
 
   @Test
@@ -92,6 +118,39 @@ public class PubSubSplitPlannerTest {
 
     assertNotNull(splits3);
     assertFalse(splits3.isEmpty());
+  }
+
+  @DataProvider
+  public Object[][] dictionaryMessageBudgets() {
+    return new Object[][] { { null, 512, 1953L }, { "8000", 4, 2000L }, { "1", 4, 1000L }, { "0", 4, 0L },
+        { "-1", 4, 0L } };
+  }
+
+  @Test(dataProvider = "dictionaryMessageBudgets")
+  public void testDictionaryMessageBudget(String budget, int partitions, long expectedCount) {
+    Properties properties = new Properties();
+    properties.setProperty(KAFKA_INPUT_TOPIC, TEST_TOPIC_NAME);
+    properties.setProperty(VENICE_REPUSH_SOURCE_PUBSUB_BROKER, TEST_BROKER_URL);
+    properties
+        .setProperty(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.CAPPED_SINGLE_SPLIT_PER_PARTITION.name());
+    properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "1");
+    if (budget != null) {
+      properties.setProperty(COMPRESSION_DICTIONARY_MAX_MESSAGES, budget);
+    }
+    doReturn(mockTopicManager).when(planner).createTopicManager(any(VeniceProperties.class), anyString());
+    setupTopicManagerMocks(partitions, Long.MAX_VALUE);
+    VeniceProperties config = new VeniceProperties(properties);
+    if (expectedCount == 0) {
+      expectThrows(IllegalArgumentException.class, () -> planner.plan(config));
+      return;
+    }
+
+    List<PubSubPartitionSplit> splits = planner.plan(config);
+    assertEquals(splits.size(), partitions);
+    for (PubSubPartitionSplit split: splits) {
+      assertEquals(split.getNumberOfRecords(), expectedCount);
+      assertEquals(split.getEndPubSubPosition().getNumericOffset(), expectedCount);
+    }
   }
 
   @Test

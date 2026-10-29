@@ -68,6 +68,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.StoreUpdateHandler;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerContext;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -117,6 +118,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String PARENT_D2_SERVICE_NAME = "ParentController";
 
   public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
+  public static final String STORE_UPDATE_HANDLER = "StoreUpdateHandler";
 
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
 
@@ -421,6 +423,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
+      Optional<StoreUpdateHandler> storeUpdateHandler = Optional.empty();
+      Object passedStoreUpdateHandler = options.getExtraProperties().get(STORE_UPDATE_HANDLER);
+      if (passedStoreUpdateHandler instanceof StoreUpdateHandler) {
+        storeUpdateHandler = Optional.of((StoreUpdateHandler) passedStoreUpdateHandler);
+      }
       Map<String, D2Client> d2Clients = options.getD2Clients();
       VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
           .setMetricsRepository(metricsRepository)
@@ -431,6 +438,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
           .setAccessController(options.getDynamicAccessController())
+          .setStoreUpdateHandler(storeUpdateHandler.orElse(null))
           .build();
       VeniceController veniceController = new VeniceController(ctx);
       return new VeniceControllerWrapper(

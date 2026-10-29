@@ -41,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_MIGRATIO
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEGRADED_DCS;
@@ -49,6 +50,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TI
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_PER_REGION_STORAGE_MODE;
@@ -65,6 +67,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORE_LARGES
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA_ID;
+import static com.linkedin.venice.controllerapi.ControllerRoute.HEALTH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.IS_STORE_VERSION_READY_FOR_DATA_RECOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.KILL_OFFLINE_PUSH_JOB;
@@ -134,7 +137,9 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
@@ -143,15 +148,18 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Request;
 import spark.Response;
+import spark.Route;
 import spark.Service;
 import spark.embeddedserver.EmbeddedServers;
 
@@ -188,7 +196,9 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final boolean disableParentRequestTopicForStreamPushes;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final VeniceControllerRequestHandler requestHandler;
+  private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer;
   private final LogContext logContext;
+  private final BooleanSupplier apiReadiness;
 
   public AdminSparkServer(
       int port,
@@ -203,7 +213,10 @@ public class AdminSparkServer extends AbstractVeniceService {
       VeniceProperties jettyConfigOverrides,
       boolean disableParentRequestTopicForStreamPushes,
       PubSubTopicRepository pubSubTopicRepository,
-      VeniceControllerRequestHandler requestHandler) {
+      VeniceControllerRequestHandler requestHandler,
+      InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer,
+      BooleanSupplier apiReadiness) {
+    this.apiReadiness = Objects.requireNonNull(apiReadiness, "apiReadiness");
     this.logContext = admin.getLogContext();
     this.port = port;
     this.enforceSSL = enforceSSL;
@@ -212,6 +225,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.accessController = accessController;
     this.requestHandler = requestHandler;
+    this.pushJobDetailsSerializer = pushJobDetailsSerializer;
     // Note: admin is passed in as a reference. The expectation is the source of the admin will
     // close it so we don't close it in stopInner()
     this.admin = admin;
@@ -252,8 +266,10 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.before((request, response) -> {
       LogContext.setLogContext(logContext);
-      AuditInfo audit = new AuditInfo(request);
-      LOGGER.info(audit.toString());
+      // Periodic health probes would emit two INFO audit logs each; keep metrics without the repetitive logs.
+      if (!isHealthProbe(request)) {
+        LOGGER.info(new AuditInfo(request).toString());
+      }
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       if (stats == null) {
         stats = nonclusterSpecificStats;
@@ -262,7 +278,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       /**
        * If SSL is enforced, there is nothing to do in the secure admin server which has SSL enabled already;
        * but in the insecure admin server, we need to fail most of the routes except cluster/leader-controller
-       * discovery.
+       * discovery and health. The health endpoint exposes only fixed status bodies, allowing HTTP readiness probes.
        *
        * TODO: Currently we allow insecure access to cluster/leader-controller discovery because D2Client inside
        *       VeniceSystemProducer is not secure yet; once the new D2Client is used everywhere, we are safe to
@@ -271,7 +287,7 @@ public class AdminSparkServer extends AbstractVeniceService {
        */
       if (enforceSSL && !sslEnabled) {
         if (!CLUSTER_DISCOVERY.pathEquals(request.uri()) && !LEADER_CONTROLLER.pathEquals(request.uri())
-            && !MASTER_CONTROLLER.pathEquals(request.uri())) {
+            && !MASTER_CONTROLLER.pathEquals(request.uri()) && !isHealthProbe(request)) {
           httpService.halt(403, "Access denied, Venice Controller has enforced SSL.");
         }
       }
@@ -288,17 +304,21 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     httpService.after((request, response) -> {
-      AuditInfo audit = new AuditInfo(request);
+      AuditInfo audit = isHealthProbe(request) ? null : new AuditInfo(request);
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       if (stats == null) {
         stats = nonclusterSpecificStats;
       }
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
-        LOGGER.info(audit.successString(latency));
+        if (audit != null) {
+          LOGGER.info(audit.successString(latency));
+        }
         stats.recordSuccessfulRequest(request, response, latency);
       } else {
-        LOGGER.info(audit.failureString(response.status(), response.body(), latency));
+        if (audit != null) {
+          LOGGER.info(audit.failureString(response.status(), response.body(), latency));
+        }
         stats.recordFailedRequest(request, response, latency);
       }
       LogContext.clearLogContext();
@@ -309,7 +329,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler);
     StoresRoutes storesRoutes =
         new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository, requestHandler.getStoreRequestHandler());
-    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
+    JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController, pushJobDetailsSerializer);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
     CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
@@ -328,6 +348,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     DataRecoveryRoutes dataRecoveryRoutes = new DataRecoveryRoutes(sslEnabled, accessController);
     AdminTopicMetadataRoutes adminTopicMetadataRoutes = new AdminTopicMetadataRoutes(sslEnabled, accessController);
     StoragePersonaRoutes storagePersonaRoutes = new StoragePersonaRoutes(sslEnabled, accessController);
+
+    httpService.get(HEALTH.getPath(), healthRoute(apiReadiness));
 
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
@@ -357,6 +379,9 @@ public class AdminSparkServer extends AbstractVeniceService {
         SET_TOPIC_COMPACTION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.setTopicCompaction(admin)));
 
+    httpService.get(
+        GET_CLUSTER_PROVISIONED_VENICE_UNITS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.getClusterProvisionedVeniceUnits(admin)));
     httpService.post(
         UPDATE_CLUSTER_CONFIG.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.updateClusterConfig(admin)));
@@ -474,6 +499,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         LIST_NODES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, nodesAndReplicas.listAllNodes(admin)));
+    httpService.get(
+        GET_LIVE_STORAGE_NODE_COUNT.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, nodesAndReplicas.getLiveStorageNodeCount(admin)));
     httpService.get(
         LIST_REPLICAS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, nodesAndReplicas.listReplicasForStore(admin)));
@@ -761,6 +789,22 @@ public class AdminSparkServer extends AbstractVeniceService {
   @Override
   public void stopInner() {
     httpService.stop();
+  }
+
+  private static boolean isHealthProbe(Request request) {
+    return "GET".equals(request.requestMethod()) && HEALTH.getPath().equals(request.uri());
+  }
+
+  static Route healthRoute(BooleanSupplier apiReadiness) {
+    return (request, response) -> {
+      boolean ready = apiReadiness.getAsBoolean();
+      response.type(HttpConstants.TEXT_PLAIN);
+      response.status(ready ? HttpStatus.SC_OK : HttpStatus.SC_SERVICE_UNAVAILABLE);
+      if (!ready) {
+        request.attribute(REQUEST_SUCCEED, false);
+      }
+      return ready ? "OK" : "NOT_READY";
+    };
   }
 
   int getPort() {
