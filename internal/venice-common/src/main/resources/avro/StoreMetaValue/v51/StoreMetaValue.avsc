@@ -129,7 +129,10 @@
                     {"name": "regularVersionETLEnabled", "type": "boolean", "doc": "Whether or not enable regular version ETL for this store."},
                     {"name": "futureVersionETLEnabled", "type": "boolean", "doc": "Whether or not enable future version ETL - the version that might come online in future - for this store."},
                     {"name": "etlStrategy", "type": "int", "default": 1, "doc": "Strategy to use for ETL. Default is UNSPECIFIED"},
-                    {"name": "etlActiveFabrics", "type": ["null", {"type": "array", "items": "string"}], "default": null, "doc": "Allowlist of fabric names where ETL onboard/offboard fires. null = fire in every fabric (default behavior). When set, only listed fabrics' child controllers trigger the ExternalETLService."}
+                    {"name": "etlActiveFabrics", "type": ["null", {"type": "array", "items": "string"}], "default": null, "doc": "Allowlist of fabric names where ETL onboard/offboard fires. null = fire in every fabric (default behavior). When set, only listed fabrics' child controllers trigger the ExternalETLService."},
+                    {"name": "initialSlaTier", "type": ["null", "string"], "default": null, "doc": "SLA tier the external ETL service should use when it first onboards this store in a fabric. Sent with every onboard request and never synced back from the external ETL service, so it does not reflect the store's current tier. null = not set."},
+                    {"name": "initialGrantAclUsers", "type": ["null", {"type": "array", "items": "string"}], "default": null, "doc": "Users the external ETL service should grant access to when it first onboards this store in a fabric. Sent with every onboard request and never synced back from the external ETL service. null = not set."},
+                    {"name": "initialWorkloadType", "type": ["null", "string"], "default": null, "doc": "ETL workload type the external ETL service should use when it first onboards this store in a fabric. Unrelated to the store-level workloadType. Sent with every onboard request and never synced back from the external ETL service. null = not set."}
                   ]
                 }
               ],
