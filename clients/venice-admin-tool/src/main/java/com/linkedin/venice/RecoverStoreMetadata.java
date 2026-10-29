@@ -232,6 +232,15 @@ public class RecoverStoreMetadata {
           updateParams.setRegularVersionETLEnabled(deletedStore.getEtlStoreConfig().isRegularVersionETLEnabled());
           updateParams.setFutureVersionETLEnabled(deletedStore.getEtlStoreConfig().isFutureVersionETLEnabled());
           updateParams.setETLStrategy(deletedStore.getEtlStoreConfig().getETLStrategy());
+          if (deletedStore.getEtlStoreConfig().getInitialSlaTier() != null) {
+            updateParams.setEtlInitialSlaTier(deletedStore.getEtlStoreConfig().getInitialSlaTier());
+          }
+          if (deletedStore.getEtlStoreConfig().getInitialGrantAclUsers() != null) {
+            updateParams.setEtlInitialGrantAclUsers(deletedStore.getEtlStoreConfig().getInitialGrantAclUsers());
+          }
+          if (deletedStore.getEtlStoreConfig().getInitialWorkloadType() != null) {
+            updateParams.setEtlInitialWorkloadType(deletedStore.getEtlStoreConfig().getInitialWorkloadType());
+          }
         }
         updateParams.setCompressionStrategy(deletedStore.getCompressionStrategy())
             .setClientDecompressionEnabled(deletedStore.getClientDecompressionEnabled())

@@ -695,6 +695,21 @@ public class AdminExecutionTask implements Callable<Void> {
         params.setEtlActiveFabrics(
             message.ETLStoreConfig.etlActiveFabrics.stream().map(CharSequence::toString).collect(Collectors.toList()));
       }
+
+      // The initial onboarding values are nullable, so map them unconditionally: a null on the message means the
+      // value should be cleared. Whether they are applied is still gated by updatedConfigsList below.
+      params.setEtlInitialSlaTier(
+          message.ETLStoreConfig.initialSlaTier == null ? null : message.ETLStoreConfig.initialSlaTier.toString());
+      params.setEtlInitialGrantAclUsers(
+          message.ETLStoreConfig.initialGrantAclUsers == null
+              ? null
+              : message.ETLStoreConfig.initialGrantAclUsers.stream()
+                  .map(CharSequence::toString)
+                  .collect(Collectors.toList()));
+      params.setEtlInitialWorkloadType(
+          message.ETLStoreConfig.initialWorkloadType == null
+              ? null
+              : message.ETLStoreConfig.initialWorkloadType.toString());
     }
 
     if (message.views != null) {

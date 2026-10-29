@@ -98,6 +98,41 @@ public class ETLStoreConfigImpl implements ETLStoreConfig {
   }
 
   @Override
+  public String getInitialSlaTier() {
+    return this.etlConfig.initialSlaTier == null ? null : this.etlConfig.initialSlaTier.toString();
+  }
+
+  @Override
+  public void setInitialSlaTier(String initialSlaTier) {
+    this.etlConfig.initialSlaTier = initialSlaTier;
+  }
+
+  @Override
+  public List<String> getInitialGrantAclUsers() {
+    if (this.etlConfig.initialGrantAclUsers == null) {
+      return null;
+    }
+    return this.etlConfig.initialGrantAclUsers.stream().map(Object::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public void setInitialGrantAclUsers(List<String> initialGrantAclUsers) {
+    this.etlConfig.initialGrantAclUsers = initialGrantAclUsers == null
+        ? null
+        : initialGrantAclUsers.stream().map(Object::toString).collect(Collectors.toList());
+  }
+
+  @Override
+  public String getInitialWorkloadType() {
+    return this.etlConfig.initialWorkloadType == null ? null : this.etlConfig.initialWorkloadType.toString();
+  }
+
+  @Override
+  public void setInitialWorkloadType(String initialWorkloadType) {
+    this.etlConfig.initialWorkloadType = initialWorkloadType;
+  }
+
+  @Override
   public StoreETLConfig dataModel() {
     return this.etlConfig;
   }
@@ -121,11 +156,15 @@ public class ETLStoreConfigImpl implements ETLStoreConfig {
 
   @JsonIgnore
   public ETLStoreConfig clone() {
-    return new ETLStoreConfigImpl(
+    ETLStoreConfig clone = new ETLStoreConfigImpl(
         getEtledUserProxyAccount(),
         isRegularVersionETLEnabled(),
         isFutureVersionETLEnabled(),
         getETLStrategy().getValue(),
         getEtlActiveFabrics());
+    clone.setInitialSlaTier(getInitialSlaTier());
+    clone.setInitialGrantAclUsers(getInitialGrantAclUsers());
+    clone.setInitialWorkloadType(getInitialWorkloadType());
+    return clone;
   }
 }

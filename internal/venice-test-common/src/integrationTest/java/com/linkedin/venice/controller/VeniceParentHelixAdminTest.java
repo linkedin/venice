@@ -559,6 +559,49 @@ public class VeniceParentHelixAdminTest {
     }
   }
 
+  @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
+  public void testUpdateStoreEtlInitialOnboardingValues() {
+    String storeName = Utils.getUniqueString("test_etl_initial_values_store");
+    List<String> grantUsers = Arrays.asList("user-a", "user-b");
+    try (ControllerClient parentControllerClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString())) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", "\"long\"", generateSchema(false).toString()));
+
+      // Set through the parent, then clear. Child controllers get both through the admin channel, and an unrelated ETL
+      // update in between leaves the values alone.
+      assertCommand(
+          parentControllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
+                  .setEtlInitialGrantAclUsers(grantUsers)
+                  .setEtlInitialWorkloadType("BATCH")));
+      assertCommand(
+          parentControllerClient
+              .updateStore(storeName, new UpdateStoreQueryParams().setEtledProxyUserAccount("test_user")));
+      venice.useControllerClient(child -> waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        ETLStoreConfig config = assertCommand(child.getStore(storeName)).getStore().getEtlStoreConfig();
+        Assert.assertEquals(config.getEtledUserProxyAccount(), "test_user");
+        Assert.assertEquals(config.getInitialSlaTier(), "TIER_A");
+        Assert.assertEquals(config.getInitialGrantAclUsers(), grantUsers);
+        Assert.assertEquals(config.getInitialWorkloadType(), "BATCH");
+      }));
+
+      assertCommand(
+          parentControllerClient.updateStore(
+              storeName,
+              new UpdateStoreQueryParams().setEtlInitialSlaTier(null)
+                  .setEtlInitialGrantAclUsers(null)
+                  .setEtlInitialWorkloadType(null)));
+      venice.useControllerClient(child -> waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        ETLStoreConfig config = assertCommand(child.getStore(storeName)).getStore().getEtlStoreConfig();
+        Assert.assertNull(config.getInitialSlaTier());
+        Assert.assertNull(config.getInitialGrantAclUsers());
+        Assert.assertNull(config.getInitialWorkloadType());
+      }));
+    }
+  }
+
   private Schema generateSchema(boolean addFieldWithDefaultValue) {
     String schemaStr = "{\"namespace\": \"example.avro\",\n" + " \"type\": \"record\",\n" + " \"name\": \"User\",\n"
         + " \"fields\": [\n" + "      { \"name\": \"id\", \"type\": \"string\", \"default\": \"default_ID\"},\n"

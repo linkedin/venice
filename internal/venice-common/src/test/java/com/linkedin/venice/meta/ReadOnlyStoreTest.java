@@ -496,4 +496,22 @@ public class ReadOnlyStoreTest {
     }
     assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
   }
+
+  @Test
+  public void testReadOnlyEtlStoreConfigAndCloneCarryInitialOnboardingValues() {
+    Store store = TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
+    ETLStoreConfig etlStoreConfig = TestUtils.createTestETLStoreConfig();
+    etlStoreConfig.setEtlActiveFabrics(Collections.singletonList("dc-0"));
+    store.setEtlStoreConfig(etlStoreConfig);
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    ETLStoreConfig readOnly = readOnlyStore.getEtlStoreConfig();
+    assertEquals(readOnly.getInitialSlaTier(), "initial_sla_tier");
+    assertEquals(readOnly.getInitialGrantAclUsers(), etlStoreConfig.getInitialGrantAclUsers());
+    assertEquals(readOnly.getInitialWorkloadType(), "initial_workload_type");
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.setInitialSlaTier(null));
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.setInitialGrantAclUsers(null));
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.setInitialWorkloadType(null));
+    // The meta store is written from cloneStoreProperties, so the clone must carry the whole ETL config.
+    assertEquals(readOnlyStore.cloneStoreProperties().getEtlConfig(), etlStoreConfig.dataModel());
+  }
 }

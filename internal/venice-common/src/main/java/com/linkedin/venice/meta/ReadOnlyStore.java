@@ -256,6 +256,36 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getInitialSlaTier() {
+      return this.delegate.getInitialSlaTier();
+    }
+
+    @Override
+    public void setInitialSlaTier(String initialSlaTier) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> getInitialGrantAclUsers() {
+      return this.delegate.getInitialGrantAclUsers();
+    }
+
+    @Override
+    public void setInitialGrantAclUsers(List<String> initialGrantAclUsers) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String getInitialWorkloadType() {
+      return this.delegate.getInitialWorkloadType();
+    }
+
+    @Override
+    public void setInitialWorkloadType(String initialWorkloadType) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public ETLStoreConfig clone() {
       return this.delegate.clone();
     }
@@ -2024,8 +2054,16 @@ public class ReadOnlyStore implements Store {
     storeETLConfig.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
     storeETLConfig.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
     storeETLConfig.setEtlStrategy(etlStoreConfig.getETLStrategy().getValue());
+    storeETLConfig.setEtlActiveFabrics(toCharSequenceList(etlStoreConfig.getEtlActiveFabrics()));
+    storeETLConfig.setInitialSlaTier(etlStoreConfig.getInitialSlaTier());
+    storeETLConfig.setInitialGrantAclUsers(toCharSequenceList(etlStoreConfig.getInitialGrantAclUsers()));
+    storeETLConfig.setInitialWorkloadType(etlStoreConfig.getInitialWorkloadType());
 
     return storeETLConfig;
+  }
+
+  private static List<CharSequence> toCharSequenceList(List<String> values) {
+    return values == null ? null : new ArrayList<>(values);
   }
 
   private static StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {

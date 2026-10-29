@@ -303,6 +303,19 @@ public class TestAdminTool {
   }
 
   @Test
+  public void testAdminUpdateStoreArgEtlInitialOnboardingValues() throws ParseException, IOException {
+    String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
+        "testStore", "--etl-initial-sla-tier", "TIER_A", "--etl-initial-grant-acl-users", "user-a,user-b",
+        "--etl-initial-workload-type", "null" };
+    UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(AdminTool.getCommandLine(args));
+    Assert.assertEquals(params.getEtlInitialSlaTier(), "TIER_A");
+    Assert.assertEquals(params.getEtlInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
+    // "null" clears a value.
+    Assert.assertTrue(params.isEtlInitialWorkloadTypeSpecified());
+    Assert.assertNull(params.getEtlInitialWorkloadType());
+  }
+
+  @Test
   public void testAdminUpdateStoreArgStorageModeAndExternalStorageReadMode() throws ParseException, IOException {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--storage-mode", "DUAL_WRITE", "--external-storage-read-mode", "DUAL_MODE_EARLY_RETURN",

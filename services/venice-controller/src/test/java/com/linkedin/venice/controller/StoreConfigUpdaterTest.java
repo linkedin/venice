@@ -62,12 +62,14 @@ import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1142,6 +1144,51 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertTrue(
         updatedConfigKeys(cleared).containsAll(Arrays.asList(VENICE_UNITS, WORKLOAD_TYPE)),
         "An explicit clear must be replicated to child controllers");
+  }
+
+  @DataProvider(name = "etlOnboardTransitions")
+  public Object[][] etlOnboardTransitions() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  /**
+   * Both onboard paths, turning on EXTERNAL_WITH_VENICE_TRIGGER and adding the local fabric to etlActiveFabrics, must
+   * hand the external ETL service the ETL config written by the same update, not the one read before it.
+   */
+  @Test(dataProvider = "etlOnboardTransitions")
+  public void testApplyOnChild_OnboardingSeesEtlConfigFromSameUpdate(boolean firstTimeVeniceTrigger) {
+    String storeName = Utils.getUniqueString("child-etl-onboard");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multiClusterConfigs = admin.getMultiClusterConfigs();
+    doReturn("dc-local").when(multiClusterConfigs).getRegionName();
+    doReturn(Optional.of(mock(ExternalETLService.class))).when(admin).getExternalETLService();
+    Store store = admin.getStore(clusterName, storeName);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
+        .setEtlInitialGrantAclUsers(Arrays.asList("user-a", "user-b"))
+        .setEtlInitialWorkloadType("BATCH");
+    if (firstTimeVeniceTrigger) {
+      params.setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+          .setRegularVersionETLEnabled(true)
+          .setEtledProxyUserAccount("proxy");
+    } else {
+      int strategy = VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER.getValue();
+      store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, strategy, Arrays.asList("dc-other")));
+      params.setEtlActiveFabrics(Arrays.asList("dc-other", "dc-local"));
+    }
+    // Like the real store repository, hand out a copy taken before the update is applied.
+    doAnswer(invocation -> store.cloneStore()).when(admin).getStore(clusterName, storeName);
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    ArgumentCaptor<Store> onboarded = ArgumentCaptor.forClass(Store.class);
+    verify(admin).onboardETLForExistingStoreVersion(onboarded.capture());
+    assertEquals(store.getEtlStoreConfig().getInitialSlaTier(), "TIER_A");
+    assertEquals(onboarded.getValue().getEtlStoreConfig().clone(), store.getEtlStoreConfig());
   }
 
   private static Set<String> updatedConfigKeys(UpdateStore msg) {
