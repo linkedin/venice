@@ -26,6 +26,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_SLA_TIER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXPECTED_ROUTER_COUNT;
@@ -146,10 +149,10 @@ public enum ControllerRoute implements VeniceDimensionInterface {
       NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, REPLICATION_METADATA_PROTOCOL_VERSION_ID,
       READ_COMPUTATION_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
       BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
-      FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, ETL_STRATEGY, ETL_ACTIVE_FABRICS, DISABLE_META_STORE,
-      DISABLE_DAVINCI_PUSH_STATUS_STORE, PERSONA_NAME, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
-      STORE_MIGRATION, ENABLE_STORE_MIGRATION, LARGEST_USED_RT_VERSION_NUMBER, VENICE_UNITS, WORKLOAD_TYPE,
-      WRITE_QUOTA_ENABLED
+      FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, ETL_STRATEGY, ETL_ACTIVE_FABRICS, ETL_INITIAL_SLA_TIER,
+      ETL_INITIAL_GRANT_ACL_USERS, ETL_INITIAL_WORKLOAD_TYPE, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
+      PERSONA_NAME, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES, STORE_MIGRATION, ENABLE_STORE_MIGRATION,
+      LARGEST_USED_RT_VERSION_NUMBER, VENICE_UNITS, WORKLOAD_TYPE, WRITE_QUOTA_ENABLED
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION(
       "/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME), REGIONS_FILTER

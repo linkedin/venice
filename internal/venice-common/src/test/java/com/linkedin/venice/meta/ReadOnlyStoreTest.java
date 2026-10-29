@@ -496,4 +496,47 @@ public class ReadOnlyStoreTest {
     }
     assertEquals(store.getVersion(1).getStorageMode(), StorageMode.DUAL_WRITE);
   }
+
+  @Test
+  public void testReadOnlyEtlConfigDelegatesInitialOnboardingValuesAndRejectsSetters() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
+    ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl("proxy", true, false, 2, null);
+    etlStoreConfig.setInitialSlaTier("TIER_A");
+    etlStoreConfig.setInitialGrantAclUsers(Arrays.asList("user-a", "user-b"));
+    etlStoreConfig.setInitialWorkloadType("BATCH");
+    store.setEtlStoreConfig(etlStoreConfig);
+
+    ETLStoreConfig readOnly = new ReadOnlyStore(store).getEtlStoreConfig();
+    assertEquals(readOnly.getInitialSlaTier(), "TIER_A");
+    assertEquals(readOnly.getInitialGrantAclUsers(), Arrays.asList("user-a", "user-b"));
+    assertEquals(readOnly.getInitialWorkloadType(), "BATCH");
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.setInitialSlaTier("TIER_B"));
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.setInitialGrantAclUsers(null));
+    assertThrows(UnsupportedOperationException.class, () -> readOnly.setInitialWorkloadType(null));
+  }
+
+  @Test
+  public void testCloneStorePropertiesCopiesEtlListsAndInitialOnboardingValues() {
+    ZKStore store = (ZKStore) TestUtils.createTestStore("test_store", "owner", System.currentTimeMillis());
+    ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl("proxy", true, false, 2, Arrays.asList("dc-0"));
+    etlStoreConfig.setInitialSlaTier("TIER_A");
+    etlStoreConfig.setInitialGrantAclUsers(Arrays.asList("user-a", "user-b"));
+    etlStoreConfig.setInitialWorkloadType("BATCH");
+    store.setEtlStoreConfig(etlStoreConfig);
+
+    StoreETLConfig cloned = new ReadOnlyStore(store).cloneStoreProperties().getEtlConfig();
+    assertEquals(cloned.getEtlActiveFabrics().toString(), "[dc-0]");
+    assertEquals(cloned.getInitialSlaTier().toString(), "TIER_A");
+    assertEquals(cloned.getInitialGrantAclUsers().toString(), "[user-a, user-b]");
+    assertEquals(cloned.getInitialWorkloadType().toString(), "BATCH");
+
+    // Unset values stay null in the clone.
+    ZKStore unsetStore = (ZKStore) TestUtils.createTestStore("test_store_2", "owner", System.currentTimeMillis());
+    unsetStore.setEtlStoreConfig(new ETLStoreConfigImpl());
+    StoreETLConfig unsetClone = new ReadOnlyStore(unsetStore).cloneStoreProperties().getEtlConfig();
+    assertNull(unsetClone.getEtlActiveFabrics());
+    assertNull(unsetClone.getInitialSlaTier());
+    assertNull(unsetClone.getInitialGrantAclUsers());
+    assertNull(unsetClone.getInitialWorkloadType());
+  }
 }
