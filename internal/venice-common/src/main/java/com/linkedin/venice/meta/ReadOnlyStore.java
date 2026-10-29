@@ -158,6 +158,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public long getRewindEpochTimeInSecondsOverride() {
+      return this.delegate.getRewindEpochTimeInSecondsOverride();
+    }
+
+    @Override
+    public void setRewindEpochTimeInSecondsOverride(long rewindEpochTimeInSecondsOverride) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public HybridStoreConfig clone() {
       return this.delegate.clone();
     }
@@ -2045,6 +2055,7 @@ public class ReadOnlyStore implements Store {
     StoreHybridConfig storeHybridConfig = new StoreHybridConfig();
 
     storeHybridConfig.setRewindTimeInSeconds(hybridStoreConfig.getRewindTimeInSeconds());
+    storeHybridConfig.setRewindEpochTimeInSecondsOverride(hybridStoreConfig.getRewindEpochTimeInSecondsOverride());
     storeHybridConfig.setOffsetLagThresholdToGoOnline(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
     storeHybridConfig.setProducerTimestampLagThresholdToGoOnlineInSeconds(
         hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds());

@@ -239,6 +239,15 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final int DEFERRED_SWAP_RECOVERY_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private static final int ROLLBACK_STATUS_POLL_MAX_ATTEMPTS = 15;
   private static final Duration ROLLBACK_STATUS_POLL_MAX_DURATION = Duration.ofMinutes(2);
+  /**
+   * The AdminOperation protocol version that introduced
+   * {@link com.linkedin.venice.controller.kafka.protocol.admin.AddVersion#rewindEpochTimeInSecondsOverride}.
+   * A non-default (>= 0) absolute rewind epoch can only be emitted on the admin topic once the cluster's agreed
+   * admin-operation protocol version (persisted in ZK) has advanced to at least this value. Below it, the
+   * {@code SemanticDetector} serialization guard rejects the whole AddVersion message rather than silently dropping
+   * the unknown field, so we must suppress the epoch and fall back to the relative rewind override instead.
+   */
+  static final int REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION = 106;
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -1155,6 +1164,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int ignoredRmdVersionID,
       boolean versionSwapDeferred,
       int repushSourceVersion,
@@ -1176,6 +1186,7 @@ public class VeniceParentHelixAdmin implements Admin {
         pushType,
         remoteKafkaBootstrapServers,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         largestUsedRTVersionNumber);
     if (version.isActiveActiveReplicationEnabled()) {
@@ -1601,6 +1612,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> sourceGridFabric,
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -1836,6 +1848,7 @@ public class VeniceParentHelixAdmin implements Admin {
           compressionDictionary,
           sourceGridFabric,
           rewindTimeInSecondsOverride,
+          rewindEpochTimeInSecondsOverride,
           emergencySourceRegion,
           effectiveVersionSwapDeferred,
           effectiveTargetedRegions,
@@ -2124,6 +2137,7 @@ public class VeniceParentHelixAdmin implements Admin {
       String compressionDictionary,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -2151,6 +2165,7 @@ public class VeniceParentHelixAdmin implements Admin {
         null,
         sourceGridFabric,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
@@ -2212,7 +2227,8 @@ public class VeniceParentHelixAdmin implements Admin {
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
-  private AddVersion getAddVersionMessage(
+  // package-private for testing of protocol-aware rewind-epoch resolution
+  AddVersion getAddVersionMessage(
       String clusterName,
       String storeName,
       String pushJobId,
@@ -2235,9 +2251,12 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     if (version.getHybridStoreConfig() != null) {
       addVersion.rewindTimeInSecondsOverride = version.getHybridStoreConfig().getRewindTimeInSeconds();
+      addVersion.rewindEpochTimeInSecondsOverride =
+          getProtocolAwareRewindEpochTimeInSecondsOverride(clusterName, storeName, version, addVersion);
     } else {
       // Default value, unused for non hybrid store
       addVersion.rewindTimeInSecondsOverride = -1;
+      addVersion.rewindEpochTimeInSecondsOverride = -1;
     }
     if (StringUtils.isNotEmpty(targetedRegions)) {
       addVersion.targetedRegions = new ArrayList<>(parseRegionsFilterList(targetedRegions));
@@ -2258,6 +2277,47 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     return addVersion;
+  }
+
+  /**
+   * Protocol-aware resolution of {@link com.linkedin.venice.controller.kafka.protocol.admin.AddVersion#rewindEpochTimeInSecondsOverride}.
+   *
+   * <p>The absolute rewind-epoch field was introduced in AdminOperation schema v106. When the cluster's agreed
+   * admin-operation protocol version (persisted in ZK) has not yet advanced to v106, emitting a non-default epoch
+   * would be rejected outright by the {@code SemanticDetector} serialization guard in
+   * {@link #sendAdminMessageAndWaitForConsumed} -- a hard failure, not a graceful fallback. In that window we drop
+   * the epoch (-1) and rely on the relative {@code rewindTimeInSecondsOverride}, which the push job already populates
+   * with the same buffered landing point. Once every controller in the cluster is upgraded and the agreed protocol
+   * version reaches v106, the exact epoch flows through automatically with no push-job or config change.</p>
+   *
+   * @return the epoch to place on the message: the store's configured override when the protocol allows it, else -1.
+   */
+  private long getProtocolAwareRewindEpochTimeInSecondsOverride(
+      String clusterName,
+      String storeName,
+      Version version,
+      AddVersion addVersion) {
+    long rewindEpochTimeInSecondsOverride = version.getHybridStoreConfig().getRewindEpochTimeInSecondsOverride();
+    if (rewindEpochTimeInSecondsOverride < 0) {
+      // Already the default sentinel -- nothing to suppress, carries no new semantic.
+      return rewindEpochTimeInSecondsOverride;
+    }
+    int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
+    if (writerSchemaId < REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION) {
+      LOGGER.warn(
+          "Suppressing absolute rewind epoch {} for store {} in cluster {}: admin-operation protocol version {} < {}. "
+              + "Falling back to relative rewindTimeInSecondsOverride {}. The exact epoch will activate automatically "
+              + "once the cluster's agreed protocol version reaches {}.",
+          rewindEpochTimeInSecondsOverride,
+          storeName,
+          clusterName,
+          writerSchemaId,
+          REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION,
+          addVersion.rewindTimeInSecondsOverride,
+          REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION);
+      return -1;
+    }
+    return rewindEpochTimeInSecondsOverride;
   }
 
   /**

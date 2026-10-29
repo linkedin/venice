@@ -2117,6 +2117,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Before migration ends, dest stores all leaders and followers consume version topics in local fabric.
             version.getPushStreamSourceAddress(),
             version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
+            version.getHybridStoreConfig() == null
+                ? -1
+                : version.getHybridStoreConfig().getRewindEpochTimeInSecondsOverride(),
             version.getRmdVersionId());
         if (versionResponse.isError()) {
           throw new VeniceException(
@@ -2576,6 +2579,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       int repushSourceVersion,
@@ -2589,6 +2593,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pushType,
         remoteKafkaBootstrapServers,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         versionSwapDeferred,
         null,
@@ -2611,6 +2616,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -2663,6 +2669,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         remoteKafkaBootstrapServers,
         Optional.empty(),
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         Optional.empty(),
         versionSwapDeferred,
@@ -2685,6 +2692,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId) {
     checkControllerLeadershipFor(clusterName);
     try {
@@ -2707,6 +2715,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               pushType,
               remoteKafkaBootstrapServers,
               rewindTimeInSecondsOverride,
+              rewindEpochTimeInSecondsOverride,
               replicationMetadataVersionId);
           if (response.isError()) {
             // Throw exceptions here to utilize admin channel's retry property to overcome transient errors.
@@ -2729,6 +2738,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId);
         if (response.isError()) {
           throw new VeniceException(
@@ -2764,6 +2774,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
@@ -2788,6 +2799,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         remoteKafkaBootstrapServers,
         sourceGridFabric,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
@@ -2811,6 +2823,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       int largestUsedRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
@@ -2857,7 +2870,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         /**
          * Version-level rewind time override.
          */
-        handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
+        handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride, rewindEpochTimeInSecondsOverride);
 
         version.setRmdVersionId(replicationMetadataVersionId);
 
@@ -2868,10 +2881,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return version;
   }
 
-  private void handleRewindTimeOverride(Store store, Version version, long rewindTimeInSecondsOverride) {
-    if (store.isHybrid() && rewindTimeInSecondsOverride >= 0
-        && rewindTimeInSecondsOverride != version.getHybridStoreConfig().getRewindTimeInSeconds()) {
-      HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
+  private void handleRewindTimeOverride(
+      Store store,
+      Version version,
+      long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride) {
+    if (!store.isHybrid()) {
+      return;
+    }
+    HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
+    boolean updated = false;
+    // Store epoch if provided — new controllers/servers use this directly
+    if (rewindEpochTimeInSecondsOverride >= 0) {
+      LOGGER.info(
+          "Setting rewind epoch time override: {} for store: {} and version: {}",
+          rewindEpochTimeInSecondsOverride,
+          store.getName(),
+          version.getNumber());
+      hybridStoreConfig.setRewindEpochTimeInSecondsOverride(rewindEpochTimeInSecondsOverride);
+      updated = true;
+    }
+    // Also store relative override if provided — old child controllers read this
+    // from the AddVersion admin message as a backward-compatible fallback
+    if (rewindTimeInSecondsOverride >= 0 && rewindTimeInSecondsOverride != hybridStoreConfig.getRewindTimeInSeconds()) {
       LOGGER.info(
           "Overriding rewind time in seconds: {} for store: {} and version: {} the original rewind time config: {}",
           rewindTimeInSecondsOverride,
@@ -2879,6 +2911,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           version.getNumber(),
           hybridStoreConfig.getRewindTimeInSeconds());
       hybridStoreConfig.setRewindTimeInSeconds(rewindTimeInSecondsOverride);
+      updated = true;
+    }
+    if (updated) {
       version.setHybridStoreConfig(hybridStoreConfig);
     }
   }
@@ -3186,6 +3221,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
@@ -3207,6 +3243,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         remoteKafkaBootstrapServers,
         sourceGridFabric,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
@@ -3303,6 +3340,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
@@ -3492,7 +3530,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             /**
              * Version-level rewind time override.
              */
-            handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
+            handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride, rewindEpochTimeInSecondsOverride);
             store.setPersistenceType(PersistenceType.ROCKS_DB);
 
             version.setRmdVersionId(replicationMetadataVersionId);
@@ -3996,6 +4034,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> sourceGridFabric,
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -4030,6 +4069,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             null,
             sourceGridFabric,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId,
             emergencySourceRegion,
             versionSwapDeferred,

@@ -2449,20 +2449,29 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Convert a user-provided rewind-epoch override into a relative {@link PushJobSetting#rewindTimeInSecondsOverride},
    * anchored just before version creation rather than at job start, so the job's pre-SOP work (input sampling and
-   * ZSTD dictionary build) is not folded into the rewind. No-op when no epoch override was provided.
+   * ZSTD dictionary build) is not folded into the rewind. The configured epoch buffer is also subtracted from the
+   * absolute {@link PushJobSetting#rewindEpochTimeInSecondsOverride} carried downstream, so the A/A absolute-epoch
+   * path ({@code RealTimeTopicSwitcher.getRewindStartTime}) lands at {@code epoch - buffer} to absorb clock skew
+   * between the snapshot-timestamp source and RT producers, consistent with the relative path. No-op when no epoch
+   * override was provided.
    */
   void convertEpochRewindOverrideToRelativeDuration(PushJobSetting setting) {
     if (setting.rewindEpochTimeInSecondsOverride == NOT_SET) {
       return;
     }
     long nowInSeconds = System.currentTimeMillis() / 1000;
+    long bufferedEpochInSeconds =
+        setting.rewindEpochTimeInSecondsOverride - setting.rewindEpochTimeBufferInSecondsOverride;
     setting.rewindTimeInSecondsOverride =
         (nowInSeconds - setting.rewindEpochTimeInSecondsOverride) + setting.rewindEpochTimeBufferInSecondsOverride;
     LOGGER.info(
-        "Converted rewind epoch override {} (buffer {}s) to rewindTimeInSecondsOverride {}s at version-creation time",
+        "Converted rewind epoch override {} (buffer {}s) to rewindTimeInSecondsOverride {}s and buffered epoch {} at "
+            + "version-creation time",
         setting.rewindEpochTimeInSecondsOverride,
         setting.rewindEpochTimeBufferInSecondsOverride,
-        setting.rewindTimeInSecondsOverride);
+        setting.rewindTimeInSecondsOverride,
+        bufferedEpochInSeconds);
+    setting.rewindEpochTimeInSecondsOverride = bufferedEpochInSeconds;
   }
 
   protected void validateRemoteHybridSettings(PushJobSetting setting) {
@@ -2992,6 +3001,7 @@ public class VenicePushJob implements AutoCloseable {
             Optional.ofNullable(setting.sourceGridFabric),
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
+            setting.rewindEpochTimeInSecondsOverride,
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,

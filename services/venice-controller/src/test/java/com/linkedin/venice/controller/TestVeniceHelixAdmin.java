@@ -276,6 +276,7 @@ public class TestVeniceHelixAdmin {
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             anyInt());
     Supplier<Version> addVersion = () -> admin.addVersionOnly(
@@ -286,6 +287,7 @@ public class TestVeniceHelixAdmin {
         1,
         PushType.BATCH,
         "remote-kafka-bootstrap-server",
+        -1,
         -1,
         -1,
         Version.DEFAULT_RT_VERSION_NUMBER);

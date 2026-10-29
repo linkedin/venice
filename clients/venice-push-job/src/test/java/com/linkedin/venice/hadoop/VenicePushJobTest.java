@@ -137,6 +137,9 @@ public class VenicePushJobTest extends VenicePushJobTestBase {
       assertTrue(
           setting.rewindTimeInSecondsOverride >= expected && setting.rewindTimeInSecondsOverride <= expected + 5,
           "Expected rewindTimeInSecondsOverride ~" + expected + " but was " + setting.rewindTimeInSecondsOverride);
+      // The absolute epoch carried downstream is buffered back by the same amount so the A/A absolute path
+      // lands at epoch - buffer, absorbing clock skew consistently with the relative path.
+      assertEquals(setting.rewindEpochTimeInSecondsOverride, epoch - bufferSeconds);
     }
   }
 

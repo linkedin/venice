@@ -56,6 +56,7 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
     this.hybridConfig.bufferReplayPolicy =
         bufferReplayPolicy == null ? BufferReplayPolicy.REWIND_FROM_EOP.getValue() : bufferReplayPolicy.getValue();
     this.hybridConfig.realTimeTopicName = realTimeTopicName == null ? DEFAULT_REAL_TIME_TOPIC_NAME : realTimeTopicName;
+    this.hybridConfig.rewindEpochTimeInSecondsOverride = -1;
   }
 
   HybridStoreConfigImpl(StoreHybridConfig config) {
@@ -113,6 +114,16 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   }
 
   @Override
+  public long getRewindEpochTimeInSecondsOverride() {
+    return this.hybridConfig.rewindEpochTimeInSecondsOverride;
+  }
+
+  @Override
+  public void setRewindEpochTimeInSecondsOverride(long rewindEpochTimeInSecondsOverride) {
+    this.hybridConfig.rewindEpochTimeInSecondsOverride = rewindEpochTimeInSecondsOverride;
+  }
+
+  @Override
   public StoreHybridConfig dataModel() {
     return this.hybridConfig;
   }
@@ -136,12 +147,14 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
 
   @JsonIgnore
   public HybridStoreConfig clone() {
-    return new HybridStoreConfigImpl(
+    HybridStoreConfigImpl cloned = new HybridStoreConfigImpl(
         getRewindTimeInSeconds(),
         getOffsetLagThresholdToGoOnline(),
         getProducerTimestampLagThresholdToGoOnlineInSeconds(),
         getDataReplicationPolicy(),
         getBufferReplayPolicy(),
         getRealTimeTopicName());
+    cloned.setRewindEpochTimeInSecondsOverride(getRewindEpochTimeInSecondsOverride());
+    return cloned;
   }
 }

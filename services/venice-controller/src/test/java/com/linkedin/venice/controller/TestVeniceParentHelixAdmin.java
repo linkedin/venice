@@ -46,6 +46,8 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
+import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -216,6 +218,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -237,6 +240,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         false,
         null,
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -263,6 +267,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             1,
             Version.PushType.INCREMENTAL,
             "remote-kafka-bootstrap-server",
+            -1,
             -1,
             1,
             testStore.getLargestUsedRTVersionNumber());
@@ -293,6 +298,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "remote-kafka-bootstrap-server",
         -1,
         -1,
+        -1,
         false,
         -1,
         -1);
@@ -305,6 +311,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         1,
         Version.PushType.INCREMENTAL,
         "remote-kafka-bootstrap-server",
+        -1,
         -1,
         1,
         testStore.getLargestUsedRTVersionNumber());
@@ -963,6 +970,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             0,
             Optional.empty(),
             false,
@@ -997,6 +1005,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           Optional.empty(),
+          -1,
           -1,
           0,
           Optional.empty(),
@@ -1329,6 +1338,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -1347,6 +1357,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           Optional.empty(),
+          -1,
           -1,
           1,
           Optional.empty(),
@@ -1394,6 +1405,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             1,
             Optional.empty(),
             false,
@@ -1424,6 +1436,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -1501,6 +1514,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             1,
             Optional.empty(),
             false,
@@ -1526,6 +1540,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -1600,6 +1615,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1621,6 +1637,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             1,
             Optional.empty(),
@@ -1647,6 +1664,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         null,
         Optional.empty(),
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -1710,6 +1728,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1731,6 +1750,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             1,
             Optional.empty(),
@@ -1759,6 +1779,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             Optional.empty(),
+            -1,
             -1,
             Optional.empty(),
             false,
@@ -1822,6 +1843,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1844,6 +1866,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         null,
         Optional.empty(),
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -1909,6 +1932,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1930,6 +1954,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             1,
             Optional.empty(),
@@ -1956,6 +1981,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         null,
         Optional.empty(),
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -2022,6 +2048,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -2047,6 +2074,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             Optional.empty(),
+            -1,
             -1,
             Optional.empty(),
             false,
@@ -2114,6 +2142,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -2138,6 +2167,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -2243,6 +2273,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             any(),
             anyBoolean(),
             any(),
@@ -2275,6 +2306,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             false,
             null,
             Optional.empty(),
+            -1,
             -1,
             Optional.empty(),
             false,
@@ -4621,6 +4653,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               null,
               Optional.empty(),
               -1,
+              -1,
               1,
               Optional.empty(),
               false,
@@ -4659,6 +4692,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               Optional.empty(),
               Optional.empty(),
               -1,
+              -1,
               Optional.empty(),
               false,
               null,
@@ -4685,6 +4719,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                 null,
                 Optional.empty(),
                 Optional.empty(),
+                -1,
                 -1,
                 Optional.empty(),
                 false,
@@ -4721,6 +4756,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             0,
             Optional.empty(),
             false,
@@ -4743,6 +4779,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             0,
             Optional.empty(),
@@ -4948,6 +4985,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           null,
+          -1,
           -1,
           null,
           false,
@@ -5243,6 +5281,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             0,
             Optional.empty(),
             expectedVersionSwapDeferred,
@@ -5273,6 +5312,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           true, // versionSwapDeferred input - reset to false for system stores
           regionName, // targetedRegions input - reset to null for system stores
@@ -5294,6 +5334,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           Optional.empty(),
+          -1,
           -1,
           0,
           Optional.empty(),
@@ -5350,6 +5391,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5380,6 +5422,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5409,6 +5452,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5449,6 +5493,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5493,6 +5538,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5531,6 +5577,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5559,6 +5606,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5591,6 +5639,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5648,6 +5697,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -5671,6 +5721,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5696,6 +5747,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         any(),
         any(),
         any(),
+        anyLong(),
         anyLong(),
         anyInt(),
         any(),
@@ -5744,6 +5796,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5801,6 +5854,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -5825,6 +5879,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           "dc-0,dc-2",
@@ -5848,6 +5903,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         any(),
         any(),
         any(),
+        anyLong(),
         anyLong(),
         anyInt(),
         any(),
@@ -5880,6 +5936,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5919,6 +5976,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5955,6 +6013,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -6006,6 +6065,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -6028,6 +6088,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -6054,6 +6115,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         any(),
         any(),
         anyLong(),
+        anyLong(),
         anyInt(),
         any(),
         deferredSwapCaptor.capture(),
@@ -6069,5 +6131,68 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertTrue(capturedRegions.contains("dc-0"));
     assertTrue(capturedRegions.contains("dc-2"));
     Assert.assertFalse(capturedRegions.contains("dc-1"));
+  }
+
+  /**
+   * The absolute rewind-epoch field was introduced in AdminOperation schema v106. Until the cluster's agreed
+   * admin-operation protocol version (ZK) advances to v106, a non-default epoch must be suppressed so the
+   * SemanticDetector serialization guard does not reject the AddVersion message; the relative rewind override
+   * carries the behavior in the meantime. Once the cluster reaches v106 the exact epoch flows through unchanged.
+   */
+  @Test
+  public void testGetAddVersionMessageAppliesProtocolAwareRewindEpochFallback() {
+    String hybridStoreName = "test-rewind-epoch-store";
+    long configuredEpoch = 1_700_000_000L;
+
+    // Legacy cluster still pinned below v106: epoch must be suppressed, relative override preserved.
+    AddVersion suppressed = buildAddVersionMessage(
+        hybridStoreName,
+        configuredEpoch,
+        (long) (VeniceParentHelixAdmin.REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION - 1));
+    assertEquals(
+        suppressed.rewindEpochTimeInSecondsOverride,
+        -1L,
+        "Absolute epoch must be suppressed when the cluster protocol version is below v106");
+    assertEquals(suppressed.rewindTimeInSecondsOverride, 100L, "Relative rewind override must still be propagated");
+
+    // Cluster at exactly v106: epoch flows through.
+    AddVersion atTargetVersion = buildAddVersionMessage(
+        hybridStoreName,
+        configuredEpoch,
+        (long) VeniceParentHelixAdmin.REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION);
+    assertEquals(
+        atTargetVersion.rewindEpochTimeInSecondsOverride,
+        configuredEpoch,
+        "Absolute epoch must flow through once the cluster protocol version reaches v106");
+
+    // Unset protocol version (defaults to latest): epoch flows through.
+    AddVersion unsetVersion = buildAddVersionMessage(hybridStoreName, configuredEpoch, null);
+    assertEquals(
+        unsetVersion.rewindEpochTimeInSecondsOverride,
+        configuredEpoch,
+        "Absolute epoch must flow through when the protocol version is unset (defaults to latest)");
+  }
+
+  private AddVersion buildAddVersionMessage(String hybridStoreName, long configuredEpoch, Long adminProtocolVersion) {
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setAdminOperationProtocolVersion(adminProtocolVersion);
+    doReturn(metadata).when(adminTopicMetadataAccessor).getMetadata(clusterName);
+
+    HybridStoreConfigImpl hybridStoreConfig =
+        new HybridStoreConfigImpl(100L, 1000L, 10L, BufferReplayPolicy.REWIND_FROM_EOP);
+    hybridStoreConfig.setRewindEpochTimeInSecondsOverride(configuredEpoch);
+    Version version = new VersionImpl(hybridStoreName, 1, "test-push-id");
+    version.setHybridStoreConfig(hybridStoreConfig);
+
+    return parentAdmin.getAddVersionMessage(
+        clusterName,
+        hybridStoreName,
+        "test-push-id",
+        version,
+        1,
+        Version.PushType.BATCH,
+        null,
+        -1,
+        -1);
   }
 }
