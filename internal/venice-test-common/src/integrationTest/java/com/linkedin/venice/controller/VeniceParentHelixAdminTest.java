@@ -568,15 +568,20 @@ public class VeniceParentHelixAdminTest {
       assertCommand(
           parentControllerClient.createNewStore(storeName, "test_owner", "\"long\"", generateSchema(false).toString()));
 
-      // Set through the parent, then clear. Child controllers get both through the admin channel.
+      // Set through the parent, then clear. Child controllers get both through the admin channel, and an unrelated ETL
+      // update in between leaves the values alone.
       assertCommand(
           parentControllerClient.updateStore(
               storeName,
               new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
                   .setEtlInitialGrantAclUsers(grantUsers)
                   .setEtlInitialWorkloadType("BATCH")));
+      assertCommand(
+          parentControllerClient
+              .updateStore(storeName, new UpdateStoreQueryParams().setEtledProxyUserAccount("test_user")));
       venice.useControllerClient(child -> waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         ETLStoreConfig config = assertCommand(child.getStore(storeName)).getStore().getEtlStoreConfig();
+        Assert.assertEquals(config.getEtledUserProxyAccount(), "test_user");
         Assert.assertEquals(config.getInitialSlaTier(), "TIER_A");
         Assert.assertEquals(config.getInitialGrantAclUsers(), grantUsers);
         Assert.assertEquals(config.getInitialWorkloadType(), "BATCH");
