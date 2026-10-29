@@ -65,13 +65,6 @@ until it exits, without affecting healthy regions. Pool creation and close share
 or a pool escaping shutdown. Close shuts down every pool, interrupts workers, and cancels drained queued futures before
 closing the clients. No custom admission counters or cancellation ownership are needed.
 
-Historical parent-version metadata cleanup is **fail-closed** on regional current versions: a null/empty result, missing
-configured URL or D2 region, null value, or negative value (including the unknown sentinel `-1`) skips all metadata
-deletions and persistence, with a warning. `NON_EXISTING_VERSION` (`0`) is a valid known result, not an unknown region.
-Fully known results preserve the existing retention policy and protect both regional serving versions and the in-flight
-version under the existing store write lock. These queries use the original serial path, so read-only queue saturation
-does not manufacture unknown cleanup results or starve cleanup queries. Actual unknown results still fail closed.
-
 Normal HTTP and D2 leader discovery each have a fixed **15-second cumulative budget** and a **5-second per-candidate
 cap** to permit fallback. Current-version fanout reuses their multi-candidate discovery loops, with candidate waits
 capped at `min(5 seconds, remaining fanout budget)` and the store request using only the remainder of the same absolute

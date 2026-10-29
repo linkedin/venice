@@ -203,7 +203,6 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     StoreResponse storeResponse = mock(StoreResponse.class);
     doReturn(storeResponse).when(mockControllerClient).getStore(anyString());
-    doReturn(storeResponse).when(mockControllerClient).getStoreWithTimeout(anyString(), anyInt());
     StoreInfo storeInfo = mock(StoreInfo.class);
     doReturn(storeInfo).when(storeResponse).getStore();
     MultiStoreStatusResponse storeStatusResponse = mock(MultiStoreStatusResponse.class);
