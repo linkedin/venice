@@ -2,7 +2,10 @@ package com.linkedin.venice.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_GROUP_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.integration.utils.IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -37,6 +40,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.integration.utils.IntegrationTestUtils;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -49,6 +53,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,6 +65,9 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -447,7 +455,7 @@ public class TestChangelogConsumer {
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testChangelogConsumerWithNewValueSchema() throws IOException, ExecutionException, InterruptedException {
+  public void testChangelogConsumerWithNewValueSchema() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -483,6 +491,7 @@ public class TestChangelogConsumer {
         .setD2Client(fixture.getD2Client())
         .setVersionSwapDetectionIntervalTimeInSeconds(180)
         .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    String groupId = enableOffsetCommits(globalChangelogClientConfig);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
@@ -515,11 +524,11 @@ public class TestChangelogConsumer {
       Assert.assertEquals(polledChangeEventsMap.size(), 101);
     });
     Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(10000)));
+    assertCommittedOffsets(changeLogConsumer, groupId, storeName);
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
-  public void testNewChangelogConsumerWithNewValueSchema()
-      throws IOException, ExecutionException, InterruptedException {
+  public void testNewChangelogConsumerWithNewValueSchema() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
@@ -553,6 +562,10 @@ public class TestChangelogConsumer {
         .setD2Client(fixture.getD2Client())
         .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath))
         .setIsNewStatelessClientEnabled(true);
+    // DaVinci-based consumers discover the broker address, so offset commits must work without it.
+    consumerProperties.remove(KAFKA_BOOTSTRAP_SERVERS);
+    consumerProperties.remove(PUBSUB_BROKER_ADDRESS);
+    String groupId = enableOffsetCommits(globalChangelogClientConfig);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
@@ -566,6 +579,7 @@ public class TestChangelogConsumer {
       Assert.assertEquals(polledChangeEventsMap.size(), 100);
       Assert.assertTrue(changeLogConsumer.isCaughtUp());
     });
+    assertCommittedOffsets(changeLogConsumer, groupId, storeName);
     TestUtils.assertCommand(
         setupControllerClient.retryableRequest(
             5,
@@ -619,6 +633,38 @@ public class TestChangelogConsumer {
       Assert.assertEquals(polledChangeEventsMap.size(), 102);
     });
     Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(20000)));
+  }
+
+  private String enableOffsetCommits(ChangelogClientConfig config) {
+    String groupId = Utils.getUniqueString("changelog-offset-commit");
+    config.getConsumerProperties().setProperty(KAFKA_GROUP_ID_CONFIG, groupId);
+    config.setConsumerOffsetCommitEnabled(true).setConsumerOffsetCommitIntervalMs(TimeUnit.HOURS.toMillis(1));
+    return groupId;
+  }
+
+  private void assertCommittedOffsets(VeniceChangelogConsumer<?, ?> consumer, String groupId, String storeName)
+      throws Exception {
+    consumer.commitOffsets();
+    Properties adminProperties = new Properties();
+    adminProperties.put("bootstrap.servers", fixture.getLocalKafka().getAddress());
+    try (AdminClient admin = AdminClient.create(adminProperties)) {
+      Map<TopicPartition, OffsetAndMetadata> committed =
+          admin.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata().get(30, TimeUnit.SECONDS);
+      for (int partition = 0; partition < 3; partition++) {
+        OffsetAndMetadata offset =
+            committed.get(new TopicPartition(Version.composeKafkaTopic(storeName, 1), partition));
+        Assert.assertNotNull(offset, "Missing committed offset for partition " + partition);
+        Assert.assertTrue(offset.offset() > 0, "Committed offset should be positive: " + offset);
+      }
+      Assert.assertTrue(
+          admin.describeConsumerGroups(Collections.singleton(groupId))
+              .describedGroups()
+              .get(groupId)
+              .get(30, TimeUnit.SECONDS)
+              .members()
+              .isEmpty(),
+          "Committing must not create group membership");
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, priority = 3)

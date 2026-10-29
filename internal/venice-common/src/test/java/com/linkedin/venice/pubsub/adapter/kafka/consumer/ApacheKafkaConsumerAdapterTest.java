@@ -60,6 +60,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -69,8 +70,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
@@ -1019,6 +1022,39 @@ public class ApacheKafkaConsumerAdapterTest {
   public void testAdvancePositionOverflow() {
     ApacheKafkaOffsetPosition start = new ApacheKafkaOffsetPosition(Long.MAX_VALUE);
     expectThrows(ArithmeticException.class, () -> kafkaConsumerAdapter.advancePosition(pubSubTopicPartition, start, 1));
+  }
+
+  @Test
+  public void testCommitSyncDelegatesToKafkaConsumerWhenGroupIdConfigured() {
+    configureGroupId();
+    assertTrue(kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1)));
+    verify(internalKafkaConsumer).commitSync(any(Duration.class));
+  }
+
+  @Test
+  public void testCommitSyncShortCircuitsWhenNoGroupId() {
+    // No group id is configured, so the commit is skipped.
+    assertFalse(kafkaConsumerAdapter.commitSync(Duration.ofSeconds(1)));
+    verify(internalKafkaConsumer, never()).commitSync(any(Duration.class));
+  }
+
+  @Test
+  public void testCommitSyncWithPositionsCommitsNextOffset() {
+    configureGroupId();
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("store_v1"), 2);
+    assertTrue(
+        kafkaConsumerAdapter
+            .commitSync(Collections.singletonMap(tp, ApacheKafkaOffsetPosition.of(41)), Duration.ofSeconds(1)));
+    verify(internalKafkaConsumer)
+        .commitSync(eq(Collections.singletonMap(new TopicPartition("store_v1", 2), new OffsetAndMetadata(42))), any());
+    verify(internalKafkaConsumer, never()).assign(any());
+    verify(internalKafkaConsumer, never()).subscribe(any(Collection.class));
+  }
+
+  private void configureGroupId() {
+    Properties consumerProperties = new Properties();
+    consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "venice-cdc-test-group");
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenReturn(consumerProperties);
   }
 
 }

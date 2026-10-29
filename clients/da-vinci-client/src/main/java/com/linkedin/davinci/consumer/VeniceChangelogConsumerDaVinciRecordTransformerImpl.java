@@ -23,12 +23,14 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
@@ -37,6 +39,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -107,6 +110,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final String viewName;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
+  // Monitoring-only offset commits (null when disabled); see ChangelogClientConfig#setConsumerOffsetCommitEnabled.
+  private final PubSubConsumerAdapter offsetCommitConsumer;
+  // Last polled position per topic partition; entries for topics no longer served are retired before each commit.
+  private final Map<PubSubTopicPartition, PubSubPosition> lastPolledPositions = new VeniceConcurrentHashMap<>();
+  private final AtomicLong lastCommitTimeMs = new AtomicLong();
 
   public VeniceChangelogConsumerDaVinciRecordTransformerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -154,6 +162,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         .build();
     this.daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
+    // Any kafka.group.id in the consumer properties also reaches DaVinci's ingestion consumers, which assign partitions
+    // with auto-commit disabled, so they never commit to or join that group.
     Properties consumerProps = new Properties();
     consumerProps.putAll(changelogClientConfig.getConsumerProperties());
     consumerProps.setProperty(ConfigKeys.VENICE_LOG_CONTEXT_COMPONENT, cdcComponentName);
@@ -198,6 +208,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
     this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
     this.includeControlMessages = changelogClientConfig.shouldIncludeControlMessages();
+    // Commits under the kafka.group.id from the consumer properties; null when disabled or no group id is set.
+    this.offsetCommitConsumer = changelogClientConfig.isConsumerOffsetCommitEnabled()
+        ? veniceChangelogConsumerClientFactory.getOffsetCommitPubSubConsumer(changelogClientConfig)
+        : null;
   }
 
   private synchronized void startDaVinciClient() {
@@ -369,6 +383,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     } finally {
       isStarted.set(false);
       pubSubMessages.clear();
+      Utils.closeQuietlyWithErrorLogged(offsetCommitConsumer);
       veniceChangelogConsumerClientFactory.deregisterClient(changelogClientConfig.getConsumerName());
       clearPartitionState(Collections.emptySet());
       LOGGER.info("Closed VeniceChangelogConsumer with name: {}", changelogClientConfig.getConsumerName());
@@ -504,6 +519,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
           return Collections.emptyList();
         }
         pubSubMessages.drainTo(drainedPubSubMessages);
+        // Tracked under the buffer lock so concurrent polls record positions in drain order.
+        trackPolledPositions(drainedPubSubMessages);
       } catch (InterruptedException exception) {
         LOGGER.info("Thread was interrupted", exception);
         // Restore the interrupt status
@@ -513,6 +530,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
 
       int messagesPolled = drainedPubSubMessages.size();
+      maybeCommitOffsets();
 
       if (changelogClientConfig.shouldCompactMessages()) {
         if (includeControlMessages) {
@@ -541,6 +559,71 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public boolean isCaughtUp() {
     return isCaughtUp.get();
+  }
+
+  /**
+   * Commits at most once per interval; the CAS claims each interval slot so concurrent polls start at most one commit.
+   */
+  private void maybeCommitOffsets() {
+    if (offsetCommitConsumer == null) {
+      return;
+    }
+    long now = System.currentTimeMillis();
+    long last = lastCommitTimeMs.get();
+    if (now - last >= changelogClientConfig.getConsumerOffsetCommitIntervalMs()
+        && lastCommitTimeMs.compareAndSet(last, now)) {
+      commitOffsets();
+    }
+  }
+
+  /**
+   * Commits the position of the last polled record per subscribed partition. See
+   * {@link VeniceChangelogConsumer#commitOffsets()}.
+   */
+  @Override
+  public void commitOffsets() {
+    if (offsetCommitConsumer == null) {
+      return;
+    }
+    // Retires unsubscribed partitions and versions no longer served, so idle partitions stop committing to old topics.
+    lastPolledPositions.keySet().removeIf(topicPartition -> !isServedTopic(topicPartition));
+    if (lastPolledPositions.isEmpty()) {
+      return;
+    }
+    long startTimeNs = System.nanoTime();
+    boolean committed = false;
+    try {
+      committed = offsetCommitConsumer
+          .commitSync(lastPolledPositions, Duration.ofMillis(changelogClientConfig.getConsumerOffsetCommitTimeoutMs()));
+    } catch (Exception e) {
+      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+    }
+    if (changeCaptureStats != null) {
+      changeCaptureStats
+          .emitOffsetCommitMetrics(committed ? SUCCESS : FAIL, LatencyUtils.getElapsedTimeFromNSToMS(startTimeNs));
+    }
+  }
+
+  private boolean isServedTopic(PubSubTopicPartition topicPartition) {
+    int partition = topicPartition.getPartitionNumber();
+    if (!subscribedPartitions.contains(partition)) {
+      return false;
+    }
+    Integer versionToServe = partitionToVersionToServe.get(partition);
+    int messageVersion = Version.parseVersionFromKafkaTopicName(topicPartition.getTopicName());
+    return versionToServe != null && versionToServe == messageVersion;
+  }
+
+  private void trackPolledPositions(Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
+    if (offsetCommitConsumer == null) {
+      return;
+    }
+    for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: messages) {
+      // Heartbeats carry symbolic positions, which cannot be committed.
+      if (!message.getPosition().getPosition().isSymbolic()) {
+        lastPolledPositions.put(message.getTopicPartition(), message.getPosition().getPosition());
+      }
+    }
   }
 
   /**
@@ -1015,6 +1098,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       partitionToVersionToServe.clear();
       currentVersionLastHeartbeat.clear();
       eopReceivedPartitions.clear();
+      lastPolledPositions.clear();
       syntheticHeartbeatEnabled = false;
     } else {
       for (int partition: partitions) {
@@ -1022,6 +1106,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         partitionToVersionToServe.remove(partition);
         currentVersionLastHeartbeat.remove(partition);
         eopReceivedPartitions.remove(partition);
+        lastPolledPositions.keySet().removeIf(topicPartition -> topicPartition.getPartitionNumber() == partition);
       }
     }
   }

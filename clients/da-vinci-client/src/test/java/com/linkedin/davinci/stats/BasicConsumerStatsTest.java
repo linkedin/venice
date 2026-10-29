@@ -3,6 +3,8 @@ package com.linkedin.davinci.stats;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.HEART_BEAT_DELAY;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.OFFSET_COMMIT_COUNT;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.OFFSET_COMMIT_TIME;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.POLL_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.VERSION_SWAP_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT;
@@ -166,6 +168,23 @@ public class BasicConsumerStatsTest {
         CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(),
         1,
         responseStatusCategory);
+  }
+
+  @Test
+  public void testEmitOffsetCommitMetrics() {
+    consumerStats.emitOffsetCommitMetrics(SUCCESS, 10);
+    consumerStats.emitOffsetCommitMetrics(FAIL, 30);
+
+    validateLongCounterOtelMetric(storeName, OFFSET_COMMIT_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+    validateLongCounterOtelMetric(storeName, OFFSET_COMMIT_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+    validateMinMaxSumAggregationsOtelMetric(
+        storeName,
+        OFFSET_COMMIT_TIME.getMetricEntity().getMetricName(),
+        10,
+        30,
+        2,
+        40,
+        null);
   }
 
   private void validateTehutiMetric(String metricName, double expectedValue) {

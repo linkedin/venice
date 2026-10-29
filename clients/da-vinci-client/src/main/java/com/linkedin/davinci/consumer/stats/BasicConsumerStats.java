@@ -53,6 +53,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> offsetCommitCountMetric;
+  private final MetricEntityStateBase offsetCommitTimeMetric;
 
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
@@ -157,6 +159,18 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
+    offsetCommitCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.OFFSET_COMMIT_COUNT.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
+    offsetCommitTimeMetric = MetricEntityStateBase.create(
+        BasicConsumerMetricEntity.OFFSET_COMMIT_TIME.getMetricEntity(),
+        otelRepository,
+        baseDimensionsMap,
+        baseAttributes);
+
     /*
      * Record default value for version swap metrics so the UP_DOWN_COUNTER in OTEL will emit a default 0.
      * If you don't do this, the OTEL metric will return no data upon query time until a value is recorded.
@@ -203,6 +217,14 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     } else {
       chunkedRecordFailCountMetric.record(1, responseStatusCategory);
     }
+  }
+
+  /**
+   * A commit that was skipped, e.g. because the consumer properties have no {@code kafka.group.id}, counts as a failure.
+   */
+  public void emitOffsetCommitMetrics(VeniceResponseStatusCategory responseStatusCategory, double latencyMs) {
+    offsetCommitCountMetric.record(1, responseStatusCategory);
+    offsetCommitTimeMetric.record(latencyMs);
   }
 
   @VisibleForTesting
@@ -260,6 +282,20 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     CHUNKED_RECORD_COUNT(
         MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of chunked records consumed",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    ),
+    /**
+     * Measures the count of consumer offset commits to the broker
+     */
+    OFFSET_COMMIT_COUNT(
+        MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of consumer offset commits to the broker",
+        setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    ),
+    /**
+     * Measures the time taken by consumer offset commits to the broker
+     */
+    OFFSET_COMMIT_TIME(
+        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
+        "Measures the time taken by consumer offset commits to the broker", setOf(VENICE_STORE_NAME)
     );
 
     private final MetricEntity metricEntity;

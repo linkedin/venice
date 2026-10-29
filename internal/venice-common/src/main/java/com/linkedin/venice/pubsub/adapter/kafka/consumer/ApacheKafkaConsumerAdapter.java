@@ -35,15 +35,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -502,6 +505,68 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         pubSubMessageDeserializer.close();
       }
     } finally {
+      releaseLock();
+    }
+  }
+
+  /**
+   * Commits the positions returned by the last {@link KafkaConsumer#poll(Duration)} for all
+   * assigned partitions to the broker. Monitoring-only — the caller still owns offset state.
+   * Failures are logged and swallowed so a transient broker hiccup doesn't fail the caller.
+   *
+   * <p>If {@code group.id} is not configured the call is a silent no-op — committing without a
+   * group id is meaningless and the underlying Kafka consumer would throw
+   * {@code IllegalStateException}, which would be repeated at every poll cycle and flood logs.
+   * Callers opt in to broker-side monitoring by setting {@code group.id} on the consumer config.
+   *
+   * <p>The try/catch wraps {@link #acquireLockWithTimeout(Duration)} too so a lock-acquisition failure
+   * (timeout, interrupt) doesn't propagate either — this whole code path must obey the
+   * "must not throw" contract. Time spent waiting for the lock counts against {@code timeout}.
+   */
+  @Override
+  public boolean commitSync(Duration timeout) {
+    return commitWithinTimeout(timeout, kafkaConsumer::commitSync);
+  }
+
+  /**
+   * Commits {@code lastConsumedOffset + 1} per partition (+1 is Kafka's next-offset-to-read convention) with the
+   * same no-throw semantics as {@link #commitSync(Duration)}. Committing explicit offsets does not join the group.
+   */
+  @Override
+  public boolean commitSync(Map<PubSubTopicPartition, PubSubPosition> lastConsumedPositions, Duration timeout) {
+    return commitWithinTimeout(timeout, remaining -> {
+      Map<TopicPartition, OffsetAndMetadata> offsets = new HashMap<>(lastConsumedPositions.size());
+      lastConsumedPositions.forEach(
+          (tp, position) -> offsets.put(
+              new TopicPartition(tp.getTopicName(), tp.getPartitionNumber()),
+              new OffsetAndMetadata(position.getNumericOffset() + 1)));
+      kafkaConsumer.commitSync(offsets, remaining);
+    });
+  }
+
+  private boolean commitWithinTimeout(Duration timeout, java.util.function.Consumer<Duration> commit) {
+    // The consumer group id is read only here: offsets are committed under it, and committing never joins the group.
+    Properties props = config.getConsumerProperties();
+    if (props == null || props.getProperty(ConsumerConfig.GROUP_ID_CONFIG) == null) {
+      return false;
+    }
+    long startNs = System.nanoTime();
+    try {
+      acquireLockWithTimeout(timeout);
+      Duration remaining = timeout.minusNanos(System.nanoTime() - startNs);
+      if (remaining.toMillis() <= 0) {
+        throw new PubSubOpTimeoutException("No time left to commit within " + timeout.toMillis() + " ms");
+      }
+      commit.accept(remaining);
+      return true;
+    } catch (Exception e) {
+      // Monitoring-only path — never propagate to the caller. Log with stack so a real broker
+      // failure is debuggable; we already short-circuited the common "no group.id" case above.
+      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+      return false;
+    } finally {
+      // releaseLock() is safe even if acquireLockWithTimeout() threw — it checks
+      // consumerLock.isHeldByCurrentThread() before unlocking.
       releaseLock();
     }
   }
