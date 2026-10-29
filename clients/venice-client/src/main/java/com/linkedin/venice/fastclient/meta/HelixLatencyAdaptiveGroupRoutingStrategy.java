@@ -28,6 +28,7 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       double skewRampExponent) {
     super(instanceHealthMonitor, metricsRepository, storeName);
     this.selector = buildSelector(evenUntilLatencyMs, fullSkewAtLatencyMs, skewRampExponent);
+    this.selector.setLogContext("fast-client:" + storeName);
   }
 
   /** Uses the default latency-adaptive knobs. */
@@ -54,12 +55,14 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       double evenUntilLatencyMs,
       double fullSkewAtLatencyMs,
       double skewRampExponent) {
-    return new LatencyAdaptiveGroupSelector(
+    LatencyAdaptiveGroupSelector selector = new LatencyAdaptiveGroupSelector(
         helixGroupStats::getGroupResponseWaitingTimeAvg,
         evenUntilLatencyMs,
         fullSkewAtLatencyMs,
         skewRampExponent,
         () -> ThreadLocalRandom.current().nextDouble());
+    selector.setLogContext("fast-client");
+    return selector;
   }
 
   /**

@@ -2,8 +2,12 @@ package com.linkedin.venice.stats.routing;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntToDoubleFunction;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -30,10 +34,19 @@ import java.util.function.IntToDoubleFunction;
  * self-corrects.
  *
  * <p>Holds no per-request state; thread-safe as long as the supplied {@code latencyProvider} and {@code randomSupplier}
- * are. Callers own any in-flight accounting.
+ * are. Callers own any in-flight accounting. The only mutable state is a throttle timestamp for the optional periodic
+ * weight log, which is updated with a lock-free compare-and-set and does not affect selection.
  */
 public class LatencyAdaptiveGroupSelector {
   public static final int MAX_ALLOWED_GROUP = 100;
+
+  /**
+   * Default interval, in milliseconds, between periodic per-group weight log lines (at INFO). Set it to {@code <= 0}
+   * via {@link #setWeightLogIntervalMs(long)} to disable the periodic log.
+   */
+  public static final long DEFAULT_WEIGHT_LOG_INTERVAL_MS = 2000L;
+
+  private static final Logger LOGGER = LogManager.getLogger(LatencyAdaptiveGroupSelector.class);
 
   /**
    * Default stay-even threshold, as an absolute latency in milliseconds: routing stays fully even (skew {@code == 0})
@@ -71,6 +84,9 @@ public class LatencyAdaptiveGroupSelector {
   private final double fullSkewAtLatencyMs;
   private final double interpolationExponent;
   private final DoubleSupplier randomSupplier;
+  private final AtomicLong lastWeightLogTimeNs = new AtomicLong(System.nanoTime());
+  private volatile long weightLogIntervalMs = DEFAULT_WEIGHT_LOG_INTERVAL_MS;
+  private volatile String logContext = "";
 
   /**
    * Uses the default knobs and {@link ThreadLocalRandom} for the weighted draw.
@@ -167,11 +183,95 @@ public class LatencyAdaptiveGroupSelector {
       }
     }
     if (selectedGroup >= 0) {
+      maybeLogWeights(groupCount);
       return selectedGroup;
     }
     // Every candidate collapsed to zero (should not happen given the probe floor) or the only group was excluded: fall
     // back to a group that still gets the request routed somewhere rather than dropped.
+    maybeLogWeights(groupCount);
     return startGroupId == excludedGroupId ? (startGroupId + 1) % groupCount : startGroupId;
+  }
+
+  /**
+   * Sets how often, in milliseconds, the per-group weights are logged at INFO. A value {@code <= 0} disables the
+   * periodic log. Defaults to {@link #DEFAULT_WEIGHT_LOG_INTERVAL_MS}.
+   */
+  public void setWeightLogIntervalMs(long weightLogIntervalMs) {
+    this.weightLogIntervalMs = weightLogIntervalMs;
+  }
+
+  /**
+   * Sets a short identifier (e.g. {@code "router"} or {@code "fast-client:<store>"}) included in the periodic weight log
+   * line so lines from different selectors are attributable.
+   */
+  public void setLogContext(String logContext) {
+    this.logContext = logContext == null ? "" : logContext;
+  }
+
+  /**
+   * Renders the current routing picture - skew, thresholds, and each group's measured latency and realized selection
+   * weight - as one log-friendly line. Recomputes the same shares {@link #selectGroup} would use (no group excluded) and
+   * normalizes them to the actual draw probabilities, so the reported weights sum to ~100%. Pure: reads the latency
+   * provider but mutates nothing.
+   */
+  public String formatWeights(int groupCount) {
+    double skew = latencySkew(groupCount, -1);
+    double evenShare = 1.0 / groupCount;
+    double floor = PROBE_FLOOR_FRACTION * evenShare;
+    double neutralStrength = neutralStrength(groupCount, -1);
+    double totalStrength = totalStrength(groupCount, neutralStrength, -1);
+    double[] shares = new double[groupCount];
+    double shareSum = 0.0;
+    for (int g = 0; g < groupCount; ++g) {
+      shares[g] = shareForGroup(g, evenShare, floor, skew, neutralStrength, totalStrength);
+      shareSum += shares[g];
+    }
+    StringBuilder sb = new StringBuilder(64 + groupCount * 24);
+    sb.append("LatencyAdaptiveGroupSelector weights");
+    if (!logContext.isEmpty()) {
+      sb.append(" [").append(logContext).append(']');
+    }
+    sb.append(
+        String.format(
+            ": skew=%.2f evenUntilMs=%.1f fullSkewMs=%.1f groups=%d [",
+            skew,
+            evenUntilLatencyMs,
+            fullSkewAtLatencyMs,
+            groupCount));
+    for (int g = 0; g < groupCount; ++g) {
+      double latency = latencyProvider.applyAsDouble(g);
+      double weightPct = shareSum > 0 ? shares[g] / shareSum * 100.0 : evenShare * 100.0;
+      if (g > 0) {
+        sb.append(", ");
+      }
+      sb.append('g').append(g).append(' ');
+      sb.append(latency <= 0.0 ? "lat=n/a" : String.format("lat=%.1fms", latency));
+      sb.append(String.format(" w=%.1f%%", weightPct));
+    }
+    sb.append(']');
+    return sb.toString();
+  }
+
+  /**
+   * Logs the current per-group weights at INFO at most once per {@link #weightLogIntervalMs}. The time gate is a
+   * lock-free compare-and-set so only one thread emits a line per window and the hot selection path stays contention
+   * free.
+   */
+  private void maybeLogWeights(int groupCount) {
+    long intervalMs = weightLogIntervalMs;
+    if (intervalMs <= 0 || !LOGGER.isInfoEnabled()) {
+      return;
+    }
+    long now = System.nanoTime();
+    long last = lastWeightLogTimeNs.get();
+    if (now - last < TimeUnit.MILLISECONDS.toNanos(intervalMs)) {
+      return;
+    }
+    if (!lastWeightLogTimeNs.compareAndSet(last, now)) {
+      // Another thread already claimed this window; skip to avoid duplicate lines.
+      return;
+    }
+    LOGGER.info(formatWeights(groupCount));
   }
 
   /**

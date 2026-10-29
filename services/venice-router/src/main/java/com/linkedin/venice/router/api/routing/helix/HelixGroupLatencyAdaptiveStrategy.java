@@ -94,6 +94,7 @@ public class HelixGroupLatencyAdaptiveStrategy implements HelixGroupSelectionStr
         fullSkewAtLatencyMs,
         interpolationExponent,
         randomSupplier);
+    this.selector.setLogContext("router");
   }
 
   @Override

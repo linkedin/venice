@@ -167,4 +167,45 @@ public class LatencyAdaptiveGroupSelectorTest {
       assertTrue(counts[g] > total * 0.28, "group " + g + " should keep ~1/3 when all groups are equally slow");
     }
   }
+
+  @Test
+  public void testFormatWeightsRendersPerGroupLatencyAndNormalizedWeights() {
+    // Slowest group (g2 at 18ms) sits inside the 10->30ms band, so the draw is skewed toward the faster groups.
+    LatencyAdaptiveGroupSelector selector =
+        new LatencyAdaptiveGroupSelector(latencies(12.0, 14.0, 18.0), 10.0, 30.0, 1.0, PICK_FIRST);
+    selector.setLogContext("router");
+    String line = selector.formatWeights(3);
+
+    assertTrue(line.contains("[router]"), "should include the log context: " + line);
+    assertTrue(line.contains("skew="), "should include the skew: " + line);
+    assertTrue(
+        line.contains("evenUntilMs=10.0") && line.contains("fullSkewMs=30.0"),
+        "should include thresholds: " + line);
+    assertTrue(
+        line.contains("g0 lat=12.0ms") && line.contains("g2 lat=18.0ms"),
+        "should include per-group latency: " + line);
+    // The fastest group must carry strictly more weight than the slowest once the skew engages.
+    double w0 = parseWeight(line, "g0");
+    double w2 = parseWeight(line, "g2");
+    assertTrue(w0 > w2, "faster group g0 should outweigh slower g2: " + line);
+    // Normalized weights across all groups should sum to ~100%.
+    double sum = parseWeight(line, "g0") + parseWeight(line, "g1") + parseWeight(line, "g2");
+    assertTrue(Math.abs(sum - 100.0) < 0.5, "normalized weights should sum to ~100%, got " + sum + ": " + line);
+  }
+
+  @Test
+  public void testFormatWeightsMarksUnmeasuredGroup() {
+    // g1 has no datapoint yet (latency <= 0) => rendered as n/a, not a bogus number.
+    LatencyAdaptiveGroupSelector selector =
+        new LatencyAdaptiveGroupSelector(latencies(12.0, -1.0), 10.0, 30.0, 1.0, PICK_FIRST);
+    String line = selector.formatWeights(2);
+    assertTrue(line.contains("g1 lat=n/a"), "unmeasured group should render lat=n/a: " + line);
+  }
+
+  private static double parseWeight(String line, String groupToken) {
+    int gIdx = line.indexOf(groupToken + " ");
+    int wIdx = line.indexOf("w=", gIdx);
+    int pct = line.indexOf('%', wIdx);
+    return Double.parseDouble(line.substring(wIdx + 2, pct));
+  }
 }
