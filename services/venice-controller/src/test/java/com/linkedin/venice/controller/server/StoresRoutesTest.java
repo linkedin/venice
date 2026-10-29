@@ -450,6 +450,7 @@ public class StoresRoutesTest {
     storeInfo.setName(TEST_STORE_NAME);
     storeInfo.setOwner("owner");
     storeInfo.setMaxRecordSizeBytes(testMaxRecordSizeBytesValue);
+    storeInfo.setColoToCurrentVersions(Collections.singletonMap("region", -1));
     doReturn(storeInfo).when(mockHandler).getStore(TEST_CLUSTER, TEST_STORE_NAME);
 
     final Request request = mock(Request.class);
@@ -462,6 +463,8 @@ public class StoresRoutesTest {
             storesRoutes.getStore(mockAdmin).handle(request, mock(Response.class)).toString(),
             StoreResponse.class);
     Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), testMaxRecordSizeBytesValue);
+    Assert.assertEquals(response.getStore().getColoToCurrentVersions(), Collections.singletonMap("region", -1));
+    verify(mockHandler).getStore(TEST_CLUSTER, TEST_STORE_NAME);
   }
 
   @Test

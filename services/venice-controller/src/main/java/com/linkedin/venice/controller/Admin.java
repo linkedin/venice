@@ -323,6 +323,15 @@ public interface Admin extends AutoCloseable, Closeable {
 
   Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName);
 
+  /**
+   * Current versions for the read-only store response. Parents use a bounded, partial-result query; internal
+   * coordination must continue using {@link #getCurrentVersionsForMultiColos(String, String)}.
+   * The default preserves child-controller behavior (no cross-region current versions).
+   */
+  default Map<String, Integer> getCurrentVersionsForStoreResponse(String clusterName, String storeName) {
+    return getCurrentVersionsForMultiColos(clusterName, storeName);
+  }
+
   Map<String, String> getFutureVersionsForMultiColos(String clusterName, String storeName);
 
   Map<String, String> getBackupVersionsForMultiColos(String clusterName, String storeName);

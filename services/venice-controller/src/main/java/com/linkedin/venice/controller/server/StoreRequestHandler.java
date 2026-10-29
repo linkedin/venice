@@ -330,7 +330,7 @@ public class StoreRequestHandler {
     if (storeInfo.getMaxRecordSizeBytes() < 0) {
       storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes(clusterName));
     }
-    storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
+    storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForStoreResponse(clusterName, storeName));
     boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
     storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
 

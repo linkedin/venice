@@ -297,7 +297,7 @@ public class ControllerClient implements Closeable {
 
   /**
    * One store request with multi-candidate leader discovery. The absolute {@link System#nanoTime()} deadline
-   * includes the fanout caller's admission/submission and executor queueing; it is never reset per candidate.
+   * includes the fanout caller's submission and executor queueing; it is never reset per candidate.
    */
   public StoreResponse getStoreWithDeadline(String storeName, long deadlineNs) {
     return requestWithDeadline(

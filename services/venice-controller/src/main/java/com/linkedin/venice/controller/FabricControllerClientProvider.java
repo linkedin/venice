@@ -17,17 +17,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -52,10 +48,10 @@ import org.apache.logging.log4j.Logger;
 public class FabricControllerClientProvider implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(FabricControllerClientProvider.class);
   private static final int CURRENT_VERSION_QUERY_TIMEOUT_SECONDS = 15;
-  private static final int CURRENT_VERSION_QUERIES_PER_REGION = 6;
-  private final ThreadPoolExecutor currentVersionQueryExecutor;
-  // Only admitted regions are retained; removing zero counts bounds this map by queued/running work.
-  private final Map<String, Integer> currentVersionQueriesPerRegion = new VeniceConcurrentHashMap<>();
+  private static final int CURRENT_VERSION_QUERY_WORKERS_PER_REGION = 6;
+  // Guarded by this, together with closed. Pools are shared across stores and clusters, keyed only by region.
+  private final Map<String, ThreadPoolExecutor> currentVersionQueryExecutors = new HashMap<>();
+  private boolean closed;
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Optional<SSLFactory> sslFactory;
@@ -73,29 +69,25 @@ public class FabricControllerClientProvider implements Closeable {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       Optional<SSLFactory> sslFactory,
       Map<String, D2Client> d2Clients) {
-    this(
-        multiClusterConfigs,
-        sslFactory,
-        d2Clients,
-        new ThreadPoolExecutor(
-            16,
-            16,
-            0,
-            TimeUnit.MILLISECONDS,
-            new LinkedBlockingQueue<>(256),
-            new DaemonThreadFactory("CurrentVersionQuery", multiClusterConfigs.getLogContext()),
-            new ThreadPoolExecutor.AbortPolicy()));
-  }
-
-  FabricControllerClientProvider(
-      VeniceControllerMultiClusterConfig multiClusterConfigs,
-      Optional<SSLFactory> sslFactory,
-      Map<String, D2Client> d2Clients,
-      ThreadPoolExecutor currentVersionQueryExecutor) {
     this.multiClusterConfigs = multiClusterConfigs;
     this.sslFactory = sslFactory;
     this.d2Clients = d2Clients;
-    this.currentVersionQueryExecutor = currentVersionQueryExecutor;
+  }
+
+  synchronized ThreadPoolExecutor getCurrentVersionQueryExecutor(String region) {
+    if (closed) {
+      throw new RejectedExecutionException("Controller client provider is closed");
+    }
+    return currentVersionQueryExecutors.computeIfAbsent(
+        region,
+        key -> new ThreadPoolExecutor(
+            CURRENT_VERSION_QUERY_WORKERS_PER_REGION,
+            CURRENT_VERSION_QUERY_WORKERS_PER_REGION,
+            0,
+            TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(256), // Queue bound is per region, not global.
+            new DaemonThreadFactory("CurrentVersionQuery-" + key, multiClusterConfigs.getLogContext()),
+            new ThreadPoolExecutor.AbortPolicy()));
   }
 
   /**
@@ -231,7 +223,8 @@ public class FabricControllerClientProvider implements Closeable {
   }
 
   /**
-   * Queries current versions concurrently with one 15-second budget, including queueing and discovery.
+   * Queries current versions for the read-only store response with one 15-second budget, including queueing and
+   * discovery. Internal coordination uses the serial {@link #queryAllRegions} policy instead.
    * Only the caller assembles the result; cancellation cannot allow a worker to modify a returned map.
    */
   public Map<String, Integer> queryCurrentVersions(
@@ -250,63 +243,52 @@ public class FabricControllerClientProvider implements Closeable {
       String clusterName,
       String storeName,
       long deadlineNs) {
-    Map<String, CompletableFuture<StoreResponse>> responses = new HashMap<>();
-    Map<CompletableFuture<StoreResponse>, Future<?>> tasks = new HashMap<>();
+    Map<String, Future<StoreResponse>> tasks = new HashMap<>();
+    Map<String, ThreadPoolExecutor> executors = new HashMap<>();
+    Map<String, Integer> result = new HashMap<>();
     try {
       controllerClients.forEach((region, client) -> {
-        CompletableFuture<StoreResponse> response = new CompletableFuture<>();
-        responses.put(region, response);
+        result.put(region, IGNORED_CURRENT_VERSION);
         if (Thread.currentThread().isInterrupted() || deadlineNs - System.nanoTime() <= 0) {
-          response
-              .completeExceptionally(new TimeoutException("Current-version query budget exhausted before submission"));
+          LOGGER.warn(
+              "Current-version query budget exhausted before submission for region: {} cluster: {}",
+              region,
+              clusterName);
           return;
         }
-        AtomicBoolean admitted = new AtomicBoolean();
-        currentVersionQueriesPerRegion.compute(region, (key, count) -> {
-          if (count == null || count < CURRENT_VERSION_QUERIES_PER_REGION) {
-            admitted.set(true);
-            return count == null ? 1 : count + 1;
-          }
-          return count;
-        });
-        if (!admitted.get()) {
-          response.completeExceptionally(new RejectedExecutionException("Current-version region saturated: " + region));
-          return;
-        }
-        CurrentVersionQueryTask task = new CurrentVersionQueryTask(region, response, () -> {
-          try {
+        try {
+          ThreadPoolExecutor executor = getCurrentVersionQueryExecutor(region);
+          executors.put(region, executor);
+          tasks.put(region, executor.submit(() -> {
             if (deadlineNs - System.nanoTime() <= 0 || Thread.currentThread().isInterrupted()) {
               throw new TimeoutException("Current-version query budget exhausted before request");
             }
-            response.complete(client.getStoreWithDeadline(storeName, deadlineNs));
-          } catch (Throwable e) {
-            response.completeExceptionally(e);
-          }
-        });
-        tasks.put(response, task);
-        try {
-          currentVersionQueryExecutor.execute(task);
+            return client.getStoreWithDeadline(storeName, deadlineNs);
+          }));
         } catch (RejectedExecutionException e) {
-          response.completeExceptionally(e);
-          task.cancel(false);
+          LOGGER.warn("Could not submit current-version query for region: {} cluster: {}", region, clusterName, e);
         }
       });
 
-      try {
-        CompletableFuture.allOf(responses.values().toArray(new CompletableFuture<?>[0]))
-            .get(Math.max(0, deadlineNs - System.nanoTime()), TimeUnit.NANOSECONDS);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      } catch (TimeoutException | ExecutionException e) {
-        // Collect every completed response below, including successes behind a slow region.
+      for (Future<StoreResponse> task: tasks.values()) {
+        try {
+          task.get(Math.max(0, deadlineNs - System.nanoTime()), TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          break;
+        } catch (TimeoutException e) {
+          break;
+        } catch (ExecutionException | CancellationException e) {
+          // Collect every completed response below, including successes behind a slow region.
+        }
       }
       cancelUnfinishedQueries(tasks);
 
-      Map<String, Integer> result = new HashMap<>();
-      responses.forEach((region, response) -> {
+      for (Map.Entry<String, Future<StoreResponse>> entry: tasks.entrySet()) {
+        String region = entry.getKey();
         int version = IGNORED_CURRENT_VERSION;
         try {
-          StoreResponse storeResponse = response.join();
+          StoreResponse storeResponse = entry.getValue().get();
           if (storeResponse.isError()) {
             LOGGER.error(
                 "Could not query current version from region: {} for cluster: {}. Error: {}",
@@ -316,7 +298,7 @@ public class FabricControllerClientProvider implements Closeable {
           } else {
             version = storeResponse.getStore().getCurrentVersion();
           }
-        } catch (CompletionException e) {
+        } catch (ExecutionException e) {
           Throwable cause = e.getCause();
           if (!(cause instanceof TimeoutException || cause instanceof CancellationException
               || cause instanceof RejectedExecutionException)) {
@@ -331,83 +313,41 @@ public class FabricControllerClientProvider implements Closeable {
           LOGGER.warn("Could not query current version from region: {} for cluster: {}", region, clusterName, cause);
         } catch (CancellationException e) {
           LOGGER.warn("Could not query current version from region: {} for cluster: {}", region, clusterName, e);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          LOGGER.warn("Interrupted querying current version from region: {} for cluster: {}", region, clusterName, e);
         }
         result.put(region, version);
-      });
+      }
       return result;
     } finally {
       cancelUnfinishedQueries(tasks);
-      currentVersionQueryExecutor.purge();
+      executors.values().forEach(ThreadPoolExecutor::purge);
     }
   }
 
-  private void cancelUnfinishedQueries(Map<CompletableFuture<StoreResponse>, Future<?>> tasks) {
-    // CompletableFuture.cancel(true) alone does not interrupt a running supplier.
-    tasks.forEach((response, task) -> {
-      if (!response.isDone()) {
-        response.cancel(true);
+  private void cancelUnfinishedQueries(Map<String, Future<StoreResponse>> tasks) {
+    tasks.values().forEach(task -> {
+      if (!task.isDone()) {
         task.cancel(true);
       }
     });
   }
 
-  private void releaseCurrentVersionQuery(String region) {
-    currentVersionQueriesPerRegion.compute(region, (key, count) -> count == 1 ? null : count - 1);
-  }
-
-  /**
-   * FutureTask.done() runs on cancellation, not necessarily on worker exit. Serialize cancellation-before-start
-   * with run() claiming ownership; once claimed, only run's finally may release admission.
-   */
-  private class CurrentVersionQueryTask extends FutureTask<Void> {
-    private final String region;
-    private final CompletableFuture<StoreResponse> response;
-    private boolean started;
-    private boolean released;
-
-    CurrentVersionQueryTask(String region, CompletableFuture<StoreResponse> response, Runnable request) {
-      super(request, null);
-      this.region = region;
-      this.response = response;
-    }
-
-    @Override
-    public void run() {
-      synchronized (this) {
-        if (isCancelled() || started) {
-          return;
-        }
-        started = true;
-      }
-      try {
-        super.run();
-      } finally {
-        releaseAdmission();
-      }
-    }
-
-    @Override
-    protected synchronized void done() {
-      if (!started) {
-        releaseAdmission();
-      }
-      if (isCancelled()) {
-        response.cancel(false);
-      }
-    }
-
-    private synchronized void releaseAdmission() {
-      if (!released) {
-        released = true;
-        releaseCurrentVersionQuery(region);
-      }
-    }
-  }
-
   @Override
   public void close() {
-    // shutdownNow drains queued tasks without cancelling them. They still own admission and response futures.
-    currentVersionQueryExecutor.shutdownNow().forEach(task -> ((Future<?>) task).cancel(false));
+    synchronized (this) {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      // Pool creation uses the same lock, so no pool can escape shutdown or be created after close.
+      currentVersionQueryExecutors.values().forEach(executor -> {
+        // shutdownNow interrupts workers but drained queued futures must also be cancelled to unblock callers.
+        executor.shutdownNow().forEach(task -> ((Future<?>) task).cancel(false));
+      });
+      currentVersionQueryExecutors.clear();
+    }
     clusterControllerClientPerFabricMap.values()
         .forEach(controllerClientMap -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
     newFabricControllerClientMap.values()
