@@ -140,6 +140,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -2643,7 +2646,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     }
   }
 
-  private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
+  private Store prepareSystemStoreCleanup(int retention, int... existing) {
     String storeName = VeniceSystemStoreUtils.getMetaStoreName("synthetic_store");
     Store store = new ZKStore(
         storeName,
@@ -2661,9 +2664,174 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(storeRepo).getStore(storeName);
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
     doReturn(retention).when(config).getSystemStoreVersionRetentionCount();
+    return store;
+  }
+
+  private void configureCleanupRegions() {
+    doReturn(
+        internalAdmin.getControllerClientMap(clusterName)
+            .keySet()
+            .stream()
+            .collect(Collectors.toMap(region -> region, region -> "http://localhost"))).when(config)
+                .getChildDataCenterControllerUrlMap();
+  }
+
+  private Store runSystemStoreCleanup(int retention, int inFlightVersion, int[] existing, int... regionCurrents) {
+    Store store = prepareSystemStoreCleanup(retention, existing);
+    String storeName = store.getName();
     mockControllerClients(storeName, regionCurrents);
+    configureCleanupRegions();
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName, inFlightVersion);
     return store;
+  }
+
+  @DataProvider
+  public Object[][] incompleteHistoricalCleanupCurrents() {
+    return new Object[][] { { "null-map" }, { "empty-map" }, { "unknown-url" }, { "unknown-d2" }, { "null-url" },
+        { "null-d2" }, { "missing-url" }, { "missing-d2" }, { "invalid-negative" } };
+  }
+
+  @Test(dataProvider = "incompleteHistoricalCleanupCurrents")
+  public void testCleanupSkipsUnknownOrIncompleteRegionalCurrents(String scenario) {
+    Store store = prepareSystemStoreCleanup(1, 1, 2, 3);
+    Map<String, Integer> currents = new HashMap<>();
+    currents.put(regionName, 1);
+    currents.put("d2-region", 3);
+    doReturn(Collections.singletonMap("d2-region", "zk-host")).when(config).getChildDataCenterControllerD2Map();
+    switch (scenario) {
+      case "null-map":
+        currents = null;
+        break;
+      case "empty-map":
+        currents.clear();
+        break;
+      case "unknown-url":
+        currents.put(regionName, IGNORED_CURRENT_VERSION);
+        break;
+      case "unknown-d2":
+        currents.put("d2-region", IGNORED_CURRENT_VERSION);
+        break;
+      case "null-url":
+        currents.put(regionName, null);
+        break;
+      case "null-d2":
+        currents.put("d2-region", null);
+        break;
+      case "missing-url":
+        currents.remove(regionName);
+        break;
+      case "missing-d2":
+        currents.remove("d2-region");
+        break;
+      case "invalid-negative":
+        currents.put(regionName, -2);
+        break;
+      default:
+        fail("Unexpected scenario: " + scenario);
+    }
+    FabricControllerClientProvider provider = internalAdmin.getFabricControllerClientProvider();
+    doReturn(currents).when(provider).queryCurrentVersions(any(), eq(clusterName), eq(store.getName()));
+    List<Version> beforeCleanup = new ArrayList<>(store.getVersions());
+
+    parentAdmin.cleanupHistoricalVersions(clusterName, store.getName(), 3);
+
+    assertEquals(store.getVersions(), beforeCleanup);
+    verify(resources.getStoreMetadataRepository(), never()).updateStore(any());
+  }
+
+  @Test(timeOut = 15_000)
+  public void testCleanupPreservesServingMetadataWhenRegionAdmissionIsSaturated() throws Exception {
+    Store store = prepareSystemStoreCleanup(1, 1, 2, 3);
+    StoreResponse servingResponse = new StoreResponse();
+    StoreInfo servingStore = new StoreInfo();
+    servingStore.setCurrentVersion(1);
+    servingResponse.setStore(servingStore);
+    ControllerClient serving = mock(ControllerClient.class);
+    doReturn(servingResponse).when(serving).getStoreWithDeadline(anyString(), anyLong());
+    StoreResponse healthyResponse = new StoreResponse();
+    StoreInfo healthyStore = new StoreInfo();
+    healthyStore.setCurrentVersion(3);
+    healthyResponse.setStore(healthyStore);
+    ControllerClient healthy = mock(ControllerClient.class);
+    doReturn(healthyResponse).when(healthy).getStoreWithDeadline(anyString(), anyLong());
+    Map<String, ControllerClient> clients = new LinkedHashMap<>();
+    clients.put(regionName, serving);
+    clients.put("healthy", healthy);
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(Collections.singletonMap("healthy", "zk-host")).when(config).getChildDataCenterControllerD2Map();
+    CountDownLatch sixRunning = new CountDownLatch(6);
+    CountDownLatch release = new CountDownLatch(1);
+    ControllerClient busy = mock(ControllerClient.class);
+    doAnswer(invocation -> {
+      sixRunning.countDown();
+      release.await();
+      return servingResponse;
+    }).when(busy).getStoreWithDeadline(anyString(), anyLong());
+    List<Thread> callers = new ArrayList<>();
+    List<FutureTask<Map<String, Integer>>> queries = new ArrayList<>();
+    ThreadPoolExecutor executor =
+        new ThreadPoolExecutor(16, 16, 0, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(256));
+    try (FabricControllerClientProvider provider = new FabricControllerClientProvider(
+        mock(VeniceControllerMultiClusterConfig.class),
+        Optional.empty(),
+        null,
+        executor)) {
+      doReturn(provider).when(internalAdmin).getFabricControllerClientProvider();
+      for (int i = 0; i < 6; i++) {
+        String otherCluster = "busy-cluster-" + i;
+        String otherStore = "busy-store-" + i;
+        FutureTask<Map<String, Integer>> query = new FutureTask<>(
+            () -> provider.queryCurrentVersions(Collections.singletonMap(regionName, busy), otherCluster, otherStore));
+        Thread caller = new Thread(query);
+        queries.add(query);
+        callers.add(caller);
+        caller.start();
+      }
+      assertTrue(sixRunning.await(5, TimeUnit.SECONDS));
+
+      parentAdmin.cleanupHistoricalVersions(clusterName, store.getName(), 3);
+
+      assertEquals(
+          store.getVersions().stream().map(Version::getNumber).collect(Collectors.toList()),
+          Arrays.asList(1, 2, 3),
+          "Unknown serving version must prevent every metadata deletion");
+      verify(resources.getStoreMetadataRepository(), never()).updateStore(any());
+      verify(serving, never()).getStoreWithDeadline(anyString(), anyLong());
+      verify(healthy).getStoreWithDeadline(eq(store.getName()), anyLong());
+
+      release.countDown();
+      for (FutureTask<Map<String, Integer>> query: queries) {
+        assertEquals(query.get(5, TimeUnit.SECONDS).get(regionName).intValue(), 1);
+      }
+      // Response completion can precede worker exit, so wait for all admission to be returned before retrying cleanup.
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertEquals(executor.getActiveCount(), 0);
+        assertTrue(executor.getQueue().isEmpty());
+      });
+      parentAdmin.cleanupHistoricalVersions(clusterName, store.getName(), 3);
+      assertEquals(
+          store.getVersions().stream().map(Version::getNumber).collect(Collectors.toList()),
+          Arrays.asList(1, 3),
+          "Complete results must retain the serving and in-flight versions while deleting eligible history");
+      verify(resources.getStoreMetadataRepository()).updateStore(store);
+    } finally {
+      release.countDown();
+      callers.forEach(Thread::interrupt);
+      for (Thread caller: callers) {
+        caller.join(5000);
+      }
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+    }
+  }
+
+  @Test
+  public void testCleanupAcceptsKnownNonExistingRegionalVersion() {
+    Store store = runSystemStoreCleanup(2, 9, new int[] { 1, 7, 9 }, Store.NON_EXISTING_VERSION, 7);
+    assertEquals(
+        store.getVersions().stream().map(Version::getNumber).collect(Collectors.toList()),
+        Arrays.asList(7, 9));
+    verify(resources.getStoreMetadataRepository()).updateStore(store);
   }
 
   @Test
@@ -2742,6 +2910,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(storeRepo).when(resources).getStoreMetadataRepository();
     doReturn(5).when(config).getUserStoreVersionRetentionCount();
     mockControllerClients(storeName);
+    configureCleanupRegions();
 
     parentAdmin.cleanupHistoricalVersions(clusterName, storeName, Store.NON_EXISTING_VERSION);
     verify(storeRepo).getStore(storeName);

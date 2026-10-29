@@ -1261,6 +1261,24 @@ public class VeniceParentHelixAdmin implements Admin {
         return;
       }
       Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
+      VeniceControllerClusterConfig clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
+      Set<String> expectedRegions = new HashSet<>(clusterConfig.getChildDataCenterControllerUrlMap().keySet());
+      expectedRegions.addAll(clusterConfig.getChildDataCenterControllerD2Map().keySet());
+      // Negative values (including IGNORED_CURRENT_VERSION=-1) are unknown; NON_EXISTING_VERSION=0 is known.
+      if (currentVersionsMap == null || currentVersionsMap.isEmpty()
+          || !currentVersionsMap.keySet().containsAll(expectedRegions)
+          || currentVersionsMap.values()
+              .stream()
+              .anyMatch(version -> version == null || version < NON_EXISTING_VERSION)) {
+        LOGGER.warn(
+            "Skipping historical version cleanup for store: {} in cluster: {} because regional current versions are "
+                + "unknown or incomplete. Expected regions: {}, current versions: {}",
+            storeName,
+            clusterName,
+            expectedRegions,
+            currentVersionsMap);
+        return;
+      }
       List<Version> clonedVersions = new ArrayList<>(versions);
       clonedVersions.stream()
           .sorted()

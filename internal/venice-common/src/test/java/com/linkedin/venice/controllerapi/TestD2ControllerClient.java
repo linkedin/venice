@@ -14,15 +14,21 @@ import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -155,6 +161,170 @@ public class TestD2ControllerClient {
   @DataProvider
   public Object[][] discoveryModes() {
     return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "discoveryModes")
+  public void testD2DiscoveryRotatesPastStalledPrefixWithoutChangingSingleCandidateDiscovery(boolean fanout)
+      throws Exception {
+    List<D2Client> candidates =
+        Arrays.asList(mock(D2Client.class), mock(D2Client.class), mock(D2Client.class), mock(D2Client.class));
+    List<D2Client> originalOrder = new ArrayList<>(candidates);
+    List<Integer> attempts = new ArrayList<>();
+    List<Future<RestResponse>> responses = new ArrayList<>();
+    AtomicLong clock = new AtomicLong();
+    RestResponse leader = mock(RestResponse.class);
+    doReturn(ByteString.copyString("{\"url\":\"http://leader\"}", StandardCharsets.UTF_8)).when(leader).getEntity();
+    for (int i = 0; i < candidates.size(); i++) {
+      int candidate = i;
+      Future<RestResponse> response = mock(Future.class);
+      responses.add(response);
+      doAnswer(invocation -> {
+        attempts.add(candidate);
+        return response;
+      }).when(candidates.get(i)).restRequest(any());
+      doAnswer(invocation -> {
+        Assert.assertEquals(invocation.<Long>getArgument(0).longValue(), 5000);
+        if (candidate == 3) {
+          return leader;
+        }
+        clock.addAndGet(TimeUnit.SECONDS.toNanos(5));
+        throw new TimeoutException("stalled candidate " + candidate);
+      }).when(response).get(Mockito.anyLong(), Mockito.eq(TimeUnit.MILLISECONDS));
+    }
+    D2ControllerClient client = Mockito.spy(new D2ControllerClient("service", "cluster", candidates, Optional.empty()));
+    doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    ControllerTransport transport = mock(ControllerTransport.class);
+    doReturn(transport).when(client).getNewControllerTransport();
+    StoreResponse success = new StoreResponse();
+    doReturn(success).when(transport)
+        .request(
+            Mockito.eq("http://leader"),
+            Mockito.eq(ControllerRoute.STORE),
+            any(),
+            Mockito.eq(StoreResponse.class),
+            Mockito.eq(5000),
+            Mockito.isNull());
+    try {
+      if (fanout) {
+        Assert.assertTrue(client.getStoreWithDeadline("store", clock.get() + TimeUnit.SECONDS.toNanos(15)).isError());
+      } else {
+        Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      }
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2));
+      Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(15));
+
+      if (fanout) {
+        Assert.assertSame(client.getStoreWithDeadline("store", clock.get() + TimeUnit.SECONDS.toNanos(15)), success);
+      } else {
+        Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+      }
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2, 1, 2, 3));
+      Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(25));
+
+      // The legacy bounded helper still tries only the original first client, without advancing rotation.
+      Assert.assertTrue(client.getStoreWithTimeout("store", 5000).isError());
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2, 1, 2, 3, 0));
+      Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2, 1, 2, 3, 0, 2, 3));
+      Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(35));
+      Assert.assertEquals(candidates, originalOrder, "Rotation must not mutate the caller-owned candidate list");
+      for (int i = 0; i < responses.size(); i++) {
+        Mockito.verify(responses.get(i), Mockito.times(Collections.frequency(attempts, i))).cancel(true);
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  @Test(dataProvider = "discoveryModes")
+  public void testD2DiscoveryWithNoCandidatesFailsSafely(boolean fanout) throws Exception {
+    D2ControllerClient client =
+        Mockito.spy(new D2ControllerClient("service", "cluster", Collections.emptyList(), Optional.empty()));
+    ControllerTransport transport = mock(ControllerTransport.class);
+    doReturn(transport).when(client).getNewControllerTransport();
+    try {
+      if (fanout) {
+        StoreResponse response = client.getStoreWithDeadline("store", System.nanoTime() + TimeUnit.SECONDS.toNanos(15));
+        Assert.assertTrue(response.isError());
+        Assert.assertTrue(response.getError().contains("Failed to discover leader controller"));
+      } else {
+        VeniceException failure = Assert.expectThrows(VeniceException.class, client::discoverLeaderController);
+        Assert.assertTrue(failure.getMessage().contains("Failed to discover leader controller"));
+      }
+      Mockito.verify(transport, Mockito.never())
+          .request(Mockito.anyString(), any(), any(), any(), Mockito.anyInt(), Mockito.isNull());
+    } finally {
+      client.close();
+    }
+  }
+
+  @Test
+  public void testD2DiscoveryRotationSurvivesCounterOverflow() throws Exception {
+    List<D2Client> candidates =
+        Arrays.asList(mock(D2Client.class), mock(D2Client.class), mock(D2Client.class), mock(D2Client.class));
+    List<Integer> attempts = new ArrayList<>();
+    RestResponse leader = mock(RestResponse.class);
+    doReturn(ByteString.copyString("{\"url\":\"http://leader\"}", StandardCharsets.UTF_8)).when(leader).getEntity();
+    for (int i = 0; i < candidates.size(); i++) {
+      int candidate = i;
+      doAnswer(invocation -> {
+        attempts.add(candidate);
+        return CompletableFuture.completedFuture(leader);
+      }).when(candidates.get(i)).restRequest(any());
+    }
+    try (D2ControllerClient client = new D2ControllerClient("service", "cluster", candidates, Optional.empty())) {
+      Field counter = D2ControllerClient.class.getDeclaredField("discoveryStartIndex");
+      counter.setAccessible(true);
+      ((AtomicInteger) counter.get(client)).set(Integer.MAX_VALUE);
+      for (int i = 0; i < 3; i++) {
+        Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+      }
+      Assert.assertEquals(attempts, Arrays.asList(3, 0, 1));
+    }
+  }
+
+  @Test(timeOut = 10_000)
+  public void testConcurrentD2DiscoveryInvocationsRotateStartingCandidates() throws Exception {
+    List<D2Client> candidates =
+        Arrays.asList(mock(D2Client.class), mock(D2Client.class), mock(D2Client.class), mock(D2Client.class));
+    CountDownLatch started = new CountDownLatch(4);
+    CountDownLatch release = new CountDownLatch(1);
+    for (int i = 0; i < candidates.size(); i++) {
+      RestResponse leader = mock(RestResponse.class);
+      doReturn(ByteString.copyString("{\"url\":\"http://leader-" + i + "\"}", StandardCharsets.UTF_8)).when(leader)
+          .getEntity();
+      doAnswer(invocation -> {
+        started.countDown();
+        release.await();
+        return CompletableFuture.completedFuture(leader);
+      }).when(candidates.get(i)).restRequest(any());
+    }
+    List<FutureTask<String>> queries = new ArrayList<>();
+    List<Thread> callers = new ArrayList<>();
+    try (D2ControllerClient client = new D2ControllerClient("service", "cluster", candidates, Optional.empty())) {
+      for (int i = 0; i < 4; i++) {
+        FutureTask<String> query = new FutureTask<>(client::discoverLeaderController);
+        Thread caller = new Thread(query);
+        queries.add(query);
+        callers.add(caller);
+        caller.start();
+      }
+      Assert.assertTrue(started.await(5, TimeUnit.SECONDS));
+      release.countDown();
+      HashSet<String> leaders = new HashSet<>();
+      for (FutureTask<String> query: queries) {
+        leaders.add(query.get(5, TimeUnit.SECONDS));
+      }
+      Assert.assertEquals(
+          leaders,
+          new HashSet<>(Arrays.asList("http://leader-0", "http://leader-1", "http://leader-2", "http://leader-3")));
+    } finally {
+      release.countDown();
+      callers.forEach(Thread::interrupt);
+      for (Thread caller: callers) {
+        caller.join(5000);
+      }
+    }
   }
 
   @Test

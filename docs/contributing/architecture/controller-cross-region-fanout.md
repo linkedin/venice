@@ -61,14 +61,25 @@ admission until its worker exits, even if it ignores interruption. Start/cancel 
 early or double release; shutdown cancels drained queued tasks. Idle region counters are removed rather than
 accumulating keys indefinitely.
 
+Historical parent-version metadata cleanup is **fail-closed** on regional current versions: a null/empty result, missing
+configured URL or D2 region, null value, or negative value (including the unknown sentinel `-1`) skips all metadata
+deletions and persistence, with a warning. `NON_EXISTING_VERSION` (`0`) is a valid known result, not an unknown region.
+Fully known results preserve the existing retention policy and protect both regional serving versions and the in-flight
+version under the existing store write lock.
+
 Normal HTTP and D2 leader discovery each have a fixed **15-second cumulative budget** and a **5-second per-candidate
 cap** to permit fallback. Current-version fanout reuses their multi-candidate discovery loops, with candidate waits
 capped at `min(5 seconds, remaining fanout budget)` and the store request using only the remainder of the same absolute
-monotonic deadline. Neither discovery nor a new candidate starts another independent 15 seconds. The existing bounded
-APIs (`getStoreWithTimeout`, `getAdminTopicMetadataWithTimeout`) and their protected discovery overloads remain
-**single-candidate** operations for deferred recovery and other callers. Other controller request retry counts and
-request timeouts are unchanged: the discovery budget bounds each discovery invocation, not the entire retry sequence.
-These budgets bound request waits; transport setup, parsing, and cleanup can add wall-clock overhead.
+monotonic deadline. Neither discovery nor a new candidate starts another independent 15 seconds. D2 multi-candidate
+discovery rotates its starting candidate once per invocation using a thread-safe, overflow-safe counter and a private
+snapshot; it does not reorder the caller's list. Normal discovery and deadline fanout share this rotation so a fixed
+stalled prefix cannot indefinitely starve later healthy candidates. Each invocation still visits each candidate at most
+once and stops at its original deadline. The existing bounded APIs (`getStoreWithTimeout`,
+`getAdminTopicMetadataWithTimeout`) and their protected discovery overloads remain **single-candidate** operations for
+deferred recovery and other callers; D2 single-candidate discovery remains fixed on the original first client and does
+not advance the rotation. Other controller request retry counts and request timeouts are unchanged: the discovery budget
+bounds each discovery invocation, not the entire retry sequence. These budgets bound request waits; transport setup,
+parsing, and cleanup can add wall-clock overhead.
 
 ## The two retry engines
 
