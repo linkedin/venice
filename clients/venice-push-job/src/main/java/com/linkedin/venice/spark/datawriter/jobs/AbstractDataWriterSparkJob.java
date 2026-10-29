@@ -246,6 +246,15 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     new ArrayList<>(JavaConverters.mapAsJavaMap(jobConf.getAll()).keySet()).stream()
         .filter(key -> key.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX))
         .forEach(jobConf::unset);
+    // Restore current session-prefixed hook settings; raw hook settings take precedence below.
+    for (String key: props.keySet()) {
+      if (key.toLowerCase().startsWith(SPARK_SESSION_CONF_PREFIX)) {
+        String overrideKey = key.substring(SPARK_SESSION_CONF_PREFIX.length());
+        if (overrideKey.startsWith(PUSH_JOB_WRITER_HOOK_PROP_PREFIX)) {
+          jobConf.set(overrideKey, props.getString(key));
+        }
+      }
+    }
     setupCommonSparkConf(props, jobConf, pushJobSetting);
     jobConf.set(BATCH_NUM_BYTES_PROP, pushJobSetting.batchNumBytes);
     jobConf.set(TOPIC_PROP, pushJobSetting.topic);

@@ -89,7 +89,8 @@ The user may choose to specify the following configs:
   VPJ constructs one hook per partition writer for either full or incremental pushes and attaches it only to the primary
   data writer, not to control-message, heartbeat, or materialized-view child writers. Properties prefixed
   `push.job.writer.hook.` are forwarded to the constructor. VPJ does not close hooks, so implementations must not own
-  resources requiring task-scoped cleanup.
+  resources requiring task-scoped cleanup. Spark also accepts these settings under `venice.spark.session.conf.`, with
+  raw `push.job.writer.hook.*` settings taking precedence when both forms specify the same key.
 
 The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
 must specify the following configs:

@@ -92,8 +92,13 @@ import scala.collection.JavaConverters;
 
 
 public class AbstractDataWriterSparkJobTest {
-  @Test
-  public void testConfigure() throws IOException {
+  @DataProvider
+  public Object[][] writerHookConfigPrefixes() {
+    return new Object[][] { { SPARK_SESSION_CONF_PREFIX, false }, { "", false }, { SPARK_SESSION_CONF_PREFIX, true } };
+  }
+
+  @Test(dataProvider = "writerHookConfigPrefixes")
+  public void testConfigure(String hookConfigPrefix, boolean rawHookOverrides) throws IOException {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
 
@@ -111,8 +116,13 @@ public class AbstractDataWriterSparkJobTest {
     properties.setProperty(SPARK_SESSION_CONF_PREFIX + SPARK_APP_NAME_CONFIG, sparkAppNameOverride);
     properties.setProperty(KAFKA_CONFIG_PREFIX + dummyKafkaConfig, dummyKafkaConfigValue);
     properties.setProperty(SPARK_DATA_WRITER_CONF_PREFIX + dummyConfig, dummyConfigValue);
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_CLASS, writerHookClass);
-    properties.setProperty(writerHookSetting, "test-value");
+    properties.setProperty(hookConfigPrefix + PUSH_JOB_WRITER_HOOK_CLASS, writerHookClass);
+    properties.setProperty(hookConfigPrefix + writerHookSetting, "test-value");
+    if (rawHookOverrides) {
+      writerHookClass = "com.example.RawWriterHook";
+      properties.setProperty(PUSH_JOB_WRITER_HOOK_CLASS, writerHookClass);
+      properties.setProperty(writerHookSetting, "raw-value");
+    }
 
     SparkSession firstSession;
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
@@ -131,8 +141,28 @@ public class AbstractDataWriterSparkJobTest {
 
       // VPJ writer-hook config should reach executor task properties.
       Assert.assertEquals(jobConf.get(PUSH_JOB_WRITER_HOOK_CLASS), writerHookClass);
-      Assert.assertEquals(jobConf.get(writerHookSetting), "test-value");
+      Assert.assertEquals(jobConf.get(writerHookSetting), rawHookOverrides ? "raw-value" : "test-value");
+      Assert.assertEquals(
+          dataWriterSparkJob.getWriterTaskProperties().getProperty(PUSH_JOB_WRITER_HOOK_CLASS),
+          writerHookClass);
+      Assert.assertEquals(
+          dataWriterSparkJob.getWriterTaskProperties().getProperty(writerHookSetting),
+          rawHookOverrides ? "raw-value" : "test-value");
       Assert.assertEquals(jobConf.get(INCREMENTAL_PUSH), "true");
+    }
+
+    String nextWriterHookSetting = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "next.setting";
+    Properties nextProperties = new Properties();
+    nextProperties.setProperty(hookConfigPrefix + PUSH_JOB_WRITER_HOOK_CLASS, "com.example.NextWriterHook");
+    nextProperties.setProperty(hookConfigPrefix + nextWriterHookSetting, "next-value");
+    try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
+      dataWriterSparkJob.configure(new VeniceProperties(nextProperties), setting);
+
+      Assert.assertSame(dataWriterSparkJob.getSparkSession(), firstSession);
+      Properties taskProperties = dataWriterSparkJob.getWriterTaskProperties();
+      Assert.assertEquals(taskProperties.getProperty(PUSH_JOB_WRITER_HOOK_CLASS), "com.example.NextWriterHook");
+      Assert.assertEquals(taskProperties.getProperty(nextWriterHookSetting), "next-value");
+      Assert.assertFalse(taskProperties.containsKey(writerHookSetting));
     }
 
     try (DataWriterSparkJob dataWriterSparkJob = new DataWriterSparkJob()) {
@@ -142,6 +172,7 @@ public class AbstractDataWriterSparkJobTest {
       RuntimeConfig jobConf = dataWriterSparkJob.getSparkSession().conf();
       Assert.assertTrue(jobConf.getOption(PUSH_JOB_WRITER_HOOK_CLASS).isEmpty());
       Assert.assertTrue(jobConf.getOption(writerHookSetting).isEmpty());
+      Assert.assertTrue(jobConf.getOption(nextWriterHookSetting).isEmpty());
     }
   }
 
