@@ -525,16 +525,22 @@ public final class VenicePushJobConstants {
   public static final String SPARK_PRE_WRITE_QUOTA_CHECK = "spark.pre.write.quota.check";
 
   /**
-   * Namespace for the optional VPJ primary-data-writer hook factory. Every property under this prefix is
-   * forwarded to executor task properties and passed to the factory when it is initialized in the task JVM.
+   * Namespace for the optional VPJ primary-data-writer hook. Every property under this prefix is
+   * forwarded to executor task properties and passed to the hook constructor in the task JVM.
    */
   public static final String PUSH_JOB_WRITER_HOOK_PROP_PREFIX = "push.job.writer.hook.";
 
   /**
    * Fully-qualified class name of the optional
-   * {@code com.linkedin.venice.hadoop.task.datawriter.VeniceWriterHookFactory}. The class must have a public
-   * no-arg constructor. When absent or empty, VPJ creates writers exactly as before, without a writer hook.
+   * {@code com.linkedin.venice.writer.VeniceWriterHook}. The class must have a public constructor taking
+   * {@code (String storeName, VeniceProperties taskProperties)}. VPJ constructs one hook per partition writer,
+   * attaches it only to the primary data writer, and does not close it. Hooks must not own resources requiring
+   * task-scoped cleanup. When absent or empty, VPJ creates writers without a hook.
    */
+  public static final String PUSH_JOB_WRITER_HOOK_CLASS = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "class";
+
+  /** Previous unreleased factory setting; rejected when non-empty so an old configuration cannot silently disable hooks. */
+  @Deprecated
   public static final String PUSH_JOB_WRITER_HOOK_FACTORY_CLASS = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "factory.class";
 
   /**

@@ -3,7 +3,7 @@ package com.linkedin.venice.hadoop.mapreduce.datawriter.jobs;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUB_SUB_ENCRYPTION_KEY_URN;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_RMD_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.WRITER_VALUE_SCHEMA_STRING_PROP;
@@ -189,7 +189,7 @@ public class TestDataWriterMRJob {
   public void testConfigureForwardsWriterHookPropertiesToTasks() {
     String writerHookSetting = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "test.setting";
     Properties properties = new Properties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, "com.example.WriterHookFactory");
+    properties.setProperty(PUSH_JOB_WRITER_HOOK_CLASS, "com.example.WriterHook");
     properties.setProperty(writerHookSetting, "test-value");
 
     PushJobSetting setting = avroProjectionPushJobSetting();
@@ -205,7 +205,7 @@ public class TestDataWriterMRJob {
     DataWriterMRJob mrJob = new DataWriterMRJob();
     mrJob.configure(new VeniceProperties(properties), setting);
 
-    Assert.assertEquals(mrJob.getJobConf().get(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS), "com.example.WriterHookFactory");
+    Assert.assertEquals(mrJob.getJobConf().get(PUSH_JOB_WRITER_HOOK_CLASS), "com.example.WriterHook");
     Assert.assertEquals(mrJob.getJobConf().get(writerHookSetting), "test-value");
     assertTrue(mrJob.getJobConf().getBoolean(INCREMENTAL_PUSH, false));
   }

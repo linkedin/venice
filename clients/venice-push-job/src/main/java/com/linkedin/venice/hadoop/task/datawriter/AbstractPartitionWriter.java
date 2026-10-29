@@ -25,6 +25,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_S
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_BATCH_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
@@ -1003,7 +1004,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
     initStorageQuotaFields(props);
     initIncrementalPushThrottlers(props);
-    initWriterHookFactory();
+    initWriterHook();
     /**
      * A dummy background task that reports progress every 5 minutes.
      */
@@ -1062,44 +1063,41 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     });
   }
 
-  private void initWriterHookFactory() {
-    String factoryClassName = props.getString(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, "").trim();
-    if (factoryClassName.isEmpty()) {
+  private void initWriterHook() {
+    if (!props.getString(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, "").trim().isEmpty()) {
+      throw new VeniceException(
+          PUSH_JOB_WRITER_HOOK_FACTORY_CLASS + " is no longer supported; configure " + PUSH_JOB_WRITER_HOOK_CLASS);
+    }
+    String className = props.getString(PUSH_JOB_WRITER_HOOK_CLASS, "").trim();
+    if (className.isEmpty()) {
       return;
     }
 
-    VeniceWriterHookFactory factory = loadWriterHookFactory(factoryClassName);
-    String topicName = props.getString(TOPIC_PROP);
-    VeniceWriterHook hook = factory.createWriterHook(Version.parseStoreFromKafkaTopicName(topicName), props);
-    if (hook == null) {
-      throw new VeniceException(
-          VeniceWriterHookFactory.class.getSimpleName() + " '" + factoryClassName + "' returned a null hook");
-    }
-    this.writerHook = hook;
-  }
-
-  private VeniceWriterHookFactory loadWriterHookFactory(String className) {
     Class<?> loadedClass;
     try {
       loadedClass = ReflectUtils.loadClass(className);
-    } catch (Exception e) {
+    } catch (Exception | LinkageError e) {
       throw new VeniceException(
-          "Failed to load " + VeniceWriterHookFactory.class.getSimpleName() + " class '" + className + "'",
+          "Failed to load " + VeniceWriterHook.class.getSimpleName() + " class '" + className + "'",
           e);
     }
-    Class<? extends VeniceWriterHookFactory> factoryClass;
+    Class<? extends VeniceWriterHook> hookClass;
     try {
-      factoryClass = loadedClass.asSubclass(VeniceWriterHookFactory.class);
+      hookClass = loadedClass.asSubclass(VeniceWriterHook.class);
     } catch (ClassCastException e) {
       throw new VeniceException(
-          "Configured class '" + className + "' does not implement " + VeniceWriterHookFactory.class.getName(),
+          "Configured class '" + className + "' does not implement " + VeniceWriterHook.class.getName(),
           e);
     }
     try {
-      return ReflectUtils.callConstructor(factoryClass, new Class<?>[0], new Object[0]);
-    } catch (Exception e) {
+      this.writerHook = ReflectUtils.callConstructor(
+          hookClass,
+          new Class<?>[] { String.class, VeniceProperties.class },
+          new Object[] { Version.parseStoreFromKafkaTopicName(props.getString(TOPIC_PROP)), props });
+    } catch (Exception | LinkageError e) {
       throw new VeniceException(
-          "Failed to instantiate " + VeniceWriterHookFactory.class.getSimpleName() + " '" + className + "'",
+          "Failed to instantiate " + VeniceWriterHook.class.getSimpleName() + " '" + className
+              + "' using constructor (String, VeniceProperties)",
           e);
     }
   }

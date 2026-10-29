@@ -84,6 +84,13 @@ The user may choose to specify the following configs:
 - `post.validation.consumption`: Whether to perform post validation consumption after targeted region push is finished.
   Default: `true`. Set this to `false` if you want to achieve a true single colo push.
 - `spark.pre.write.quota.check`: Enables Spark's pre-write quota check. Default: `false`.
+- `push.job.writer.hook.class`: Optional fully qualified class name implementing `VeniceWriterHook`. The class must be
+  available to executor tasks and provide a public constructor `(String storeName, VeniceProperties taskProperties)`.
+  VPJ constructs one hook per partition writer for either full or incremental pushes and attaches it only to the primary
+  data writer, not to control-message, heartbeat, or materialized-view child writers. Properties prefixed
+  `push.job.writer.hook.` are forwarded to the constructor. VPJ does not close hooks, so implementations must not own
+  resources requiring task-scoped cleanup. The earlier, unreleased `push.job.writer.hook.factory.class` setting is
+  rejected when nonempty; use the hook class setting instead.
 
 The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
 must specify the following configs:
