@@ -830,13 +830,7 @@ public class UpdateStoreQueryParams extends QueryParams {
    * unchanged. The list is sent as JSON so that entries can contain commas.
    */
   public UpdateStoreQueryParams setEtlInitialGrantAclUsers(List<String> etlInitialGrantAclUsers) {
-    List<String> users = etlInitialGrantAclUsers == null
-        ? Collections.emptyList()
-        : etlInitialGrantAclUsers.stream()
-            .filter(Objects::nonNull)
-            .map(String::trim)
-            .filter(user -> !user.isEmpty())
-            .collect(Collectors.toList());
+    List<String> users = normalizeRegions(etlInitialGrantAclUsers);
     return users.isEmpty()
         ? putString(ETL_INITIAL_GRANT_ACL_USERS, CLEAR_VALUE)
         : putStringList(ETL_INITIAL_GRANT_ACL_USERS, users);
@@ -851,14 +845,17 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   /**
-   * @return the requested users, or {@code null} if the caller asked for the config to be cleared. Only meaningful
-   *         when {@link #isEtlInitialGrantAclUsersSpecified()} returns {@code true}.
+   * @return the requested users, or {@code null} if the caller asked for the config to be cleared. Entries are
+   *         normalized here as well, since requests built straight from HTTP parameters skip the setter, and a list
+   *         with no entry left counts as a clear. Only meaningful when {@link #isEtlInitialGrantAclUsersSpecified()}
+   *         returns {@code true}.
    */
   public List<String> getEtlInitialGrantAclUsers() {
     if (CLEAR_VALUE.equals(params.get(ETL_INITIAL_GRANT_ACL_USERS))) {
       return null;
     }
-    return getStringList(ETL_INITIAL_GRANT_ACL_USERS).orElse(null);
+    List<String> users = normalizeRegions(getStringList(ETL_INITIAL_GRANT_ACL_USERS).orElse(null));
+    return users.isEmpty() ? null : users;
   }
 
   /**

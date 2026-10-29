@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
@@ -179,6 +180,13 @@ public class UpdateStoreQueryParamsTest {
     Assert.assertNull(cleared.getEtlInitialGrantAclUsers());
     Assert.assertTrue(cleared.isEtlInitialWorkloadTypeSpecified());
     Assert.assertNull(cleared.getEtlInitialWorkloadType());
+
+    // Requests built straight from HTTP parameters skip the setter and get the same normalization.
+    Map<String, String> raw = new HashMap<>();
+    raw.put(ETL_INITIAL_GRANT_ACL_USERS, "[\" user-a \", \"\"]");
+    Assert.assertEquals(new UpdateStoreQueryParams(raw).getEtlInitialGrantAclUsers(), Arrays.asList("user-a"));
+    raw.put(ETL_INITIAL_GRANT_ACL_USERS, "[]");
+    Assert.assertNull(new UpdateStoreQueryParams(raw).getEtlInitialGrantAclUsers());
   }
 
   private static Map<String, String> toWireMap(UpdateStoreQueryParams params) {
