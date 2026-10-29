@@ -5,6 +5,8 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.D2ServiceDiscovery;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -24,6 +26,7 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
@@ -238,13 +241,59 @@ public class VeniceChangelogConsumerClientFactory {
       ChangelogClientConfig changelogClientConfig,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerName) {
+    return getPubSubConsumer(changelogClientConfig, pubSubMessageDeserializer, consumerName, null);
+  }
+
+  private static PubSubConsumerAdapter getPubSubConsumer(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubMessageDeserializer pubSubMessageDeserializer,
+      String consumerName,
+      String pubSubBrokerAddress) {
     PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
+        .setPubSubBrokerAddress(pubSubBrokerAddress)
         .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
         .setPubSubMessageDeserializer(pubSubMessageDeserializer)
         .setPubSubTopicRepository(changelogClientConfig.getPubSubContext().getPubSubTopicRepository())
         .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubContext().getPubSubPositionTypeRegistry())
         .build();
     return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
+  }
+
+  /**
+   * Creates a consumer that only commits positions for a changelog consumer without its own PubSub consumer. It never
+   * subscribes or polls, and commits under the {@code kafka.group.id} from the consumer properties. Like DaVinci, it
+   * discovers the broker address when the consumer properties omit it. Returns {@code null} without creating the adapter
+   * if {@code kafka.group.id} is not set, since there is no group to commit under. It gets its own deserializer because closing the
+   * adapter closes its deserializer, and the factory's shared one is still used by other consumers.
+   */
+  PubSubConsumerAdapter getOffsetCommitPubSubConsumer(ChangelogClientConfig changelogClientConfig) {
+    Properties consumerProperties = changelogClientConfig.getConsumerProperties();
+    if (consumerProperties.getProperty(ConfigKeys.KAFKA_GROUP_ID_CONFIG) == null) {
+      LOGGER.warn(
+          "Offset commits are enabled for consumer: {} of store: {}, but {} is not set, so offsets will not be committed",
+          changelogClientConfig.getConsumerName(),
+          changelogClientConfig.getStoreName(),
+          ConfigKeys.KAFKA_GROUP_ID_CONFIG);
+      return null;
+    }
+    String pubSubBrokerAddress = null;
+    if (consumerProperties.getProperty(ConfigKeys.PUBSUB_BROKER_ADDRESS) == null
+        && consumerProperties.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS) == null) {
+      try (D2TransportClient transportClient =
+          new D2TransportClient(changelogClientConfig.getD2ServiceName(), changelogClientConfig.getD2Client())) {
+        pubSubBrokerAddress = new D2ServiceDiscovery().find(transportClient, changelogClientConfig.getStoreName())
+            .getKafkaBootstrapServers();
+      }
+    }
+    return getPubSubConsumer(
+        changelogClientConfig,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        getOffsetCommitConsumerName(changelogClientConfig),
+        pubSubBrokerAddress);
+  }
+
+  private static String getOffsetCommitConsumerName(ChangelogClientConfig changelogClientConfig) {
+    return changelogClientConfig.getConsumerName() + "-offset-commit";
   }
 
   /**

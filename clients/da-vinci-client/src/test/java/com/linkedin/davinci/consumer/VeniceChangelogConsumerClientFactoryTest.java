@@ -9,7 +9,10 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.expectThrows;
 
@@ -27,18 +30,22 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.views.MaterializedView;
 import io.tehuti.metrics.MetricsRepository;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -391,6 +398,38 @@ public class VeniceChangelogConsumerClientFactoryTest {
       PubSubMessageDeserializer result = VeniceChangelogConsumerClientFactory.createPubSubMessageDeserializer(config);
       assertNotNull(result, "Deserializer should not be null when default path is taken");
     }
+  }
+
+  @Test
+  public void testOffsetCommitConsumerDoesNotShareDeserializer() throws Exception {
+    Properties consumerProperties = new Properties();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:9092");
+    consumerProperties.put(ConfigKeys.KAFKA_GROUP_ID_CONFIG, "venice-cdc-test-group");
+    ChangelogClientConfig config = spy(new ChangelogClientConfig().setConsumerProperties(consumerProperties));
+    PubSubConsumerAdapterFactory adapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(adapterFactory).when(config).getPubSubConsumerAdapterFactory();
+    VeniceChangelogConsumerClientFactory factory =
+        new VeniceChangelogConsumerClientFactory(config, new MetricsRepository());
+
+    factory.getOffsetCommitPubSubConsumer(config);
+    ArgumentCaptor<PubSubConsumerAdapterContext> context = ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    verify(adapterFactory).create(context.capture());
+    Field sharedDeserializer = VeniceChangelogConsumerClientFactory.class.getDeclaredField("pubSubMessageDeserializer");
+    sharedDeserializer.setAccessible(true);
+    Assert.assertNotSame(context.getValue().getPubSubMessageDeserializer(), sharedDeserializer.get(factory));
+  }
+
+  @Test
+  public void testOffsetCommitConsumerNotCreatedWithoutGroupId() {
+    // No broker address either, so building the adapter would require D2 discovery.
+    ChangelogClientConfig config = spy(new ChangelogClientConfig().setConsumerProperties(new Properties()));
+    PubSubConsumerAdapterFactory adapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(adapterFactory).when(config).getPubSubConsumerAdapterFactory();
+    VeniceChangelogConsumerClientFactory factory =
+        new VeniceChangelogConsumerClientFactory(config, new MetricsRepository());
+
+    Assert.assertNull(factory.getOffsetCommitPubSubConsumer(config));
+    verify(adapterFactory, never()).create(any());
   }
 
   @Test
