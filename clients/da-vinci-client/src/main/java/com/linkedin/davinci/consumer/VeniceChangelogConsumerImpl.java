@@ -86,8 +86,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -167,6 +170,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
    * Interaction of this field should acquire the subscriptionLock.writeLock()
    */
   protected volatile VersionSwapMessageState versionSwapMessageState = null;
+  private volatile VersionSwapListener versionSwapListener = null;
+  /**
+   * Completed version swaps waiting to be delivered to {@link #versionSwapListener} by {@link #poll(long)}. Producers
+   * and the draining poll both hold subscriptionLock.writeLock(), which orders each event against the broker polls.
+   */
+  private final Queue<VersionSwapEvent> pendingVersionSwapEvents = new ConcurrentLinkedQueue<>();
+  /**
+   * Topic of each partition subscribed or seeked since the last {@link #poll(long)}, which reports them to
+   * {@link #versionSwapListener}. Written and drained while holding subscriptionLock.writeLock().
+   */
+  private final Map<Integer, String> pendingSubscribedPartitionTopics = new ConcurrentHashMap<>();
   protected Time time;
 
   /**
@@ -412,6 +426,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
           pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
           recordSubscriptionForHeartbeatReporting(topicPartition);
+          recordSubscribedPartitionTopic(topicPartition);
         }
       } finally {
         subscriptionLock.writeLock().unlock();
@@ -727,6 +742,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             pubSubConsumer.subscribe(topicPartition, target.getValue());
           }
           recordSubscriptionForHeartbeatReporting(topicPartition);
+          recordSubscribedPartitionTopic(topicPartition);
           anySubscribed = true;
         } catch (RuntimeException e) {
           LOGGER.error(
@@ -901,12 +917,139 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
   }
 
+  @Override
+  public void setVersionSwapListener(VersionSwapListener listener) {
+    this.versionSwapListener = listener;
+  }
+
+  /**
+   * Notes a partition subscribed or seeked to a topic so that the next {@link #poll(long)} reports it. The caller must
+   * hold subscriptionLock.writeLock().
+   */
+  private void recordSubscribedPartitionTopic(PubSubTopicPartition topicPartition) {
+    pendingSubscribedPartitionTopics.put(topicPartition.getPartitionNumber(), topicPartition.getTopicName());
+  }
+
+  /**
+   * Queues a {@link VersionSwapEvent} for the next {@link #poll(long)} to deliver. The caller must hold
+   * subscriptionLock.writeLock() and must already have moved the swapped partitions to {@code newTopicName}, so that
+   * any poll draining the event observes only post-swap broker records.
+   *
+   * @param newTopicCheckpoints the coordinates the swapped partitions were seeked to on {@code newTopicName}
+   */
+  protected void recordVersionSwapCompleted(
+      Set<String> previousTopics,
+      String newTopicName,
+      long generationId,
+      Set<VeniceChangeCoordinate> newTopicCheckpoints) {
+    if (versionSwapListener == null) {
+      return;
+    }
+    Set<Integer> partitions = new HashSet<>();
+    for (PubSubTopicPartition topicPartition: getTopicAssignment()) {
+      if (topicPartition.getTopicName().equals(newTopicName)) {
+        partitions.add(topicPartition.getPartitionNumber());
+      }
+    }
+    Map<Integer, VeniceChangeCoordinate> newTopicPositions = new HashMap<>();
+    for (VeniceChangeCoordinate checkpoint: newTopicCheckpoints) {
+      newTopicPositions.put(checkpoint.getPartition(), checkpoint);
+    }
+    int newVersion = Version.parseVersionFromKafkaTopicName(newTopicName);
+    VersionSwapEvent event =
+        new VersionSwapEvent(previousTopics, newTopicName, newVersion, generationId, partitions, newTopicPositions);
+    pendingVersionSwapEvents.add(event);
+    LOGGER.info("Queued version swap event for store: {}: {}", storeName, event);
+  }
+
+  protected static Set<String> getTopicNamesExcept(Set<PubSubTopicPartition> assignment, String excludedTopicName) {
+    Set<String> topicNames = new HashSet<>();
+    for (PubSubTopicPartition topicPartition: assignment) {
+      if (!topicPartition.getTopicName().equals(excludedTopicName)) {
+        topicNames.add(topicPartition.getTopicName());
+      }
+    }
+    return topicNames;
+  }
+
+  private void recordControlMessageVersionSwapCompleted(
+      Set<String> previousTopics,
+      Set<VeniceChangeCoordinate> newTopicCheckpoints) {
+    previousTopics.add(versionSwapMessageState.getOldVersionTopic());
+    recordVersionSwapCompleted(
+        previousTopics,
+        versionSwapMessageState.getNewVersionTopic(),
+        versionSwapMessageState.getVersionSwapGenerationId(),
+        newTopicCheckpoints);
+  }
+
+  /**
+   * Moves queued version swap events into {@code drainedEvents}, followed by topic reports for the partitions
+   * subscribed or seeked since the previous drain. Must be called while holding subscriptionLock.writeLock() after the
+   * broker poll of the current {@link #poll(long)} call.
+   */
+  private void drainPendingVersionSwapEvents(List<VersionSwapEvent> drainedEvents) {
+    VersionSwapEvent event;
+    while ((event = pendingVersionSwapEvents.poll()) != null) {
+      drainedEvents.add(event);
+    }
+    if (pendingSubscribedPartitionTopics.isEmpty()) {
+      return;
+    }
+    Map<Integer, String> subscribedPartitionTopics = new HashMap<>(pendingSubscribedPartitionTopics);
+    pendingSubscribedPartitionTopics.clear();
+    if (versionSwapListener == null) {
+      return;
+    }
+    for (VersionSwapEvent versionSwap: drainedEvents) {
+      for (int partition: versionSwap.getPartitions()) {
+        subscribedPartitionTopics.remove(partition, versionSwap.getNewTopic());
+      }
+    }
+    // Skip partitions no longer assigned to the topic they were subscribed to, e.g. unsubscribed since
+    Map<String, Set<Integer>> partitionsByTopic = new HashMap<>();
+    for (PubSubTopicPartition topicPartition: getTopicAssignment()) {
+      String topicName = topicPartition.getTopicName();
+      if (topicName.equals(subscribedPartitionTopics.get(topicPartition.getPartitionNumber()))) {
+        partitionsByTopic.computeIfAbsent(topicName, k -> new HashSet<>()).add(topicPartition.getPartitionNumber());
+      }
+    }
+    for (Map.Entry<String, Set<Integer>> entry: partitionsByTopic.entrySet()) {
+      drainedEvents.add(
+          new VersionSwapEvent(
+              Collections.emptySet(),
+              entry.getKey(),
+              Version.parseVersionFromKafkaTopicName(entry.getKey()),
+              VersionSwapEvent.UNKNOWN_GENERATION_ID,
+              entry.getValue(),
+              Collections.emptyMap()));
+    }
+  }
+
+  private void notifyVersionSwapListener(List<VersionSwapEvent> events) {
+    if (events.isEmpty()) {
+      return;
+    }
+    VersionSwapListener listener = versionSwapListener;
+    if (listener == null) {
+      return;
+    }
+    for (VersionSwapEvent event: events) {
+      try {
+        listener.onVersionSwapCompleted(event);
+      } catch (Exception e) {
+        LOGGER.error("Version swap listener failed for store: {} on event: {}", storeName, event, e);
+      }
+    }
+  }
+
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
       long timeoutInMs,
       boolean includeControlMessage) {
     throwIfReadsDisabled();
     Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap;
+    List<VersionSwapEvent> completedVersionSwaps = new ArrayList<>();
     boolean lockAcquired = false;
 
     try {
@@ -934,7 +1077,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
            */
           if (versionSwapMessageState.isVersionSwapMessagesReceivedForAllPartitions()) {
             if (isNewVersionCheckpointsReady(timeoutInMs)) {
-              synchronousSeekToCheckpoint(versionSwapMessageState.getNewTopicVersionSwapCheckpoints());
+              Set<String> previousTopics =
+                  getTopicNamesExcept(getTopicAssignment(), versionSwapMessageState.getNewVersionTopic());
+              Set<VeniceChangeCoordinate> newTopicCheckpoints =
+                  versionSwapMessageState.getNewTopicVersionSwapCheckpoints();
+              synchronousSeekToCheckpoint(newTopicCheckpoints);
+              recordControlMessageVersionSwapCompleted(previousTopics, newTopicCheckpoints);
               LOGGER.info(
                   "Version swap completed from topic: {} to topic: {}, generation id: {}",
                   versionSwapMessageState.getOldVersionTopic(),
@@ -948,11 +1096,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             }
           } else if (time.getMilliseconds()
               - versionSwapMessageState.getVersionSwapStartTimestamp() > versionSwapTimeoutInMs) {
+            Set<String> previousTopics =
+                getTopicNamesExcept(getTopicAssignment(), versionSwapMessageState.getNewVersionTopic());
             if (!getTopicAssignment().isEmpty()) {
               internalUnsubscribe(versionSwapMessageState.getIncompletePartitions(), true);
             }
             if (isNewVersionCheckpointsReady(timeoutInMs)) {
-              synchronousSeekToCheckpoint(versionSwapMessageState.getNewTopicCheckpointsWithEOPAsBackup());
+              Set<VeniceChangeCoordinate> newTopicCheckpoints =
+                  versionSwapMessageState.getNewTopicCheckpointsWithEOPAsBackup();
+              synchronousSeekToCheckpoint(newTopicCheckpoints);
+              recordControlMessageVersionSwapCompleted(previousTopics, newTopicCheckpoints);
               LOGGER.info(
                   "Version swap completed after timeout from topic: {} to topic: {}, generation id: {}. Partitions: {} are seeked to EOP positions.",
                   versionSwapMessageState.getOldVersionTopic(),
@@ -974,6 +1127,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
 
         messagesMap = pubSubConsumer.poll(timeoutInMs);
+        /*
+         * Swaps queued so far completed before this broker poll, so it returned only post-swap records for the swapped
+         * partitions. Notifying before returning them keeps every new topic record after its swap event.
+         */
+        drainPendingVersionSwapEvents(completedVersionSwaps);
         for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
           PubSubTopicPartition pubSubTopicPartition = entry.getKey();
           List<DefaultPubSubMessage> messageList = entry.getValue();
@@ -1027,6 +1185,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         if (lockAcquired) {
           subscriptionLock.writeLock().unlock();
         }
+        notifyVersionSwapListener(completedVersionSwaps);
       }
 
       int messagesPolled = pubSubMessages.size();

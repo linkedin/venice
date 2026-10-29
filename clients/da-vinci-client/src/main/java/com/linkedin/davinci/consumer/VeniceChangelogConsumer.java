@@ -225,6 +225,32 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
   }
 
   /**
+   * Registers a listener that is notified of the topic each partition of this consumer is consumed from. Replaces any
+   * previously set listener; pass {@code null} to remove it. The listener receives two kinds of
+   * {@link VersionSwapEvent}:
+   * <ul>
+   *   <li>A version swap, each time this consumer completes one, whether it was detected through store metadata or
+   *   through version swap control messages. {@link VersionSwapEvent#isVersionSwap()} returns true.</li>
+   *   <li>A topic report, for partitions subscribed or seeked since the previous {@link #poll(long)} call that are still
+   *   assigned to the topic they were subscribed or seeked to, unless a version swap delivered by the same poll already
+   *   lists them on that topic. {@link VersionSwapEvent#isVersionSwap()} returns false.</li>
+   * </ul>
+   *
+   * <p>The listener is invoked on the thread calling {@link #poll(long)}, before that call returns. All version swaps
+   * delivered by one poll come before its topic reports. Once an event lists a partition on a topic, no
+   * {@link #poll(long)} call returns records from another topic for that partition until a later event lists it on
+   * that other topic, and no record of that partition from the event's topic has been returned before the listener
+   * runs. The listener should be fast and non-blocking; exceptions it throws are logged and ignored. No event is
+   * delivered unless {@link #poll(long)} is called. Set the listener before subscribing so that the first topic of
+   * every partition is reported.
+   *
+   * @throws UnsupportedOperationException if this implementation does not report version swaps
+   */
+  default void setVersionSwapListener(VersionSwapListener listener) {
+    throw new UnsupportedOperationException(getClass().getSimpleName() + " does not support version swap listeners");
+  }
+
+  /**
    * Checks whether all subscribed partitions are caught up during bootstrap. If a partition's (currentTimestamp - latestMessageTimestamp)
    * is smaller or equal to 1 min, we consider this partition is caught up.
    * @return True if all subscribed partitions have caught up.
