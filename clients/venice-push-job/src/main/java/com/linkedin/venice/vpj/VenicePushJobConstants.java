@@ -539,10 +539,6 @@ public final class VenicePushJobConstants {
    */
   public static final String PUSH_JOB_WRITER_HOOK_CLASS = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "class";
 
-  /** Previous unreleased factory setting; rejected when non-empty so an old configuration cannot silently disable hooks. */
-  @Deprecated
-  public static final String PUSH_JOB_WRITER_HOOK_FACTORY_CLASS = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "factory.class";
-
   /**
    * Namespace for the external-storage dual-write subsystem. Every property whose key starts with this
    * prefix is forwarded verbatim from the VPJ driver into the Spark executor's {@code RuntimeConfig} so

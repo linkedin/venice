@@ -26,7 +26,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_S
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_FAIL_OPEN_ON_REGION_FAILURE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_EXTERNAL_STORAGE_WRITER_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
@@ -1064,10 +1063,6 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   }
 
   private void initWriterHook() {
-    if (!props.getString(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, "").trim().isEmpty()) {
-      throw new VeniceException(
-          PUSH_JOB_WRITER_HOOK_FACTORY_CLASS + " is no longer supported; configure " + PUSH_JOB_WRITER_HOOK_CLASS);
-    }
     String className = props.getString(PUSH_JOB_WRITER_HOOK_CLASS, "").trim();
     if (className.isEmpty()) {
       return;

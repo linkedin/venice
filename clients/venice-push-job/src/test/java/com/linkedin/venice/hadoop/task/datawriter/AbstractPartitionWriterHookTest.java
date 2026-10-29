@@ -3,7 +3,6 @@ package com.linkedin.venice.hadoop.task.datawriter;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_CLASS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_FACTORY_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_WRITER_HOOK_PROP_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -172,18 +171,6 @@ public class AbstractPartitionWriterHookTest {
     } finally {
       partitionWriter.close();
     }
-  }
-
-  @Test
-  public void testLegacyFactoryConfigurationFailsClearly() {
-    Properties properties = createBaseProperties();
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS, "com.example.OldFactory");
-    properties.setProperty(PUSH_JOB_WRITER_HOOK_CLASS, RecordingHook.class.getName());
-
-    VeniceException exception = Assert.expectThrows(VeniceException.class, () -> configureWriter(properties));
-    assertTrue(exception.getMessage().contains(PUSH_JOB_WRITER_HOOK_FACTORY_CLASS + " is no longer supported"));
-    assertTrue(exception.getMessage().contains(PUSH_JOB_WRITER_HOOK_CLASS));
-    assertEquals(RecordingHook.CREATE_COUNT.get(), 0);
   }
 
   @Test
