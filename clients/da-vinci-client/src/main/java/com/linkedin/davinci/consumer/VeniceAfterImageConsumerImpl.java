@@ -275,10 +275,15 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     }, seekExecutorService);
   }
 
+  /**
+   * @param isVersionSwap whether this seek moves {@code partitions} to a new current version, in which case a
+   *                      {@link VersionSwapEvent} is queued for the version swap listener after the seek succeeds
+   */
   protected CompletableFuture<Void> internalSeekToEndOfPush(
       Set<Integer> partitions,
       PubSubTopic targetTopic,
-      boolean trackHeartbeats) {
+      boolean trackHeartbeats,
+      boolean isVersionSwap) {
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
@@ -362,7 +367,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                   + targetTopic.getName());
           subscriptionLock.writeLock().lock();
           lockAcquired = true;
-          this.synchronousSeekToCheckpoint(new HashSet<>(checkpoints.values()));
+          Set<String> previousTopics =
+              isVersionSwap ? getTopicNamesExcept(getTopicAssignment(), targetTopic.getName()) : null;
+          Set<VeniceChangeCoordinate> newTopicCheckpoints = new HashSet<>(checkpoints.values());
+          this.synchronousSeekToCheckpoint(newTopicCheckpoints);
+          if (isVersionSwap) {
+            recordVersionSwapCompleted(
+                previousTopics,
+                targetTopic.getName(),
+                VersionSwapEvent.UNKNOWN_GENERATION_ID,
+                newTopicCheckpoints);
+          }
           LOGGER.info(
               "Seeked to EOP for partitions: " + partitions.toString() + " for version topic: "
                   + targetTopic.getName());
@@ -390,7 +405,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
-    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false);
+    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false, false);
   }
 
   public boolean subscribed() {
