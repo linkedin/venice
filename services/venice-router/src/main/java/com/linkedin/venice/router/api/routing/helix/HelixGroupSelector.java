@@ -5,6 +5,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.NavigableMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 
@@ -29,13 +31,28 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
       MetricsRepository metricsRepository,
       HelixInstanceConfigRepository instanceConfigRepository,
       HelixGroupSelectionStrategyEnum strategyEnum,
-      TimeoutProcessor timeoutProcessor) {
+      TimeoutProcessor timeoutProcessor,
+      double skewRampExponent,
+      NavigableMap<Integer, Integer> latencyAdaptiveBatchGetThresholdMs,
+      double evenUntilFraction,
+      long minSampleCount) {
     this.helixGroupStats = new HelixGroupStats(metricsRepository);
     this.instanceConfigRepository = instanceConfigRepository;
     Class<? extends HelixGroupSelectionStrategy> strategyClass = strategyEnum.getStrategyClass();
     if (strategyClass.equals(HelixGroupLeastLoadedStrategy.class)) {
       this.selectionStrategy =
           new HelixGroupLeastLoadedStrategy(timeoutProcessor, HELIX_GROUP_COUNTER_TIMEOUT_MS, helixGroupStats);
+    } else if (strategyClass.equals(HelixGroupLatencyAdaptiveStrategy.class)) {
+      // Skew latency per key-count bucket, reading/recording the dedicated per-(group, bucket) routing metric.
+      this.selectionStrategy = new HelixGroupLatencyAdaptiveStrategy(
+          timeoutProcessor,
+          HELIX_GROUP_COUNTER_TIMEOUT_MS,
+          helixGroupStats,
+          latencyAdaptiveBatchGetThresholdMs,
+          evenUntilFraction,
+          skewRampExponent,
+          minSampleCount,
+          () -> ThreadLocalRandom.current().nextDouble());
     } else {
       try {
         this.selectionStrategy = strategyClass.getDeclaredConstructor().newInstance();
@@ -55,8 +72,13 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
 
   @Override
   public int selectGroup(long requestId, int groupNum) {
+    return selectGroup(requestId, groupNum, 1);
+  }
+
+  @Override
+  public int selectGroup(long requestId, int groupNum, int keyCount) {
     helixGroupStats.recordGroupNum(groupNum);
-    int assignedGroupId = selectionStrategy.selectGroup(requestId, groupNum);
+    int assignedGroupId = selectionStrategy.selectGroup(requestId, groupNum, keyCount);
     helixGroupStats.recordGroupRequest(assignedGroupId);
     return assignedGroupId;
   }
@@ -64,5 +86,15 @@ public class HelixGroupSelector implements HelixGroupSelectionStrategy {
   @Override
   public void finishRequest(long requestId, int groupId, double latency) {
     selectionStrategy.finishRequest(requestId, groupId, latency);
+  }
+
+  @Override
+  public void finishRequest(long requestId, int groupId, int keyCount, double latency) {
+    selectionStrategy.finishRequest(requestId, groupId, keyCount, latency);
+  }
+
+  @Override
+  public void finishRequest(long requestId, int groupId, int keyCount, double latency, boolean success) {
+    selectionStrategy.finishRequest(requestId, groupId, keyCount, latency, success);
   }
 }

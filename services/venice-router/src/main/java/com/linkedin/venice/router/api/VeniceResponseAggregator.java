@@ -183,18 +183,6 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     // TODO: Need to investigate if any of the early terminations above could cause the in-flight request sensor to
     // "leak"
 
-    /**
-     * Decrease the group counter in the following conditions:
-     * 1. The request is an original request (not retry requests).
-     * 2. {@link #helixGroupSelector} is not null.
-     * 3. HelixGroupId is valid since Helix-assisted routing is only enabled for multi-key request.
-      */
-    if (!venicePath.isRetryRequest() && helixGroupSelector != null && venicePath.getHelixGroupId() >= 0) {
-      helixGroupSelector.finishRequest(
-          venicePath.getRequestId(),
-          venicePath.getHelixGroupId(),
-          LatencyUtils.getElapsedTimeFromMsToMs(venicePath.getOriginalRequestStartTs()));
-    }
     RequestType requestType = venicePath.getRequestType();
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
     String storeName = venicePath.getStoreName();
@@ -240,6 +228,21 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     HttpResponseStatus httpResponseStatus = finalResponse.status();
+    /**
+     * Release the Helix group bookkeeping for an original (non-retry) multi-key request, and feed the latency signal
+     * only on a healthy response so a fast-failing group is not mistaken for a fast-serving one. Conditions:
+     * 1. The request is an original request (not a retry request).
+     * 2. {@link #helixGroupSelector} is not null.
+     * 3. HelixGroupId is valid since Helix-assisted routing is only enabled for multi-key requests.
+     */
+    if (!venicePath.isRetryRequest() && helixGroupSelector != null && venicePath.getHelixGroupId() >= 0) {
+      helixGroupSelector.finishRequest(
+          venicePath.getRequestId(),
+          venicePath.getHelixGroupId(),
+          venicePath.getPartitionKeys().size(),
+          LatencyUtils.getElapsedTimeFromMsToMs(venicePath.getOriginalRequestStartTs()),
+          HEALTHY_STATUSES.contains(httpResponseStatus));
+    }
     /**
      * All the metrics in {@link com.linkedin.ddsstorage.router.api.MetricNames} are supported in {@link Metrics}.
      * We are not exposing the following metrics inside Venice right now.

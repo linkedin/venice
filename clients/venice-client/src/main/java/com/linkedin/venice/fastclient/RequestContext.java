@@ -69,6 +69,14 @@ public abstract class RequestContext {
 
   public abstract RequestType getRequestType();
 
+  /**
+   * Number of keys in this request, used to route and attribute latency by request size. Defaults to a single key; the
+   * multi-key context reports its actual batch size.
+   */
+  public int getKeyCount() {
+    return 1;
+  }
+
   public void setServerClusterName(String serverClusterName) {
     this.serverClusterName = serverClusterName;
   }

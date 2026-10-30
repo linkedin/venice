@@ -16,7 +16,9 @@ import io.opentelemetry.api.common.Attributes;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
 import java.util.Map;
@@ -37,6 +39,22 @@ public class HelixGroupStats extends AbstractVeniceStats {
   private final VeniceConcurrentHashMap<Integer, MetricEntityStateBase> groupPendingRequestMap =
       new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<Integer, MetricEntityStateBase> groupResponseWaitingTimeMap =
+      new VeniceConcurrentHashMap<>();
+  /**
+   * Dedicated per-(group, key-count bucket) routing-latency signal that the latency-adaptive group selector reads
+   * back when it is configured. Kept entirely separate from the shared {@code groupResponseWaitingTime*} metric
+   * above so that bucketizing the routing signal perturbs neither least-loaded routing nor the existing per-group
+   * dashboards. Tehuti-only (exported to InGraphs/RRD like the other per-group metrics, with no OTel dimension),
+   * keyed first by group id, then by the bucket's inclusive lower key-count bound as produced by
+   * {@link LatencyAdaptiveGroupSelector#bucketKeyForKeyCount(int)}. Each inner map grows lazily and is bounded by the
+   * number of configured routing buckets (a handful); entries are never evicted. The sensor map holds the Tehuti
+   * {@link Sensor} used to record, while the avg/count maps hold the {@link Metric} handles the selector reads.
+   */
+  private final VeniceConcurrentHashMap<Integer, VeniceConcurrentHashMap<Integer, Sensor>> routingLatencySensorMap =
+      new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Integer, VeniceConcurrentHashMap<Integer, Metric>> routingLatencyAvgMap =
+      new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Integer, VeniceConcurrentHashMap<Integer, Metric>> routingLatencyCountMap =
       new VeniceConcurrentHashMap<>();
   private final String storeName;
 
@@ -155,6 +173,78 @@ public class HelixGroupStats extends AbstractVeniceStats {
       return -1;
     }
     return avgLatency;
+  }
+
+  /**
+   * Lazily registers the Tehuti sensor (Avg for the routing signal, Count for the sample floor) for one
+   * {@code (group, bucket)} pair and caches the two {@link Metric} handles the selector reads back. The sensor name
+   * encodes both the group and the bucket's inclusive lower key-count bound, e.g. {@code group_0_bucket_6_...}.
+   */
+  private Sensor buildRoutingLatencySensor(int groupId, int keyCountBucket) {
+    MeasurableStat avgStat = new Avg();
+    MeasurableStat countStat = new Count();
+    Sensor sensor = registerSensor(
+        "group_" + groupId + "_bucket_" + keyCountBucket + "_routing_response_waiting_time",
+        avgStat,
+        countStat);
+    routingLatencyAvgMap.computeIfAbsent(groupId, id -> new VeniceConcurrentHashMap<>())
+        .put(keyCountBucket, getMetricsRepository().getMetric(getMetricFullName(sensor, avgStat)));
+    routingLatencyCountMap.computeIfAbsent(groupId, id -> new VeniceConcurrentHashMap<>())
+        .put(keyCountBucket, getMetricsRepository().getMetric(getMetricFullName(sensor, countStat)));
+    return sensor;
+  }
+
+  /**
+   * Records a routing-latency sample for {@code groupId} into the key-count {@code bucket} it belongs to (the bucket's
+   * inclusive lower bound, from {@link LatencyAdaptiveGroupSelector#bucketKeyForKeyCount(int)}). Feeds only the
+   * latency-adaptive selector; the shared {@link #recordGroupResponseWaitingTime(int, double)} signal is left
+   * untouched for least-loaded routing and existing dashboards.
+   */
+  public void recordRoutingLatency(int groupId, int keyCountBucket, double responseWaitingTime) {
+    routingLatencySensorMap.computeIfAbsent(groupId, id -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(keyCountBucket, bucket -> buildRoutingLatencySensor(groupId, bucket))
+        .record(responseWaitingTime);
+  }
+
+  /**
+   * Average measured routing latency (ms) for {@code groupId} in the given key-count {@code bucket}, or {@code -1} if
+   * the bucket has no sample yet. Matches {@link LatencyAdaptiveGroupSelector.GroupBucketLatencyProvider}.
+   */
+  public double getRoutingLatencyAvg(int groupId, int keyCountBucket) {
+    Metric avgMetric = getRoutingMetric(routingLatencyAvgMap, groupId, keyCountBucket);
+    if (avgMetric == null) {
+      return -1;
+    }
+    double avgLatency = avgMetric.value();
+    if (Double.isNaN(avgLatency)) {
+      return -1;
+    }
+    return avgLatency;
+  }
+
+  /**
+   * Number of routing-latency samples recorded for {@code groupId} in the given key-count {@code bucket}, or {@code 0}
+   * if none. Matches {@link LatencyAdaptiveGroupSelector.GroupBucketSampleCountProvider} and drives the selector's
+   * minimum-sample floor below which a bucket is treated as not yet measured for that group.
+   */
+  public long getRoutingLatencySampleCount(int groupId, int keyCountBucket) {
+    Metric countMetric = getRoutingMetric(routingLatencyCountMap, groupId, keyCountBucket);
+    if (countMetric == null) {
+      return 0L;
+    }
+    double count = countMetric.value();
+    if (Double.isNaN(count) || count < 0) {
+      return 0L;
+    }
+    return (long) count;
+  }
+
+  private static Metric getRoutingMetric(
+      VeniceConcurrentHashMap<Integer, VeniceConcurrentHashMap<Integer, Metric>> byGroup,
+      int groupId,
+      int keyCountBucket) {
+    VeniceConcurrentHashMap<Integer, Metric> byBucket = byGroup.get(groupId);
+    return byBucket == null ? null : byBucket.get(keyCountBucket);
   }
 
   /**

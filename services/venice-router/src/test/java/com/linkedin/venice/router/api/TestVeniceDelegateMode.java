@@ -33,6 +33,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.RouterRetryConfig;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupLatencyAdaptiveStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -761,7 +762,11 @@ public class TestVeniceDelegateMode {
         new VeniceMetricsRepository(),
         helixInstanceConfigRepository,
         HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
-        mock(TimeoutProcessor.class));
+        mock(TimeoutProcessor.class),
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT,
+        null,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_FRACTION,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_MIN_SAMPLE_COUNT);
     scatterMode.initHelixGroupSelector(helixGroupSelector);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode

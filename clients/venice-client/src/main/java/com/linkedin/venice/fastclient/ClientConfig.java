@@ -8,19 +8,23 @@ import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
+import com.linkedin.venice.fastclient.meta.HelixGroupRoutingStrategyType;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -104,7 +108,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final InstanceHealthMonitor instanceHealthMonitor;
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
-  private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+  private final HelixGroupRoutingStrategyType helixGroupRoutingStrategyType;
+  private final double helixGroupSkewRampExponent;
+  /**
+   * Size-aware routing: per-key-count-bucket full-skew thresholds, same grammar as the long-tail-retry batch-get
+   * thresholds (e.g. {@code "1-5:9,6-20:18,21-150:30,151-500:60,501-:300"}). Defaults to the long-tail-retry batch-get
+   * thresholds so latency-adaptive group routing and long-tail retry share one source of truth.
+   */
+  private final NavigableMap<Integer, Integer> helixGroupSizeAwareThresholds;
+  private final double helixGroupEvenUntilFraction;
+  private final long helixGroupMinSampleCount;
 
   private final MetricsRepository metricsRepository;
 
@@ -230,8 +243,22 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     } else {
       this.instanceHealthMonitor = builder.instanceHealthMonitor;
     }
-    this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
-        builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+    this.helixGroupRoutingStrategyType = builder.helixGroupRoutingStrategyType == null
+        ? HelixGroupRoutingStrategyType.LEAST_LOADED
+        : builder.helixGroupRoutingStrategyType;
+    this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
+    /**
+     * Default the size-aware thresholds to the long-tail-retry batch-get thresholds so the two slow-host-avoidance
+     * features share one source of truth instead of a separate hardcoded set.
+     */
+    String helixGroupSizeAwareThresholdStr =
+        (builder.helixGroupSizeAwareThresholdMs == null || builder.helixGroupSizeAwareThresholdMs.isEmpty())
+            ? builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds
+            : builder.helixGroupSizeAwareThresholdMs;
+    this.helixGroupSizeAwareThresholds =
+        BatchGetConfigUtils.parseRetryThresholdForBatchGet(helixGroupSizeAwareThresholdStr);
+    this.helixGroupEvenUntilFraction = builder.helixGroupEvenUntilFraction;
+    this.helixGroupMinSampleCount = builder.helixGroupMinSampleCount;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;
     this.retryBudgetPercentage = builder.retryBudgetPercentage;
     if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
@@ -412,8 +439,25 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return retryBudgetPercentage;
   }
 
-  public boolean isEnableLeastLoadedRoutingStrategyForHelixGroupRouting() {
-    return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+  public HelixGroupRoutingStrategyType getHelixGroupRoutingStrategyType() {
+    return helixGroupRoutingStrategyType;
+  }
+
+  public double getHelixGroupSkewRampExponent() {
+    return helixGroupSkewRampExponent;
+  }
+
+  /** Parsed per-key-count-bucket full-skew thresholds; defaults to the long-tail-retry batch-get thresholds. */
+  public NavigableMap<Integer, Integer> getHelixGroupSizeAwareThresholds() {
+    return helixGroupSizeAwareThresholds;
+  }
+
+  public double getHelixGroupEvenUntilFraction() {
+    return helixGroupEvenUntilFraction;
+  }
+
+  public long getHelixGroupMinSampleCount() {
+    return helixGroupMinSampleCount;
   }
 
   public boolean isStoreLoadControllerEnabled() {
@@ -517,7 +561,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
     private double retryBudgetPercentage = 0.1d;
 
-    private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
+    private HelixGroupRoutingStrategyType helixGroupRoutingStrategyType = HelixGroupRoutingStrategyType.LEAST_LOADED;
+    private double helixGroupSkewRampExponent = LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
+    private String helixGroupSizeAwareThresholdMs = null;
+    private double helixGroupEvenUntilFraction = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_FRACTION;
+    private long helixGroupMinSampleCount = LatencyAdaptiveGroupSelector.DEFAULT_MIN_SAMPLE_COUNT;
     private boolean storeLoadControllerEnabled = false;
     private int storeLoadControllerWindowSizeInSec = 30;
     private int storeLoadControllerRejectionRatioUpdateIntervalInSec = 3;
@@ -719,9 +767,29 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
-        boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting) {
-      this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+    public ClientConfigBuilder<K, V, T> setHelixGroupRoutingStrategyType(
+        HelixGroupRoutingStrategyType helixGroupRoutingStrategyType) {
+      this.helixGroupRoutingStrategyType = helixGroupRoutingStrategyType;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupSkewRampExponent(double helixGroupSkewRampExponent) {
+      this.helixGroupSkewRampExponent = helixGroupSkewRampExponent;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupSizeAwareThresholdMs(String helixGroupSizeAwareThresholdMs) {
+      this.helixGroupSizeAwareThresholdMs = helixGroupSizeAwareThresholdMs;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupEvenUntilFraction(double helixGroupEvenUntilFraction) {
+      this.helixGroupEvenUntilFraction = helixGroupEvenUntilFraction;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupMinSampleCount(long helixGroupMinSampleCount) {
+      this.helixGroupMinSampleCount = helixGroupMinSampleCount;
       return this;
     }
 
@@ -829,7 +897,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setInstanceHealthMonitor(instanceHealthMonitor)
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
-          .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
+          .setHelixGroupRoutingStrategyType(helixGroupRoutingStrategyType)
+          .setHelixGroupSkewRampExponent(helixGroupSkewRampExponent)
+          .setHelixGroupSizeAwareThresholdMs(helixGroupSizeAwareThresholdMs)
+          .setHelixGroupEvenUntilFraction(helixGroupEvenUntilFraction)
+          .setHelixGroupMinSampleCount(helixGroupMinSampleCount)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
           .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)
