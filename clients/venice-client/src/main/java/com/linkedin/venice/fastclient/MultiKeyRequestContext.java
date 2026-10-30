@@ -67,6 +67,11 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     this.keys = keys;
   }
 
+  @Override
+  public int getKeyCount() {
+    return numKeysInRequest;
+  }
+
   public Set<K> getKeys() {
     return this.keys;
   }

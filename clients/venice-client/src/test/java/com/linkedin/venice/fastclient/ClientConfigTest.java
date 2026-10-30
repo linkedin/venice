@@ -34,6 +34,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import io.opentelemetry.api.common.AttributeKey;
@@ -44,6 +45,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
@@ -516,35 +518,37 @@ public class ClientConfigTest {
   @Test
   public void testHelixGroupLatencyAdaptiveKnobsDefaultToSelectorConstants() {
     ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().build();
+    // The size-aware thresholds default to the long-tail-retry batch-get thresholds.
     assertEquals(
-        clientConfig.getHelixGroupEvenUntilLatencyMs(),
-        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_MS,
-        0.0);
-    assertEquals(
-        clientConfig.getHelixGroupFullSkewAtLatencyMs(),
-        LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
-        0.0);
+        clientConfig.getHelixGroupSizeAwareThresholds(),
+        BatchGetConfigUtils.parseRetryThresholdForBatchGet(
+            ClientConfig.LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_BATCH_GET_IN_MILLI_SECONDS));
     assertEquals(
         clientConfig.getHelixGroupSkewRampExponent(),
         LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT,
         0.0);
+    assertEquals(
+        clientConfig.getHelixGroupEvenUntilFraction(),
+        LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_FRACTION,
+        0.0);
+    assertEquals(clientConfig.getHelixGroupMinSampleCount(), LatencyAdaptiveGroupSelector.DEFAULT_MIN_SAMPLE_COUNT);
   }
 
   @Test
   public void testHelixGroupLatencyAdaptiveKnobsAreOverridableAndClonePreservesThem() {
+    String sizeAwareThresholds = "1-10:5,11-:20";
+    NavigableMap<Integer, Integer> expectedThresholds =
+        BatchGetConfigUtils.parseRetryThresholdForBatchGet(sizeAwareThresholds);
     ClientConfig.ClientConfigBuilder builder =
-        getClientConfigWithMinimumRequiredInputs().setHelixGroupEvenUntilLatencyMs(1.5)
-            .setHelixGroupFullSkewAtLatencyMs(3.0)
+        getClientConfigWithMinimumRequiredInputs().setHelixGroupSizeAwareThresholdMs(sizeAwareThresholds)
             .setHelixGroupSkewRampExponent(2.0);
     ClientConfig clientConfig = builder.build();
-    assertEquals(clientConfig.getHelixGroupEvenUntilLatencyMs(), 1.5, 0.0);
-    assertEquals(clientConfig.getHelixGroupFullSkewAtLatencyMs(), 3.0, 0.0);
+    assertEquals(clientConfig.getHelixGroupSizeAwareThresholds(), expectedThresholds);
     assertEquals(clientConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
 
     // The builder clone (used by ClientFactory) must carry the overridden knobs through.
     ClientConfig clonedConfig = builder.clone().build();
-    assertEquals(clonedConfig.getHelixGroupEvenUntilLatencyMs(), 1.5, 0.0);
-    assertEquals(clonedConfig.getHelixGroupFullSkewAtLatencyMs(), 3.0, 0.0);
+    assertEquals(clonedConfig.getHelixGroupSizeAwareThresholds(), expectedThresholds);
     assertEquals(clonedConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
   }
 

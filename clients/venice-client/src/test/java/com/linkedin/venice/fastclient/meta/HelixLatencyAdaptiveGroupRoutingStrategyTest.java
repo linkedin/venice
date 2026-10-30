@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -11,6 +12,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import org.testng.annotations.Test;
 
 
@@ -158,5 +160,54 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
         Math.abs(stayEvenSlowHits - total / 3.0) < total * 0.06,
         "with the stay-even knob above the slowest latency the slow group should stay near an even 1/3, got "
             + stayEvenSlowHits + "/" + total);
+  }
+
+  @Test
+  public void testSizeAwareRoutesPerKeyCountBucket() {
+    // A group can be fast for small batches but slow for large ones. With size-aware routing the small-batch bucket and
+    // the large-batch bucket must skew to different groups.
+    // Buckets: key counts 1-5 => bucketKey 1, key counts 6+ => bucketKey 6.
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    // Small-batch bucket (key 1): group0 fast, groups 1 and 2 slow.
+    doReturn(10d).when(stats).getRoutingLatencyAvg(0, 1);
+    doReturn(100d).when(stats).getRoutingLatencyAvg(1, 1);
+    doReturn(100d).when(stats).getRoutingLatencyAvg(2, 1);
+    // Large-batch bucket (key 6): group1 fast, groups 0 and 2 slow.
+    doReturn(100d).when(stats).getRoutingLatencyAvg(0, 6);
+    doReturn(10d).when(stats).getRoutingLatencyAvg(1, 6);
+    doReturn(100d).when(stats).getRoutingLatencyAvg(2, 6);
+    // Plenty of samples in every (group, bucket) so nothing is masked as unmeasured.
+    doReturn(1000L).when(stats).getRoutingLatencySampleCount(anyInt(), anyInt());
+
+    TreeMap<Integer, Integer> fullSkewMsByLowerBound = new TreeMap<>();
+    fullSkewMsByLowerBound.put(1, 40);
+    fullSkewMsByLowerBound.put(6, 40);
+    InstanceHealthMonitor monitor = mock(InstanceHealthMonitor.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy =
+        new HelixLatencyAdaptiveGroupRoutingStrategy(monitor, stats, fullSkewMsByLowerBound, 0.25, 1.0, 10L);
+    Map<String, Integer> instanceToGroupIdMapping = new HashMap<>();
+    instanceToGroupIdMapping.put(instance1, 0);
+    instanceToGroupIdMapping.put(instance2, 1);
+    instanceToGroupIdMapping.put(instance3, 2);
+    strategy.updateHelixGroupInfo(instanceToGroupIdMapping);
+
+    int total = 6000;
+    int smallBatchToGroup0 = 0;
+    int largeBatchToGroup1 = 0;
+    for (long requestId = 0; requestId < total; requestId++) {
+      if (strategy.getHelixGroupId(requestId, -1, 3) == 0) {
+        smallBatchToGroup0++;
+      }
+      if (strategy.getHelixGroupId(requestId, -1, 50) == 1) {
+        largeBatchToGroup1++;
+      }
+    }
+    assertTrue(
+        smallBatchToGroup0 > total * 0.5,
+        "small-batch requests should favour the group fast for that bucket, got " + smallBatchToGroup0 + "/" + total);
+    assertTrue(
+        largeBatchToGroup1 > total * 0.5,
+        "large-batch requests should favour a different group fast for that bucket, got " + largeBatchToGroup1 + "/"
+            + total);
   }
 }

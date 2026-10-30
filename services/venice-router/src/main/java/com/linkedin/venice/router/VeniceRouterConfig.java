@@ -38,8 +38,9 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HEART_BEAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_EVEN_UNTIL_FRACTION;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_LATENCY_ADAPTIVE_BATCH_GET_THRESHOLD_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_MIN_SAMPLE_COUNT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_HEADER_TABLE_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
@@ -215,9 +216,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int ioThreadCountInPoolMode;
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
-  private final double helixGroupEvenUntilLatencyMs;
-  private final double helixGroupFullSkewAtLatencyMs;
   private final double helixGroupSkewRampExponent;
+  private final TreeMap<Integer, Integer> helixGroupLatencyAdaptiveBatchGetThresholdMs;
+  private final double helixGroupEvenUntilFraction;
+  private final long helixGroupMinSampleCount;
   private final String systemSchemaClusterName;
   private final int maxConcurrentSslHandshakes;
   private final int resolveThreads;
@@ -411,15 +413,23 @@ public class VeniceRouterConfig implements RouterRetryConfig {
                 + helixGroupSelectionStrategyStr + ", and allowed values: "
                 + Arrays.toString(HelixGroupSelectionStrategyEnum.values()));
       }
-      helixGroupEvenUntilLatencyMs = props.getDouble(
-          ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS,
-          HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS);
-      helixGroupFullSkewAtLatencyMs = props.getDouble(
-          ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS,
-          HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS);
       helixGroupSkewRampExponent = props.getDouble(
           ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT,
           HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+      String helixGroupLatencyAdaptiveBatchGetThresholdStr =
+          props.getString(ROUTER_HELIX_GROUP_LATENCY_ADAPTIVE_BATCH_GET_THRESHOLD_MS, "");
+      /**
+       * Default the per-bucket full-skew thresholds to the long-tail-retry batch-get thresholds so the two
+       * slow-host-avoidance features share one source of truth instead of a separate hardcoded set.
+       */
+      helixGroupLatencyAdaptiveBatchGetThresholdMs = helixGroupLatencyAdaptiveBatchGetThresholdStr.isEmpty()
+          ? new TreeMap<>(longTailRetryForBatchGetThresholdMs)
+          : BatchGetConfigUtils.parseRetryThresholdForBatchGet(helixGroupLatencyAdaptiveBatchGetThresholdStr);
+      helixGroupEvenUntilFraction = props.getDouble(
+          ROUTER_HELIX_GROUP_EVEN_UNTIL_FRACTION,
+          HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_FRACTION);
+      helixGroupMinSampleCount = props
+          .getLong(ROUTER_HELIX_GROUP_MIN_SAMPLE_COUNT, HelixGroupLatencyAdaptiveStrategy.DEFAULT_MIN_SAMPLE_COUNT);
       systemSchemaClusterName = props.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
       routerHeartBeatEnabled = props.getBoolean(ROUTER_HEART_BEAT_ENABLED, true);
       httpClient5PoolSize = props.getInt(ROUTER_HTTP_CLIENT5_POOL_SIZE, 1);
@@ -768,16 +778,25 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     return helixGroupSelectionStrategy;
   }
 
-  public double getHelixGroupEvenUntilLatencyMs() {
-    return helixGroupEvenUntilLatencyMs;
-  }
-
-  public double getHelixGroupFullSkewAtLatencyMs() {
-    return helixGroupFullSkewAtLatencyMs;
-  }
-
   public double getHelixGroupSkewRampExponent() {
     return helixGroupSkewRampExponent;
+  }
+
+  /**
+   * The per-key-count-bucket full-skew threshold table (inclusive key-count lower bound -> full-skew threshold in ms)
+   * for the {@literal LATENCY_ADAPTIVE} path; defaults to the long-tail-retry batch-get thresholds when not explicitly
+   * configured.
+   */
+  public TreeMap<Integer, Integer> getHelixGroupLatencyAdaptiveBatchGetThresholdMs() {
+    return helixGroupLatencyAdaptiveBatchGetThresholdMs;
+  }
+
+  public double getHelixGroupEvenUntilFraction() {
+    return helixGroupEvenUntilFraction;
+  }
+
+  public long getHelixGroupMinSampleCount() {
+    return helixGroupMinSampleCount;
   }
 
   public String getSystemSchemaClusterName() {

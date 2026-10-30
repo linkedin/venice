@@ -2,9 +2,11 @@ package com.linkedin.venice.fastclient.meta;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -132,6 +134,25 @@ public class HelixGroupRoutingStrategyTest {
     verify(mockStats).recordGroupNum(3);
     verify(mockStats).recordGroupRequest(1);
     verify(mockStats).recordGroupResponseWaitingTime(eq(1), anyDouble());
+  }
+
+  @Test
+  public void testTrackRequestSkipsLatencyOnFailedCompletion() {
+    HelixGroupStats mockStats = mock(HelixGroupStats.class);
+    HelixGroupRoutingStrategy strategy = new HelixGroupRoutingStrategy(instanceHealthMonitor, mockStats);
+    strategy.updateHelixGroupInfo(getHelixGroupInfo());
+
+    CompletableFuture resultFuture = new CompletableFuture();
+    resultFuture.completeExceptionally(new RuntimeException("boom"));
+    BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext(10, true);
+    batchGetRequestContext.setRetryRequest(false);
+    batchGetRequestContext.setHelixGroupId(1);
+    batchGetRequestContext.setResultFuture(resultFuture);
+
+    // The request is still tracked (group counters bump), but a failed completion must not feed the latency signal.
+    assertTrue(strategy.trackRequest(batchGetRequestContext));
+    verify(mockStats).recordGroupRequest(1);
+    verify(mockStats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
   }
 
   /**

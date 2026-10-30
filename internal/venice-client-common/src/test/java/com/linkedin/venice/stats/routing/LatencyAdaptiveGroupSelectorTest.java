@@ -174,7 +174,7 @@ public class LatencyAdaptiveGroupSelectorTest {
     LatencyAdaptiveGroupSelector selector =
         new LatencyAdaptiveGroupSelector(latencies(12.0, 14.0, 18.0), 10.0, 30.0, 1.0, PICK_FIRST);
     selector.setLogContext("router");
-    String line = selector.formatWeights(3);
+    String line = selector.formatWeights(3, 1);
 
     assertTrue(line.contains("[router]"), "should include the log context: " + line);
     assertTrue(line.contains("skew="), "should include the skew: " + line);
@@ -198,8 +198,125 @@ public class LatencyAdaptiveGroupSelectorTest {
     // g1 has no datapoint yet (latency <= 0) => rendered as n/a, not a bogus number.
     LatencyAdaptiveGroupSelector selector =
         new LatencyAdaptiveGroupSelector(latencies(12.0, -1.0), 10.0, 30.0, 1.0, PICK_FIRST);
-    String line = selector.formatWeights(2);
+    String line = selector.formatWeights(2, 1);
     assertTrue(line.contains("g1 lat=n/a"), "unmeasured group should render lat=n/a: " + line);
+  }
+
+  @Test
+  public void testBucketKeyForKeyCountMapsToFloor() {
+    LatencyAdaptiveGroupSelector selector = new LatencyAdaptiveGroupSelector(
+        (g, b) -> -1.0,
+        (g, b) -> 0L,
+        buckets(1, 9, 6, 18, 21, 30),
+        1.0 / 3.0,
+        1.0,
+        10L,
+        PICK_FIRST);
+    assertEquals(selector.bucketKeyForKeyCount(0), 1, "below the lowest bound clamps to the first bucket");
+    assertEquals(selector.bucketKeyForKeyCount(1), 1);
+    assertEquals(selector.bucketKeyForKeyCount(5), 1);
+    assertEquals(selector.bucketKeyForKeyCount(6), 6);
+    assertEquals(selector.bucketKeyForKeyCount(20), 6);
+    assertEquals(selector.bucketKeyForKeyCount(21), 21);
+    assertEquals(selector.bucketKeyForKeyCount(10_000), 21, "above the top bound stays in the terminal bucket");
+  }
+
+  @Test
+  public void testBucketedConstructorValidation() {
+    // Map must start at key count 1.
+    assertThrows(
+        VeniceException.class,
+        () -> new LatencyAdaptiveGroupSelector(
+            (g, b) -> -1.0,
+            (g, b) -> 0L,
+            buckets(2, 30),
+            1.0 / 3.0,
+            1.0,
+            10L,
+            PICK_FIRST));
+    // evenUntilFraction must be in (0, 1).
+    assertThrows(
+        VeniceException.class,
+        () -> new LatencyAdaptiveGroupSelector(
+            (g, b) -> -1.0,
+            (g, b) -> 0L,
+            buckets(1, 30),
+            1.0,
+            1.0,
+            10L,
+            PICK_FIRST));
+    // minSampleCount must be >= 0.
+    assertThrows(
+        VeniceException.class,
+        () -> new LatencyAdaptiveGroupSelector(
+            (g, b) -> -1.0,
+            (g, b) -> 0L,
+            buckets(1, 30),
+            1.0 / 3.0,
+            1.0,
+            -1L,
+            PICK_FIRST));
+  }
+
+  @Test
+  public void testPerBucketThresholdIsolatesRequestSizes() {
+    // Two buckets: small keys (1-99) with a tight 9ms full-skew, large keys (100+) with a loose 300ms full-skew
+    // (even-until 100ms). The SAME per-group latencies are read differently per bucket: in the small bucket the 20ms
+    // group trips full skew and loses traffic; in the large bucket both groups sit under the even-until threshold and
+    // routing stays even. This is the size-isolation a single mixed average cannot provide.
+    LatencyAdaptiveGroupSelector.GroupBucketLatencyProvider lat = (g, bucketKey) -> g == 0 ? 5.0 : 20.0;
+    LatencyAdaptiveGroupSelector.GroupBucketSampleCountProvider cnt = (g, bucketKey) -> 1000L;
+    Random random = new Random(13);
+    LatencyAdaptiveGroupSelector selector =
+        new LatencyAdaptiveGroupSelector(lat, cnt, buckets(1, 9, 100, 300), 1.0 / 3.0, 1.0, 10L, random::nextDouble);
+
+    int smallToFast = 0;
+    int largeToFast = 0;
+    int total = 8000;
+    for (int i = 0; i < total; i++) {
+      if (selector.selectGroup(2, i % 2, -1, 10) == 0) {
+        smallToFast++;
+      }
+      if (selector.selectGroup(2, i % 2, -1, 250) == 0) {
+        largeToFast++;
+      }
+    }
+    assertTrue(smallToFast > total * 0.7, "small-key bucket should skew toward the fast group, got " + smallToFast);
+    assertTrue(
+        largeToFast > total * 0.4 && largeToFast < total * 0.6,
+        "large-key bucket should stay even below its threshold, got " + largeToFast);
+  }
+
+  @Test
+  public void testMinSampleFloorFallsBackToEven() {
+    // g1 looks very slow (100ms) but has only 2 samples in the bucket, below the floor of 10 => it is treated as not
+    // yet measured, so the slowest measured group is g0 at 5ms (under even-until) and routing stays even rather than
+    // reacting to a thin, noisy average.
+    LatencyAdaptiveGroupSelector.GroupBucketLatencyProvider lat = (g, bucketKey) -> g == 0 ? 5.0 : 100.0;
+    LatencyAdaptiveGroupSelector.GroupBucketSampleCountProvider cnt = (g, bucketKey) -> g == 0 ? 1000L : 2L;
+    Random random = new Random(17);
+    LatencyAdaptiveGroupSelector selector =
+        new LatencyAdaptiveGroupSelector(lat, cnt, buckets(1, 30), 1.0 / 3.0, 1.0, 10L, random::nextDouble);
+
+    int group0 = 0;
+    int total = 8000;
+    for (int i = 0; i < total; i++) {
+      if (selector.selectGroup(2, i % 2, -1, 5) == 0) {
+        group0++;
+      }
+    }
+    assertTrue(
+        group0 > total * 0.4 && group0 < total * 0.6,
+        "thin bucket should fall back to even routing, got " + group0 + "/" + total);
+  }
+
+  /** Builds a {@code lowerBound -> fullSkewMs} bucket map from flattened pairs, as the shared retry parser would produce. */
+  private static java.util.NavigableMap<Integer, Integer> buckets(int... lowerBoundThenFullSkew) {
+    java.util.TreeMap<Integer, Integer> map = new java.util.TreeMap<>();
+    for (int i = 0; i < lowerBoundThenFullSkew.length; i += 2) {
+      map.put(lowerBoundThenFullSkew[i], lowerBoundThenFullSkew[i + 1]);
+    }
+    return map;
   }
 
   private static double parseWeight(String line, String groupToken) {

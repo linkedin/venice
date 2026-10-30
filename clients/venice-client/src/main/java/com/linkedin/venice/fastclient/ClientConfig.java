@@ -18,11 +18,13 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -107,9 +109,15 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
   private final HelixGroupRoutingStrategyType helixGroupRoutingStrategyType;
-  private final double helixGroupEvenUntilLatencyMs;
-  private final double helixGroupFullSkewAtLatencyMs;
   private final double helixGroupSkewRampExponent;
+  /**
+   * Size-aware routing: per-key-count-bucket full-skew thresholds, same grammar as the long-tail-retry batch-get
+   * thresholds (e.g. {@code "1-5:9,6-20:18,21-150:30,151-500:60,501-:300"}). Defaults to the long-tail-retry batch-get
+   * thresholds so latency-adaptive group routing and long-tail retry share one source of truth.
+   */
+  private final NavigableMap<Integer, Integer> helixGroupSizeAwareThresholds;
+  private final double helixGroupEvenUntilFraction;
+  private final long helixGroupMinSampleCount;
 
   private final MetricsRepository metricsRepository;
 
@@ -238,9 +246,19 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.helixGroupRoutingStrategyType = builder.helixGroupRoutingStrategyType == null
         ? HelixGroupRoutingStrategyType.LEAST_LOADED
         : builder.helixGroupRoutingStrategyType;
-    this.helixGroupEvenUntilLatencyMs = builder.helixGroupEvenUntilLatencyMs;
-    this.helixGroupFullSkewAtLatencyMs = builder.helixGroupFullSkewAtLatencyMs;
     this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
+    /**
+     * Default the size-aware thresholds to the long-tail-retry batch-get thresholds so the two slow-host-avoidance
+     * features share one source of truth instead of a separate hardcoded set.
+     */
+    String helixGroupSizeAwareThresholdStr =
+        (builder.helixGroupSizeAwareThresholdMs == null || builder.helixGroupSizeAwareThresholdMs.isEmpty())
+            ? builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds
+            : builder.helixGroupSizeAwareThresholdMs;
+    this.helixGroupSizeAwareThresholds =
+        BatchGetConfigUtils.parseRetryThresholdForBatchGet(helixGroupSizeAwareThresholdStr);
+    this.helixGroupEvenUntilFraction = builder.helixGroupEvenUntilFraction;
+    this.helixGroupMinSampleCount = builder.helixGroupMinSampleCount;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;
     this.retryBudgetPercentage = builder.retryBudgetPercentage;
     if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
@@ -425,16 +443,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return helixGroupRoutingStrategyType;
   }
 
-  public double getHelixGroupEvenUntilLatencyMs() {
-    return helixGroupEvenUntilLatencyMs;
-  }
-
-  public double getHelixGroupFullSkewAtLatencyMs() {
-    return helixGroupFullSkewAtLatencyMs;
-  }
-
   public double getHelixGroupSkewRampExponent() {
     return helixGroupSkewRampExponent;
+  }
+
+  /** Parsed per-key-count-bucket full-skew thresholds; defaults to the long-tail-retry batch-get thresholds. */
+  public NavigableMap<Integer, Integer> getHelixGroupSizeAwareThresholds() {
+    return helixGroupSizeAwareThresholds;
+  }
+
+  public double getHelixGroupEvenUntilFraction() {
+    return helixGroupEvenUntilFraction;
+  }
+
+  public long getHelixGroupMinSampleCount() {
+    return helixGroupMinSampleCount;
   }
 
   public boolean isStoreLoadControllerEnabled() {
@@ -539,9 +562,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private double retryBudgetPercentage = 0.1d;
 
     private HelixGroupRoutingStrategyType helixGroupRoutingStrategyType = HelixGroupRoutingStrategyType.LEAST_LOADED;
-    private double helixGroupEvenUntilLatencyMs = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_LATENCY_MS;
-    private double helixGroupFullSkewAtLatencyMs = LatencyAdaptiveGroupSelector.DEFAULT_FULL_SKEW_AT_LATENCY_MS;
     private double helixGroupSkewRampExponent = LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
+    private String helixGroupSizeAwareThresholdMs = null;
+    private double helixGroupEvenUntilFraction = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_FRACTION;
+    private long helixGroupMinSampleCount = LatencyAdaptiveGroupSelector.DEFAULT_MIN_SAMPLE_COUNT;
     private boolean storeLoadControllerEnabled = false;
     private int storeLoadControllerWindowSizeInSec = 30;
     private int storeLoadControllerRejectionRatioUpdateIntervalInSec = 3;
@@ -749,18 +773,23 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setHelixGroupEvenUntilLatencyMs(double helixGroupEvenUntilLatencyMs) {
-      this.helixGroupEvenUntilLatencyMs = helixGroupEvenUntilLatencyMs;
-      return this;
-    }
-
-    public ClientConfigBuilder<K, V, T> setHelixGroupFullSkewAtLatencyMs(double helixGroupFullSkewAtLatencyMs) {
-      this.helixGroupFullSkewAtLatencyMs = helixGroupFullSkewAtLatencyMs;
-      return this;
-    }
-
     public ClientConfigBuilder<K, V, T> setHelixGroupSkewRampExponent(double helixGroupSkewRampExponent) {
       this.helixGroupSkewRampExponent = helixGroupSkewRampExponent;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupSizeAwareThresholdMs(String helixGroupSizeAwareThresholdMs) {
+      this.helixGroupSizeAwareThresholdMs = helixGroupSizeAwareThresholdMs;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupEvenUntilFraction(double helixGroupEvenUntilFraction) {
+      this.helixGroupEvenUntilFraction = helixGroupEvenUntilFraction;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupMinSampleCount(long helixGroupMinSampleCount) {
+      this.helixGroupMinSampleCount = helixGroupMinSampleCount;
       return this;
     }
 
@@ -869,9 +898,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
           .setHelixGroupRoutingStrategyType(helixGroupRoutingStrategyType)
-          .setHelixGroupEvenUntilLatencyMs(helixGroupEvenUntilLatencyMs)
-          .setHelixGroupFullSkewAtLatencyMs(helixGroupFullSkewAtLatencyMs)
           .setHelixGroupSkewRampExponent(helixGroupSkewRampExponent)
+          .setHelixGroupSizeAwareThresholdMs(helixGroupSizeAwareThresholdMs)
+          .setHelixGroupEvenUntilFraction(helixGroupEvenUntilFraction)
+          .setHelixGroupMinSampleCount(helixGroupMinSampleCount)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
           .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)

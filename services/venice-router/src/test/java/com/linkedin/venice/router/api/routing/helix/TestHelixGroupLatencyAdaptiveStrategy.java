@@ -1,10 +1,15 @@
 package com.linkedin.venice.router.api.routing.helix;
 
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
@@ -14,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -1153,5 +1159,70 @@ public class TestHelixGroupLatencyAdaptiveStrategy {
       out[i] = values[i] * factor;
     }
     return out;
+  }
+
+  /** A latency-adaptive strategy over a caller-supplied (mock) stats so recording can be verified. */
+  private static HelixGroupLatencyAdaptiveStrategy scalarStrategyOver(
+      HelixGroupStats stats,
+      TimeoutProcessor timeoutProcessor) {
+    return new HelixGroupLatencyAdaptiveStrategy(
+        timeoutProcessor,
+        TIMEOUT_MS,
+        stats,
+        groupId -> 10.0,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
+        1.0,
+        new Random(SEED)::nextDouble);
+  }
+
+  @Test
+  public void testFailedRequestDoesNotRecordLatencyButReleasesGroup() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixGroupLatencyAdaptiveStrategy strategy = scalarStrategyOver(stats, mockTimeoutProcessor());
+    int group = strategy.selectGroup(0L, 3);
+
+    // An unhealthy (failed) response must not feed the latency signal, so a fast failure cannot make a group look fast.
+    strategy.finishRequest(0L, group, 5, 123.0, false);
+    verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
+
+    // The group bookkeeping must still be released: re-selecting the same request id must not trip the "selected more
+    // than once" guard, and a subsequent healthy request records exactly one sample.
+    int reselected = strategy.selectGroup(0L, 3);
+    strategy.finishRequest(0L, reselected, 5, 20.0, true);
+    verify(stats, times(1)).recordGroupResponseWaitingTime(reselected, 20.0);
+  }
+
+  @Test
+  public void testFinishRecordsLatencyAtMostOnce() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixGroupLatencyAdaptiveStrategy strategy = scalarStrategyOver(stats, mockTimeoutProcessor());
+    int group = strategy.selectGroup(0L, 3);
+
+    strategy.finishRequest(0L, group, 5, 42.0, true);
+    // A duplicate completion for the same request must not double-count the latency.
+    strategy.finishRequest(0L, group, 5, 42.0, true);
+    verify(stats, times(1)).recordGroupResponseWaitingTime(group, 42.0);
+  }
+
+  @Test
+  public void testTimeoutPenalizesOnceThenLateFinishIsNoOp() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    TimeoutProcessor timeoutProcessor = mock(TimeoutProcessor.class);
+    AtomicReference<Runnable> scheduled = new AtomicReference<>();
+    doAnswer(invocation -> {
+      scheduled.set(invocation.getArgument(0));
+      return mock(TimeoutProcessor.TimeoutFuture.class);
+    }).when(timeoutProcessor).schedule(any(), anyLong(), any());
+    HelixGroupLatencyAdaptiveStrategy strategy = scalarStrategyOver(stats, timeoutProcessor);
+    int group = strategy.selectGroup(0L, 3);
+
+    // The leak-safeguard timeout fires: the stalled group is penalized once with the timeout latency.
+    scheduled.get().run();
+    verify(stats, times(1)).recordGroupResponseWaitingTime(group, (double) TIMEOUT_MS);
+
+    // A late finish for the already-released request must not record a second sample.
+    strategy.finishRequest(0L, group, 5, 7.0, true);
+    verify(stats, times(1)).recordGroupResponseWaitingTime(anyInt(), anyDouble());
   }
 }

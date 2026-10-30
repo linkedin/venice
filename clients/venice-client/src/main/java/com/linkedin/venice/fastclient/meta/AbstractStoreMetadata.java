@@ -66,9 +66,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
                 instanceHealthMonitor,
                 clientConfig.getMetricsRepository(),
                 getStoreName(),
-                clientConfig.getHelixGroupEvenUntilLatencyMs(),
-                clientConfig.getHelixGroupFullSkewAtLatencyMs(),
-                clientConfig.getHelixGroupSkewRampExponent());
+                clientConfig.getHelixGroupSizeAwareThresholds(),
+                clientConfig.getHelixGroupEvenUntilFraction(),
+                clientConfig.getHelixGroupSkewRampExponent(),
+                clientConfig.getHelixGroupMinSampleCount());
           case LEAST_LOADED:
             return new HelixLeastLoadedGroupRoutingStrategy(
                 instanceHealthMonitor,
@@ -202,7 +203,8 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
       requestContext.setCurrentVersion(currentVersion);
     }
     requestContext.setRequestId(REQUEST_ID_GENERATOR.getAndIncrement());
-    int groupId = routingStrategy.getHelixGroupId(requestContext.getRequestId(), requestContext.getHelixGroupId());
+    int groupId = routingStrategy
+        .getHelixGroupId(requestContext.getRequestId(), requestContext.getHelixGroupId(), requestContext.getKeyCount());
     requestContext.setHelixGroupId(groupId);
     /**
      * Track the request for the routing strategy.

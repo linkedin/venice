@@ -1077,9 +1077,10 @@ public class RouterServer extends AbstractVeniceService {
             instanceConfigRepository,
             config.getHelixGroupSelectionStrategy(),
             timeoutProcessor,
-            config.getHelixGroupEvenUntilLatencyMs(),
-            config.getHelixGroupFullSkewAtLatencyMs(),
-            config.getHelixGroupSkewRampExponent());
+            config.getHelixGroupSkewRampExponent(),
+            config.getHelixGroupLatencyAdaptiveBatchGetThresholdMs(),
+            config.getHelixGroupEvenUntilFraction(),
+            config.getHelixGroupMinSampleCount());
         scatterGatherMode.initHelixGroupSelector(helixGroupSelector);
         responseAggregator.initHelixGroupSelector(helixGroupSelector);
       }

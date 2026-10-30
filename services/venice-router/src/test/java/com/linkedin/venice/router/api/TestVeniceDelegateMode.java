@@ -763,9 +763,10 @@ public class TestVeniceDelegateMode {
         helixInstanceConfigRepository,
         HelixGroupSelectionStrategyEnum.ROUND_ROBIN,
         mock(TimeoutProcessor.class),
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_LATENCY_MS,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_FULL_SKEW_AT_LATENCY_MS,
-        HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT);
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_INTERPOLATION_EXPONENT,
+        null,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_EVEN_UNTIL_FRACTION,
+        HelixGroupLatencyAdaptiveStrategy.DEFAULT_MIN_SAMPLE_COUNT);
     scatterMode.initHelixGroupSelector(helixGroupSelector);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode

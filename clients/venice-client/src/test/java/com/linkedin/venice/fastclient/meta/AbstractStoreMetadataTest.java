@@ -16,6 +16,7 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
@@ -244,9 +245,11 @@ public class AbstractStoreMetadataTest {
     doReturn(ClientRoutingStrategyType.HELIX_ASSISTED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(type).when(clientConfig).getHelixGroupRoutingStrategyType();
     doReturn(new MetricsRepository()).when(clientConfig).getMetricsRepository();
-    doReturn(1.2).when(clientConfig).getHelixGroupEvenUntilLatencyMs();
-    doReturn(2.0).when(clientConfig).getHelixGroupFullSkewAtLatencyMs();
+    doReturn(BatchGetConfigUtils.parseRetryThresholdForBatchGet("1-10:5,11-:20")).when(clientConfig)
+        .getHelixGroupSizeAwareThresholds();
+    doReturn(1.0 / 3.0).when(clientConfig).getHelixGroupEvenUntilFraction();
     doReturn(1.0).when(clientConfig).getHelixGroupSkewRampExponent();
+    doReturn(10L).when(clientConfig).getHelixGroupMinSampleCount();
     return new TestStoreMetadata(clientConfig);
   }
 

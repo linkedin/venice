@@ -1549,28 +1549,40 @@ public class ConfigKeys {
       "router.helix.assisted.routing.group.selection.strategy";
 
   /**
-   * Stay-even threshold for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy, an absolute latency in
-   * milliseconds: while the slowest measured group's average latency is at or below this the strategy routes evenly.
-   * Set it against the read-path response-time SLA. Must be {@code >= 0} and strictly less than
-   * {@link #ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS}. Only consumed when the group selection strategy is
-   * {@literal LATENCY_ADAPTIVE}.
-   */
-  public static final String ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS = "router.helix.group.even.until.latency.ms";
-
-  /**
-   * Full-skew threshold for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy, an absolute latency in
-   * milliseconds: once the slowest measured group's average latency reaches this the strategy applies its full
-   * latency-proportional split. Must be strictly greater than {@link #ROUTER_HELIX_GROUP_EVEN_UNTIL_LATENCY_MS}. Only
-   * consumed when the group selection strategy is {@literal LATENCY_ADAPTIVE}.
-   */
-  public static final String ROUTER_HELIX_GROUP_FULL_SKEW_AT_LATENCY_MS = "router.helix.group.full.skew.at.latency.ms";
-
-  /**
    * In-band ramp exponent {@code m} for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy: shapes
    * the skew ramp between the stay-even and full-skew thresholds ({@code 1.0} is linear). Only consumed when the
    * group selection strategy is {@literal LATENCY_ADAPTIVE}.
    */
   public static final String ROUTER_HELIX_GROUP_SKEW_RAMP_EXPONENT = "router.helix.group.skew.ramp.exponent";
+
+  /**
+   * Per-key-count-bucket full-skew threshold table for the {@literal LATENCY_ADAPTIVE} Helix group selection strategy,
+   * in the same grammar as {@link #ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS}
+   * (e.g. {@code "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"}): each range's value is that bucket's full-skew
+   * threshold in ms, and the stay-even threshold is derived from it via {@link #ROUTER_HELIX_GROUP_EVEN_UNTIL_FRACTION}.
+   * The strategy tracks and skews latency per key-count bucket so a host that is fast for small batches but slow for
+   * large ones is routed accordingly. When unset it defaults to the long-tail-retry batch-get thresholds
+   * ({@link #ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS}) so the two slow-host-avoidance features share one
+   * source of truth rather than a separate hardcoded set. Only consumed when the group selection strategy is
+   * {@literal LATENCY_ADAPTIVE}.
+   */
+  public static final String ROUTER_HELIX_GROUP_LATENCY_ADAPTIVE_BATCH_GET_THRESHOLD_MS =
+      "router.helix.group.latency.adaptive.batch.get.threshold.ms";
+
+  /**
+   * Fraction of each bucket's full-skew threshold used as that bucket's stay-even threshold, for the
+   * {@literal LATENCY_ADAPTIVE} path configured via {@link #ROUTER_HELIX_GROUP_LATENCY_ADAPTIVE_BATCH_GET_THRESHOLD_MS}.
+   * Must be in {@code (0, 1)}. Only consumed when the group selection strategy is {@literal LATENCY_ADAPTIVE}.
+   */
+  public static final String ROUTER_HELIX_GROUP_EVEN_UNTIL_FRACTION = "router.helix.group.even.until.fraction";
+
+  /**
+   * Minimum number of latency samples a group must have in a key-count bucket before its average is acted on, for the
+   * {@literal LATENCY_ADAPTIVE} path; below it the bucket is treated as not yet measured for that group and
+   * routing stays even there, so a thin, noisy bucket does not skew routing. Must be {@code >= 0}. Only consumed when
+   * the group selection strategy is {@literal LATENCY_ADAPTIVE}.
+   */
+  public static final String ROUTER_HELIX_GROUP_MIN_SAMPLE_COUNT = "router.helix.group.min.sample.count";
 
   public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
