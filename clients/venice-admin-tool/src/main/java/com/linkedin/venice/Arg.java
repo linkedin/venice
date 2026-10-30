@@ -240,6 +240,14 @@ public enum Arg {
       ConfigKeys.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, "kfq", true,
       "The quota of records to fetch from Kafka for the specified fabric."
   ),
+  STALLED_DRAINER_DIAGNOSTICS_ENABLED(
+      ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED, "sdde", true,
+      "Enable operation diagnostics for future stalled drainer work on allowlisted hosts without restarting servers."
+  ),
+  STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST(
+      ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST, "sddha", true,
+      "Comma-separated hostnames matching listener.hostname exactly (case-sensitive; no ports, wildcards or alias expansion). Empty string clears the list; no hosts are enabled when empty."
+  ),
   STORE_CONFIG_NAME_FILTER(
       "store-config-name-filter", "scnf", true,
       "An optional argument in list-store command; pass in a store config to select stores. If the config name argument is used in the command, users must specify the config value filter too."

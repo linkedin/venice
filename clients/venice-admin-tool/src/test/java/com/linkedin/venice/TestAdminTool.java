@@ -27,6 +27,7 @@ import com.linkedin.venice.controllerapi.ClusterProvisionedVeniceUnitsResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
@@ -71,10 +72,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -338,6 +341,41 @@ public class TestAdminTool {
         (int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName),
         kafkaFetchQuota,
         "Kafka fetch quota has incorrect info for region");
+    Assert.assertFalse(params.getStalledDrainerDiagnosticsEnabled().isPresent());
+    Assert.assertFalse(params.getStalledDrainerDiagnosticsHostAllowlist().isPresent());
+  }
+
+  @Test
+  public void testAdminUpdateClusterDiagnosticsArg() throws ParseException, IOException {
+    for (boolean enabled: new boolean[] { true, false }) {
+      String[] args = { "--update-cluster-config", "--url", "http://localhost:7036", "--cluster", "test-cluster",
+          "--" + Arg.STALLED_DRAINER_DIAGNOSTICS_ENABLED.getArgName(), Boolean.toString(enabled) };
+      UpdateClusterConfigQueryParams params =
+          AdminTool.getUpdateClusterConfigQueryParams(AdminTool.getCommandLine(args));
+      assertEquals(params.getStalledDrainerDiagnosticsEnabled(), Optional.of(enabled));
+      UpdateClusterConfigQueryParams decoded = new UpdateClusterConfigQueryParams(
+          Collections.singletonMap(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED, Boolean.toString(enabled)));
+      assertEquals(decoded.getStalledDrainerDiagnosticsEnabled(), Optional.of(enabled));
+      Assert.assertFalse(params.getStoreMigrationAllowed().isPresent());
+    }
+    for (String hosts: new String[] { "server-a.example.com,server-b.example.com,server-a.example.com", "" }) {
+      String[] args = { "--update-cluster-config", "--url", "http://localhost:7036", "--cluster", "test-cluster",
+          "--" + Arg.STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST.getArgName(), hosts };
+      UpdateClusterConfigQueryParams params =
+          AdminTool.getUpdateClusterConfigQueryParams(AdminTool.getCommandLine(args));
+      Set<String> expected = hosts.isEmpty()
+          ? Collections.emptySet()
+          : new HashSet<>(Arrays.asList("server-a.example.com", "server-b.example.com"));
+      assertEquals(params.getStalledDrainerDiagnosticsHostAllowlist(), Optional.of(expected));
+      Map<String, String> serialized = new HashMap<>();
+      params.getNameValuePairs().forEach(pair -> serialized.put(pair.getName(), pair.getValue()));
+      UpdateClusterConfigQueryParams decoded = new UpdateClusterConfigQueryParams(serialized);
+      assertEquals(decoded.getStalledDrainerDiagnosticsHostAllowlist(), Optional.of(expected));
+      Assert.assertFalse(params.getStalledDrainerDiagnosticsEnabled().isPresent());
+      Assert.assertTrue(
+          ControllerRoute.UPDATE_CLUSTER_CONFIG.getOptionalParams()
+              .contains(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST));
+    }
   }
 
   @Test

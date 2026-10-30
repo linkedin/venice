@@ -1552,6 +1552,17 @@ public class AdminTool {
       params.setChildControllerAdminTopicConsumptionEnabled(Boolean.parseBoolean(adminTopicConsumptionEnabled));
     }
 
+    String stalledDrainerDiagnosticsEnabled = getOptionalArgument(cmd, Arg.STALLED_DRAINER_DIAGNOSTICS_ENABLED);
+    if (stalledDrainerDiagnosticsEnabled != null) {
+      params.setStalledDrainerDiagnosticsEnabled(Boolean.parseBoolean(stalledDrainerDiagnosticsEnabled));
+    }
+
+    String stalledDrainerDiagnosticsHosts = getOptionalArgument(cmd, Arg.STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST);
+    if (stalledDrainerDiagnosticsHosts != null) {
+      params.setStalledDrainerDiagnosticsHostAllowlist(
+          Utils.parseCommaSeparatedStringToSet(stalledDrainerDiagnosticsHosts));
+    }
+
     return params;
   }
 
