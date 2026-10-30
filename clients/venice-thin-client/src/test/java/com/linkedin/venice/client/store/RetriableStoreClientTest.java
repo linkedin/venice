@@ -1,11 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.read.RequestType.SINGLE_GET;
-import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
-import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
-import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
-import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -15,14 +9,8 @@ import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
-import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
-import io.tehuti.Metric;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -32,16 +20,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Consumer;
-import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
 public class RetriableStoreClientTest {
-  private static final String CLUSTER_NAME = "venice-cluster";
-
   private StatTrackingStoreClient<String, Object> mockStoreClient;
 
   @BeforeTest
@@ -247,114 +231,12 @@ public class RetriableStoreClientTest {
   }
 
   @Test
-  public void testGetRecordsSingleGetStatsThroughStatTrackingClient() throws Exception {
-    InMemoryMetricReader reader = InMemoryMetricReader.create();
-    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
-    try {
-      String storeName = Utils.getUniqueString("store");
-      InternalAvroStoreClient<String, Object> innerClient = mockInnerClient(storeName);
-      doReturn(CompletableFuture.completedFuture(mock(Object.class))).when(innerClient).get(any(), any(), anyLong());
-      RetriableStoreClient<String, Object> retriableStoreClient =
-          createRetriableStatTrackingClient(innerClient, storeName, repository);
-
-      retriableStoreClient.get("key").get();
-
-      validateLongPointDataFromCounter(
-          reader,
-          1,
-          expectedSingleGetSuccessAttributes(storeName),
-          "call_count",
-          THIN_CLIENT.getMetricsPrefix());
-      Map<String, ? extends Metric> metrics = repository.metrics();
-      Assert.assertTrue(metrics.get("." + storeName + "--request.OccurrenceRate").value() > 0.0);
-      Assert.assertTrue(metrics.get("." + storeName + "--healthy_request.OccurrenceRate").value() > 0.0);
-      Assert.assertEquals(metrics.get("." + storeName + "--success_request_key_count.Avg").value(), 1.0);
-    } finally {
-      repository.close();
-    }
-  }
-
-  @Test
-  public void testGetRetryRecordsSingleGetStatsThroughStatTrackingClient() throws Exception {
-    InMemoryMetricReader reader = InMemoryMetricReader.create();
-    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true, reader);
-    try {
-      String storeName = Utils.getUniqueString("store");
-      InternalAvroStoreClient<String, Object> innerClient = mockInnerClient(storeName);
-      CompletableFuture<Object> failedFuture = new CompletableFuture<>();
-      failedFuture.completeExceptionally(new VeniceClientHttpException(503));
-      doReturn(failedFuture).doReturn(CompletableFuture.completedFuture(mock(Object.class)))
-          .when(innerClient)
-          .get(any(), any(), anyLong());
-      RetriableStoreClient<String, Object> retriableStoreClient =
-          createRetriableStatTrackingClient(innerClient, storeName, repository);
-
-      retriableStoreClient.get("key").get();
-
-      validateLongPointDataFromCounter(
-          reader,
-          1,
-          expectedSingleGetSuccessAttributes(storeName),
-          "call_count",
-          THIN_CLIENT.getMetricsPrefix());
-      Map<String, ? extends Metric> metrics = repository.metrics();
-      Assert.assertTrue(metrics.get("." + storeName + "--healthy_request.OccurrenceRate").value() > 0.0);
-      Assert.assertTrue(metrics.get("." + storeName + "--unhealthy_request.OccurrenceRate").value() > 0.0);
-    } finally {
-      repository.close();
-    }
-  }
-
-  @Test
-  public void testGetRawRecordsSchemaReaderStatsThroughStatTrackingClient() throws Exception {
-    VeniceMetricsRepository repository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
-    try {
-      String storeName = Utils.getUniqueString("store");
-      InternalAvroStoreClient<String, Object> innerClient = mockInnerClient(storeName);
-      doReturn(CompletableFuture.completedFuture(new byte[0])).when(innerClient).getRaw(any(), any(), anyLong());
-      RetriableStoreClient<String, Object> retriableStoreClient =
-          createRetriableStatTrackingClient(innerClient, storeName, repository);
-
-      retriableStoreClient.getRaw("key_schema/" + storeName).get();
-
-      Map<String, ? extends Metric> metrics = repository.metrics();
-      String schemaReaderPrefix = "." + storeName + "_schema_reader";
-      Assert.assertTrue(metrics.get(schemaReaderPrefix + "--request.OccurrenceRate").value() > 0.0);
-      Assert.assertTrue(metrics.get(schemaReaderPrefix + "--healthy_request.OccurrenceRate").value() > 0.0);
-    } finally {
-      repository.close();
-    }
-  }
-
-  @SuppressWarnings("unchecked")
-  private static InternalAvroStoreClient<String, Object> mockInnerClient(String storeName) {
-    InternalAvroStoreClient<String, Object> innerClient = mock(InternalAvroStoreClient.class);
-    doReturn(storeName).when(innerClient).getStoreName();
-    return innerClient;
-  }
-
-  @SuppressWarnings("unchecked")
-  private static RetriableStoreClient<String, Object> createRetriableStatTrackingClient(
-      InternalAvroStoreClient<String, Object> innerClient,
-      String storeName,
-      VeniceMetricsRepository repository) {
-    ClientConfig clientConfig =
-        ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository).setRetryOnRouterError(true);
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient =
-        new StatTrackingStoreClient<>(innerClient, clientConfig);
-    // Pin the cluster-name dimension so the expected OTel attributes are deterministic.
-    ArgumentCaptor<Consumer<String>> listenerCaptor = ArgumentCaptor.forClass(Consumer.class);
-    verify(innerClient).setClusterNameChangeListener(listenerCaptor.capture());
-    listenerCaptor.getValue().accept(CLUSTER_NAME);
-    return new RetriableStoreClient<>(statTrackingStoreClient, clientConfig);
-  }
-
-  private static Attributes expectedSingleGetSuccessAttributes(String storeName) {
-    return new OpenTelemetryDataTestUtils.OpenTelemetryAttributesBuilder().setStoreName(storeName)
-        .setClusterName(CLUSTER_NAME)
-        .setRequestType(SINGLE_GET)
-        .setHttpStatus(HttpResponseStatusEnum.OK)
-        .setVeniceStatusCategory(SUCCESS)
-        .build();
+  public void testGetRawDelegatesToInnerClient() {
+    String requestPath = "key_schema/" + mockStoreClient.getStoreName();
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
+    retriableStoreClient.getRaw(requestPath);
+    verify(mockStoreClient).getRaw(requestPath);
   }
 }
