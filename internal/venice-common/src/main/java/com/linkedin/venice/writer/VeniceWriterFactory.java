@@ -113,6 +113,18 @@ public class VeniceWriterFactory {
     return new VeniceWriter<>(options, veniceProperties, producerAdapter);
   }
 
+  /**
+   * Creates a writer with the supplied properties without changing this factory's defaults.
+   * The producer adapter factory, position registry, metrics and encryption policy remain those injected into this factory.
+   */
+  public <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(
+      VeniceWriterOptions options,
+      VeniceProperties writerProperties) {
+    PubSubProducerAdapter producerAdapter =
+        buildPubSubProducerAdapter(options, writerProperties, lookupBrokerAddress(writerProperties));
+    return new VeniceWriter<>(options, writerProperties, producerAdapter);
+  }
+
   public <K, V, U> AbstractVeniceWriter<K, V, U> createAbstractVeniceWriter(VeniceWriterOptions options) {
     PubSubProducerAdapter producerAdapter = buildPubSubProducerAdapter(options);
     if (options.getBatchIntervalInMs() > 0) {
@@ -129,7 +141,13 @@ public class VeniceWriterFactory {
   }
 
   private PubSubProducerAdapter buildPubSubProducerAdapter(VeniceWriterOptions options) {
-    VeniceProperties props = veniceProperties;
+    return buildPubSubProducerAdapter(options, veniceProperties, defaultBrokerAddress);
+  }
+
+  private PubSubProducerAdapter buildPubSubProducerAdapter(
+      VeniceWriterOptions options,
+      VeniceProperties props,
+      String defaultBrokerAddress) {
     String targetBrokerAddress = options.getBrokerAddress() != null ? options.getBrokerAddress() : defaultBrokerAddress;
     Objects.requireNonNull(
         targetBrokerAddress,
