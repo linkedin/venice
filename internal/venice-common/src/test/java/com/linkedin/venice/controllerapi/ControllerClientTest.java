@@ -5,6 +5,7 @@ import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.VersionStorageModeUpdateReason;
+import java.net.ConnectException;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.Future;
@@ -19,6 +20,123 @@ import org.testng.annotations.Test;
 
 
 public class ControllerClientTest {
+  @DataProvider
+  public Object[][] discoveryDurations() {
+    return new Object[][] { { new int[] { 5000, 5000, 5000 } }, { new int[] { 2000, 5000, 5000, 3000 } } };
+  }
+
+  @Test(dataProvider = "discoveryDurations")
+  public void testDiscoverySharesDeadlineAcrossCandidates(int[] durationsMs) throws Exception {
+    ControllerClient client = Mockito
+        .spy(new ControllerClient("cluster", "http://first,http://second,http://third,http://fourth,http://fifth"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    AtomicLong clock = new AtomicLong();
+    Mockito.doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    AtomicInteger attempts = new AtomicInteger();
+    Mockito.doAnswer(invocation -> {
+      int remainingMs = 15_000 - (int) TimeUnit.NANOSECONDS.toMillis(clock.get());
+      Assert.assertEquals(invocation.<Integer>getArgument(4).intValue(), Math.min(5000, remainingMs));
+      clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(durationsMs[attempts.getAndIncrement()]));
+      throw new TimeoutException("candidate timed out");
+    })
+        .when(transport)
+        .request(
+            Mockito.anyString(),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.anyInt(),
+            Mockito.isNull());
+    Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+    Assert.assertEquals(attempts.get(), durationsMs.length);
+    Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(15));
+    Mockito.verify(transport).close();
+  }
+
+  @Test
+  public void testDiscoveryFallsBackAfterCandidateFailure() throws Exception {
+    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://first,http://second"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    Mockito.doReturn(0L).when(client).requestTimeNs();
+    LeaderControllerResponse leader = new LeaderControllerResponse();
+    leader.setUrl("http://leader");
+    Mockito.when(
+        transport.request(
+            Mockito.anyString(),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.eq(5000),
+            Mockito.isNull()))
+        .thenThrow(new TimeoutException())
+        .thenReturn(leader);
+    Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+    Mockito.verify(transport, Mockito.times(2))
+        .request(
+            Mockito.anyString(),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.eq(5000),
+            Mockito.isNull());
+  }
+
+  @Test
+  public void testDiscoveryPreservesActionableFailure() throws Exception {
+    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://first,http://second"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    Mockito.doReturn(0L).when(client).requestTimeNs();
+    VeniceException actionable = new VeniceException("Invalid discovery response");
+    Mockito.when(
+        transport.request(
+            Mockito.anyString(),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.anyInt(),
+            Mockito.isNull()))
+        .thenThrow(actionable)
+        .thenThrow(new VeniceException(new ConnectException()));
+    VeniceException failure = Assert.expectThrows(VeniceException.class, client::discoverLeaderController);
+    Assert.assertSame(failure.getCause(), actionable);
+  }
+
+  @Test
+  public void testDiscoveryStopsOnInterruption() throws Exception {
+    ControllerClient client = Mockito.spy(new ControllerClient("cluster", "http://first,http://second"));
+    ControllerTransport transport = Mockito.mock(ControllerTransport.class);
+    Mockito.doReturn(transport).when(client).getNewControllerTransport();
+    Mockito.doAnswer(invocation -> {
+      Thread.currentThread().interrupt();
+      throw new InterruptedException();
+    })
+        .when(transport)
+        .request(
+            Mockito.anyString(),
+            Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+            Mockito.any(),
+            Mockito.eq(LeaderControllerResponse.class),
+            Mockito.anyInt(),
+            Mockito.isNull());
+    try {
+      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      Assert.assertTrue(Thread.currentThread().isInterrupted());
+      Mockito.verify(transport)
+          .request(
+              Mockito.anyString(),
+              Mockito.eq(ControllerRoute.LEADER_CONTROLLER),
+              Mockito.any(),
+              Mockito.eq(LeaderControllerResponse.class),
+              Mockito.anyInt(),
+              Mockito.isNull());
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
   @DataProvider
   public Object[][] boundedQueries() {
     return new Object[][] { { ControllerRoute.STORE }, { ControllerRoute.GET_ADMIN_TOPIC_METADATA } };
