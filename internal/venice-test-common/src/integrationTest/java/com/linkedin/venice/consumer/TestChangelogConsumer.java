@@ -642,8 +642,16 @@ public class TestChangelogConsumer {
     return groupId;
   }
 
+  /** Subclasses whose pubsub backend cannot verify committed consumer offsets can override this to return false. */
+  protected boolean isConsumerOffsetCommitSupported() {
+    return true;
+  }
+
   private void assertCommittedOffsets(VeniceChangelogConsumer<?, ?> consumer, String groupId, String storeName)
       throws Exception {
+    if (!isConsumerOffsetCommitSupported()) {
+      return;
+    }
     consumer.commitOffsets();
     Properties adminProperties = new Properties();
     adminProperties.put("bootstrap.servers", fixture.getLocalKafka().getAddress());
