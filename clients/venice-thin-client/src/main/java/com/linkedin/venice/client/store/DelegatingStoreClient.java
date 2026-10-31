@@ -99,10 +99,29 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
     return innerStoreClient.getLatestValueSchema();
   }
 
+  /**
+   * Forwards to the inner client's {@code get(K)} rather than inheriting
+   * {@link InternalAvroStoreClient#get(Object)}, so that inner decorators such as
+   * {@link StatTrackingStoreClient} still record their single-get metrics.
+   */
+  @Override
+  public CompletableFuture<V> get(K key) throws VeniceClientException {
+    return innerStoreClient.get(key);
+  }
+
   @Override
   public CompletableFuture<V> get(K key, Optional<ClientStats> stats, long preRequestTimeInNS)
       throws VeniceClientException {
     return innerStoreClient.get(key, stats, preRequestTimeInNS);
+  }
+
+  /**
+   * Forwards to the inner client's {@code getRaw(String)} so that inner decorators such as
+   * {@link StatTrackingStoreClient} still record their schema-reader metrics.
+   */
+  @Override
+  public CompletableFuture<byte[]> getRaw(String requestPath) {
+    return innerStoreClient.getRaw(requestPath);
   }
 
   @Override

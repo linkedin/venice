@@ -4,6 +4,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -95,7 +96,7 @@ public class RetriableStoreClientTest {
       return null;
     });
 
-    doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any(), any(), anyLong());
+    doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any());
 
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
         mockStoreClient,
@@ -129,10 +130,7 @@ public class RetriableStoreClientTest {
     });
 
     // Verify retry count and retry backoff can be configured
-    doReturn(mockInnerFuture).doReturn(mockInnerFuture)
-        .doReturn(mockInnerFuture1)
-        .when(mockStoreClient)
-        .get(any(), any(), anyLong());
+    doReturn(mockInnerFuture).doReturn(mockInnerFuture).doReturn(mockInnerFuture1).when(mockStoreClient).get(any());
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
         mockStoreClient,
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName())
@@ -218,7 +216,7 @@ public class RetriableStoreClientTest {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
     mockInnerFuture.completeExceptionally(
         new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any());
 
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
         mockStoreClient,
@@ -230,5 +228,15 @@ public class RetriableStoreClientTest {
       System.out.println(e);
       // expected
     }
+  }
+
+  @Test
+  public void testGetRawDelegatesToInnerClient() {
+    String requestPath = "key_schema/" + mockStoreClient.getStoreName();
+    RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(
+        mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
+    retriableStoreClient.getRaw(requestPath);
+    verify(mockStoreClient).getRaw(requestPath);
   }
 }
