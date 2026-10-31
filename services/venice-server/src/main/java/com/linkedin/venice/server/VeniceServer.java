@@ -918,7 +918,7 @@ public class VeniceServer {
 
       String d2ServiceName = props.getString("server.d2.service.name", "venice-server-d2");
       String d2ClusterName = d2ServiceName + "_d2_cluster";
-      D2ConfigUtils.setupD2Config(zkAddress, false, d2ClusterName, d2ServiceName);
+      D2ConfigUtils.setupD2Config(zkAddress, false, d2ClusterName, d2ServiceName, true);
       d2Servers.addAll(D2ConfigUtils.getD2Servers(zkAddress, d2ClusterName, localUri));
       LOGGER.info("Server D2 announcement enabled for service {} at URI: {}", d2ServiceName, localUri);
     }

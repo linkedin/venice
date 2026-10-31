@@ -151,6 +151,13 @@ key=101
 value=null
 ```
 
+##### D2 quarantine defaults and policy ownership
+
+Venice-generated D2 policies default the maximum quarantined-host fraction to `0.1` for both legacy and relative
+strategies. Routers and discovery aliases retain OPTIONS/service-path probes; controllers and storage servers use
+`GET /health`. Existing strategy order and publication opt-ins are unchanged. Externally managed D2 service records are
+not automatically migrated; their configuration owner must publish any changes or rollback.
+
 #### Step 8: Update and add some new records using Incremental Push
 
 Venice supports incremental push which allows us to update values of existing rows or to add new rows in an existing

@@ -310,7 +310,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean https = serverProps.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
       String httpURI = "http://localhost:" + listenPort;
       String httpsURI = "https://localhost:" + listenPort;
-      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName);
+      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName, true);
       List<ServiceDiscoveryAnnouncer> d2Servers =
           new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
 
@@ -499,7 +499,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     int listenPort = serverProps.getInt(LISTENER_PORT);
     String httpURI = "http://localhost:" + listenPort;
     String httpsURI = "https://localhost:" + listenPort;
-    String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName);
+    String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName, true);
     List<ServiceDiscoveryAnnouncer> d2Servers =
         new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
 
