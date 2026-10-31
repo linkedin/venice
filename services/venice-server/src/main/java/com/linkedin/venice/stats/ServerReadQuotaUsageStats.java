@@ -304,6 +304,7 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
   }
 
   private static class ServerReadQuotaVersionedStats {
+    // Both recording and measuring mutate Rate's sample windows; use this per-version monitor for all access.
     private final Rate requestedKPS;
     private final Rate requestedQPS;
     private final AtomicLong nodeKpsResponsibility = new AtomicLong(0);
@@ -319,7 +320,7 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
       requestedQPS.init(metricConfig, time.getMilliseconds());
     }
 
-    public void recordReadQuotaRequested(long rcu) {
+    public synchronized void recordReadQuotaRequested(long rcu) {
       requestedKPS.record(rcu, time.getMilliseconds());
       requestedQPS.record(1, time.getMilliseconds());
     }
@@ -328,11 +329,11 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
       this.nodeKpsResponsibility.set(nodeKpsResponsibility);
     }
 
-    public double getRequestedKPS() {
+    public synchronized double getRequestedKPS() {
       return requestedKPS.measure(metricConfig, time.getMilliseconds());
     }
 
-    public double getRequestedQPS() {
+    public synchronized double getRequestedQPS() {
       return requestedQPS.measure(metricConfig, time.getMilliseconds());
     }
 

@@ -2,20 +2,127 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestMockTime;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ServerReadQuotaUsageStatsTest {
+  @DataProvider(name = "concurrentRateOperations")
+  public Object[][] concurrentRateOperations() {
+    return new Object[][] { { "recordAllowed", "recordRejected" }, { "recordAllowed", "kps" },
+        { "recordAllowed", "qps" }, { "recordAllowed", "ratio" }, { "kps", "recordAllowed" }, { "kps", "qps" } };
+  }
+
+  @Test(dataProvider = "concurrentRateOperations", timeOut = 15 * Time.MS_PER_SECOND)
+  public void testRateAccessSerializedAtWindowBoundary(String firstOperation, String secondOperation) throws Exception {
+    CountDownLatch firstAccess = new CountDownLatch(1);
+    CountDownLatch releaseFirstAccess = new CountDownLatch(1);
+    AtomicReference<Thread> firstThread = new AtomicReference<>();
+    AtomicReference<Thread> secondThread = new AtomicReference<>();
+    TestMockTime time = new TestMockTime(0) {
+      @Override
+      public long getMilliseconds() {
+        // Pause inside a rate operation, after it has acquired its per-version lock.
+        if (Thread.currentThread() == firstThread.get()) {
+          firstAccess.countDown();
+          try {
+            Assert.assertTrue(releaseFirstAccess.await(10, TimeUnit.SECONDS));
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+          }
+        }
+        return super.getMilliseconds();
+      }
+    };
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    ExecutorService service = Executors.newFixedThreadPool(2, new DaemonThreadFactory("quota-rate-window-test"));
+    try {
+      ServerReadQuotaUsageStats stats = new ServerReadQuotaUsageStats(metricsRepository, "test-store", time, null);
+      stats.updateVersionInfo(1, 0);
+      stats.setNodeQuotaResponsibility(1, 1000);
+      stats.recordAllowed(1, 30);
+      time.setTime(30_001);
+
+      Future<?> first = service.submit(() -> {
+        firstThread.set(Thread.currentThread());
+        accessQuotaRate(stats, firstOperation);
+      });
+      Assert.assertTrue(firstAccess.await(5, TimeUnit.SECONDS));
+      Future<?> second = service.submit(() -> {
+        secondThread.set(Thread.currentThread());
+        accessQuotaRate(stats, secondOperation);
+      });
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        Assert.assertNotNull(secondThread.get());
+        Assert.assertTrue(second.isDone() || secondThread.get().getState() == Thread.State.BLOCKED);
+      });
+      Assert.assertFalse(second.isDone(), "Rate recording and measurement must not access the windows concurrently");
+
+      releaseFirstAccess.countDown();
+      first.get(5, TimeUnit.SECONDS);
+      second.get(5, TimeUnit.SECONDS);
+
+      int recordings =
+          1 + (firstOperation.startsWith("record") ? 1 : 0) + (secondOperation.startsWith("record") ? 1 : 0);
+      Assert.assertEquals(stats.getVersionedRequestedKPS(1), recordings * 30d / 30.001, 0.000001);
+      Assert.assertEquals(stats.getVersionedRequestedQPS(1), recordings / 30.001, 0.000001);
+      Assert.assertEquals(stats.getReadQuotaUsageRatio(), recordings * 30d / 30.001 / 1000, 0.000001);
+
+      time.setTime(120_001);
+      Assert.assertEquals(stats.getVersionedRequestedKPS(1), 0d);
+      Assert.assertEquals(stats.getVersionedRequestedQPS(1), 0d);
+      Assert.assertEquals(stats.getReadQuotaUsageRatio(), 0d);
+      stats.recordAllowed(1, 30);
+      Assert.assertEquals(stats.getVersionedRequestedKPS(1), 1d);
+    } finally {
+      releaseFirstAccess.countDown();
+      service.shutdownNow();
+      try {
+        Assert.assertTrue(service.awaitTermination(5, TimeUnit.SECONDS));
+      } finally {
+        metricsRepository.close();
+      }
+    }
+  }
+
+  private static void accessQuotaRate(ServerReadQuotaUsageStats stats, String operation) {
+    switch (operation) {
+      case "recordAllowed":
+        stats.recordAllowed(1, 30);
+        break;
+      case "recordRejected":
+        stats.recordRejected(1, 30);
+        break;
+      case "kps":
+        stats.getVersionedRequestedKPS(1);
+        break;
+      case "qps":
+        stats.getVersionedRequestedQPS(1);
+        break;
+      case "ratio":
+        stats.getReadQuotaUsageRatio();
+        break;
+      default:
+        throw new IllegalArgumentException(operation);
+    }
+  }
+
   @Test
   public void testGetReadQuotaUsageRatio() {
     // createSingleThreadedMetricsRepository builds a dedicated AsyncGaugeExecutor — close in finally
