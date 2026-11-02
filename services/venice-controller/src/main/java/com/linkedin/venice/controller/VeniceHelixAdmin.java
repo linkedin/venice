@@ -6354,7 +6354,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * {@link VeniceParentHelixAdmin#updateStore(String, String, UpdateStoreQueryParams)}
    * TODO: Remove the method and its usage after the deployment of parent controller updateStore change.
    */
-  public void enableHybridModeOrUpdateSettings(String clusterName, String storeName) {
+  public void enableHybridModeOrUpdateSettings(
+      String clusterName,
+      String storeName,
+      boolean shouldImplicitlyEnableWriteQuota) {
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
       if (hybridStoreConfig == null) {
@@ -6364,6 +6367,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
                 DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
                 null));
+      }
+      if (shouldImplicitlyEnableWriteQuota) {
+        store.setWriteQuotaEnabled(true);
       }
       return store;
     });

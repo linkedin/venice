@@ -37,6 +37,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,6 +52,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -307,6 +309,24 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
   }
 
+  @Test
+  public void testApplyOnParent_SystemStoreBatchToHybridConversionPreservesDisabledWriteQuota() {
+    String storeName = VeniceSystemStoreType.META_STORE.getSystemStoreName(Utils.getUniqueString("write-quota"));
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertFalse(message.writeQuotaEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
   @Test(dataProvider = "writeQuotaEnabledValues")
   public void testApplyOnChild_WriteQuotaEnabledPersistsAndSurvivesUnrelatedUpdate(boolean enabled) {
     String storeName = Utils.getUniqueString("write-quota-child");
@@ -334,15 +354,23 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     store.setWriteQuotaEnabled(false);
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
+    doCallRealMethod().when(admin).enableHybridModeOrUpdateSettings(clusterName, storeName, true);
+    AtomicReference<Boolean> writeQuotaEnabledWhenStoreBecameHybrid = new AtomicReference<>();
     doAnswer(invocation -> {
       VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
       operation.update(store, null);
+      if (store.isHybrid() && writeQuotaEnabledWhenStoreBecameHybrid.get() == null) {
+        writeQuotaEnabledWhenStoreBecameHybrid.set(store.isWriteQuotaEnabled());
+      }
       return null;
     }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
 
     StoreConfigUpdater
         .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
     assertTrue(store.isWriteQuotaEnabled());
+    assertTrue(
+        writeQuotaEnabledWhenStoreBecameHybrid.get(),
+        "Write quota must be enabled in the same metadata update that makes the store hybrid");
 
     store.setHybridStoreConfig(null);
     store.setWriteQuotaEnabled(false);
@@ -353,6 +381,58 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         new UpdateStoreQueryParams().setHybridRewindSeconds(86400L)
             .setHybridOffsetLagThreshold(1000L)
             .setWriteQuotaEnabled(false));
+    assertFalse(store.isWriteQuotaEnabled());
+  }
+
+  @Test
+  public void testApplyOnChild_ExplicitHybridConversionAtomicallyEnablesWriteQuota() {
+    String storeName = Utils.getUniqueString("write-quota-child-explicit-hybrid");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(false);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    AtomicReference<Boolean> writeQuotaEnabledWhenStoreBecameHybrid = new AtomicReference<>();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      if (store.isHybrid() && writeQuotaEnabledWhenStoreBecameHybrid.get() == null) {
+        writeQuotaEnabledWhenStoreBecameHybrid.set(store.isWriteQuotaEnabled());
+      }
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater.applyOnChild(
+        admin,
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+
+    assertTrue(store.isWriteQuotaEnabled());
+    assertTrue(
+        writeQuotaEnabledWhenStoreBecameHybrid.get(),
+        "Write quota must be enabled in the same metadata update that makes the store hybrid");
+  }
+
+  @Test
+  public void testApplyOnChild_SystemStoreBatchToHybridConversionPreservesDisabledWriteQuota() {
+    String storeName = VeniceSystemStoreType.META_STORE.getSystemStoreName(Utils.getUniqueString("write-quota"));
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(false);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doCallRealMethod().when(admin).enableHybridModeOrUpdateSettings(clusterName, storeName, false);
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater
+        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+
+    assertTrue(store.isHybrid());
     assertFalse(store.isWriteQuotaEnabled());
   }
 

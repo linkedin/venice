@@ -412,6 +412,8 @@ public final class StoreConfigUpdater {
     boolean storeBeingConvertedToHybrid = !originalStore.isHybrid()
         && ((newHybridStoreConfig.isPresent() && HybridStoreConfigPolicy.isHybrid(newHybridStoreConfig.get()))
             || incrementalPushEnabled.orElse(false));
+    boolean shouldImplicitlyEnableWriteQuota = storeBeingConvertedToHybrid && !originalStore.isSystemStore()
+        && !originalStore.isWriteQuotaEnabled() && !params.getWriteQuotaEnabled().isPresent();
 
     try {
       if (owner.isPresent()) {
@@ -499,6 +501,9 @@ public final class StoreConfigUpdater {
           } else {
             // Batch-only store is being converted to hybrid store.
             if (!store.isHybrid()) {
+              if (shouldImplicitlyEnableWriteQuota) {
+                store.setWriteQuotaEnabled(true);
+              }
               /*
                * Enable/disable native replication for hybrid stores if the cluster level config
                * for new hybrid stores is on
@@ -556,17 +561,9 @@ public final class StoreConfigUpdater {
 
       if (incrementalPushEnabled.isPresent()) {
         if (incrementalPushEnabled.get()) {
-          admin.enableHybridModeOrUpdateSettings(clusterName, storeName);
+          admin.enableHybridModeOrUpdateSettings(clusterName, storeName, shouldImplicitlyEnableWriteQuota);
         }
         admin.setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
-      }
-
-      if (storeBeingConvertedToHybrid && !originalStore.isWriteQuotaEnabled()
-          && !params.getWriteQuotaEnabled().isPresent()) {
-        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-          store.setWriteQuotaEnabled(true);
-          return store;
-        });
       }
 
       if (separateRealTimeTopicEnabled.isPresent()) {
@@ -1453,7 +1450,7 @@ public final class StoreConfigUpdater {
     setStore.writeQuotaEnabled = params.getWriteQuotaEnabled()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, WRITE_QUOTA_ENABLED))
         .orElseGet(() -> {
-          if (storeBeingConvertedToHybrid && !currStore.isWriteQuotaEnabled()) {
+          if (storeBeingConvertedToHybrid && !currStore.isSystemStore() && !currStore.isWriteQuotaEnabled()) {
             updatedConfigsList.add(WRITE_QUOTA_ENABLED);
             return true;
           }
