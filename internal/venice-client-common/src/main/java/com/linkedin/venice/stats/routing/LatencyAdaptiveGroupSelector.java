@@ -16,9 +16,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * Latency-adaptive weighted group selection, shared by the router and fast-client routing strategies. Given each
  * group's measured average latency it picks a group by a weighted-random draw whose skew adapts to the slowest group's
- * latency: while every group is fast it routes evenly, and as the slowest group's latency climbs it steers share onto
- * the faster groups. The two thresholds are absolute latencies in milliseconds so they can be set against a
- * response-time SLA. Measured latency is the only signal - it determines both which group is fast and how much to skew:
+ * latency: even routing while every group is fast, steering share onto the faster groups as the slowest group slows.
  *
  * <pre>
  *   strength(g) = 1 / max(latency(g), MIN_LATENCY_MS)                     // faster group => stronger
@@ -30,45 +28,30 @@ import org.apache.logging.log4j.Logger;
  *   share(g)    = max(share(g), PROBE_FLOOR_FRACTION * (1 / G))           // never fully starve a group
  * </pre>
  *
- * <p>Because share still weighs by {@code strength(g)}, groups that are all slow but equal in latency get equal
- * strength and routing stays even even at full skew - the skew only steers when a genuinely faster group exists. A
- * group not yet measured ({@code latency <= 0}) is treated as neutral (average strength) and excluded from the skew
- * calculation. The probe floor keeps every group observable so the latency signal stays live and the loop
- * self-corrects.
+ * <p>Equal-latency groups keep equal strength, so all-slow-but-equal routing stays even; an unmeasured group
+ * ({@code latency <= 0}) is neutral and excluded from the skew, and the probe floor keeps every group observable.
  *
- * <h2>Key-count buckets</h2>
+ * <p>Latency is tracked per <em>key-count bucket</em> so request size does not conflate a slow host with a large
+ * request: each request maps to a bucket by key count, reading the signal and recording its sample in that bucket.
+ * Bucket boundaries and per-bucket full-skew thresholds are supplied pre-parsed; {@link #bucketKeyForKeyCount(int)}
+ * exposes the mapping so callers record into the bucket the selector reads. Each bucket's stay-even threshold is a
+ * fixed fraction of its full-skew threshold, and a bucket under {@code minSampleCount} samples for a group falls back
+ * to even routing there.
  *
- * <p>Whole-request latency scales with the number of keys in a multi-key request, so a single latency average that
- * mixes request sizes would conflate a slow host with a merely large request. To compare like-for-like, latency is
- * tracked per <em>key-count bucket</em>: each request is mapped to a bucket by its key count, and both the signal it
- * reads and the sample it records are scoped to that bucket. The bucket boundaries and their per-bucket full-skew
- * thresholds are supplied pre-parsed (see {@link #LatencyAdaptiveGroupSelector(GroupBucketLatencyProvider,
- * GroupBucketSampleCountProvider, NavigableMap, double, double, long, DoubleSupplier)}); the same key-count-to-bucket
- * mapping is exposed via {@link #bucketKeyForKeyCount(int)} so callers record into the identical bucket the selector
- * reads from. The per-bucket stay-even threshold is derived from the full-skew threshold by a fixed fraction so one
- * configured value fully defines a bucket's dead-band.
- *
- * <p>A bucket with fewer than {@code minSampleCount} samples for a group is treated as not-yet-measured for that group,
- * so a thin or rarely-exercised bucket falls back to even routing rather than reacting to a noisy average.
- *
- * <p>Holds no per-request state; thread-safe as long as the supplied providers and {@code randomSupplier} are. Callers
- * own any in-flight accounting. The only mutable state is a throttle timestamp for the optional periodic weight log,
- * which is updated with a lock-free compare-and-set and does not affect selection.
+ * <p>Holds no per-request state; thread-safe given thread-safe providers and {@code randomSupplier}. The only mutable
+ * state is a lock-free throttle timestamp for the optional periodic weight log, which does not affect selection.
  */
 public class LatencyAdaptiveGroupSelector {
   /**
-   * Maps a group and a key-count bucket (identified by the bucket's inclusive lower key-count bound) to that group's
-   * measured average response time in ms; non-positive means not yet measured.
+   * Maps a group and a key-count bucket (the bucket's inclusive lower key-count bound) to that group's measured average
+   * response time in ms; non-positive means not yet measured.
    */
   @FunctionalInterface
   public interface GroupBucketLatencyProvider {
     double latencyMs(int groupId, int bucketKey);
   }
 
-  /**
-   * Maps a group and a key-count bucket to the number of latency samples recorded for it, used to apply the
-   * minimum-sample floor below which a bucket is treated as not yet measured for that group.
-   */
+  /** Maps a group and a key-count bucket to its number of latency samples, used to apply the minimum-sample floor. */
   @FunctionalInterface
   public interface GroupBucketSampleCountProvider {
     long sampleCount(int groupId, int bucketKey);
@@ -76,58 +59,33 @@ public class LatencyAdaptiveGroupSelector {
 
   public static final int MAX_ALLOWED_GROUP = 100;
 
-  /**
-   * Default interval, in milliseconds, between periodic per-group weight log lines (at INFO). Set it to {@code <= 0}
-   * via {@link #setWeightLogIntervalMs(long)} to disable the periodic log.
-   */
+  /** Default interval (ms) between periodic per-group weight log lines at INFO; {@code <= 0} disables. */
   public static final long DEFAULT_WEIGHT_LOG_INTERVAL_MS = 2000L;
 
   private static final Logger LOGGER = LogManager.getLogger(LatencyAdaptiveGroupSelector.class);
 
   /**
-   * Default stay-even threshold, as an absolute latency in milliseconds: routing stays fully even (skew {@code == 0})
-   * while the slowest measured group's average latency is at or below this. Set it against the read-path SLA. Used by
-   * the single-bucket (non size-aware) constructors; bucketed construction derives each bucket's stay-even threshold
-   * from its full-skew threshold via {@link #DEFAULT_EVEN_UNTIL_FRACTION}.
+   * Default stay-even threshold (ms): routing stays even (skew {@code == 0}) while the slowest measured group is at or
+   * below it. Single-bucket default; bucketed construction derives it per bucket via {@link #DEFAULT_EVEN_UNTIL_FRACTION}.
    */
   public static final double DEFAULT_EVEN_UNTIL_LATENCY_MS = 10.0;
 
-  /**
-   * Default full-skew threshold, as an absolute latency in milliseconds: routing reaches its full latency-proportional
-   * split (skew {@code == 1}) once the slowest measured group's average latency is at or above this. Between
-   * {@link #DEFAULT_EVEN_UNTIL_LATENCY_MS} and this the skew ramps 0 to 1.
-   */
+  /** Default full-skew threshold (ms): routing reaches its full split (skew {@code == 1}) once the slowest hits it. */
   public static final double DEFAULT_FULL_SKEW_AT_LATENCY_MS = 30.0;
 
-  /**
-   * Default fraction of a bucket's full-skew threshold used as that bucket's stay-even threshold, so one configured
-   * full-skew value fully defines the bucket's dead-band. Matches the {@code 10 / 30} ratio of the single-bucket
-   * defaults.
-   */
+  /** Default fraction of a bucket's full-skew threshold used as its stay-even threshold (the {@code 10 / 30} ratio). */
   public static final double DEFAULT_EVEN_UNTIL_FRACTION = 1.0 / 3.0;
 
-  /**
-   * Default minimum number of samples a group must have in a bucket before its average latency is acted on; below it the
-   * bucket is treated as not yet measured for that group and routing stays even there.
-   */
+  /** Default minimum per-(group, bucket) samples before a bucket's average latency is acted on. */
   public static final long DEFAULT_MIN_SAMPLE_COUNT = 10L;
 
-  /**
-   * Default in-band ramp exponent {@code m}, shaping the skew ramp between the two thresholds: {@code 1.0} is linear and
-   * {@code > 1} steepens toward the full-skew threshold. Affects the transition band only.
-   */
+  /** Default in-band ramp exponent {@code m}: {@code 1.0} is linear, {@code > 1} steepens toward the full-skew end. */
   public static final double DEFAULT_INTERPOLATION_EXPONENT = 1.0;
 
-  /**
-   * Lower bound on a group's latency before inverting it into a strength, so a near-zero latency cannot yield an
-   * unbounded strength.
-   */
+  /** Lower bound on a group's latency before inverting it into a strength, so near-zero latency stays bounded. */
   public static final double MIN_LATENCY_MS = 1.0;
 
-  /**
-   * Minimum share every group retains, as a fraction of the even share {@code 1 / G}, so a slow group is never fully
-   * starved and its latency stays observable.
-   */
+  /** Minimum share every group retains, as a fraction of the even share {@code 1 / G}, so no group is fully starved. */
   public static final double PROBE_FLOOR_FRACTION = 0.05;
 
   private final GroupBucketLatencyProvider latencyProvider;
@@ -145,11 +103,9 @@ public class LatencyAdaptiveGroupSelector {
   private volatile String logContext = "";
 
   /**
-   * Single-bucket (non size-aware) selector with the default knobs and {@link ThreadLocalRandom} for the weighted draw.
-   * All key counts map to one bucket, reproducing the pre-bucketing behaviour.
-   *
-   * @param latencyProvider maps a group id to its measured average response time in ms; non-positive means not yet
-   *                        measured.
+   * Single-bucket (non size-aware) selector with default knobs and {@link ThreadLocalRandom} for the draw; all key
+   * counts map to one bucket (pre-bucketing behaviour). {@code latencyProvider}: group id -> avg response time in ms,
+   * non-positive meaning not yet measured.
    */
   public LatencyAdaptiveGroupSelector(IntToDoubleFunction latencyProvider) {
     this(
@@ -161,18 +117,14 @@ public class LatencyAdaptiveGroupSelector {
   }
 
   /**
-   * Single-bucket (non size-aware) selector. All key counts map to one bucket whose dead-band is {@code
-   * [evenUntilLatencyMs, fullSkewAtLatencyMs]}, and no minimum-sample floor is applied.
+   * Single-bucket (non size-aware) selector. All key counts map to one bucket with dead-band
+   * {@code [evenUntilLatencyMs, fullSkewAtLatencyMs]} and no minimum-sample floor.
    *
-   * @param latencyProvider        group id -> measured average response time in ms; non-positive means not yet measured
-   *                              (treated as neutral and excluded from the skew calculation).
-   * @param evenUntilLatencyMs     stay-even threshold in ms; while the slowest measured group is at or below it routing
-   *                              stays even. Must be {@code >= 0} and {@code < fullSkewAtLatencyMs}.
-   * @param fullSkewAtLatencyMs    full-skew threshold in ms; routing reaches its full latency-proportional split once
-   *                              the slowest measured group is at or above it. Must be {@code > evenUntilLatencyMs}.
-   * @param interpolationExponent  ramp exponent {@code m} between the thresholds ({@code 1.0} = linear). Must be
-   *                              {@code > 0}.
-   * @param randomSupplier         uniform random double in [0, 1); injectable for deterministic tests.
+   * @param latencyProvider       group id -> avg response time in ms; non-positive = not measured (neutral).
+   * @param evenUntilLatencyMs    stay-even threshold in ms; {@code >= 0} and {@code < fullSkewAtLatencyMs}.
+   * @param fullSkewAtLatencyMs   full-skew threshold in ms; {@code > evenUntilLatencyMs}.
+   * @param interpolationExponent ramp exponent {@code m} between thresholds ({@code 1.0} = linear); {@code > 0}.
+   * @param randomSupplier        uniform random double in [0, 1); injectable for deterministic tests.
    */
   public LatencyAdaptiveGroupSelector(
       IntToDoubleFunction latencyProvider,
@@ -206,20 +158,13 @@ public class LatencyAdaptiveGroupSelector {
   /**
    * Size-aware (bucketed) selector. Latency is tracked and thresholds applied per key-count bucket.
    *
-   * @param latencyProvider       {@code (groupId, bucketKey)} -> measured average response time in ms; non-positive
-   *                              means not yet measured.
-   * @param sampleCountProvider   {@code (groupId, bucketKey)} -> number of samples; a group with fewer than
-   *                              {@code minSampleCount} in a bucket is treated as not yet measured there.
-   * @param fullSkewMsByLowerBound inclusive bucket lower key-count bound -> that bucket's full-skew threshold in ms.
-   *                              Must be non-empty, start at key count {@code 1}, and have positive thresholds (as
-   *                              produced by the shared retry-range parser).
-   * @param evenUntilFraction     fraction of each bucket's full-skew threshold used as its stay-even threshold; must be
-   *                              in {@code (0, 1)}.
-   * @param interpolationExponent ramp exponent {@code m} between the thresholds ({@code 1.0} = linear). Must be
-   *                              {@code > 0}.
-   * @param minSampleCount        minimum per-(group, bucket) samples before the average is acted on; must be
-   *                              {@code >= 0}.
-   * @param randomSupplier        uniform random double in [0, 1); injectable for deterministic tests.
+   * @param latencyProvider        {@code (groupId, bucketKey)} -> avg response time in ms; non-positive = not measured.
+   * @param sampleCountProvider    {@code (groupId, bucketKey)} -> sample count; below {@code minSampleCount} = unmeasured.
+   * @param fullSkewMsByLowerBound bucket lower bound -> full-skew threshold ms; non-empty, starts at key 1, positive.
+   * @param evenUntilFraction      fraction of a bucket's full-skew threshold used as its stay-even threshold; {@code (0, 1)}.
+   * @param interpolationExponent  ramp exponent {@code m} between thresholds ({@code 1.0} = linear); {@code > 0}.
+   * @param minSampleCount         minimum per-(group, bucket) samples before the average is acted on; {@code >= 0}.
+   * @param randomSupplier         uniform random double in [0, 1); injectable for deterministic tests.
    */
   public LatencyAdaptiveGroupSelector(
       GroupBucketLatencyProvider latencyProvider,
@@ -277,41 +222,33 @@ public class LatencyAdaptiveGroupSelector {
   }
 
   /**
-   * The inclusive lower key-count bound identifying the bucket a request of {@code keyCount} keys falls into. Callers
-   * record a request's latency sample under this same key so the selector reads back a size-matched signal. Key counts
-   * below the lowest bucket clamp to the first bucket.
+   * The inclusive lower key-count bound identifying the bucket a {@code keyCount}-key request falls into. Callers record
+   * a request's sample under this same key so the selector reads a size-matched signal; below range clamps to bucket 0.
    */
   public int bucketKeyForKeyCount(int keyCount) {
     Map.Entry<Integer, Integer> entry = bucketIndexByLowerBound.floorEntry(keyCount);
     return entry == null ? bucketLowerBounds[0] : entry.getKey();
   }
 
-  /**
-   * Single-bucket weighted-random selection across all groups. Equivalent to {@link #selectGroup(int, int, int, int)}
-   * with no excluded group; retained for the non size-aware path.
-   */
+  /** Single-bucket selection across all groups; {@link #selectGroup(int, int, int, int)} with no exclusion. */
   public int selectGroup(int groupCount, int startGroupId) {
     return selectGroup(groupCount, startGroupId, -1, bucketLowerBounds[0]);
   }
 
-  /**
-   * Single-bucket weighted-random selection, optionally excluding one group. Retained for the non size-aware path.
-   */
+  /** Single-bucket weighted-random selection, optionally excluding one group. Retained for the non size-aware path. */
   public int selectGroup(int groupCount, int startGroupId, int excludedGroupId) {
     return selectGroup(groupCount, startGroupId, excludedGroupId, bucketLowerBounds[0]);
   }
 
   /**
    * Weighted-random reservoir selection across the groups for a request of {@code keyCount} keys, optionally excluding
-   * one group. The request's key count selects the bucket whose latency signal and thresholds drive the draw; each
-   * candidate is adopted with probability {@code share(g) / cumulativeShare}, so the final selection probability is
-   * proportional to {@code share(g)} in a single pass. The scan starts at {@code startGroupId} only to avoid biasing
-   * toward group 0.
+   * one group. The key count selects the bucket whose latency signal and thresholds drive the draw; each candidate is
+   * adopted with probability {@code share(g) / cumulativeShare}, so the final selection probability is proportional to
+   * {@code share(g)} in a single pass. The scan starts at {@code startGroupId} only to avoid biasing toward group 0.
    *
    * @param groupCount      number of groups; must be in {@code [1, MAX_ALLOWED_GROUP]}.
    * @param startGroupId    group id the scan starts from (typically {@code requestId % groupCount}).
-   * @param excludedGroupId group to exclude from selection and from the skew calculation (e.g. the group already tried,
-   *                        so a retry lands elsewhere); {@code -1} excludes none.
+   * @param excludedGroupId group to exclude from selection and skew (e.g. the group already tried); {@code -1} excludes none.
    * @param keyCount        number of keys in the request, used to pick the key-count bucket.
    */
   public int selectGroup(int groupCount, int startGroupId, int excludedGroupId, int keyCount) {
@@ -349,40 +286,28 @@ public class LatencyAdaptiveGroupSelector {
     if (selectedGroup >= 0) {
       return selectedGroup;
     }
-    // Every candidate collapsed to zero (should not happen given the probe floor) or the only group was excluded: fall
-    // back to a group that still gets the request routed somewhere rather than dropped.
+    // Every candidate collapsed to zero (should not happen given the probe floor) or the only group was excluded: route
+    // somewhere rather than drop the request.
     return startGroupId == excludedGroupId ? (startGroupId + 1) % groupCount : startGroupId;
   }
 
-  /**
-   * Sets how often, in milliseconds, the per-group weights are logged at INFO. A value {@code <= 0} disables the
-   * periodic log. Defaults to {@link #DEFAULT_WEIGHT_LOG_INTERVAL_MS}.
-   */
+  /** Sets how often (ms) per-group weights are logged at INFO ({@code <= 0} disables); default {@link #DEFAULT_WEIGHT_LOG_INTERVAL_MS}. */
   public void setWeightLogIntervalMs(long weightLogIntervalMs) {
     this.weightLogIntervalMs = weightLogIntervalMs;
   }
 
-  /**
-   * Sets a short identifier (e.g. {@code "router"} or {@code "fast-client:<store>"}) included in the periodic weight log
-   * line so lines from different selectors are attributable.
-   */
+  /** Sets a short identifier (e.g. {@code "router"}) included in the periodic weight log line for attribution. */
   public void setLogContext(String logContext) {
     this.logContext = logContext == null ? "" : logContext;
   }
 
-  /**
-   * The array index of the bucket a request of {@code keyCount} keys falls into; clamps to the first bucket for key
-   * counts below the lowest bound.
-   */
+  /** The array index of the bucket a {@code keyCount}-key request falls into; clamps to the first bucket below range. */
   private int bucketIndexForKeyCount(int keyCount) {
     Map.Entry<Integer, Integer> entry = bucketIndexByLowerBound.floorEntry(keyCount);
     return entry == null ? 0 : entry.getValue();
   }
 
-  /**
-   * A per-group latency view for one bucket that applies the minimum-sample floor: a group with fewer than
-   * {@code minSampleCount} samples in the bucket reads as not yet measured ({@code -1}).
-   */
+  /** A per-group latency view for one bucket; a group under {@code minSampleCount} samples reads as unmeasured ({@code -1}). */
   private IntToDoubleFunction latencyView(int bucketIndex) {
     int bucketKey = bucketLowerBounds[bucketIndex];
     return groupId -> {
@@ -394,9 +319,8 @@ public class LatencyAdaptiveGroupSelector {
   }
 
   /**
-   * Renders the routing picture for the bucket a request of {@code keyCount} keys falls into - its key-count range,
-   * skew, thresholds, and each group's measured latency and realized selection weight - as one log-friendly line. Pure:
-   * reads the latency view but mutates nothing.
+   * Renders the routing picture (key-count range, skew, thresholds, per-group latency and realized weight) for the
+   * {@code keyCount}-key request's bucket, as one log line. Pure: reads the latency view, mutates nothing.
    */
   public String formatWeights(int groupCount, int keyCount) {
     int bucketIndex = bucketIndexForKeyCount(keyCount);
@@ -404,10 +328,8 @@ public class LatencyAdaptiveGroupSelector {
   }
 
   /**
-   * Renders the current routing picture for the given bucket - its key-count range, skew, thresholds, and each group's
-   * measured latency and realized selection weight - as one log-friendly line. Recomputes the same shares
-   * {@link #selectGroup} would use (no group excluded) and normalizes them to the actual draw probabilities, so the
-   * reported weights sum to ~100%. Pure: reads the latency view but mutates nothing.
+   * Renders the routing picture for the given bucket (range, skew, thresholds, per-group latency and realized weight) as
+   * one log line, recomputing the shares {@link #selectGroup} uses (no exclusion) normalized to ~100%. Pure.
    */
   private String renderWeights(int groupCount, int bucketIndex, IntToDoubleFunction latencyView) {
     double evenUntil = bucketEvenUntilMs[bucketIndex];
@@ -460,9 +382,8 @@ public class LatencyAdaptiveGroupSelector {
   }
 
   /**
-   * Logs the current per-group weights for the active bucket at INFO at most once per {@link #weightLogIntervalMs}. The
-   * time gate is a lock-free compare-and-set so only one thread emits a line per window and the hot selection path stays
-   * contention free.
+   * Logs the current per-group weights for the active bucket at INFO at most once per {@link #weightLogIntervalMs}. A
+   * lock-free compare-and-set gate lets one thread emit per window and keeps the hot selection path contention free.
    */
   private void maybeLogWeights(int groupCount, int bucketIndex, IntToDoubleFunction latencyView) {
     long intervalMs = weightLogIntervalMs;
@@ -482,8 +403,8 @@ public class LatencyAdaptiveGroupSelector {
   }
 
   /**
-   * The skew factor in {@code [0, 1]} derived from the slowest measured, non-excluded group's latency (ms). Groups not
-   * yet measured are ignored here; with no measured group the skew is 0 (even routing).
+   * The skew factor in {@code [0, 1]} derived from the slowest measured, non-excluded group's latency (ms);
+   * not-yet-measured groups are ignored, and with none measured the skew is 0 (even routing).
    */
   private double latencySkew(
       IntToDoubleFunction latencyView,
@@ -514,8 +435,8 @@ public class LatencyAdaptiveGroupSelector {
 
   /**
    * The target share for a group:
-   * {@code max( (1 - skew) * evenShare + skew * strength(g) / totalStrength, floor )}. The floor keeps a slow group
-   * from being fully starved so its latency stays observable.
+   * {@code max( (1 - skew) * evenShare + skew * strength(g) / totalStrength, floor )}; the floor keeps a slow group
+   * observable rather than fully starved.
    */
   private double shareForGroup(
       IntToDoubleFunction latencyView,
@@ -531,11 +452,7 @@ public class LatencyAdaptiveGroupSelector {
     return Math.max(share, floor);
   }
 
-  /**
-   * A group's inferred strength: the reciprocal of its measured latency (faster => stronger). A group that has not been
-   * measured yet (non-positive latency) is treated as neutral so it is neither flooded nor starved before there is
-   * data.
-   */
+  /** A group's inferred strength: reciprocal of its measured latency (faster => stronger); unmeasured reads as neutral. */
   private double strength(IntToDoubleFunction latencyView, int groupId, double neutralStrength) {
     double latency = latencyView.applyAsDouble(groupId);
     if (latency <= 0.0) {
@@ -558,8 +475,7 @@ public class LatencyAdaptiveGroupSelector {
         ++measured;
       }
     }
-    // No group measured yet: any positive constant works since every group then gets the same neutral strength, which
-    // reduces the strength term to an even split.
+    // No group measured yet: any positive constant works since every group then gets the same neutral strength.
     return measured > 0 ? sum / measured : 1.0;
   }
 
