@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import io.tehuti.metrics.MetricsRepository;
@@ -142,6 +143,15 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
     return sizeAware
         ? selector.selectGroup(groupCnt, startPos, groupIdForOriginalRequest, keyCount)
         : selector.selectGroup(groupCnt, startPos, groupIdForOriginalRequest);
+  }
+
+  /**
+   * Only healthy completions feed the signal so a fast failure does not make a group look fast. Partial-success
+   * (streaming) requests complete normally even when routes failed, so those are excluded too.
+   */
+  @Override
+  protected boolean shouldRecordLatency(RequestContext requestContext, Throwable throwable) {
+    return throwable == null && !requestContext.hasPartialResponseFailure();
   }
 
   @Override

@@ -77,6 +77,13 @@ public abstract class RequestContext {
     return 1;
   }
 
+  /**
+   * Whether any part of this request failed even though it may have completed normally (partial-success requests).
+   */
+  public boolean hasPartialResponseFailure() {
+    return false;
+  }
+
   public void setServerClusterName(String serverClusterName) {
     this.serverClusterName = serverClusterName;
   }

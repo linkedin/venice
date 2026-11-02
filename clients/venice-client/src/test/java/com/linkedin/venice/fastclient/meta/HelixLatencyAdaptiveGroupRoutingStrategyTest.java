@@ -1,18 +1,25 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.fastclient.RequestContext;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
 
 
@@ -209,5 +216,49 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
         largeBatchToGroup1 > total * 0.5,
         "large-batch requests should favour a different group fast for that bucket, got " + largeBatchToGroup1 + "/"
             + total);
+  }
+
+  private static RequestContext trackedMultiGet(CompletableFuture<?> resultFuture, boolean partialFailure) {
+    RequestContext requestContext = mock(RequestContext.class);
+    doReturn(RequestType.MULTI_GET).when(requestContext).getRequestType();
+    doReturn(false).when(requestContext).isRetryRequest();
+    doReturn(1).when(requestContext).getHelixGroupId();
+    doReturn(10).when(requestContext).getKeyCount();
+    doReturn(resultFuture).when(requestContext).getResultFuture();
+    doReturn(partialFailure).when(requestContext).hasPartialResponseFailure();
+    return requestContext;
+  }
+
+  @Test
+  public void testTrackRequestRecordsLatencyOnHealthyCompletion() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.complete(null);
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, false)));
+    verify(stats).recordGroupResponseWaitingTime(eq(1), anyDouble());
+  }
+
+  @Test
+  public void testTrackRequestSkipsLatencyOnFailedCompletion() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.completeExceptionally(new RuntimeException("boom"));
+    // Still tracked (group counters bump), but a failure must not make the group look fast.
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, false)));
+    verify(stats).recordGroupRequest(1);
+    verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
+  }
+
+  @Test
+  public void testTrackRequestSkipsLatencyOnPartialFailure() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    // Streaming requests complete normally even when some routes failed.
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.complete(null);
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, true)));
+    verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
   }
 }

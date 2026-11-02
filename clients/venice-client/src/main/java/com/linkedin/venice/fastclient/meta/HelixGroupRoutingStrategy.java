@@ -102,15 +102,22 @@ public class HelixGroupRoutingStrategy extends AbstractClientRoutingStrategy {
     }
     helixGroupStats.recordGroupNum(getGroupCount());
     helixGroupStats.recordGroupRequest(groupId);
-    // Track the latency per group, but only feed the signal for a successful completion so a fast failure does not make
-    // a group look artificially fast.
+    // Track the latency per group
     int keyCount = requestContext.getKeyCount();
     long startTimeInNS = System.nanoTime();
     requestContext.getResultFuture().whenComplete((ignored, throwable) -> {
-      if (throwable == null) {
+      if (shouldRecordLatency(requestContext, (Throwable) throwable)) {
         recordLatencySample(groupId, keyCount, LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
       }
     });
+    return true;
+  }
+
+  /**
+   * Whether a completed request feeds the group latency signal. Every completion counts here, preserving the
+   * least-loaded behavior where slow failures raise a group's average; the latency-adaptive strategy narrows this.
+   */
+  protected boolean shouldRecordLatency(RequestContext requestContext, Throwable throwable) {
     return true;
   }
 

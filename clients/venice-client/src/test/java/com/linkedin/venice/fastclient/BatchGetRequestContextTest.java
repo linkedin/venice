@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import java.util.Arrays;
@@ -31,5 +32,18 @@ public class BatchGetRequestContextTest {
     assertEquals(retryRequestContext.numKeysInRequest, 3);
     assertEquals(retryRequestContext.getRoutesForPartitionMapping().size(), 2);
     assertEquals(retryRequestContext.getRouteRequestMap().size(), 1);
+  }
+
+  @Test
+  public void testHasPartialResponseFailure() {
+    BatchGetRequestContext requestContext = new BatchGetRequestContext(10, true);
+    assertFalse(requestContext.hasPartialResponseFailure());
+    requestContext.setPartialResponseExceptionIfNull(new RuntimeException("route failed"));
+    assertTrue(requestContext.hasPartialResponseFailure());
+    // A retry that recovers the request clears the partial failure.
+    requestContext.setPartialResponseException(null);
+    assertFalse(requestContext.hasPartialResponseFailure());
+    // Single-key contexts never report a partial failure.
+    assertFalse(new GetRequestContext().hasPartialResponseFailure());
   }
 }

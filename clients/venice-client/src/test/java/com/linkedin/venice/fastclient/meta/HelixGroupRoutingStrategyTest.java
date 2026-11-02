@@ -2,11 +2,9 @@ package com.linkedin.venice.fastclient.meta;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -137,7 +135,7 @@ public class HelixGroupRoutingStrategyTest {
   }
 
   @Test
-  public void testTrackRequestSkipsLatencyOnFailedCompletion() {
+  public void testTrackRequestRecordsLatencyOnFailedCompletion() {
     HelixGroupStats mockStats = mock(HelixGroupStats.class);
     HelixGroupRoutingStrategy strategy = new HelixGroupRoutingStrategy(instanceHealthMonitor, mockStats);
     strategy.updateHelixGroupInfo(getHelixGroupInfo());
@@ -149,10 +147,10 @@ public class HelixGroupRoutingStrategyTest {
     batchGetRequestContext.setHelixGroupId(1);
     batchGetRequestContext.setResultFuture(resultFuture);
 
-    // The request is still tracked (group counters bump), but a failed completion must not feed the latency signal.
+    // Round-robin and least-loaded keep recording failures so a slow, failing group still raises its average.
     assertTrue(strategy.trackRequest(batchGetRequestContext));
     verify(mockStats).recordGroupRequest(1);
-    verify(mockStats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
+    verify(mockStats).recordGroupResponseWaitingTime(eq(1), anyDouble());
   }
 
   /**

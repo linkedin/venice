@@ -21,6 +21,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.HelixGroupRoutingStrategyType;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.stats.FastClientMetricEntity;
@@ -517,7 +518,9 @@ public class ClientConfigTest {
 
   @Test
   public void testHelixGroupLatencyAdaptiveKnobsDefaultToSelectorConstants() {
-    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().build();
+    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs()
+        .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE)
+        .build();
     // The size-aware thresholds default to the long-tail-retry batch-get thresholds.
     assertEquals(
         clientConfig.getHelixGroupSizeAwareThresholds(),
@@ -541,6 +544,7 @@ public class ClientConfigTest {
         BatchGetConfigUtils.parseRetryThresholdForBatchGet(sizeAwareThresholds);
     ClientConfig.ClientConfigBuilder builder =
         getClientConfigWithMinimumRequiredInputs().setHelixGroupSizeAwareThresholdMs(sizeAwareThresholds)
+            .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE)
             .setHelixGroupSkewRampExponent(2.0);
     ClientConfig clientConfig = builder.build();
     assertEquals(clientConfig.getHelixGroupSizeAwareThresholds(), expectedThresholds);
@@ -550,6 +554,24 @@ public class ClientConfigTest {
     ClientConfig clonedConfig = builder.clone().build();
     assertEquals(clonedConfig.getHelixGroupSizeAwareThresholds(), expectedThresholds);
     assertEquals(clonedConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
+  }
+
+  @Test
+  public void testHelixGroupSizeAwareThresholdsOnlyParsedForLatencyAdaptive() {
+    // A client that never opts into latency-adaptive routing must still build with an unparseable batch-get range,
+    // as it did before the size-aware thresholds existed.
+    ClientConfig leastLoaded =
+        getClientConfigWithMinimumRequiredInputs().setLongTailRangeBasedRetryThresholdForBatchGetInMilliSeconds(null)
+            .build();
+    assertTrue(leastLoaded.getHelixGroupSizeAwareThresholds().isEmpty());
+
+    // Opting in surfaces a bad range at build time.
+    assertThrows(
+        VeniceException.class,
+        () -> getClientConfigWithMinimumRequiredInputs()
+            .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE)
+            .setHelixGroupSizeAwareThresholdMs("not-a-range")
+            .build());
   }
 
   @Test

@@ -249,14 +249,19 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
     /**
      * Default the size-aware thresholds to the long-tail-retry batch-get thresholds so the two slow-host-avoidance
-     * features share one source of truth instead of a separate hardcoded set.
+     * features share one source of truth instead of a separate hardcoded set. Parsed only when latency-adaptive
+     * routing is selected, so other clients never fail to build on a range string they do not use.
      */
-    String helixGroupSizeAwareThresholdStr =
-        (builder.helixGroupSizeAwareThresholdMs == null || builder.helixGroupSizeAwareThresholdMs.isEmpty())
-            ? builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds
-            : builder.helixGroupSizeAwareThresholdMs;
-    this.helixGroupSizeAwareThresholds =
-        BatchGetConfigUtils.parseRetryThresholdForBatchGet(helixGroupSizeAwareThresholdStr);
+    if (this.helixGroupRoutingStrategyType == HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE) {
+      String helixGroupSizeAwareThresholdStr =
+          (builder.helixGroupSizeAwareThresholdMs == null || builder.helixGroupSizeAwareThresholdMs.isEmpty())
+              ? builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds
+              : builder.helixGroupSizeAwareThresholdMs;
+      this.helixGroupSizeAwareThresholds =
+          BatchGetConfigUtils.parseRetryThresholdForBatchGet(helixGroupSizeAwareThresholdStr);
+    } else {
+      this.helixGroupSizeAwareThresholds = Collections.emptyNavigableMap();
+    }
     this.helixGroupEvenUntilFraction = builder.helixGroupEvenUntilFraction;
     this.helixGroupMinSampleCount = builder.helixGroupMinSampleCount;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;

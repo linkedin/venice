@@ -72,6 +72,11 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     return numKeysInRequest;
   }
 
+  @Override
+  public boolean hasPartialResponseFailure() {
+    return partialResponseException.get() != null;
+  }
+
   public Set<K> getKeys() {
     return this.keys;
   }
