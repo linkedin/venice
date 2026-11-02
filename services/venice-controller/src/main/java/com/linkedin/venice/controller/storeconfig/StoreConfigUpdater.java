@@ -480,6 +480,18 @@ public final class StoreConfigUpdater {
         admin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
       }
 
+      throughputQuotaInBytes
+          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setThroughputQuotaInBytes(aLong);
+            return store;
+          }));
+
+      throughputQuotaInRecords
+          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            store.setThroughputQuotaInRecords(aLong);
+            return store;
+          }));
+
       VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
       if (newHybridStoreConfig.isPresent()) {
         // To fix the final variable problem in the lambda expression
@@ -830,18 +842,6 @@ public final class StoreConfigUpdater {
           return store;
         });
       }
-
-      throughputQuotaInBytes
-          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setThroughputQuotaInBytes(aLong);
-            return store;
-          }));
-
-      throughputQuotaInRecords
-          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setThroughputQuotaInRecords(aLong);
-            return store;
-          }));
 
       unusedSchemaDeletionEnabled
           .ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {

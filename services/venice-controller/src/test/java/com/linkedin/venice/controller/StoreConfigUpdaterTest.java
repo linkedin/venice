@@ -355,22 +355,15 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     doCallRealMethod().when(admin).enableHybridModeOrUpdateSettings(clusterName, storeName, true);
-    AtomicReference<Boolean> writeQuotaEnabledWhenStoreBecameHybrid = new AtomicReference<>();
     doAnswer(invocation -> {
       VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
       operation.update(store, null);
-      if (store.isHybrid() && writeQuotaEnabledWhenStoreBecameHybrid.get() == null) {
-        writeQuotaEnabledWhenStoreBecameHybrid.set(store.isWriteQuotaEnabled());
-      }
       return null;
     }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
 
     StoreConfigUpdater
         .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
     assertTrue(store.isWriteQuotaEnabled());
-    assertTrue(
-        writeQuotaEnabledWhenStoreBecameHybrid.get(),
-        "Write quota must be enabled in the same metadata update that makes the store hybrid");
 
     store.setHybridStoreConfig(null);
     store.setWriteQuotaEnabled(false);
@@ -384,34 +377,62 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertFalse(store.isWriteQuotaEnabled());
   }
 
-  @Test
-  public void testApplyOnChild_ExplicitHybridConversionAtomicallyEnablesWriteQuota() {
-    String storeName = Utils.getUniqueString("write-quota-child-explicit-hybrid");
+  @DataProvider(name = "childHybridConversionQuotaUpdates")
+  public Object[][] childHybridConversionQuotaUpdates() {
+    List<Object[]> cases = new ArrayList<>();
+    for (boolean incrementalPushConversion: new boolean[] { false, true }) {
+      cases.add(new Object[] { incrementalPushConversion, null, null });
+      cases.add(new Object[] { incrementalPushConversion, 101L, null });
+      cases.add(new Object[] { incrementalPushConversion, null, 202L });
+      cases.add(new Object[] { incrementalPushConversion, 101L, 202L });
+    }
+    return cases.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "childHybridConversionQuotaUpdates")
+  public void testApplyOnChild_HybridConversionEnablesWriteQuotaAfterApplyingRequestedLimits(
+      boolean incrementalPushConversion,
+      Long throughputQuotaInBytes,
+      Long throughputQuotaInRecords) {
+    String storeName = Utils.getUniqueString("write-quota-child-snapshot");
     VeniceHelixAdmin admin = newChildAdminMock(storeName);
     Store store = admin.getStore(clusterName, storeName);
     store.setWriteQuotaEnabled(false);
+    store.setThroughputQuotaInBytes(11L);
+    store.setThroughputQuotaInRecords(22L);
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
-    AtomicReference<Boolean> writeQuotaEnabledWhenStoreBecameHybrid = new AtomicReference<>();
+    if (incrementalPushConversion) {
+      doCallRealMethod().when(admin).enableHybridModeOrUpdateSettings(clusterName, storeName, true);
+    }
+    AtomicReference<long[]> firstEnabledHybridSnapshot = new AtomicReference<>();
     doAnswer(invocation -> {
       VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
       operation.update(store, null);
-      if (store.isHybrid() && writeQuotaEnabledWhenStoreBecameHybrid.get() == null) {
-        writeQuotaEnabledWhenStoreBecameHybrid.set(store.isWriteQuotaEnabled());
+      if (store.isHybrid() && store.isWriteQuotaEnabled() && firstEnabledHybridSnapshot.get() == null) {
+        firstEnabledHybridSnapshot
+            .set(new long[] { store.getThroughputQuotaInBytes(), store.getThroughputQuotaInRecords() });
       }
       return null;
     }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
 
-    StoreConfigUpdater.applyOnChild(
-        admin,
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+    UpdateStoreQueryParams params = incrementalPushConversion
+        ? new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+        : new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L);
+    if (throughputQuotaInBytes != null) {
+      params.setThroughputQuotaInBytes(throughputQuotaInBytes);
+    }
+    if (throughputQuotaInRecords != null) {
+      params.setThroughputQuotaInRecords(throughputQuotaInRecords);
+    }
 
-    assertTrue(store.isWriteQuotaEnabled());
-    assertTrue(
-        writeQuotaEnabledWhenStoreBecameHybrid.get(),
-        "Write quota must be enabled in the same metadata update that makes the store hybrid");
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    assertNotNull(firstEnabledHybridSnapshot.get());
+    assertEquals(
+        firstEnabledHybridSnapshot.get(),
+        new long[] { throughputQuotaInBytes == null ? 11L : throughputQuotaInBytes,
+            throughputQuotaInRecords == null ? 22L : throughputQuotaInRecords });
   }
 
   @Test
