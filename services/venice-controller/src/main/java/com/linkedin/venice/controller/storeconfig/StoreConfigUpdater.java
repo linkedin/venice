@@ -371,6 +371,7 @@ public final class StoreConfigUpdater {
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
     Optional<Long> throughputQuotaInBytes = params.getThroughputQuotaInBytes();
     Optional<Long> throughputQuotaInRecords = params.getThroughputQuotaInRecords();
+    Optional<Boolean> writeQuotaEnabled = params.getWriteQuotaEnabled();
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
     validatePubSubEncryptionKeyUrn(
@@ -480,17 +481,19 @@ public final class StoreConfigUpdater {
         admin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
       }
 
-      throughputQuotaInBytes
-          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setThroughputQuotaInBytes(aLong);
-            return store;
-          }));
+      if (shouldImplicitlyEnableWriteQuota) {
+        throughputQuotaInBytes
+            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+              store.setThroughputQuotaInBytes(aLong);
+              return store;
+            }));
 
-      throughputQuotaInRecords
-          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setThroughputQuotaInRecords(aLong);
-            return store;
-          }));
+        throughputQuotaInRecords
+            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+              store.setThroughputQuotaInRecords(aLong);
+              return store;
+            }));
+      }
 
       VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
       if (newHybridStoreConfig.isPresent()) {
@@ -852,11 +855,26 @@ public final class StoreConfigUpdater {
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> admin.setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
 
-      params.getWriteQuotaEnabled()
-          .ifPresent(enabled -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setWriteQuotaEnabled(enabled);
-            return store;
-          }));
+      if (writeQuotaEnabled.isPresent()) {
+        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          throughputQuotaInBytes.ifPresent(store::setThroughputQuotaInBytes);
+          throughputQuotaInRecords.ifPresent(store::setThroughputQuotaInRecords);
+          store.setWriteQuotaEnabled(writeQuotaEnabled.get());
+          return store;
+        });
+      } else if (!shouldImplicitlyEnableWriteQuota) {
+        throughputQuotaInBytes
+            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+              store.setThroughputQuotaInBytes(aLong);
+              return store;
+            }));
+
+        throughputQuotaInRecords
+            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+              store.setThroughputQuotaInRecords(aLong);
+              return store;
+            }));
+      }
 
       blobTransferEnabled
           .ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {

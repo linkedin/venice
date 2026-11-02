@@ -64,12 +64,15 @@ import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -433,6 +436,88 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         firstEnabledHybridSnapshot.get(),
         new long[] { throughputQuotaInBytes == null ? 11L : throughputQuotaInBytes,
             throughputQuotaInRecords == null ? 22L : throughputQuotaInRecords });
+  }
+
+  @DataProvider(name = "etlOnboardingOutcomes")
+  public Object[][] etlOnboardingOutcomes() {
+    return new Object[][] { { false, null, null }, { false, 100L, null }, { false, null, 200L }, { false, 100L, 200L },
+        { true, null, null }, { true, 100L, null }, { true, null, 200L }, { true, 100L, 200L } };
+  }
+
+  @Test(dataProvider = "etlOnboardingOutcomes")
+  public void testApplyOnChild_ExplicitDisableAppliesThroughputLimitsAfterETLOnboarding(
+      boolean onboardingFails,
+      Long throughputQuotaInBytes,
+      Long throughputQuotaInRecords) {
+    String storeName = Utils.getUniqueString("write-quota-child-explicit-disable");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(86400L, 1000L, -1L, null));
+    store.setWriteQuotaEnabled(true);
+    store.setThroughputQuotaInBytes(1000L);
+    store.setThroughputQuotaInRecords(2000L);
+    store.setEtlStoreConfig(
+        new ETLStoreConfigImpl(
+            "etl-user",
+            false,
+            false,
+            VeniceETLStrategy.EXTERNAL_SERVICE.getValue(),
+            Collections.singletonList("dc-current")));
+    AtomicReference<Store> persistedStore = new AtomicReference<>(store.cloneStore());
+
+    doReturn(Optional.of(mock(ExternalETLService.class))).when(admin).getExternalETLService();
+    VeniceControllerMultiClusterConfig multiClusterConfig = admin.getMultiClusterConfigs();
+    doReturn("dc-current").when(multiClusterConfig).getRegionName();
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(controllerConfig).when(multiClusterConfig).getControllerConfig(clusterName);
+    doReturn(true).when(controllerConfig).isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      Store updatedStore = operation.update(persistedStore.get().cloneStore(), null);
+      persistedStore.set(updatedStore);
+      if (updatedStore.getThroughputQuotaInBytes() == 100L || updatedStore.getThroughputQuotaInRecords() == 200L) {
+        assertFalse(
+            updatedStore.isWriteQuotaEnabled(),
+            "New limits must not be published before enforcement is disabled");
+      }
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    doAnswer(invocation -> {
+      assertTrue(persistedStore.get().isWriteQuotaEnabled());
+      assertEquals(persistedStore.get().getThroughputQuotaInBytes(), 1000L);
+      assertEquals(persistedStore.get().getThroughputQuotaInRecords(), 2000L);
+      if (onboardingFails) {
+        throw new VeniceException("ETL onboarding failed");
+      }
+      return null;
+    }).when(admin).onboardETLForExistingStoreVersion(any());
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setWriteQuotaEnabled(false)
+        .setRegularVersionETLEnabled(true)
+        .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+        .setEtlActiveFabrics(Collections.singletonList("dc-current"));
+    if (throughputQuotaInBytes != null) {
+      params.setThroughputQuotaInBytes(throughputQuotaInBytes);
+    }
+    if (throughputQuotaInRecords != null) {
+      params.setThroughputQuotaInRecords(throughputQuotaInRecords);
+    }
+
+    if (onboardingFails) {
+      expectThrows(VeniceException.class, () -> StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params));
+      assertTrue(persistedStore.get().isWriteQuotaEnabled());
+      assertEquals(persistedStore.get().getThroughputQuotaInBytes(), 1000L);
+      assertEquals(persistedStore.get().getThroughputQuotaInRecords(), 2000L);
+    } else {
+      StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+      assertFalse(persistedStore.get().isWriteQuotaEnabled());
+      assertEquals(
+          persistedStore.get().getThroughputQuotaInBytes(),
+          throughputQuotaInBytes == null ? 1000L : throughputQuotaInBytes.longValue());
+      assertEquals(
+          persistedStore.get().getThroughputQuotaInRecords(),
+          throughputQuotaInRecords == null ? 2000L : throughputQuotaInRecords.longValue());
+    }
   }
 
   @Test
