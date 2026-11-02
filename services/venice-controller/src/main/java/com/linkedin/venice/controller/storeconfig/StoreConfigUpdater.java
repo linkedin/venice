@@ -409,6 +409,9 @@ public final class StoreConfigUpdater {
     } else {
       newHybridStoreConfig = Optional.empty();
     }
+    boolean storeBeingConvertedToHybrid = !originalStore.isHybrid()
+        && ((newHybridStoreConfig.isPresent() && HybridStoreConfigPolicy.isHybrid(newHybridStoreConfig.get()))
+            || incrementalPushEnabled.orElse(false));
 
     try {
       if (owner.isPresent()) {
@@ -556,6 +559,14 @@ public final class StoreConfigUpdater {
           admin.enableHybridModeOrUpdateSettings(clusterName, storeName);
         }
         admin.setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
+      }
+
+      if (storeBeingConvertedToHybrid && !originalStore.isWriteQuotaEnabled()
+          && !params.getWriteQuotaEnabled().isPresent()) {
+        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+          store.setWriteQuotaEnabled(true);
+          return store;
+        });
       }
 
       if (separateRealTimeTopicEnabled.isPresent()) {
@@ -1441,7 +1452,13 @@ public final class StoreConfigUpdater {
         .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
     setStore.writeQuotaEnabled = params.getWriteQuotaEnabled()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, WRITE_QUOTA_ENABLED))
-        .orElseGet(currStore::isWriteQuotaEnabled);
+        .orElseGet(() -> {
+          if (storeBeingConvertedToHybrid && !currStore.isWriteQuotaEnabled()) {
+            updatedConfigsList.add(WRITE_QUOTA_ENABLED);
+            return true;
+          }
+          return currStore.isWriteQuotaEnabled();
+        });
     setStore.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled
         .map(admin.addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
         .orElseGet(currStore::isUnusedSchemaDeletionEnabled);

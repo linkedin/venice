@@ -71,6 +71,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -235,6 +236,77 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         Collections.singleton(OWNER));
   }
 
+  @Test
+  public void testApplyOnParent_BatchToHybridConversionEnablesWriteQuota() {
+    String storeName = Utils.getUniqueString("write-quota-batch-to-hybrid");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertTrue(message.writeQuotaEnabled);
+    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
+  @Test
+  public void testApplyOnParent_BatchToHybridConversionPreservesEnabledWriteQuota() {
+    String storeName = Utils.getUniqueString("write-quota-already-enabled");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertTrue(message.writeQuotaEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
+  @Test
+  public void testApplyOnParent_NonConversionPreservesDisabledWriteQuota() {
+    String storeName = Utils.getUniqueString("write-quota-non-conversion");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertFalse(message.writeQuotaEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
+  @Test
+  public void testApplyOnParent_BatchToHybridConversionHonorsExplicitWriteQuotaDisable() {
+    String storeName = Utils.getUniqueString("write-quota-explicit-disable");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L)
+            .setHybridOffsetLagThreshold(1000L)
+            .setWriteQuotaEnabled(false));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertFalse(message.writeQuotaEnabled);
+    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
   @Test(dataProvider = "writeQuotaEnabledValues")
   public void testApplyOnChild_WriteQuotaEnabledPersistsAndSurvivesUnrelatedUpdate(boolean enabled) {
     String storeName = Utils.getUniqueString("write-quota-child");
@@ -252,6 +324,36 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertEquals(store.isWriteQuotaEnabled(), enabled);
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
     assertEquals(store.isWriteQuotaEnabled(), enabled);
+  }
+
+  @Test
+  public void testApplyOnChild_BatchToHybridConversionEnablesWriteQuotaUnlessExplicitlyDisabled() {
+    String storeName = Utils.getUniqueString("write-quota-child-conversion");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(false);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater
+        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    assertTrue(store.isWriteQuotaEnabled());
+
+    store.setHybridStoreConfig(null);
+    store.setWriteQuotaEnabled(false);
+    StoreConfigUpdater.applyOnChild(
+        admin,
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L)
+            .setHybridOffsetLagThreshold(1000L)
+            .setWriteQuotaEnabled(false));
+    assertFalse(store.isWriteQuotaEnabled());
   }
 
   private static final String NEW_OWNER = "new-owner-for-trivial-test";
