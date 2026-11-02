@@ -188,7 +188,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     String storeName = venicePath.getStoreName();
     int versionNumber = venicePath.getVersionNumber();
 
-    FullHttpResponse finalResponse = null;
+    FullHttpResponse finalResponse;
+    boolean healthyResponse = false;
     try {
       if (venicePath.isStreamingRequest()) {
         /**
@@ -230,6 +231,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           finalResponse = metaStoreShadowReader.shadowReadMetaStore(venicePath, finalResponse);
         }
       }
+      healthyResponse = HEALTHY_STATUSES.contains(finalResponse.status());
     } finally {
       /**
        * Release the Helix group bookkeeping for an original (non-retry) multi-key request even when response building
@@ -246,7 +248,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
             venicePath.getHelixGroupId(),
             venicePath.getPartitionKeys().size(),
             LatencyUtils.getElapsedTimeFromMsToMs(venicePath.getOriginalRequestStartTs()),
-            finalResponse != null && HEALTHY_STATUSES.contains(finalResponse.status()));
+            healthyResponse);
       }
     }
 
