@@ -182,29 +182,11 @@ public class TestVeniceHelixAdmin {
     disabled.setInstanceOperation(InstanceConstants.InstanceOperation.DISABLE);
     InstanceConfig legacyDisabled = new InstanceConfig("legacy-disabled");
     legacyDisabled.getRecord().setBooleanField("HELIX_ENABLED", false);
-    InstanceConfig batchDisabled = new InstanceConfig("batch-disabled");
-    InstanceConfig batchDisabledWithInfo = new InstanceConfig("batch-disabled-with-info");
     ClusterConfig config = new ClusterConfig(clusterName);
-    config.setDisabledInstances(Collections.singletonMap(batchDisabled.getInstanceName(), "1"));
-    config.setDisabledInstancesWithInfo(Collections.singletonMap(batchDisabledWithInfo.getInstanceName(), "1"));
     doReturn(config).when(accessor).getProperty(keyBuilder.clusterConfig());
-    doReturn(
-        Arrays.asList(
-            enabled,
-            secondEnabled,
-            disconnected,
-            disabled,
-            legacyDisabled,
-            batchDisabled,
-            batchDisabledWithInfo)).when(accessor).getChildValues(keyBuilder.instanceConfigs());
-    for (String instance: Arrays.asList(
-        "enabled",
-        "second-enabled",
-        "disabled",
-        "legacy-disabled",
-        "batch-disabled",
-        "batch-disabled-with-info",
-        "unregistered")) {
+    doReturn(Arrays.asList(enabled, secondEnabled, disconnected, disabled, legacyDisabled)).when(accessor)
+        .getChildValues(keyBuilder.instanceConfigs());
+    for (String instance: Arrays.asList("enabled", "second-enabled", "disabled", "legacy-disabled", "unregistered")) {
       doReturn(true).when(routingDataRepository).isLiveInstance(instance);
     }
 

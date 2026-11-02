@@ -6996,9 +6996,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int liveStorageNodeCount = 0;
     for (InstanceConfig instanceConfig: instanceConfigs) {
       String instanceName = instanceConfig.getInstanceName();
-      if (routingDataRepository.isLiveInstance(instanceName) && instanceConfig.getInstanceEnabled()
-          && !clusterConfig.getDisabledInstances().containsKey(instanceName)
-          && !clusterConfig.getDisabledInstancesWithInfo().containsKey(instanceName)) {
+      if (routingDataRepository.isLiveInstance(instanceName) && instanceConfig.getInstanceEnabled()) {
         liveStorageNodeCount++;
       }
     }
