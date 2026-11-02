@@ -304,7 +304,9 @@ public class ServerReadQuotaUsageStats extends AbstractVeniceStats {
   }
 
   private static class ServerReadQuotaVersionedStats {
-    // Both recording and measuring mutate Rate's sample windows; use this per-version monitor for all access.
+    // Both recording and measuring mutate Rate's sample windows; use this instance's monitor for all access.
+    // Per-store/version instances have separate monitors, but AggServerQuotaUsageStats uses one totalStats
+    // version whose monitor is shared across stores for aggregate recording and measurement.
     private final Rate requestedKPS;
     private final Rate requestedQPS;
     private final AtomicLong nodeKpsResponsibility = new AtomicLong(0);
