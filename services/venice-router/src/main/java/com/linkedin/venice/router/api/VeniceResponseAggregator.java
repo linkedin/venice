@@ -188,61 +188,69 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     String storeName = venicePath.getStoreName();
     int versionNumber = venicePath.getVersionNumber();
 
-    FullHttpResponse finalResponse;
-    if (venicePath.isStreamingRequest()) {
-      /**
-       * All the request with type: {@link RequestType.MULTI_GET_STREAMING} and {@link RequestType.COMPUTE_STREAMING}
-       * will be handled here.
-       */
-      finalResponse = buildStreamingResponse(gatheredResponses, storeName, versionNumber);
-    } else {
-      switch (requestType) {
-        case SINGLE_GET:
-          finalResponse = gatheredResponses.get(0);
-          break;
-        case MULTI_GET:
-          finalResponse = processMultiGetResponses(
-              gatheredResponses,
-              storeName,
-              versionNumber,
-              venicePath.getClientComputeHeader());
-          break;
-        case COMPUTE:
-          finalResponse = processComputeResponses(gatheredResponses, storeName, venicePath.getClientComputeHeader());
-          break;
-        default:
-          throw RouterExceptionAndTrackingUtils
-              .newVeniceExceptionAndTracking(null, null, INTERNAL_SERVER_ERROR, "Unknown request type: " + requestType);
+    FullHttpResponse finalResponse = null;
+    try {
+      if (venicePath.isStreamingRequest()) {
+        /**
+         * All the request with type: {@link RequestType.MULTI_GET_STREAMING} and {@link RequestType.COMPUTE_STREAMING}
+         * will be handled here.
+         */
+        finalResponse = buildStreamingResponse(gatheredResponses, storeName, versionNumber);
+      } else {
+        switch (requestType) {
+          case SINGLE_GET:
+            finalResponse = gatheredResponses.get(0);
+            break;
+          case MULTI_GET:
+            finalResponse = processMultiGetResponses(
+                gatheredResponses,
+                storeName,
+                versionNumber,
+                venicePath.getClientComputeHeader());
+            break;
+          case COMPUTE:
+            finalResponse = processComputeResponses(gatheredResponses, storeName, venicePath.getClientComputeHeader());
+            break;
+          default:
+            throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(
+                null,
+                null,
+                INTERNAL_SERVER_ERROR,
+                "Unknown request type: " + requestType);
+        }
       }
-    }
-    stats.recordFanoutRequestCount(storeName, gatheredResponses.size());
+      stats.recordFanoutRequestCount(storeName, gatheredResponses.size());
 
-    if (metaStoreShadowReaderOptional.isPresent()) {
-      MetaStoreShadowReader metaStoreShadowReader = metaStoreShadowReaderOptional.get();
-      if (metaStoreShadowReader.shouldPerformShadowRead(venicePath, finalResponse)) {
-        // Record meta store shadow read for the user store.
-        String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-        routerStats.getStatsByType(RequestType.SINGLE_GET).recordMetaStoreShadowRead(metaStoreName);
-        finalResponse = metaStoreShadowReader.shadowReadMetaStore(venicePath, finalResponse);
+      if (metaStoreShadowReaderOptional.isPresent()) {
+        MetaStoreShadowReader metaStoreShadowReader = metaStoreShadowReaderOptional.get();
+        if (metaStoreShadowReader.shouldPerformShadowRead(venicePath, finalResponse)) {
+          // Record meta store shadow read for the user store.
+          String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+          routerStats.getStatsByType(RequestType.SINGLE_GET).recordMetaStoreShadowRead(metaStoreName);
+          finalResponse = metaStoreShadowReader.shadowReadMetaStore(venicePath, finalResponse);
+        }
+      }
+    } finally {
+      /**
+       * Release the Helix group bookkeeping for an original (non-retry) multi-key request even when response building
+       * throws, so the pending-request counter cannot leak into the 10s timeout safeguard (which would also charge the
+       * group a false timeout-latency sample). Feed the latency signal only on a healthy response so a fast-failing
+       * group is not mistaken for a fast-serving one. Conditions:
+       * 1. The request is an original request (not a retry request).
+       * 2. {@link #helixGroupSelector} is not null.
+       * 3. HelixGroupId is valid since Helix-assisted routing is only enabled for multi-key requests.
+       */
+      if (!venicePath.isRetryRequest() && helixGroupSelector != null && venicePath.getHelixGroupId() >= 0) {
+        helixGroupSelector.finishRequest(
+            venicePath.getRequestId(),
+            venicePath.getHelixGroupId(),
+            venicePath.getPartitionKeys().size(),
+            LatencyUtils.getElapsedTimeFromMsToMs(venicePath.getOriginalRequestStartTs()),
+            finalResponse != null && HEALTHY_STATUSES.contains(finalResponse.status()));
       }
     }
 
     HttpResponseStatus httpResponseStatus = finalResponse.status();
-    /**
-     * Release the Helix group bookkeeping for an original (non-retry) multi-key request, and feed the latency signal
-     * only on a healthy response so a fast-failing group is not mistaken for a fast-serving one. Conditions:
-     * 1. The request is an original request (not a retry request).
-     * 2. {@link #helixGroupSelector} is not null.
-     * 3. HelixGroupId is valid since Helix-assisted routing is only enabled for multi-key requests.
-     */
-    if (!venicePath.isRetryRequest() && helixGroupSelector != null && venicePath.getHelixGroupId() >= 0) {
-      helixGroupSelector.finishRequest(
-          venicePath.getRequestId(),
-          venicePath.getHelixGroupId(),
-          venicePath.getPartitionKeys().size(),
-          LatencyUtils.getElapsedTimeFromMsToMs(venicePath.getOriginalRequestStartTs()),
-          HEALTHY_STATUSES.contains(httpResponseStatus));
-    }
     /**
      * All the metrics in {@link com.linkedin.ddsstorage.router.api.MetricNames} are supported in {@link Metrics}.
      * We are not exposing the following metrics inside Venice right now.
