@@ -11,6 +11,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -20,6 +21,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -238,5 +241,92 @@ public class RetriableStoreClientTest {
         ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()));
     retriableStoreClient.getRaw(requestPath);
     verify(mockStoreClient).getRaw(requestPath);
+  }
+
+  private RetriableStoreClient<String, Object> buildRealChain(
+      InternalAvroStoreClient<String, Object> inner,
+      MetricsRepository metricsRepository) {
+    String storeName = "realChainStore";
+    doReturn(storeName).when(inner).getStoreName();
+    ClientConfig config = ClientConfig.defaultGenericClientConfig(storeName)
+        .setMetricsRepository(metricsRepository)
+        .setRetryOnAllErrors(true)
+        .setRetryCount(1);
+    return new RetriableStoreClient<>(new StatTrackingStoreClient<>(inner, config), config);
+  }
+
+  private double metricValue(MetricsRepository repo, String suffix) {
+    String metricName = ".realChainStore" + suffix;
+    Assert.assertNotNull(repo.metrics().get(metricName), "Missing metric: " + metricName);
+    return repo.metrics().get(metricName).value();
+  }
+
+  private void assertNoAppTimeoutMetrics(MetricsRepository repo) {
+    Assert.assertTrue(Double.isNaN(metricValue(repo, "--client_future_timeout.Avg")));
+    Assert.assertEquals(metricValue(repo, "--app_timed_out_request.OccurrenceRate"), 0d);
+  }
+
+  @Test
+  public void testRealStatChainRecordsSingleGetOnSuccess() throws Exception {
+    InternalAvroStoreClient<String, Object> inner = mock(InternalAvroStoreClient.class);
+    Object value = new Object();
+    doReturn(CompletableFuture.completedFuture(value)).when(inner).get(any(), any(), anyLong());
+    MetricsRepository repo = new MetricsRepository();
+    RetriableStoreClient<String, Object> client = buildRealChain(inner, repo);
+
+    Assert.assertSame(client.get("key").get(), value);
+    Assert.assertTrue(metricValue(repo, "--healthy_request.OccurrenceRate") > 0d);
+    assertNoAppTimeoutMetrics(repo);
+  }
+
+  @Test
+  public void testRealStatChainRecordsSingleGetOnRetryWithoutCallerTimeout() throws Exception {
+    InternalAvroStoreClient<String, Object> inner = mock(InternalAvroStoreClient.class);
+    Object value = new Object();
+    CompletableFuture<Object> failed = new CompletableFuture<>();
+    failed.completeExceptionally(new VeniceClientHttpException(503));
+    doReturn(failed).doReturn(CompletableFuture.completedFuture(value)).when(inner).get(any(), any(), anyLong());
+    MetricsRepository repo = new MetricsRepository();
+    RetriableStoreClient<String, Object> client = buildRealChain(inner, repo);
+
+    Assert.assertSame(client.get("key").get(), value);
+    Assert.assertTrue(metricValue(repo, "--healthy_request.OccurrenceRate") > 0d);
+    Assert.assertTrue(metricValue(repo, "--unhealthy_request.OccurrenceRate") > 0d);
+    assertNoAppTimeoutMetrics(repo);
+  }
+
+  @Test(timeOut = 30000)
+  public void testRealStatChainRetryInternalWaitTimeoutNotCountedAsAppTimeout() throws Exception {
+    InternalAvroStoreClient<String, Object> inner = mock(InternalAvroStoreClient.class);
+    CompletableFuture<Object> failed = new CompletableFuture<>();
+    failed.completeExceptionally(new VeniceClientHttpException(503));
+    CompletableFuture<Object> neverCompletes = new CompletableFuture<>();
+    doReturn(failed).doReturn(neverCompletes).when(inner).get(any(), any(), anyLong());
+    MetricsRepository repo = new MetricsRepository();
+    RetriableStoreClient<String, Object> client = buildRealChain(inner, repo);
+
+    CompletableFuture<Object> result = client.get("key");
+    try {
+      result.get(20, TimeUnit.SECONDS);
+      Assert.fail("The internal retry wait should time out");
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof TimeoutException, "Expected the internal retry timeout");
+    } finally {
+      neverCompletes.cancel(false);
+    }
+    Assert.assertTrue(metricValue(repo, "--request_retry_count.OccurrenceRate") > 0d);
+    assertNoAppTimeoutMetrics(repo);
+  }
+
+  @Test
+  public void testRealStatChainRecordsGetRaw() throws Exception {
+    InternalAvroStoreClient<String, Object> inner = mock(InternalAvroStoreClient.class);
+    byte[] bytes = new byte[] { 1 };
+    doReturn(CompletableFuture.completedFuture(bytes)).when(inner).getRaw(any(), any(), anyLong());
+    MetricsRepository repo = new MetricsRepository();
+    RetriableStoreClient<String, Object> client = buildRealChain(inner, repo);
+
+    Assert.assertSame(client.getRaw("key_schema/realChainStore").get(), bytes);
+    Assert.assertTrue(metricValue(repo, "_schema_reader--healthy_request.OccurrenceRate") > 0d);
   }
 }
