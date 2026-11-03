@@ -383,8 +383,9 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
   @DataProvider(name = "childHybridConversionQuotaUpdates")
   public Object[][] childHybridConversionQuotaUpdates() {
-    return new Object[][] { { false, false, null, null }, { false, true, 101L, 202L }, { true, false, null, null },
-        { true, true, 101L, 202L } };
+    return new Object[][] { { false, false, null, null }, { false, false, 101L, null }, { false, true, null, 202L },
+        { false, true, 101L, 202L }, { true, false, null, null }, { true, false, null, 202L },
+        { true, true, 101L, null }, { true, true, 101L, 202L } };
   }
 
   @Test(dataProvider = "childHybridConversionQuotaUpdates")
