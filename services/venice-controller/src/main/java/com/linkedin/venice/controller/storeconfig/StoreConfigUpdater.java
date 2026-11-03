@@ -414,7 +414,9 @@ public final class StoreConfigUpdater {
         && ((newHybridStoreConfig.isPresent() && HybridStoreConfigPolicy.isHybrid(newHybridStoreConfig.get()))
             || incrementalPushEnabled.orElse(false));
     boolean shouldImplicitlyEnableWriteQuota = storeBeingConvertedToHybrid && !originalStore.isSystemStore()
-        && !originalStore.isWriteQuotaEnabled() && !params.getWriteQuotaEnabled().isPresent();
+        && !originalStore.isWriteQuotaEnabled() && !writeQuotaEnabled.isPresent();
+    Optional<Boolean> hybridConversionWriteQuotaEnabled =
+        shouldImplicitlyEnableWriteQuota ? Optional.of(true) : writeQuotaEnabled;
 
     try {
       if (owner.isPresent()) {
@@ -481,20 +483,6 @@ public final class StoreConfigUpdater {
         admin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
       }
 
-      if (shouldImplicitlyEnableWriteQuota) {
-        throughputQuotaInBytes
-            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-              store.setThroughputQuotaInBytes(aLong);
-              return store;
-            }));
-
-        throughputQuotaInRecords
-            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-              store.setThroughputQuotaInRecords(aLong);
-              return store;
-            }));
-      }
-
       VeniceControllerClusterConfig clusterConfig = admin.getHelixVeniceClusterResources(clusterName).getConfig();
       if (newHybridStoreConfig.isPresent()) {
         // To fix the final variable problem in the lambda expression
@@ -516,9 +504,9 @@ public final class StoreConfigUpdater {
           } else {
             // Batch-only store is being converted to hybrid store.
             if (!store.isHybrid()) {
-              if (shouldImplicitlyEnableWriteQuota) {
-                store.setWriteQuotaEnabled(true);
-              }
+              throughputQuotaInBytes.ifPresent(store::setThroughputQuotaInBytes);
+              throughputQuotaInRecords.ifPresent(store::setThroughputQuotaInRecords);
+              hybridConversionWriteQuotaEnabled.ifPresent(store::setWriteQuotaEnabled);
               /*
                * Enable/disable native replication for hybrid stores if the cluster level config
                * for new hybrid stores is on
@@ -576,7 +564,12 @@ public final class StoreConfigUpdater {
 
       if (incrementalPushEnabled.isPresent()) {
         if (incrementalPushEnabled.get()) {
-          admin.enableHybridModeOrUpdateSettings(clusterName, storeName, shouldImplicitlyEnableWriteQuota);
+          admin.enableHybridModeOrUpdateSettings(
+              clusterName,
+              storeName,
+              storeBeingConvertedToHybrid ? hybridConversionWriteQuotaEnabled : Optional.empty(),
+              storeBeingConvertedToHybrid ? throughputQuotaInBytes : Optional.empty(),
+              storeBeingConvertedToHybrid ? throughputQuotaInRecords : Optional.empty());
         }
         admin.setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
       }
@@ -855,25 +848,27 @@ public final class StoreConfigUpdater {
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> admin.setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
 
-      if (writeQuotaEnabled.isPresent()) {
-        admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-          throughputQuotaInBytes.ifPresent(store::setThroughputQuotaInBytes);
-          throughputQuotaInRecords.ifPresent(store::setThroughputQuotaInRecords);
-          store.setWriteQuotaEnabled(writeQuotaEnabled.get());
-          return store;
-        });
-      } else if (!shouldImplicitlyEnableWriteQuota) {
-        throughputQuotaInBytes
-            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-              store.setThroughputQuotaInBytes(aLong);
-              return store;
-            }));
+      if (!storeBeingConvertedToHybrid) {
+        if (writeQuotaEnabled.isPresent()) {
+          admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            throughputQuotaInBytes.ifPresent(store::setThroughputQuotaInBytes);
+            throughputQuotaInRecords.ifPresent(store::setThroughputQuotaInRecords);
+            store.setWriteQuotaEnabled(writeQuotaEnabled.get());
+            return store;
+          });
+        } else {
+          throughputQuotaInBytes
+              .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+                store.setThroughputQuotaInBytes(aLong);
+                return store;
+              }));
 
-        throughputQuotaInRecords
-            .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-              store.setThroughputQuotaInRecords(aLong);
-              return store;
-            }));
+          throughputQuotaInRecords
+              .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+                store.setThroughputQuotaInRecords(aLong);
+                return store;
+              }));
+        }
       }
 
       blobTransferEnabled

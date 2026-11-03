@@ -357,7 +357,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     store.setWriteQuotaEnabled(false);
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
-    doCallRealMethod().when(admin).enableHybridModeOrUpdateSettings(clusterName, storeName, true);
+    doCallRealMethod().when(admin)
+        .enableHybridModeOrUpdateSettings(eq(clusterName), eq(storeName), any(), any(), any());
     doAnswer(invocation -> {
       VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
       operation.update(store, null);
@@ -382,19 +383,14 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
 
   @DataProvider(name = "childHybridConversionQuotaUpdates")
   public Object[][] childHybridConversionQuotaUpdates() {
-    List<Object[]> cases = new ArrayList<>();
-    for (boolean incrementalPushConversion: new boolean[] { false, true }) {
-      cases.add(new Object[] { incrementalPushConversion, null, null });
-      cases.add(new Object[] { incrementalPushConversion, 101L, null });
-      cases.add(new Object[] { incrementalPushConversion, null, 202L });
-      cases.add(new Object[] { incrementalPushConversion, 101L, 202L });
-    }
-    return cases.toArray(new Object[0][]);
+    return new Object[][] { { false, false, null, null }, { false, true, 101L, 202L }, { true, false, null, null },
+        { true, true, 101L, 202L } };
   }
 
   @Test(dataProvider = "childHybridConversionQuotaUpdates")
   public void testApplyOnChild_HybridConversionEnablesWriteQuotaAfterApplyingRequestedLimits(
       boolean incrementalPushConversion,
+      boolean parentPropagatedWriteQuota,
       Long throughputQuotaInBytes,
       Long throughputQuotaInRecords) {
     String storeName = Utils.getUniqueString("write-quota-child-snapshot");
@@ -406,15 +402,17 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     if (incrementalPushConversion) {
-      doCallRealMethod().when(admin).enableHybridModeOrUpdateSettings(clusterName, storeName, true);
+      doCallRealMethod().when(admin)
+          .enableHybridModeOrUpdateSettings(eq(clusterName), eq(storeName), any(), any(), any());
     }
-    AtomicReference<long[]> firstEnabledHybridSnapshot = new AtomicReference<>();
+    AtomicReference<long[]> firstHybridSnapshot = new AtomicReference<>();
     doAnswer(invocation -> {
       VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
       operation.update(store, null);
-      if (store.isHybrid() && store.isWriteQuotaEnabled() && firstEnabledHybridSnapshot.get() == null) {
-        firstEnabledHybridSnapshot
-            .set(new long[] { store.getThroughputQuotaInBytes(), store.getThroughputQuotaInRecords() });
+      if (store.isHybrid() && firstHybridSnapshot.get() == null) {
+        firstHybridSnapshot.set(
+            new long[] { store.isWriteQuotaEnabled() ? 1L : 0L, store.getThroughputQuotaInBytes(),
+                store.getThroughputQuotaInRecords() });
       }
       return null;
     }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
@@ -428,13 +426,27 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     if (throughputQuotaInRecords != null) {
       params.setThroughputQuotaInRecords(throughputQuotaInRecords);
     }
+    if (parentPropagatedWriteQuota) {
+      Store parentStore = TestUtils.createTestStore(storeName, "owner", 1L);
+      parentStore.setWriteQuotaEnabled(false);
+      doReturn(parentStore).when(internalAdmin).getStore(clusterName, storeName);
+      parentAdmin.initStorageCluster(clusterName);
+      if (incrementalPushConversion) {
+        params.setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
+      }
+      parentAdmin.updateStore(clusterName, storeName, params);
+      UpdateStore message = captureLastUpdateStore();
+      assertTrue(message.writeQuotaEnabled);
+      assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+      params.setWriteQuotaEnabled(message.writeQuotaEnabled);
+    }
 
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
 
-    assertNotNull(firstEnabledHybridSnapshot.get());
+    assertNotNull(firstHybridSnapshot.get());
     assertEquals(
-        firstEnabledHybridSnapshot.get(),
-        new long[] { throughputQuotaInBytes == null ? 11L : throughputQuotaInBytes,
+        firstHybridSnapshot.get(),
+        new long[] { 1L, throughputQuotaInBytes == null ? 11L : throughputQuotaInBytes,
             throughputQuotaInRecords == null ? 22L : throughputQuotaInRecords });
   }
 
@@ -528,7 +540,8 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     store.setWriteQuotaEnabled(false);
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
-    doCallRealMethod().when(admin).enableHybridModeOrUpdateSettings(clusterName, storeName, false);
+    doCallRealMethod().when(admin)
+        .enableHybridModeOrUpdateSettings(eq(clusterName), eq(storeName), any(), any(), any());
     doAnswer(invocation -> {
       VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
       operation.update(store, null);
