@@ -219,6 +219,13 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
   }
 
   private static RequestContext trackedMultiGet(CompletableFuture<?> resultFuture, boolean partialFailure) {
+    return trackedMultiGet(resultFuture, partialFailure, false);
+  }
+
+  private static RequestContext trackedMultiGet(
+      CompletableFuture<?> resultFuture,
+      boolean partialFailure,
+      boolean retryTriggered) {
     RequestContext requestContext = mock(RequestContext.class);
     doReturn(RequestType.MULTI_GET).when(requestContext).getRequestType();
     doReturn(false).when(requestContext).isRetryRequest();
@@ -226,6 +233,7 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
     doReturn(10).when(requestContext).getKeyCount();
     doReturn(resultFuture).when(requestContext).getResultFuture();
     doReturn(partialFailure).when(requestContext).hasPartialResponseFailure();
+    doReturn(retryTriggered).when(requestContext).isRetryTriggered();
     return requestContext;
   }
 
@@ -259,6 +267,18 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
     CompletableFuture<Object> resultFuture = new CompletableFuture<>();
     resultFuture.complete(null);
     assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, true)));
+    verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
+  }
+
+  @Test
+  public void testTrackRequestSkipsLatencyWhenRetryTriggered() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    // A retried request may be served partly by another group, so it must not be credited to the selected one.
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.complete(null);
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, false, true)));
+    verify(stats).recordGroupRequest(1);
     verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
   }
 }

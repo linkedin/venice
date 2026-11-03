@@ -84,6 +84,13 @@ public abstract class RequestContext {
     return false;
   }
 
+  /**
+   * Whether a retry was sent for this request, in which case part of it may have been served by another group.
+   */
+  public boolean isRetryTriggered() {
+    return false;
+  }
+
   public void setServerClusterName(String serverClusterName) {
     this.serverClusterName = serverClusterName;
   }

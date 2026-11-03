@@ -46,4 +46,18 @@ public class BatchGetRequestContextTest {
     // Single-key contexts never report a partial failure.
     assertFalse(new GetRequestContext().hasPartialResponseFailure());
   }
+
+  @Test
+  public void testIsRetryTriggered() {
+    BatchGetRequestContext requestContext = new BatchGetRequestContext(10, true);
+    // No retry context at all (retry disabled).
+    assertFalse(requestContext.isRetryTriggered());
+    // Retry context set up but the retry has not fired yet.
+    requestContext.retryContext = new MultiKeyRequestContext.RetryContext<>();
+    assertFalse(requestContext.isRetryTriggered());
+    // The retry fired.
+    requestContext.retryContext.retryRequestContext = new BatchGetRequestContext(3, true);
+    assertTrue(requestContext.isRetryTriggered());
+    assertFalse(new GetRequestContext().isRetryTriggered());
+  }
 }

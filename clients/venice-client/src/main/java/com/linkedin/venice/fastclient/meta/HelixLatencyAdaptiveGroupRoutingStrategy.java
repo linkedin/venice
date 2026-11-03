@@ -147,11 +147,12 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
 
   /**
    * Only healthy completions feed the signal so a fast failure does not make a group look fast. Partial-success
-   * (streaming) requests complete normally even when routes failed, so those are excluded too.
+   * (streaming) requests complete normally even when routes failed, so those are excluded too. Retried requests are
+   * skipped because part of the response may have come from a different group than the one selected.
    */
   @Override
   protected boolean shouldRecordLatency(RequestContext requestContext, Throwable throwable) {
-    return throwable == null && !requestContext.hasPartialResponseFailure();
+    return throwable == null && !requestContext.hasPartialResponseFailure() && !requestContext.isRetryTriggered();
   }
 
   @Override

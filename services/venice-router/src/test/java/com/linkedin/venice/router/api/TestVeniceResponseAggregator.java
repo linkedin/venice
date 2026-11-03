@@ -57,6 +57,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -289,6 +290,48 @@ public class TestVeniceResponseAggregator {
 
     // Bookkeeping released (success flag false) so the group is not charged a latency sample for a router-side failure.
     verify(helixGroupSelector).finishRequest(eq(777L), eq(2), eq(3), anyDouble(), eq(false));
+  }
+
+  @DataProvider(name = "retryTriggered")
+  public Object[][] retryTriggered() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  /**
+   * A healthy response feeds the latency signal only when no retry fired; a retried part may have been served by a
+   * group other than the selected one. The counter is released either way.
+   */
+  @Test(dataProvider = "retryTriggered")
+  public void testFinishRequestSkipsLatencyWhenRetryTriggered(boolean retryTriggered) {
+    String storeName = Utils.getUniqueString("test_store");
+    FullHttpResponse response =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, Unpooled.wrappedBuffer("abc".getBytes()));
+    BasicFullHttpRequest request =
+        new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/storage/" + storeName + "/abc", -1, -1);
+
+    AggRouterHttpRequestStats mockStats = mock(AggRouterHttpRequestStats.class);
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    when(mockRouterStat.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockStats);
+
+    VenicePath path =
+        getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request, mock(CompressorFactory.class));
+    doReturn(Collections.singletonList(new RouterKey("key1".getBytes(StandardCharsets.UTF_8)))).when(path)
+        .getPartitionKeys();
+    doReturn(false).when(path).isRetryRequest();
+    doReturn(retryTriggered).when(path).isRetryTriggered();
+    doReturn(1).when(path).getHelixGroupId();
+    doReturn(55L).when(path).getRequestId();
+    Metrics metrics = new Metrics();
+    metrics.setPath(path);
+
+    HelixGroupSelector helixGroupSelector = mock(HelixGroupSelector.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
+    responseAggregator.initHelixGroupSelector(helixGroupSelector);
+    Assert.assertEquals(
+        responseAggregator.buildResponse(request, metrics, Collections.singletonList(response)).status(),
+        OK);
+
+    verify(helixGroupSelector).finishRequest(eq(55L), eq(1), eq(1), anyDouble(), eq(!retryTriggered));
   }
 
   @Test

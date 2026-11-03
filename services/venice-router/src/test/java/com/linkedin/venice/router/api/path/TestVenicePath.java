@@ -255,4 +255,22 @@ public class TestVenicePath {
       }
     }
   }
+
+  @Test
+  public void testRetryTriggeredIsSharedWithOriginalPath() {
+    TestMockTime time = new TestMockTime();
+    SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time, disabledRetryManager);
+    SmartRetryVenicePath subPath = new SmartRetryVenicePath(time, disabledRetryManager);
+    subPath.setupRetryRelatedInfo(orgPath);
+    assertFalse(orgPath.isRetryTriggered());
+    assertFalse(subPath.isRetryTriggered());
+
+    // A retry on a sub-path (long-tail or error) must be visible on the original path.
+    SmartRetryVenicePath retryPath = new SmartRetryVenicePath(time, disabledRetryManager);
+    retryPath.setupRetryRelatedInfo(subPath);
+    retryPath.setRetryRequest(HttpResponseStatus.SERVICE_UNAVAILABLE);
+    assertTrue(orgPath.isRetryTriggered());
+    assertTrue(subPath.isRetryTriggered());
+    assertFalse(orgPath.isRetryRequest());
+  }
 }

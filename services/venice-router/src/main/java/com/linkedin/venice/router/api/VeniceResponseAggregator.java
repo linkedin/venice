@@ -237,7 +237,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        * Release the Helix group bookkeeping for an original (non-retry) multi-key request even when response building
        * throws, so the pending-request counter cannot leak into the 10s timeout safeguard (which would also charge the
        * group a false timeout-latency sample). Feed the latency signal only on a healthy response so a fast-failing
-       * group is not mistaken for a fast-serving one. Conditions:
+       * group is not mistaken for a fast-serving one, and only when no retry fired, since a retried part may have been
+       * served by a different group than the one selected. Conditions:
        * 1. The request is an original request (not a retry request).
        * 2. {@link #helixGroupSelector} is not null.
        * 3. HelixGroupId is valid since Helix-assisted routing is only enabled for multi-key requests.
@@ -248,7 +249,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
             venicePath.getHelixGroupId(),
             venicePath.getPartitionKeys().size(),
             LatencyUtils.getElapsedTimeFromMsToMs(venicePath.getOriginalRequestStartTs()),
-            healthyResponse);
+            healthyResponse && !venicePath.isRetryTriggered());
       }
     }
 
