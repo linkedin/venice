@@ -7,6 +7,7 @@ import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.NavigableMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.IntUnaryOperator;
 
 
 /**
@@ -30,6 +31,8 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
    * response-waiting-time metric.
    */
   private final boolean sizeAware;
+  /** Size-aware only: key count -> effective retry threshold (us) used as full skew; {@code null} keeps the buckets'. */
+  private final IntUnaryOperator retryThresholdMicrosByKeyCount;
 
   public HelixLatencyAdaptiveGroupRoutingStrategy(
       InstanceHealthMonitor instanceHealthMonitor,
@@ -40,11 +43,16 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       double skewRampExponent) {
     super(instanceHealthMonitor, metricsRepository, storeName);
     this.sizeAware = false;
+    this.retryThresholdMicrosByKeyCount = null;
     this.selector = buildSelector(evenUntilLatencyMs, fullSkewAtLatencyMs, skewRampExponent);
     this.selector.setLogContext("fast-client:" + storeName);
   }
 
-  /** Size-aware construction: latency is tracked and skewed per key-count bucket. */
+  /**
+   * Size-aware construction: latency is tracked and skewed per key-count bucket. When
+   * {@code retryThresholdMicrosByKeyCount} is non-null each request's full-skew threshold follows it, so routing tracks
+   * the effective retry policy; otherwise the per-bucket thresholds apply.
+   */
   public HelixLatencyAdaptiveGroupRoutingStrategy(
       InstanceHealthMonitor instanceHealthMonitor,
       MetricsRepository metricsRepository,
@@ -52,9 +60,11 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       NavigableMap<Integer, Integer> fullSkewMsByLowerBound,
       double evenUntilFraction,
       double skewRampExponent,
-      long minSampleCount) {
+      long minSampleCount,
+      IntUnaryOperator retryThresholdMicrosByKeyCount) {
     super(instanceHealthMonitor, metricsRepository, storeName);
     this.sizeAware = true;
+    this.retryThresholdMicrosByKeyCount = retryThresholdMicrosByKeyCount;
     this.selector = buildBucketedSelector(fullSkewMsByLowerBound, evenUntilFraction, skewRampExponent, minSampleCount);
     this.selector.setLogContext("fast-client:" + storeName);
   }
@@ -77,6 +87,7 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       double skewRampExponent) {
     super(monitor, helixGroupStats);
     this.sizeAware = false;
+    this.retryThresholdMicrosByKeyCount = null;
     this.selector = buildSelector(evenUntilLatencyMs, fullSkewAtLatencyMs, skewRampExponent);
   }
 
@@ -86,9 +97,11 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       NavigableMap<Integer, Integer> fullSkewMsByLowerBound,
       double evenUntilFraction,
       double skewRampExponent,
-      long minSampleCount) {
+      long minSampleCount,
+      IntUnaryOperator retryThresholdMicrosByKeyCount) {
     super(monitor, helixGroupStats);
     this.sizeAware = true;
+    this.retryThresholdMicrosByKeyCount = retryThresholdMicrosByKeyCount;
     this.selector = buildBucketedSelector(fullSkewMsByLowerBound, evenUntilFraction, skewRampExponent, minSampleCount);
   }
 
@@ -140,9 +153,13 @@ public class HelixLatencyAdaptiveGroupRoutingStrategy extends HelixGroupRoutingS
       throw new VeniceClientException("Unexpected group count: " + groupCnt);
     }
     int startPos = (int) (requestId % groupCnt);
-    return sizeAware
-        ? selector.selectGroup(groupCnt, startPos, groupIdForOriginalRequest, keyCount)
-        : selector.selectGroup(groupCnt, startPos, groupIdForOriginalRequest);
+    if (!sizeAware) {
+      return selector.selectGroup(groupCnt, startPos, groupIdForOriginalRequest);
+    }
+    double fullSkewMs = retryThresholdMicrosByKeyCount == null
+        ? -1.0
+        : retryThresholdMicrosByKeyCount.applyAsInt(Math.max(keyCount, 1)) / 1000.0;
+    return selector.selectGroup(groupCnt, startPos, groupIdForOriginalRequest, keyCount, fullSkewMs);
   }
 
   /**

@@ -42,10 +42,7 @@ import org.apache.logging.log4j.Logger;
  * state is a lock-free throttle timestamp for the optional periodic weight log, which does not affect selection.
  */
 public class LatencyAdaptiveGroupSelector {
-  /**
-   * Maps a group and a key-count bucket (the bucket's inclusive lower key-count bound) to that group's measured average
-   * response time in ms; non-positive means not yet measured.
-   */
+  /** Maps a group and a bucket (its lower key-count bound) to its avg latency in ms; non-positive = unmeasured. */
   @FunctionalInterface
   public interface GroupBucketLatencyProvider {
     double latencyMs(int groupId, int bucketKey);
@@ -64,10 +61,7 @@ public class LatencyAdaptiveGroupSelector {
 
   private static final Logger LOGGER = LogManager.getLogger(LatencyAdaptiveGroupSelector.class);
 
-  /**
-   * Default stay-even threshold (ms): routing stays even (skew {@code == 0}) while the slowest measured group is at or
-   * below it. Single-bucket default; bucketed construction derives it per bucket via {@link #DEFAULT_EVEN_UNTIL_FRACTION}.
-   */
+  /** Default single-bucket stay-even threshold (ms): skew stays 0 while the slowest group is at or below it. */
   public static final double DEFAULT_EVEN_UNTIL_LATENCY_MS = 10.0;
 
   /** Default full-skew threshold (ms): routing reaches its full split (skew {@code == 1}) once the slowest hits it. */
@@ -95,6 +89,7 @@ public class LatencyAdaptiveGroupSelector {
   private final int[] bucketLowerBounds;
   private final double[] bucketEvenUntilMs;
   private final double[] bucketFullSkewMs;
+  private final double evenUntilFraction;
   private final long minSampleCount;
   private final double interpolationExponent;
   private final DoubleSupplier randomSupplier;
@@ -102,11 +97,7 @@ public class LatencyAdaptiveGroupSelector {
   private volatile long weightLogIntervalMs = DEFAULT_WEIGHT_LOG_INTERVAL_MS;
   private volatile String logContext = "";
 
-  /**
-   * Single-bucket (non size-aware) selector with default knobs and {@link ThreadLocalRandom} for the draw; all key
-   * counts map to one bucket (pre-bucketing behaviour). {@code latencyProvider}: group id -> avg response time in ms,
-   * non-positive meaning not yet measured.
-   */
+  /** Single-bucket selector with default knobs and {@link ThreadLocalRandom}; see the five-argument constructor. */
   public LatencyAdaptiveGroupSelector(IntToDoubleFunction latencyProvider) {
     this(
         latencyProvider,
@@ -150,6 +141,7 @@ public class LatencyAdaptiveGroupSelector {
     this.bucketFullSkewMs = new double[] { fullSkewAtLatencyMs };
     this.bucketIndexByLowerBound = new TreeMap<>();
     this.bucketIndexByLowerBound.put(1, 0);
+    this.evenUntilFraction = evenUntilLatencyMs / fullSkewAtLatencyMs;
     this.minSampleCount = 0L;
     this.interpolationExponent = interpolationExponent;
     this.randomSupplier = randomSupplier;
@@ -216,6 +208,7 @@ public class LatencyAdaptiveGroupSelector {
     }
     this.latencyProvider = latencyProvider;
     this.sampleCountProvider = sampleCountProvider;
+    this.evenUntilFraction = evenUntilFraction;
     this.minSampleCount = minSampleCount;
     this.interpolationExponent = interpolationExponent;
     this.randomSupplier = randomSupplier;
@@ -252,14 +245,22 @@ public class LatencyAdaptiveGroupSelector {
    * @param keyCount        number of keys in the request, used to pick the key-count bucket.
    */
   public int selectGroup(int groupCount, int startGroupId, int excludedGroupId, int keyCount) {
+    return selectGroup(groupCount, startGroupId, excludedGroupId, keyCount, -1.0);
+  }
+
+  /**
+   * As {@link #selectGroup(int, int, int, int)} with this request's full-skew threshold ({@code <= 0} keeps the
+   * bucket's; stay-even scales by the same fraction), so callers can follow a runtime threshold such as a retry policy.
+   */
+  public int selectGroup(int groupCount, int startGroupId, int excludedGroupId, int keyCount, double fullSkewMs) {
     if (groupCount > MAX_ALLOWED_GROUP || groupCount <= 0) {
       throw new VeniceException(
           "The valid group num must fall into this range: [1, " + MAX_ALLOWED_GROUP + "], but received: " + groupCount);
     }
     int bucketIndex = bucketIndexForKeyCount(keyCount);
     IntToDoubleFunction latencyView = latencyView(bucketIndex, groupCount);
-    double evenUntil = bucketEvenUntilMs[bucketIndex];
-    double fullSkew = bucketFullSkewMs[bucketIndex];
+    double evenUntil = fullSkewMs > 0.0 ? fullSkewMs * evenUntilFraction : bucketEvenUntilMs[bucketIndex];
+    double fullSkew = fullSkewMs > 0.0 ? fullSkewMs : bucketFullSkewMs[bucketIndex];
     double skew = latencySkew(latencyView, groupCount, excludedGroupId, evenUntil, fullSkew);
     double evenShare = 1.0 / groupCount;
     double floor = PROBE_FLOOR_FRACTION * evenShare;
@@ -282,7 +283,7 @@ public class LatencyAdaptiveGroupSelector {
         selectedGroup = currentGroup;
       }
     }
-    maybeLogWeights(groupCount, bucketIndex, latencyView);
+    maybeLogWeights(groupCount, bucketIndex, latencyView, fullSkewMs);
     if (selectedGroup >= 0) {
       return selectedGroup;
     }
@@ -321,22 +322,16 @@ public class LatencyAdaptiveGroupSelector {
     return groupId -> latencies[groupId];
   }
 
-  /**
-   * Renders the routing picture (key-count range, skew, thresholds, per-group latency and realized weight) for the
-   * {@code keyCount}-key request's bucket, as one log line. Pure: reads the latency view, mutates nothing.
-   */
+  /** Renders the routing picture for the {@code keyCount}-key request's bucket as one log line. Pure. */
   public String formatWeights(int groupCount, int keyCount) {
     int bucketIndex = bucketIndexForKeyCount(keyCount);
-    return renderWeights(groupCount, bucketIndex, latencyView(bucketIndex, groupCount));
+    return renderWeights(groupCount, bucketIndex, latencyView(bucketIndex, groupCount), -1.0);
   }
 
-  /**
-   * Renders the routing picture for the given bucket (range, skew, thresholds, per-group latency and realized weight) as
-   * one log line, recomputing the shares {@link #selectGroup} uses (no exclusion) normalized to ~100%. Pure.
-   */
-  private String renderWeights(int groupCount, int bucketIndex, IntToDoubleFunction latencyView) {
-    double evenUntil = bucketEvenUntilMs[bucketIndex];
-    double fullSkew = bucketFullSkewMs[bucketIndex];
+  /** Renders bucket range, skew, thresholds, per-group latency and realized weight (no exclusion) as one line. Pure. */
+  private String renderWeights(int groupCount, int bucketIndex, IntToDoubleFunction latencyView, double fullSkewMs) {
+    double evenUntil = fullSkewMs > 0.0 ? fullSkewMs * evenUntilFraction : bucketEvenUntilMs[bucketIndex];
+    double fullSkew = fullSkewMs > 0.0 ? fullSkewMs : bucketFullSkewMs[bucketIndex];
     double skew = latencySkew(latencyView, groupCount, -1, evenUntil, fullSkew);
     double evenShare = 1.0 / groupCount;
     double floor = PROBE_FLOOR_FRACTION * evenShare;
@@ -388,7 +383,7 @@ public class LatencyAdaptiveGroupSelector {
    * Logs the current per-group weights for the active bucket at INFO at most once per {@link #weightLogIntervalMs}. A
    * lock-free compare-and-set gate lets one thread emit per window and keeps the hot selection path contention free.
    */
-  private void maybeLogWeights(int groupCount, int bucketIndex, IntToDoubleFunction latencyView) {
+  private void maybeLogWeights(int groupCount, int bucketIndex, IntToDoubleFunction latencyView, double fullSkewMs) {
     long intervalMs = weightLogIntervalMs;
     if (intervalMs <= 0 || !LOGGER.isInfoEnabled()) {
       return;
@@ -402,7 +397,7 @@ public class LatencyAdaptiveGroupSelector {
       // Another thread already claimed this window; skip to avoid duplicate lines.
       return;
     }
-    LOGGER.info(renderWeights(groupCount, bucketIndex, latencyView));
+    LOGGER.info(renderWeights(groupCount, bucketIndex, latencyView, fullSkewMs));
   }
 
   /**

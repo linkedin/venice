@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.fastclient.BatchGetRetryThresholdResolver;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.GetRequestContext;
 import com.linkedin.venice.fastclient.MultiKeyRequestContext;
@@ -29,6 +30,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.IntUnaryOperator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -57,6 +59,19 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     this.routingStrategy = getRoutingStrategy(clientRoutingStrategyType);
   }
 
+  /**
+   * Unless thresholds were set explicitly, latency-adaptive full skew follows the effective batch-get retry threshold,
+   * including its precedence (fixed, then server policy, then local range). {@code null} keeps the configured buckets.
+   */
+  private IntUnaryOperator effectiveRetryThresholdForRouting() {
+    if (clientConfig.isHelixGroupSizeAwareThresholdsExplicit() || !clientConfig.isLongTailRetryEnabledForBatchGet()) {
+      return null;
+    }
+    return new BatchGetRetryThresholdResolver(
+        clientConfig,
+        this::getMultiKeyLongTailRetryThresholds)::getThresholdInMicroSeconds;
+  }
+
   private AbstractClientRoutingStrategy getRoutingStrategy(ClientRoutingStrategyType clientRoutingStrategyType) {
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
@@ -69,7 +84,8 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
                 clientConfig.getHelixGroupSizeAwareThresholds(),
                 clientConfig.getHelixGroupEvenUntilFraction(),
                 clientConfig.getHelixGroupSkewRampExponent(),
-                clientConfig.getHelixGroupMinSampleCount());
+                clientConfig.getHelixGroupMinSampleCount(),
+                effectiveRetryThresholdForRouting());
           case LEAST_LOADED:
             return new HelixLeastLoadedGroupRoutingStrategy(
                 instanceHealthMonitor,
