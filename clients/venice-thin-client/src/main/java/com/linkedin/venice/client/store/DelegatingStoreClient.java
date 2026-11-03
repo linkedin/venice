@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -26,6 +27,23 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   // for testing
   public InternalAvroStoreClient<K, V> getInnerStoreClient() {
     return innerStoreClient;
+  }
+
+  protected static <T> CompletableFuture<T> handlePreservingException(
+      CompletableFuture<T> future,
+      BiFunction<? super T, Throwable, ? extends T> callback) {
+    CompletableFuture<T> result = new CompletableFuture<>();
+    future.handle(callback).whenComplete((value, throwable) -> {
+      if (throwable == null) {
+        result.complete(value);
+      } else {
+        // Dependent stages wrap failures; retain the original request exception after the callback runs.
+        future.whenComplete((originalValue, originalThrowable) -> {
+          result.completeExceptionally(originalThrowable == null ? throwable : originalThrowable);
+        });
+      }
+    });
+    return result;
   }
 
   @Override

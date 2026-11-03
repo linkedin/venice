@@ -9,9 +9,12 @@ import static org.testng.Assert.assertThrows;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -25,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -279,10 +283,18 @@ public class RetriableStoreClientTest {
     assertNoAppTimeoutMetrics(repo);
   }
 
-  @Test
-  public void testRealStatChainRecordsSingleGetOnRetryWithoutCallerTimeout() throws Exception {
+  @DataProvider(name = "singleGetValues")
+  public Object[][] singleGetValues() {
+    Map<String, String> mapValue = new HashMap<>();
+    mapValue.put("first", "value");
+    mapValue.put("second", "value");
+    return new Object[][] { { new Object(), 1 }, { null, 0 }, { Collections.emptyMap(), 1 }, { mapValue, 1 } };
+  }
+
+  @Test(dataProvider = "singleGetValues")
+  public void testRealStatChainRecordsSingleGetOnRetryWithoutCallerTimeout(Object value, int expectedKeyCount)
+      throws Exception {
     InternalAvroStoreClient<String, Object> inner = mock(InternalAvroStoreClient.class);
-    Object value = new Object();
     CompletableFuture<Object> failed = new CompletableFuture<>();
     failed.completeExceptionally(new VeniceClientHttpException(503));
     doReturn(failed).doReturn(CompletableFuture.completedFuture(value)).when(inner).get(any(), any(), anyLong());
@@ -292,7 +304,40 @@ public class RetriableStoreClientTest {
     Assert.assertSame(client.get("key").get(), value);
     Assert.assertTrue(metricValue(repo, "--healthy_request.OccurrenceRate") > 0d);
     Assert.assertTrue(metricValue(repo, "--unhealthy_request.OccurrenceRate") > 0d);
+    Assert.assertEquals(metricValue(repo, "--success_request_key_count.Avg"), (double) expectedKeyCount);
     assertNoAppTimeoutMetrics(repo);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRateLimitExceptionPreservedThroughRetryDecorators(boolean statTrackingEnabled) throws Exception {
+    InternalAvroStoreClient<String, Object> inner = mock(InternalAvroStoreClient.class);
+    doReturn("realChainStore").when(inner).getStoreName();
+    VeniceClientRateExceededException exception = new VeniceClientRateExceededException();
+    CompletableFuture<Object> getFuture = new CompletableFuture<>();
+    getFuture.completeExceptionally(exception);
+    CompletableFuture<byte[]> rawFuture = new CompletableFuture<>();
+    rawFuture.completeExceptionally(exception);
+    doReturn(getFuture).when(inner).get(any(), any(), anyLong());
+    doReturn(rawFuture).when(inner).getRaw(any(), any(), anyLong());
+    MetricsRepository repo = new MetricsRepository();
+    ClientConfig config = ClientConfig.defaultGenericClientConfig("realChainStore")
+        .setMetricsRepository(repo)
+        .setStatTrackingEnabled(statTrackingEnabled)
+        .setRetryOnRouterError(true);
+    InternalAvroStoreClient<String, Object> trackingClient =
+        statTrackingEnabled ? new StatTrackingStoreClient<>(inner, config) : new LoggingTrackingStoreClient<>(inner);
+    RetriableStoreClient<String, Object> client = new RetriableStoreClient<>(trackingClient, config);
+
+    Assert.assertSame(client.get("key").handle((value, throwable) -> throwable).get(), exception);
+    Assert.assertSame(
+        client.getRaw("key_schema/realChainStore").handle((value, throwable) -> throwable).get(),
+        exception);
+    verify(inner).get(any(), any(), anyLong());
+    verify(inner).getRaw(any(), any(), anyLong());
+    if (statTrackingEnabled) {
+      Assert.assertTrue(metricValue(repo, "--unhealthy_request.OccurrenceRate") > 0d);
+      Assert.assertTrue(metricValue(repo, "_schema_reader--unhealthy_request.OccurrenceRate") > 0d);
+    }
   }
 
   @Test(timeOut = 30000)
