@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -18,6 +19,8 @@ import java.util.Properties;
  */
 public class OfflineOrderedTestPosition implements PubSubPosition {
   public static final int TYPE_ID = 77;
+  /** Counts deserializations, so tests can check how often positions are parsed. */
+  public static final AtomicInteger DESERIALIZE_COUNT = new AtomicInteger();
 
   private final int rangeId;
   private final long sequence;
@@ -99,6 +102,7 @@ public class OfflineOrderedTestPosition implements PubSubPosition {
 
     @Override
     public PubSubPosition fromPositionRawBytes(ByteBuffer raw) {
+      DESERIALIZE_COUNT.incrementAndGet();
       ByteBuffer buf = raw.duplicate();
       return new OfflineOrderedTestPosition(buf.getInt(), buf.getLong());
     }

@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Properties;
@@ -49,35 +50,72 @@ public class PubSubPositionRowComparator implements Comparator<Row>, Serializabl
 
   @Override
   public int compare(Row r1, Row r2) {
-    long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
-    long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
-    if (offset1 >= 0 && offset2 >= 0) {
-      return Long.compare(offset1, offset2);
+    return compare(new OrderedRow(r1), new OrderedRow(r2));
+  }
+
+  /**
+   * @return the newest row (highest position) of {@code rows}, or null if {@code rows} is empty. On ties, the first
+   *         such row is returned. Each position is deserialized at most once.
+   */
+  public Row selectLatest(List<Row> rows) {
+    OrderedRow latest = null;
+    for (Row row: rows) {
+      OrderedRow candidate = new OrderedRow(row);
+      if (latest == null || compare(candidate, latest) > 0) {
+        latest = candidate;
+      }
     }
-    PubSubPosition position1 = toPosition(r1, offset1);
-    PubSubPosition position2 = toPosition(r2, offset2);
+    return latest == null ? null : latest.row;
+  }
+
+  /**
+   * Sorts {@code rows} in place, newest (highest position) first. The sort is stable and each position is deserialized
+   * at most once.
+   */
+  public void sortLatestFirst(List<Row> rows) {
+    List<OrderedRow> orderedRows = new ArrayList<>(rows.size());
+    for (Row row: rows) {
+      orderedRows.add(new OrderedRow(row));
+    }
+    orderedRows.sort((a, b) -> compare(b, a));
+    for (int i = 0; i < orderedRows.size(); i++) {
+      rows.set(i, orderedRows.get(i).row);
+    }
+  }
+
+  private int compare(OrderedRow r1, OrderedRow r2) {
+    if (r1.offset >= 0 && r2.offset >= 0) {
+      return Long.compare(r1.offset, r2.offset);
+    }
+    PubSubPosition position1 = r1.position();
+    PubSubPosition position2 = r2.position();
     try {
       return position1.comparePositionOffline(position2);
     } catch (RuntimeException e) {
       throw new VeniceException(
-          "Unable to order records of key " + keyToString(r1) + ": positions " + position1 + " (offset " + offset1
-              + ") and " + position2 + " (offset " + offset2 + ") cannot be compared offline",
+          "Unable to order records of key " + keyToString(r1.row) + ": positions " + position1 + " (offset " + r1.offset
+              + ") and " + position2 + " (offset " + r2.offset + ") cannot be compared offline",
           e);
     }
   }
 
-  /**
-   * @return the newest row (highest position) of {@code rows}, or null if {@code rows} is empty
-   */
-  public Row selectLatest(List<Row> rows) {
-    return rows.stream().max(this).orElse(null);
-  }
+  /** A row plus its offset and lazily deserialized position, so rows on the offset fast path never deserialize. */
+  private final class OrderedRow {
+    private final Row row;
+    private final long offset;
+    private PubSubPosition position;
 
-  /**
-   * Sorts {@code rows} in place, newest (highest position) first.
-   */
-  public void sortLatestFirst(List<Row> rows) {
-    rows.sort(this.reversed());
+    private OrderedRow(Row row) {
+      this.row = row;
+      this.offset = row.getAs(OFFSET_COLUMN_NAME);
+    }
+
+    private PubSubPosition position() {
+      if (position == null) {
+        position = toPosition(row, offset);
+      }
+      return position;
+    }
   }
 
   private PubSubPosition toPosition(Row row, long offset) {
