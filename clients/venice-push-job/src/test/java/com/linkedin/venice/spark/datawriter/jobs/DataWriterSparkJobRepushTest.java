@@ -3,6 +3,7 @@ package com.linkedin.venice.spark.datawriter.jobs;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.spark.SparkConstants.POSITION_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.SCHEMA_FOR_CHUNK_ASSEMBLY;
 import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
@@ -50,6 +51,7 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.spark.SparkExecutorTestUtils;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.writer.TestSparkPartitionWriter;
+import com.linkedin.venice.spark.utils.OfflineOrderedTestPosition;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -170,6 +172,9 @@ public class DataWriterSparkJobRepushTest {
     currentTestJob = job;
 
     Properties props = createDefaultTestProperties();
+    // Register the offline-ordered position type used by key4/key5 (no numeric offsets), as a KIF repush job reading
+    // from such a pub-sub system would.
+    props.putAll(OfflineOrderedTestPosition.registryProperties());
 
     PushJobSetting setting = new PushJobSetting();
     setting.isSourceKafka = true;
@@ -191,20 +196,20 @@ public class DataWriterSparkJobRepushTest {
     DataWriterAccumulators accumulators = job.getAccumulators();
     assertEquals(
         (long) accumulators.totalDuplicateKeyCounter.value(),
-        2L,
-        "Should track 2 duplicate keys (key1 and key2)");
+        4L,
+        "Should track 4 duplicate keys (key1, key2, key4 and key5)");
     assertEquals(
         (long) accumulators.duplicateKeyWithIdenticalValueCounter.value(),
         1L,
         "Should track 1 duplicate with identical values (key1)");
     assertEquals(
         (long) accumulators.duplicateKeyWithDistinctValueCounter.value(),
-        1L,
-        "Should track 1 duplicate with distinct values (key2)");
+        3L,
+        "Should track 3 duplicates with distinct values (key2, key4 and key5)");
 
-    // Verify output: should have only 3 records (one per unique key)
+    // Verify output: should have only 5 records (one per unique key)
     List<TestSparkPartitionWriter.TestRecord> capturedRecords = TestSparkPartitionWriter.getCapturedRecords(testName);
-    assertEquals(capturedRecords.size(), 3, "Should have 3 records after compaction (one per unique key)");
+    assertEquals(capturedRecords.size(), 5, "Should have 5 records after compaction (one per unique key)");
 
     // Verify key1: should have the latest value (offset 200)
     TestSparkPartitionWriter.TestRecord key1Record =
@@ -223,6 +228,16 @@ public class DataWriterSparkJobRepushTest {
         capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key3".getBytes())).findFirst().orElse(null);
     assertNotNull(key3Record, "Should find key3");
     assertTrue(Arrays.equals(key3Record.value, "value3".getBytes()), "key3 should have value3");
+
+    // key4/key5 have tied (-1) offsets: the latest record is chosen by the serialized position, not input order
+    TestSparkPartitionWriter.TestRecord key4Record =
+        capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key4".getBytes())).findFirst().orElse(null);
+    assertNotNull(key4Record, "Should find key4");
+    assertTrue(Arrays.equals(key4Record.value, new byte[0]), "key4 should be the latest DELETE, not the older PUT");
+    TestSparkPartitionWriter.TestRecord key5Record =
+        capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key5".getBytes())).findFirst().orElse(null);
+    assertNotNull(key5Record, "Should find key5");
+    assertTrue(Arrays.equals(key5Record.value, "value2".getBytes()), "key5 should have value2 (latest position)");
   }
 
   /**
@@ -748,7 +763,7 @@ public class DataWriterSparkJobRepushTest {
   private Row createChunkedRow(String key, String chunkData, int negativeSchemaId, long offset) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, offset, MessageType.PUT.getValue(), negativeSchemaId, key.getBytes(),
-            chunkData.getBytes(), -1, new byte[0], null },
+            chunkData.getBytes(), -1, new byte[0], null, null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
@@ -801,7 +816,8 @@ public class DataWriterSparkJobRepushTest {
       long offset,
       byte[] chunkedKeySuffix) {
     return new GenericRowWithSchema(
-        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, MessageType.PUT.getValue(), chunkedKeySuffix },
+        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, MessageType.PUT.getValue(), chunkedKeySuffix,
+            null },
         SCHEMA_FOR_CHUNK_ASSEMBLY);
   }
 
@@ -1121,14 +1137,25 @@ public class DataWriterSparkJobRepushTest {
   private Row createPutRow(String key, String value, long offset) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, offset, MessageType.PUT.getValue(), 1, key.getBytes(), value.getBytes(), 1,
-            "rmd".getBytes(), null },
+            "rmd".getBytes(), null, null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  /** @return a copy of a RAW_PUBSUB_INPUT_TABLE_SCHEMA row carrying an {@link OfflineOrderedTestPosition} */
+  private static Row withPosition(Row row, long positionSequence) {
+    Object[] values = new Object[row.length()];
+    for (int i = 0; i < values.length; i++) {
+      values[i] = row.get(i);
+    }
+    values[RAW_PUBSUB_INPUT_TABLE_SCHEMA.fieldIndex(POSITION_COLUMN_NAME)] =
+        OfflineOrderedTestPosition.positionBytes(0, positionSequence);
+    return new GenericRowWithSchema(values, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
   private Row createDeleteRow(String key, long offset) {
     return new GenericRowWithSchema(
         new Object[] { "region1", 0, offset, MessageType.DELETE.getValue(), 1, key.getBytes(), new byte[0], 1,
-            "rmd".getBytes(), null },
+            "rmd".getBytes(), null, null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
@@ -1217,7 +1244,7 @@ public class DataWriterSparkJobRepushTest {
       List<Row> mockRows = Arrays.asList(
           new GenericRowWithSchema(
               new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "key1".getBytes(), compressedValue, 1,
-                  "rmd".getBytes(), null },
+                  "rmd".getBytes(), null, null },
               RAW_PUBSUB_INPUT_TABLE_SCHEMA));
       return getSparkSession().createDataFrame(mockRows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
     }
@@ -1237,11 +1264,11 @@ public class DataWriterSparkJobRepushTest {
       List<Row> mockRows = Arrays.asList(
           new GenericRowWithSchema(
               new Object[] { "region1", 0, 1L, MessageType.PUT.getValue(), 5, "key-a".getBytes(), "val-a".getBytes(), 2,
-                  "rmd".getBytes(), null },
+                  "rmd".getBytes(), null, null },
               RAW_PUBSUB_INPUT_TABLE_SCHEMA),
           new GenericRowWithSchema(
               new Object[] { "region1", 0, 2L, MessageType.PUT.getValue(), 7, "key-b".getBytes(), "val-b".getBytes(), 3,
-                  "rmd".getBytes(), null },
+                  "rmd".getBytes(), null, null },
               RAW_PUBSUB_INPUT_TABLE_SCHEMA));
       return getSparkSession().createDataFrame(mockRows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
     }
@@ -1289,7 +1316,14 @@ public class DataWriterSparkJobRepushTest {
           createPutRow("key2", "value3", 300L), // latest
 
           // key3 (no duplicates)
-          createPutRow("key3", "value3", 400L));
+          createPutRow("key3", "value3", 400L),
+
+          // key4/key5: no numeric offsets (-1), ordered only by position; oldest listed first so that an
+          // order-dependent tie-break would keep the stale record
+          withPosition(createPutRow("key4", "value1", -1L), 20),
+          withPosition(createDeleteRow("key4", -1L), 30), // latest
+          withPosition(createPutRow("key5", "value1", -1L), 40),
+          withPosition(createPutRow("key5", "value2", -1L), 50)); // latest
 
       return getSparkSession().createDataFrame(testData, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
     }
