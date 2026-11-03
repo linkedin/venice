@@ -575,6 +575,39 @@ public class ClientConfigTest {
   }
 
   @Test
+  public void testDeprecatedLeastLoadedFlagStillSelectsStrategy() {
+    // Older callers that only set the deprecated boolean keep their behavior.
+    ClientConfig roundRobin =
+        getClientConfigWithMinimumRequiredInputs().setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(false)
+            .build();
+    assertEquals(roundRobin.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.ROUND_ROBIN);
+    assertFalse(roundRobin.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting());
+
+    ClientConfig leastLoaded =
+        getClientConfigWithMinimumRequiredInputs().setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(true)
+            .build();
+    assertEquals(leastLoaded.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LEAST_LOADED);
+    assertTrue(leastLoaded.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting());
+  }
+
+  @Test
+  public void testExplicitStrategyTypeOverridesDeprecatedFlag() {
+    ClientConfig.ClientConfigBuilder builder =
+        getClientConfigWithMinimumRequiredInputs().setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(false)
+            .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
+    ClientConfig clientConfig = builder.build();
+    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
+    assertFalse(clientConfig.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting());
+
+    // The clone carries the deprecated flag too, so an unset enum still resolves the same way.
+    ClientConfig clonedRoundRobin =
+        getClientConfigWithMinimumRequiredInputs().setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(false)
+            .clone()
+            .build();
+    assertEquals(clonedRoundRobin.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.ROUND_ROBIN);
+  }
+
+  @Test
   public void testHelixGroupRoutingStrategyTypeDefaultsToLeastLoaded() {
     ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().build();
     assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LEAST_LOADED);
