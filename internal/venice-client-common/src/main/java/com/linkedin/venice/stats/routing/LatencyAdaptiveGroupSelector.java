@@ -257,7 +257,7 @@ public class LatencyAdaptiveGroupSelector {
           "The valid group num must fall into this range: [1, " + MAX_ALLOWED_GROUP + "], but received: " + groupCount);
     }
     int bucketIndex = bucketIndexForKeyCount(keyCount);
-    IntToDoubleFunction latencyView = latencyView(bucketIndex);
+    IntToDoubleFunction latencyView = latencyView(bucketIndex, groupCount);
     double evenUntil = bucketEvenUntilMs[bucketIndex];
     double fullSkew = bucketFullSkewMs[bucketIndex];
     double skew = latencySkew(latencyView, groupCount, excludedGroupId, evenUntil, fullSkew);
@@ -307,15 +307,18 @@ public class LatencyAdaptiveGroupSelector {
     return entry == null ? 0 : entry.getValue();
   }
 
-  /** A per-group latency view for one bucket; a group under {@code minSampleCount} samples reads as unmeasured ({@code -1}). */
-  private IntToDoubleFunction latencyView(int bucketIndex) {
+  /**
+   * Snapshots each group's latency for one bucket once, so skew, total strength and shares agree even while other threads
+   * record; a group under {@code minSampleCount} samples reads as unmeasured ({@code -1}).
+   */
+  private IntToDoubleFunction latencyView(int bucketIndex, int groupCount) {
     int bucketKey = bucketLowerBounds[bucketIndex];
-    return groupId -> {
-      if (minSampleCount > 0L && sampleCountProvider.sampleCount(groupId, bucketKey) < minSampleCount) {
-        return -1.0;
-      }
-      return latencyProvider.latencyMs(groupId, bucketKey);
-    };
+    double[] latencies = new double[groupCount];
+    for (int g = 0; g < groupCount; ++g) {
+      boolean unmeasured = minSampleCount > 0L && sampleCountProvider.sampleCount(g, bucketKey) < minSampleCount;
+      latencies[g] = unmeasured ? -1.0 : latencyProvider.latencyMs(g, bucketKey);
+    }
+    return groupId -> latencies[groupId];
   }
 
   /**
@@ -324,7 +327,7 @@ public class LatencyAdaptiveGroupSelector {
    */
   public String formatWeights(int groupCount, int keyCount) {
     int bucketIndex = bucketIndexForKeyCount(keyCount);
-    return renderWeights(groupCount, bucketIndex, latencyView(bucketIndex));
+    return renderWeights(groupCount, bucketIndex, latencyView(bucketIndex, groupCount));
   }
 
   /**

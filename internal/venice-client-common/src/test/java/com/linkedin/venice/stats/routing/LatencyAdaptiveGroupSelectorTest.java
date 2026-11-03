@@ -6,7 +6,9 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Collections;
 import java.util.Random;
+import java.util.TreeMap;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntToDoubleFunction;
 import org.testng.annotations.Test;
@@ -324,5 +326,28 @@ public class LatencyAdaptiveGroupSelectorTest {
     int wIdx = line.indexOf("w=", gIdx);
     int pct = line.indexOf('%', wIdx);
     return Double.parseDouble(line.substring(wIdx + 2, pct));
+  }
+
+  @Test
+  public void testReadsEachGroupLatencyOncePerSelection() {
+    int groupCount = 3;
+    int[] latencyReads = new int[groupCount];
+    int[] sampleCountReads = new int[groupCount];
+    // Every read returns a different value, as it could while other threads record; a selection must not mix reads.
+    LatencyAdaptiveGroupSelector selector = new LatencyAdaptiveGroupSelector((groupId, bucketKey) -> {
+      latencyReads[groupId]++;
+      return 10.0 * (groupId + 1) + latencyReads[groupId];
+    }, (groupId, bucketKey) -> {
+      sampleCountReads[groupId]++;
+      return 100L;
+    }, new TreeMap<>(Collections.singletonMap(1, 30)), 0.33, 1.0, 10L, PICK_FIRST);
+    selector.setWeightLogIntervalMs(0);
+
+    int picked = selector.selectGroup(groupCount, 0, -1, 5);
+    assertTrue(picked >= 0 && picked < groupCount);
+    for (int g = 0; g < groupCount; ++g) {
+      assertEquals(latencyReads[g], 1, "group " + g + " latency must be read once per selection");
+      assertEquals(sampleCountReads[g], 1, "group " + g + " sample count must be read once per selection");
+    }
   }
 }
