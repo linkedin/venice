@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -33,14 +34,17 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
       CompletableFuture<T> future,
       BiFunction<? super T, Throwable, ? extends T> callback) {
     CompletableFuture<T> result = new CompletableFuture<>();
-    future.handle(callback).whenComplete((value, throwable) -> {
-      if (throwable == null) {
-        result.complete(value);
-      } else {
-        // Dependent stages wrap failures; retain the original request exception after the callback runs.
-        future.whenComplete((originalValue, originalThrowable) -> {
-          result.completeExceptionally(originalThrowable == null ? throwable : originalThrowable);
-        });
+    future.handle((value, throwable) -> {
+      try {
+        result.complete(callback.apply(value, throwable));
+      } catch (VeniceClientException | CompletionException exception) {
+        // Preserve decorator exception types before dependent stages wrap them.
+        result.completeExceptionally(exception);
+      }
+      return null;
+    }).whenComplete((ignored, throwable) -> {
+      if (throwable != null) {
+        result.completeExceptionally(throwable);
       }
     });
     return result;

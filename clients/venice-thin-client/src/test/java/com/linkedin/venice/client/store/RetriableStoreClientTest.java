@@ -10,6 +10,7 @@ import static org.testng.Assert.assertThrows;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
+import com.linkedin.venice.serializer.VeniceSerializationException;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -308,11 +310,22 @@ public class RetriableStoreClientTest {
     assertNoAppTimeoutMetrics(repo);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testRateLimitExceptionPreservedThroughRetryDecorators(boolean statTrackingEnabled) throws Exception {
+  @DataProvider(name = "readFailures")
+  public Object[][] readFailures() {
+    return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        new Object[] { new VeniceClientRateExceededException(), new VeniceSerializationException("Invalid test value"),
+            new CompletionException(new VeniceSerializationException("Invalid test value")) });
+  }
+
+  @Test(dataProvider = "readFailures")
+  public void testReadExceptionsPreservedThroughDecorators(
+      boolean statTrackingEnabled,
+      boolean retryEnabled,
+      Throwable exception) throws Exception {
     InternalAvroStoreClient<String, Object> inner = mock(InternalAvroStoreClient.class);
     doReturn("realChainStore").when(inner).getStoreName();
-    VeniceClientRateExceededException exception = new VeniceClientRateExceededException();
     CompletableFuture<Object> getFuture = new CompletableFuture<>();
     getFuture.completeExceptionally(exception);
     CompletableFuture<byte[]> rawFuture = new CompletableFuture<>();
@@ -323,15 +336,22 @@ public class RetriableStoreClientTest {
     ClientConfig config = ClientConfig.defaultGenericClientConfig("realChainStore")
         .setMetricsRepository(repo)
         .setStatTrackingEnabled(statTrackingEnabled)
-        .setRetryOnRouterError(true);
+        .setRetryOnRouterError(retryEnabled);
     InternalAvroStoreClient<String, Object> trackingClient =
         statTrackingEnabled ? new StatTrackingStoreClient<>(inner, config) : new LoggingTrackingStoreClient<>(inner);
-    RetriableStoreClient<String, Object> client = new RetriableStoreClient<>(trackingClient, config);
+    InternalAvroStoreClient<String, Object> client =
+        retryEnabled ? new RetriableStoreClient<>(trackingClient, config) : trackingClient;
 
-    Assert.assertSame(client.get("key").handle((value, throwable) -> throwable).get(), exception);
-    Assert.assertSame(
-        client.getRaw("key_schema/realChainStore").handle((value, throwable) -> throwable).get(),
-        exception);
+    CompletableFuture<?>[] results = { client.get("key"), client.getRaw("key_schema/realChainStore") };
+    for (CompletableFuture<?> result: results) {
+      Throwable actualException = result.handle((value, throwable) -> throwable).get();
+      if (exception instanceof VeniceClientException || exception instanceof CompletionException) {
+        Assert.assertSame(actualException, exception);
+      } else {
+        Assert.assertTrue(actualException instanceof VeniceClientException);
+        Assert.assertSame(actualException.getCause(), exception);
+      }
+    }
     verify(inner).get(any(), any(), anyLong());
     verify(inner).getRaw(any(), any(), anyLong());
     if (statTrackingEnabled) {
