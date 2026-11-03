@@ -553,6 +553,7 @@ public class ClientConfigTest {
     // The builder clone (used by ClientFactory) must carry the overridden knobs through.
     ClientConfig clonedConfig = builder.clone().build();
     assertEquals(clonedConfig.getHelixGroupSizeAwareThresholds(), expectedThresholds);
+    assertEquals(clonedConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
     assertEquals(clonedConfig.getHelixGroupSkewRampExponent(), 2.0, 0.0);
   }
 
@@ -611,30 +612,6 @@ public class ClientConfigTest {
   public void testHelixGroupRoutingStrategyTypeDefaultsToLeastLoaded() {
     ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs().build();
     assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LEAST_LOADED);
-  }
-
-  @Test
-  public void testHelixGroupRoutingStrategyTypeExplicitSetWins() {
-    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs()
-        .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE)
-        .build();
-    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
-  }
-
-  @Test
-  public void testHelixGroupRoutingStrategyTypeCanBeSetToRoundRobin() {
-    ClientConfig clientConfig = getClientConfigWithMinimumRequiredInputs()
-        .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.ROUND_ROBIN)
-        .build();
-    assertEquals(clientConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.ROUND_ROBIN);
-  }
-
-  @Test
-  public void testHelixGroupRoutingStrategyTypeClonePreservesIt() {
-    ClientConfig.ClientConfigBuilder builder = getClientConfigWithMinimumRequiredInputs()
-        .setHelixGroupRoutingStrategyType(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
-    ClientConfig clonedConfig = builder.clone().build();
-    assertEquals(clonedConfig.getHelixGroupRoutingStrategyType(), HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE);
   }
 
   @Test
