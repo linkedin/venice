@@ -233,11 +233,59 @@ public class DataWriterSparkJobRepushTest {
     TestSparkPartitionWriter.TestRecord key4Record =
         capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key4".getBytes())).findFirst().orElse(null);
     assertNotNull(key4Record, "Should find key4");
-    assertTrue(Arrays.equals(key4Record.value, new byte[0]), "key4 should be the latest DELETE, not the older PUT");
+    assertNull(key4Record.value, "key4 should stay the latest DELETE (null value), not the older PUT");
     TestSparkPartitionWriter.TestRecord key5Record =
         capturedRecords.stream().filter(r -> Arrays.equals(r.key, "key5".getBytes())).findFirst().orElse(null);
     assertNotNull(key5Record, "Should find key5");
     assertTrue(Arrays.equals(key5Record.value, "value2".getBytes()), "key5 should have value2 (latest position)");
+  }
+
+  /**
+   * Chunked repush through runComputeJob() where every record has offset -1: two chunked versions of one key are fed
+   * oldest first, so the job's own per-key position sort must run for the newest value to be assembled.
+   */
+  @Test
+  public void testChunkedRepushWithTiedOffsetsOrdersByPosition() {
+    String testName = "testChunkedRepushWithTiedOffsetsOrdersByPosition";
+    TestSparkPartitionWriter.clearCapturedRecords(testName);
+    byte[] key = "chunked-key".getBytes();
+    byte[][] olderChunks = { "old-a".getBytes(), "old-b".getBytes() };
+    byte[][] newerChunks = { "new-a".getBytes(), "new-b".getBytes() };
+
+    TestDataWriterSparkJob job = new TestDataWriterSparkJob(testName) {
+      @Override
+      protected Dataset<Row> getKafkaInputDataFrame() {
+        List<Row> rows = new ArrayList<>(createChunkedValueRowsWithPositions(key, olderChunks, 1, 1));
+        rows.addAll(createChunkedValueRowsWithPositions(key, newerChunks, 2, 10));
+        return getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+      }
+    };
+    currentTestJob = job;
+
+    Properties props = createDefaultTestProperties();
+    props.putAll(OfflineOrderedTestPosition.registryProperties());
+    props.setProperty(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, "true");
+
+    PushJobSetting setting = new PushJobSetting();
+    setting.isSourceKafka = true;
+    setting.kafkaInputTopic = "test_store_v1";
+    setting.repushSourcePubsubBroker = "localhost:9092";
+    setting.topic = "test_store_v1";
+    setting.pushDestinationPubsubBroker = "localhost:9092";
+    setting.partitionerClass = DefaultVenicePartitioner.class.getName();
+    setting.partitionCount = 1;
+    VersionImpl sourceVersion = new VersionImpl("test_store", 1, "test-push-id");
+    sourceVersion.setChunkingEnabled(true);
+    setting.sourceKafkaInputVersionInfo = sourceVersion;
+
+    job.configure(new VeniceProperties(props), setting);
+    job.runComputeJob();
+
+    List<TestSparkPartitionWriter.TestRecord> capturedRecords = TestSparkPartitionWriter.getCapturedRecords(testName);
+    assertEquals(capturedRecords.size(), 1, "Chunks should assemble into one record for the key");
+    assertTrue(
+        Arrays.equals(capturedRecords.get(0).value, "new-anew-b".getBytes()),
+        "Newest chunked version should win, got: " + new String(capturedRecords.get(0).value));
   }
 
   /**
@@ -1159,6 +1207,66 @@ public class DataWriterSparkJobRepushTest {
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 
+  /** A DELETE row with a null value, as produced by SparkPubSubInputPartitionReader. */
+  private Row createTombstoneRow(String key, long offset) {
+    return new GenericRowWithSchema(
+        new Object[] { "region1", 0, offset, MessageType.DELETE.getValue(), 1, key.getBytes(), null, 1,
+            "rmd".getBytes(), null, null },
+        RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  /**
+   * Raw rows (chunks, then manifest) of one chunked value, all with offset -1 and increasing
+   * {@link OfflineOrderedTestPosition}s starting at {@code firstPositionSequence}.
+   */
+  private List<Row> createChunkedValueRowsWithPositions(
+      byte[] key,
+      byte[][] chunks,
+      int messageSequenceNumber,
+      long firstPositionSequence) {
+    GUID producerGuid = new GUID();
+    KeyWithChunkingSuffixSerializer keySerializer = new KeyWithChunkingSuffixSerializer();
+    ChunkedKeySuffixSerializer suffixSerializer = new ChunkedKeySuffixSerializer();
+    List<ByteBuffer> chunkKeys = new ArrayList<>();
+    List<Row> rows = new ArrayList<>();
+    long positionSequence = firstPositionSequence;
+    int totalSize = 0;
+    for (int i = 0; i < chunks.length; i++) {
+      ChunkId chunkId = new ChunkId();
+      chunkId.segmentNumber = 1;
+      chunkId.messageSequenceNumber = messageSequenceNumber;
+      chunkId.chunkIndex = i;
+      chunkId.producerGUID = producerGuid;
+      ChunkedKeySuffix suffix = new ChunkedKeySuffix();
+      suffix.chunkId = chunkId;
+      suffix.isChunk = true;
+      chunkKeys.add(keySerializer.serializeChunkedKey(key, suffix));
+      totalSize += chunks[i].length;
+      rows.add(
+          withPosition(
+              new GenericRowWithSchema(
+                  new Object[] { "region1", 0, -1L, MessageType.PUT.getValue(),
+                      AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), key, chunks[i], -1, new byte[0],
+                      suffixSerializer.serialize("ignored", suffix), null },
+                  RAW_PUBSUB_INPUT_TABLE_SCHEMA),
+              positionSequence++));
+    }
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = chunkKeys;
+    manifest.schemaId = 1;
+    manifest.size = totalSize;
+    byte[] manifestBytes = ByteUtils.extractByteArray(new ChunkedValueManifestSerializer(true).serialize(manifest));
+    rows.add(
+        withPosition(
+            new GenericRowWithSchema(
+                new Object[] { "region1", 0, -1L, MessageType.PUT.getValue(),
+                    AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(), key, manifestBytes, 1,
+                    "rmd".getBytes(), null, null },
+                RAW_PUBSUB_INPUT_TABLE_SCHEMA),
+            positionSequence));
+    return rows;
+  }
+
   /**
    * Custom factory that creates test partition writers instead of real ones.
    */
@@ -1321,7 +1429,7 @@ public class DataWriterSparkJobRepushTest {
           // key4/key5: no numeric offsets (-1), ordered only by position; oldest listed first so that an
           // order-dependent tie-break would keep the stale record
           withPosition(createPutRow("key4", "value1", -1L), 20),
-          withPosition(createDeleteRow("key4", -1L), 30), // latest
+          withPosition(createTombstoneRow("key4", -1L), 30), // latest
           withPosition(createPutRow("key5", "value1", -1L), 40),
           withPosition(createPutRow("key5", "value2", -1L), 50)); // latest
 
