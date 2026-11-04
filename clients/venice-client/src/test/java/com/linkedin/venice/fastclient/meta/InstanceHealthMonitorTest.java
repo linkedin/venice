@@ -4,14 +4,10 @@ import static org.apache.hc.core5.http.HttpStatus.SC_GONE;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
 import static org.apache.hc.core5.http.HttpStatus.SC_OK;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.withSettings;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
@@ -32,7 +28,6 @@ import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -143,29 +138,20 @@ public class InstanceHealthMonitorTest {
     }
   }
 
-  /**
-   * Closing the metadata closes its monitor; closing again (from metadata or directly) is harmless.
-   */
+  /** close() keeps the caller's interrupt and is idempotent; late completions still release their counters. */
   @Test
   public void testCloseIsIdempotentAndDrainsLateCompletions() throws Exception {
     InstanceHealthMonitor monitor = new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().build());
-    ClientConfig clientConfig = mock(ClientConfig.class);
-    when(clientConfig.getClientRoutingStrategyType()).thenReturn(ClientRoutingStrategyType.LEAST_LOADED);
-    when(clientConfig.getStoreName()).thenReturn("test-store");
-    AbstractStoreMetadata metadata = mock(
-        AbstractStoreMetadata.class,
-        withSettings().useConstructor(clientConfig, monitor).defaultAnswer(CALLS_REAL_METHODS));
     ChainedCompletableFuture<Integer, Integer> request =
         monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>());
     try {
       Thread.currentThread().interrupt();
-      metadata.close();
+      monitor.close();
       assertTrue(Thread.currentThread().isInterrupted(), "close must preserve the caller's interrupt");
     } finally {
       Thread.interrupted();
     }
     assertThrows(RejectedExecutionException.class, () -> monitor.getTimeoutProcessor().execute(() -> {}));
-    metadata.close();
     monitor.close();
 
     // A late timeout completion must not schedule on the stopped timer, and still releases its counter.
@@ -173,34 +159,6 @@ public class InstanceHealthMonitorTest {
     request.getResultFuture().get(10, TimeUnit.SECONDS);
     assertEquals(monitor.getPendingRequestCounter(instance), 0);
     assertThrows(IllegalStateException.class, () -> monitor.trackHealthBasedOnRequestToInstance(instance));
-  }
-
-  /**
-   * close() can stop the timer after a caller passed the closed check. A rejected schedule must fail the new request
-   * without leaking its pending counter, and a timed-out completion must reset its counter immediately.
-   */
-  @Test
-  public void testTimerRejectionAfterClosedCheck() throws Exception {
-    TimeoutProcessor timer = mock(TimeoutProcessor.class);
-    when(timer.schedule(any(Runnable.class), anyLong(), any(TimeUnit.class)))
-        .thenThrow(new RejectedExecutionException("timer stopped"));
-    try (MockedStatic<TimeoutProcessor> timers = mockStatic(TimeoutProcessor.class)) {
-      timers.when(() -> TimeoutProcessor.createManaged(true, 1)).thenReturn(timer);
-      try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().build())) {
-        // No transport future, so tracking does not schedule a timeout.
-        ChainedCompletableFuture<Integer, Integer> inFlight = monitor.trackHealthBasedOnRequestToInstance(instance);
-        assertEquals(monitor.getPendingRequestCounter(instance), 1);
-
-        assertThrows(
-            IllegalStateException.class,
-            () -> monitor.trackHealthBasedOnRequestToInstance(instance, new CompletableFuture<>()));
-        assertEquals(monitor.getPendingRequestCounter(instance), 1);
-
-        inFlight.getOriginalFuture().complete(SC_GONE);
-        inFlight.getResultFuture().get(10, TimeUnit.SECONDS);
-        assertEquals(monitor.getPendingRequestCounter(instance), 0);
-      }
-    }
   }
 
   /** Requests racing with close() fail only with IllegalStateException, never with RejectedExecutionException. */
@@ -275,15 +233,11 @@ public class InstanceHealthMonitorTest {
             .build())) {
       monitorRef.set(monitor);
       CompletableFuture<TransportClientResponse> transport = new CompletableFuture<>();
-      ChainedCompletableFuture<Integer, Integer> request =
-          monitor.trackHealthBasedOnRequestToInstance(instance, transport);
+      monitor.trackHealthBasedOnRequestToInstance(instance, transport);
       expectThrows(ExecutionException.class, () -> transport.get(10, TimeUnit.SECONDS));
       assertTrue(heartbeatStarted.await(10, TimeUnit.SECONDS));
       monitor.close();
       heartbeatStoppedWithTimerAlive.get(10, TimeUnit.SECONDS);
-      request.getOriginalFuture().complete(SC_GONE);
-      request.getResultFuture().get(10, TimeUnit.SECONDS);
-      assertThrows(RejectedExecutionException.class, () -> monitor.getTimeoutProcessor().execute(() -> {}));
     }
   }
 

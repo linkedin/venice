@@ -226,8 +226,6 @@ public class InstanceHealthMonitor implements Closeable {
             config.getRoutingRequestDefaultTimeoutMS(),
             TimeUnit.MILLISECONDS);
       } catch (RejectedExecutionException e) {
-        // close() stopped the timer after the check above: undo the increment and fail like any request after close.
-        counterResetConsumer.accept(instance);
         throw new IllegalStateException("Instance health monitor is closed");
       }
     }

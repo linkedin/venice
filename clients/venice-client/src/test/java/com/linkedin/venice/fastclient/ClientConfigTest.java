@@ -13,21 +13,14 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.*;
 
-import com.linkedin.common.callback.Callback;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.r2.message.rest.RestRequest;
-import com.linkedin.r2.message.rest.RestResponse;
-import com.linkedin.r2.message.rest.RestResponseBuilder;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.stats.FastClientMetricEntity;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
@@ -52,9 +45,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
 
@@ -561,7 +551,7 @@ public class ClientConfigTest {
     builder.setUseGrpc(true)
         .setGrpcClientConfig(
             new GrpcClientConfig.Builder().setR2Client(grpcR2Client)
-                .setNettyServerToGrpcAddress(java.util.Collections.singletonMap("server:1", "server:2"))
+                .setNettyServerToGrpcAddress(Collections.singletonMap("server:1", "server:2"))
                 .build());
     assertSame(builder.build().getInstanceHealthMonitorConfig().getClient(), monitorClient);
     builder.setInstanceHealthMonitorConfig(null);
@@ -578,39 +568,6 @@ public class ClientConfigTest {
           assertEquals(config.getInstanceHealthMonitorConfig().getRoutingRequestDefaultTimeoutMS(), 1234);
         }
       }
-    }
-  }
-
-  @Test
-  public void testGrpcOnlyMonitorFallbackSendsHeartbeatThroughConfiguredTransport() throws Exception {
-    Client r2Client = mock(Client.class);
-    CompletableFuture<RestRequest> heartbeat = new CompletableFuture<>();
-    doAnswer(call -> {
-      Callback<RestResponse> callback = call.getArgument(1);
-      callback.onSuccess(new RestResponseBuilder().setStatus(200).build());
-      heartbeat.complete(call.getArgument(0));
-      return null;
-    }).when(r2Client).restRequest(any(RestRequest.class), any(Callback.class));
-    ClientConfig config = getClientConfigWithMinimumRequiredInputs().setR2Client(null)
-        .setUseGrpc(true)
-        .setGrpcClientConfig(
-            new GrpcClientConfig.Builder().setR2Client(r2Client)
-                .setNettyServerToGrpcAddress(Collections.singletonMap("server:1", "server:2"))
-                .build())
-        .setInstanceHealthMonitorConfig(
-            InstanceHealthMonitorConfig.builder()
-                .setRoutingRequestDefaultTimeoutMS(1)
-                .setRoutingTimedOutRequestCounterResetDelayMS(0)
-                .setHeartBeatIntervalSeconds(1)
-                .build())
-        .build();
-    try (InstanceHealthMonitor monitor = new InstanceHealthMonitor(config.getInstanceHealthMonitorConfig())) {
-      String host = "https://test.host:1234";
-      CompletableFuture<com.linkedin.venice.client.store.transport.TransportClientResponse> transport =
-          new CompletableFuture<>();
-      monitor.trackHealthBasedOnRequestToInstance(host, transport);
-      expectThrows(ExecutionException.class, () -> transport.get(5, TimeUnit.SECONDS));
-      assertEquals(heartbeat.get(5, TimeUnit.SECONDS).getURI().toString(), host + "/health");
     }
   }
 

@@ -35,6 +35,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -42,6 +43,20 @@ import org.testng.annotations.Test;
 
 public class GracefulShutdownAvroStoreClientTest {
   private static final Schema RESULT_SCHEMA = Schema.create(Schema.Type.STRING);
+  private static final String[] ALL_APIS = { "get", "batch", "streamFuture", "streamCallback", "compute" };
+
+  /** One outstanding request: the caller's future, plus hooks that deliver its downstream response. */
+  private static final class Pending {
+    final CompletableFuture<?> caller;
+    final Runnable respond;
+    final Runnable failAgain;
+
+    Pending(CompletableFuture<?> caller, Runnable respond, Runnable failAgain) {
+      this.caller = caller;
+      this.respond = respond;
+      this.failAgain = failAgain;
+    }
+  }
 
   private static class Fixture implements AutoCloseable {
     final MetricsRepository metrics = new MetricsRepository();
@@ -115,46 +130,13 @@ public class GracefulShutdownAvroStoreClientTest {
   }
 
   @Test(timeOut = 10000)
-  public void testDrainRejectsNewRequestsAndKeepsCancelledAttemptAlive() {
-    try (Fixture f = new Fixture(5000)) {
-      CompletableFuture<String> response = new CompletableFuture<>();
-      when(f.dispatch.get(any(GetRequestContext.class), eq("key"))).thenReturn(response);
-      CompletableFuture<String> caller = f.client.get("key");
-      assertTrue(caller.cancel(false));
-      f.startClose(() -> response.complete("value"));
-      assertThrows(VeniceClientException.class, () -> f.client.get("new"));
-      verify(f.dispatch, never()).close();
-      response.complete("value");
-      f.client.close();
-      verify(f.dispatch, times(1)).close();
-      assertTrue(caller.isCancelled());
-    }
-  }
-
-  @Test(timeOut = 10000)
-  public void testSingleGetDeadlineFailsCallerAndIgnoresLateResponse() {
-    for (long timeout: new long[] { 0, 1 }) {
-      try (Fixture f = new Fixture(timeout)) {
-        CompletableFuture<String> response = new CompletableFuture<>();
-        when(f.dispatch.get(any(GetRequestContext.class), any())).thenReturn(response);
-        CompletableFuture<String> caller = f.client.get("key");
-        f.client.close();
-        assertShutdownFailure(caller, "shutdown timeout");
-        response.complete("late");
-        assertShutdownFailure(caller, "shutdown timeout");
-        verify(f.dispatch, times(1)).close();
-      }
-    }
-  }
-
-  @Test(timeOut = 10000)
   public void testCloseWaitsForResourceCleanup() throws Exception {
     try (Fixture f = new Fixture(5000)) {
       CountDownLatch cleanupEntered = new CountDownLatch(1);
       CountDownLatch release = new CountDownLatch(1);
+      Runnable cleanup = blockUntil(cleanupEntered, release);
       doAnswer(ignored -> {
-        cleanupEntered.countDown();
-        assertTrue(release.await(5, TimeUnit.SECONDS));
+        cleanup.run();
         return null;
       }).when(f.dispatch).close();
       CompletableFuture<Void> close = f.startClose(release::countDown);
@@ -175,12 +157,12 @@ public class GracefulShutdownAvroStoreClientTest {
     try (Fixture f = new Fixture(5000)) {
       CountDownLatch sending = new CountDownLatch(1);
       CountDownLatch release = new CountDownLatch(1);
+      Runnable send = blockUntil(sending, release);
       when(f.dispatch.get(any(GetRequestContext.class), any())).thenAnswer(ignored -> {
-        sending.countDown();
-        assertTrue(release.await(5, TimeUnit.SECONDS));
+        send.run();
         return CompletableFuture.completedFuture("value");
       });
-      CompletableFuture<CompletableFuture<String>> send = CompletableFuture.supplyAsync(() -> f.client.get("key"));
+      CompletableFuture<CompletableFuture<String>> caller = CompletableFuture.supplyAsync(() -> f.client.get("key"));
       CompletableFuture<Void> close1;
       CompletableFuture<Void> close2;
       try {
@@ -192,7 +174,7 @@ public class GracefulShutdownAvroStoreClientTest {
         verify(f.dispatch, never()).close();
       } finally {
         release.countDown();
-        assertEquals(send.get(5, TimeUnit.SECONDS).join(), "value");
+        assertEquals(caller.get(5, TimeUnit.SECONDS).join(), "value");
       }
       CompletableFuture.allOf(close1, close2).get(5, TimeUnit.SECONDS);
       verify(f.dispatch, times(1)).close();
@@ -200,40 +182,55 @@ public class GracefulShutdownAvroStoreClientTest {
   }
 
   @DataProvider
-  public Object[][] streamingApis() {
-    return new Object[][] { { "batch" }, { "streamFuture" }, { "streamCallback" }, { "compute" } };
+  public Object[][] drainCases() {
+    // { api, cancelCaller }: the get caller is cancelled to prove its transport attempt still holds the drain open.
+    return new Object[][] { { "get", true }, { "batch", false }, { "streamFuture", false }, { "streamCallback", false },
+        { "compute", false } };
   }
 
-  @Test(dataProvider = "streamingApis", timeOut = 10000)
-  public void testStreamingApisDrainAndIgnoreDuplicateCompletion(String api) {
+  @Test(dataProvider = "drainCases", timeOut = 10000)
+  public void testDrainRejectsNewRequestsWaitsForEveryApiAndIgnoresDuplicateCompletion(String api, boolean cancel) {
     try (Fixture f = new Fixture(5000)) {
-      AtomicReference<StreamingCallback> downstream = new AtomicReference<>();
-      captureStreaming(f, downstream);
-      CompletableFuture<?> caller = sendStreaming(f, api);
-      f.startClose(() -> downstream.get().onCompletion(Optional.empty()));
+      Pending pending = sendPending(f, api);
+      if (cancel) {
+        assertTrue(pending.caller.cancel(false));
+      }
+      f.startClose(pending.respond);
+      assertThrows(VeniceClientException.class, () -> f.client.get("new"));
       verify(f.dispatch, never()).close();
-      StreamingCallback callback = downstream.get();
-      callback.onRecordReceived("key", "compute".equals(api) ? mock(ComputeGenericRecord.class) : "value");
-      callback.onCompletion(Optional.empty());
-      callback.onCompletion(Optional.of(new VeniceClientException("duplicate")));
-      assertFalse(caller.isCompletedExceptionally());
-      caller.join();
+      pending.respond.run();
+      pending.failAgain.run();
+      if (cancel) {
+        assertTrue(pending.caller.isCancelled());
+      } else {
+        assertFalse(pending.caller.isCompletedExceptionally());
+        pending.caller.join();
+      }
       f.client.close();
       verify(f.dispatch, times(1)).close();
     }
   }
 
-  @Test(dataProvider = "streamingApis", timeOut = 10000)
-  public void testShutdownDeadlineFailsEveryStreamingApiAndSuppressesLateRecords(String api) {
-    try (Fixture f = new Fixture(0)) {
-      AtomicReference<StreamingCallback> downstream = new AtomicReference<>();
-      captureStreaming(f, downstream);
-      CompletableFuture<?> caller = sendStreaming(f, api);
+  @DataProvider
+  public Object[][] deadlineCases() {
+    // { api, closeTimeoutMs }: 0 skips the wait entirely; 1 is a non-zero wait budget that runs out.
+    List<Object[]> cases = new ArrayList<>();
+    for (String api: ALL_APIS) {
+      for (long timeout: new long[] { 0, 1 }) {
+        cases.add(new Object[] { api, timeout });
+      }
+    }
+    return cases.toArray(new Object[0][]);
+  }
+
+  @Test(dataProvider = "deadlineCases", timeOut = 10000)
+  public void testShutdownDeadlineFailsEveryApiAndSuppressesLateResponses(String api, long timeout) {
+    try (Fixture f = new Fixture(timeout)) {
+      Pending pending = sendPending(f, api);
       f.client.close();
-      assertShutdownFailure(caller, "shutdown timeout");
-      downstream.get().onRecordReceived("key", "late");
-      downstream.get().onCompletion(Optional.empty());
-      assertShutdownFailure(caller, "shutdown timeout");
+      assertShutdownFailure(pending.caller, "shutdown timeout");
+      pending.respond.run();
+      assertShutdownFailure(pending.caller, "shutdown timeout");
       verify(f.dispatch, times(1)).close();
     }
   }
@@ -286,45 +283,38 @@ public class GracefulShutdownAvroStoreClientTest {
     }
   }
 
-  @Test(timeOut = 10000)
-  public void testRetryWinnerStillDrainsOriginalAndAcceptedErrorRetryIsAllowed() {
-    for (boolean errorRetry: new boolean[] { false, true }) {
-      try (Fixture f = new Fixture(5000)) {
-        CompletableFuture<String> original = new CompletableFuture<>();
-        CompletableFuture<String> retry = new CompletableFuture<>();
-        when(f.dispatch.get(any(GetRequestContext.class), any())).thenReturn(original, retry);
-        TimeoutProcessor timer = mock(TimeoutProcessor.class);
-        AtomicReference<Runnable> retryTask = new AtomicReference<>();
-        when(timer.schedule(any(Runnable.class), anyLong(), any())).thenAnswer(call -> {
-          retryTask.set(call.getArgument(0));
-          return mock(TimeoutProcessor.TimeoutFuture.class);
-        });
-        RetriableAvroGenericStoreClient<String, String> retriable =
-            new RetriableAvroGenericStoreClient<>(f.trackedDispatch, f.config, timer);
-        retriable.setSingleKeyLongTailRetryManager(null);
-        f.wrap(retriable);
-        CompletableFuture<String> caller = f.client.get("key");
-        f.startClose(() -> {
-          original.complete("loser");
-          retry.complete("winner");
-        });
-        if (errorRetry) {
-          original.completeExceptionally(new VeniceClientException("retryable"));
-        } else {
-          retryTask.get().run();
-        }
-        verify(f.dispatch, times(2)).get(any(GetRequestContext.class), eq("key"));
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10000)
+  public void testRetryWinnerStillDrainsOriginalAndAcceptedErrorRetryIsAllowed(boolean errorRetry) {
+    try (Fixture f = new Fixture(5000)) {
+      CompletableFuture<String> original = new CompletableFuture<>();
+      CompletableFuture<String> retry = new CompletableFuture<>();
+      when(f.dispatch.get(any(GetRequestContext.class), any())).thenReturn(original, retry);
+      AtomicReference<Runnable> retryTask = new AtomicReference<>();
+      RetriableAvroGenericStoreClient<String, String> retriable =
+          new RetriableAvroGenericStoreClient<>(f.trackedDispatch, f.config, retryTimer(retryTask));
+      retriable.setSingleKeyLongTailRetryManager(null);
+      f.wrap(retriable);
+      CompletableFuture<String> caller = f.client.get("key");
+      f.startClose(() -> {
+        original.complete("loser");
         retry.complete("winner");
-        assertEquals(caller.join(), "winner");
-        if (!errorRetry) {
-          verify(f.dispatch, never()).close();
-          original.complete("loser");
-        }
-        f.client.close();
-        verify(f.dispatch, times(1)).close();
+      });
+      if (errorRetry) {
+        original.completeExceptionally(new VeniceClientException("retryable"));
+      } else {
         retryTask.get().run();
-        verify(f.dispatch, times(2)).get(any(GetRequestContext.class), eq("key"));
       }
+      verify(f.dispatch, times(2)).get(any(GetRequestContext.class), eq("key"));
+      retry.complete("winner");
+      assertEquals(caller.join(), "winner");
+      if (!errorRetry) {
+        verify(f.dispatch, never()).close();
+        original.complete("loser");
+      }
+      f.client.close();
+      verify(f.dispatch, times(1)).close();
+      retryTask.get().run();
+      verify(f.dispatch, times(2)).get(any(GetRequestContext.class), eq("key"));
     }
   }
 
@@ -336,14 +326,8 @@ public class GracefulShutdownAvroStoreClientTest {
       CompletableFuture<String> caller = f.client.get("key");
       CountDownLatch release = new CountDownLatch(1);
       CountDownLatch resourceEntered = new CountDownLatch(1);
-      CompletableFuture<Void> work = CompletableFuture.runAsync(f.tracker.resourceTask(() -> {
-        resourceEntered.countDown();
-        try {
-          assertTrue(release.await(5, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-          throw new AssertionError(e);
-        }
-      }));
+      CompletableFuture<Void> work =
+          CompletableFuture.runAsync(f.tracker.resourceTask(blockUntil(resourceEntered, release)));
       try {
         assertTrue(resourceEntered.await(5, TimeUnit.SECONDS));
         f.client.close();
@@ -384,14 +368,8 @@ public class GracefulShutdownAvroStoreClientTest {
       context.clientRequestTracker = f.tracker;
       CountDownLatch entered = new CountDownLatch(1);
       CountDownLatch release = new CountDownLatch(1);
-      CompletableFuture<Void> work = CompletableFuture.runAsync(context.clientResourceTask(() -> {
-        entered.countDown();
-        try {
-          assertTrue(release.await(5, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-          throw new AssertionError(e);
-        }
-      }));
+      CompletableFuture<Void> work =
+          CompletableFuture.runAsync(context.clientResourceTask(blockUntil(entered, release)));
       try {
         assertTrue(entered.await(5, TimeUnit.SECONDS));
         f.startClose(release::countDown);
@@ -446,21 +424,9 @@ public class GracefulShutdownAvroStoreClientTest {
   public void testMultiKeyRetryWinnerDrainsBothCallbacks(boolean compute) {
     try (Fixture f = new Fixture(5000)) {
       List<StreamingCallback> attempts = new ArrayList<>();
-      doAnswer(call -> {
-        attempts.add(call.getArgument(2));
-        return null;
-      }).when(f.dispatch).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
-      doAnswer(call -> {
-        attempts.add(call.getArgument(4));
-        return null;
-      }).when(f.dispatch).compute(any(ComputeRequestContext.class), any(), any(), any(), any(), anyLong());
-      TimeoutProcessor timer = mock(TimeoutProcessor.class);
+      captureStreaming(f, attempts::add);
       AtomicReference<Runnable> retryTask = new AtomicReference<>();
-      when(timer.schedule(any(Runnable.class), anyLong(), any())).thenAnswer(call -> {
-        retryTask.set(call.getArgument(0));
-        return mock(TimeoutProcessor.TimeoutFuture.class);
-      });
-      f.wrap(new RetriableAvroGenericStoreClient<>(f.trackedDispatch, f.config, timer));
+      f.wrap(new RetriableAvroGenericStoreClient<>(f.trackedDispatch, f.config, retryTimer(retryTask)));
       CompletableFuture<?> caller = sendStreaming(f, compute ? "compute" : "streamFuture");
       retryTask.get().run();
       assertEquals(attempts.size(), 2);
@@ -481,12 +447,9 @@ public class GracefulShutdownAvroStoreClientTest {
     try (Fixture f = new Fixture(5000)) {
       AvroGenericStoreClient<String, String> thin = mock(AvroGenericStoreClient.class);
       CompletableFuture<String> fast = new CompletableFuture<>();
-      AtomicReference<StreamingCallback<String, String>> fastBatch = new AtomicReference<>();
+      AtomicReference<StreamingCallback> fastBatch = new AtomicReference<>();
       when(f.dispatch.get(any(GetRequestContext.class), any())).thenReturn(fast);
-      doAnswer(call -> {
-        fastBatch.set(call.getArgument(2));
-        return null;
-      }).when(f.dispatch).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
+      captureStreaming(f, fastBatch::set);
       when(thin.get("key")).thenReturn(CompletableFuture.completedFuture("thin"));
       when(thin.batchGet(any())).thenReturn(CompletableFuture.completedFuture(Collections.singletonMap("key", "thin")));
       f.wrap(new DualReadAvroGenericStoreClient<>(f.trackedDispatch, f.config, thin));
@@ -506,18 +469,58 @@ public class GracefulShutdownAvroStoreClientTest {
     }
   }
 
-  private void captureStreaming(Fixture f, AtomicReference<StreamingCallback> callback) {
-    doAnswer(call -> {
-      callback.set(call.getArgument(2));
-      return null;
-    }).when(f.dispatch).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
-    doAnswer(call -> {
-      callback.set(call.getArgument(4));
-      return null;
-    }).when(f.dispatch).compute(any(ComputeRequestContext.class), any(), any(), any(), any(), anyLong());
+  /** Sends one request through {@code api} and leaves its downstream attempt outstanding. */
+  private Pending sendPending(Fixture f, String api) {
+    if ("get".equals(api)) {
+      CompletableFuture<String> response = new CompletableFuture<>();
+      when(f.dispatch.get(any(GetRequestContext.class), any())).thenReturn(response);
+      return new Pending(
+          f.client.get("key"),
+          () -> response.complete("value"),
+          () -> response.completeExceptionally(new VeniceClientException("duplicate")));
+    }
+    AtomicReference<StreamingCallback> downstream = new AtomicReference<>();
+    captureStreaming(f, downstream::set);
     // A mocked internal client does not supply the base class's future-to-callback adapter.
     when(f.dispatch.batchGet(any(BatchGetRequestContext.class), any())).thenCallRealMethod();
     when(f.dispatch.streamingBatchGet(any(BatchGetRequestContext.class), any())).thenCallRealMethod();
+    CompletableFuture<?> caller = sendStreaming(f, api);
+    return new Pending(caller, () -> {
+      downstream.get().onRecordReceived("key", "compute".equals(api) ? mock(ComputeGenericRecord.class) : "value");
+      downstream.get().onCompletion(Optional.empty());
+    }, () -> downstream.get().onCompletion(Optional.of(new VeniceClientException("duplicate"))));
+  }
+
+  private void captureStreaming(Fixture f, Consumer<StreamingCallback> callbacks) {
+    doAnswer(call -> {
+      callbacks.accept(call.getArgument(2));
+      return null;
+    }).when(f.dispatch).streamingBatchGet(any(BatchGetRequestContext.class), any(), any());
+    doAnswer(call -> {
+      callbacks.accept(call.getArgument(4));
+      return null;
+    }).when(f.dispatch).compute(any(ComputeRequestContext.class), any(), any(), any(), any(), anyLong());
+  }
+
+  /** A timer that never fires on its own; the test runs the captured retry task explicitly. */
+  private static TimeoutProcessor retryTimer(AtomicReference<Runnable> retryTask) {
+    TimeoutProcessor timer = mock(TimeoutProcessor.class);
+    when(timer.schedule(any(Runnable.class), anyLong(), any())).thenAnswer(call -> {
+      retryTask.set(call.getArgument(0));
+      return mock(TimeoutProcessor.TimeoutFuture.class);
+    });
+    return timer;
+  }
+
+  private static Runnable blockUntil(CountDownLatch entered, CountDownLatch release) {
+    return () -> {
+      entered.countDown();
+      try {
+        assertTrue(release.await(5, TimeUnit.SECONDS));
+      } catch (InterruptedException e) {
+        throw new AssertionError(e);
+      }
+    };
   }
 
   private CompletableFuture<?> sendStreaming(Fixture f, String api) {

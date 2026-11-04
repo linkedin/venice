@@ -23,12 +23,25 @@ public class TestManagedTimeoutProcessor {
     return new Object[][] { { true }, { false } };
   }
 
-  @Test(groups = "unit", dataProvider = "eventStores")
-  public void testSchedulingAndCancellationAfterShutdown(boolean useTreeMap) throws Exception {
-    TimeoutProcessor processor = TimeoutProcessor.createManaged(useTreeMap, 1);
+  @DataProvider
+  public Object[][] processors() {
+    return new Object[][] { { true, true }, { true, false }, { false, true }, { false, false } };
+  }
+
+  /** Managed and registry-backed processors both work before shutdown and reject new work after it. */
+  @Test(groups = "unit", dataProvider = "processors")
+  public void testSchedulingAndCancellationAfterShutdown(boolean managed, boolean useTreeMap) throws Exception {
+    ResourceRegistry registry = managed ? null : new ResourceRegistry();
+    TimeoutProcessor processor =
+        managed ? TimeoutProcessor.createManaged(useTreeMap, 1) : new TimeoutProcessor(registry, useTreeMap, 1);
     try {
+      CompletableFuture<Void> ran = new CompletableFuture<>();
+      processor.schedule(() -> ran.complete(null), 0, TimeUnit.MILLISECONDS);
+      ran.get(10, TimeUnit.SECONDS);
       TimeoutProcessor.TimeoutFuture pending = processor.schedule(() -> {}, 1, TimeUnit.DAYS);
+
       processor.shutdownNow();
+      processor.shutdownNow(); // second call is a no-op
       processor.awaitTermination(10, TimeUnit.SECONDS);
 
       // A later deadline used to bypass the executor and silently enter the stopped timer.
@@ -40,28 +53,10 @@ public class TestManagedTimeoutProcessor {
       Assert.assertFalse(pending.cancel());
     } finally {
       processor.shutdownNow();
-    }
-  }
-
-  @Test(groups = "unit", dataProvider = "eventStores")
-  public void testRegistryBackedProcessorRejectsAfterShutdown(boolean useTreeMap) throws Exception {
-    ResourceRegistry registry = new ResourceRegistry();
-    TimeoutProcessor processor = new TimeoutProcessor(registry, useTreeMap, 1);
-    try {
-      CompletableFuture<Void> ran = new CompletableFuture<>();
-      processor.schedule(() -> ran.complete(null), 0, TimeUnit.MILLISECONDS);
-      ran.get(10, TimeUnit.SECONDS);
-      TimeoutProcessor.TimeoutFuture pending = processor.schedule(() -> {}, 1, TimeUnit.DAYS);
-
-      processor.shutdownNow();
-      processor.shutdownNow(); // second call is a no-op
-      Assert.assertThrows(RejectedExecutionException.class, () -> processor.schedule(() -> {}, 2, TimeUnit.DAYS));
-      Assert.assertThrows(RejectedExecutionException.class, () -> processor.execute(() -> {}));
-      Assert.assertTrue(pending.cancel());
-    } finally {
-      processor.shutdownNow();
-      registry.shutdown();
-      registry.waitForShutdown();
+      if (registry != null) {
+        registry.shutdown();
+        registry.waitForShutdown();
+      }
     }
   }
 
