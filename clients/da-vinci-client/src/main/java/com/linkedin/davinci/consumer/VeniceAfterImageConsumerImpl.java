@@ -126,10 +126,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   @Override
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
       throws VeniceCoordinateOutOfRangeException {
-    if (!checkpoints.isEmpty()) {
-      subscribeStoreAndRegisterVersionSwapListener();
+    if (checkpoints.isEmpty()) {
+      return super.seekToCheckpoint(checkpoints);
     }
-    return super.seekToCheckpoint(checkpoints);
+    subscribeStoreAndRegisterVersionSwapListener();
+    return checkForVersionSwapAfterSeek(super.seekToCheckpoint(checkpoints));
   }
 
   /**
@@ -147,6 +148,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (versionSwapThreadScheduled.compareAndSet(false, true)) {
       storeRepository.registerStoreDataChangedListener(versionSwapListener);
     }
+  }
+
+  private CompletableFuture<Void> checkForVersionSwapAfterSeek(CompletableFuture<Void> seekFuture) {
+    // The listener waits for work on the seek executor, so it must run outside that executor.
+    return seekFuture.thenRunAsync(() -> versionSwapListener.handleStoreChanged(storeRepository.getStore(storeName)));
   }
 
   protected static void adjustSeekCheckPointsBasedOnHeartbeats(
@@ -425,7 +431,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       return CompletableFuture.completedFuture(null);
     }
     subscribeStoreAndRegisterVersionSwapListener();
-    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false);
+    return checkForVersionSwapAfterSeek(internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false));
   }
 
   public boolean subscribed() {
@@ -438,7 +444,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       PubSubTopic targetTopic,
       SeekPositionResolver positionResolver,
       boolean isInclusive) {
-    return super.internalSeek(partitions, targetTopic, positionResolver, isInclusive);
+    CompletableFuture<Void> seekFuture = super.internalSeek(partitions, targetTopic, positionResolver, isInclusive);
+    if (partitions.isEmpty()) {
+      return seekFuture;
+    }
+    return checkForVersionSwapAfterSeek(seekFuture);
   }
 
   @Override

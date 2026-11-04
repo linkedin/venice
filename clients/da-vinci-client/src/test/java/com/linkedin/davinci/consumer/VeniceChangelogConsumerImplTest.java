@@ -46,6 +46,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
@@ -430,6 +431,61 @@ public class VeniceChangelogConsumerImplTest {
       verify(mockRepository).registerStoreDataChangedListener(any(VersionSwapDataChangeListener.class));
     } finally {
       veniceChangelogConsumer.close();
+    }
+  }
+
+  @Test(timeOut = 30_000)
+  public void testCheckpointRestoreSwapsToCurrentVersionWithoutMetadataChange() throws Exception {
+    PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    PubSubTopicPartition oldPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    PubSubTopicPartition newPartition = new PubSubTopicPartitionImpl(newVersionTopic, 0);
+    Version newVersion = new VersionImpl(storeName, 2, "bar");
+    newVersion.setPartitionCount(partitionCount);
+    Store store = mockRepository.getStore(storeName);
+    when(store.getCurrentVersion()).thenReturn(2);
+    when(store.getVersion(2)).thenReturn(newVersion);
+    when(store.getVersionOrThrow(2)).thenReturn(newVersion);
+
+    Set<PubSubTopicPartition> assignments = new HashSet<>();
+    when(mockPubSubConsumer.getAssignment()).thenReturn(assignments);
+    doAnswer(invocation -> assignments.add(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
+    doAnswer(invocation -> assignments.remove(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .unSubscribe(any(PubSubTopicPartition.class));
+    PubSubConsumerAdapter mockInternalSeekConsumer = mock(PubSubConsumerAdapter.class);
+    doReturn(
+        Collections
+            .singletonMap(newPartition, Collections.singletonList(constructEndOfPushMessage(newVersionTopic, 0, 11L))))
+                .when(mockInternalSeekConsumer)
+                .poll(anyLong());
+    VeniceAfterImageConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        Lazy.of(() -> mockInternalSeekConsumer),
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    Set<VeniceChangeCoordinate> checkpoints = Collections
+        .singleton(new VeniceChangeCoordinate(oldVersionTopic.getName(), ApacheKafkaOffsetPosition.of(3L), 0));
+
+    try {
+      consumer.seekToCheckpoint(checkpoints).get(10, TimeUnit.SECONDS);
+
+      verify(mockPubSubConsumer).subscribe(oldPartition, ApacheKafkaOffsetPosition.of(3L), true);
+      verify(mockPubSubConsumer).subscribe(newPartition, ApacheKafkaOffsetPosition.of(11L), true);
+      assertEquals(assignments, Collections.singleton(newPartition));
+
+      when(store.getVersionOrThrow(1)).thenThrow(new StoreVersionNotFoundException(storeName, 1));
+      Mockito.clearInvocations(mockInternalSeekConsumer);
+      ExecutionException error = expectThrows(
+          ExecutionException.class,
+          () -> consumer.seekToCheckpoint(checkpoints).get(10, TimeUnit.SECONDS));
+      assertTrue(error.getCause() instanceof VeniceCoordinateOutOfRangeException);
+      assertTrue(error.getCause().getMessage().contains("Checkpoint is off retention"));
+      Mockito.verifyNoInteractions(mockInternalSeekConsumer);
+      assertEquals(assignments, Collections.singleton(newPartition));
+    } finally {
+      consumer.close();
     }
   }
 
