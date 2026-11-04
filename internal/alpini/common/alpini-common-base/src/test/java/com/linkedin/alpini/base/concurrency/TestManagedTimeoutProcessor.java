@@ -43,6 +43,28 @@ public class TestManagedTimeoutProcessor {
     }
   }
 
+  @Test(groups = "unit", dataProvider = "eventStores")
+  public void testRegistryBackedProcessorRejectsAfterShutdown(boolean useTreeMap) throws Exception {
+    ResourceRegistry registry = new ResourceRegistry();
+    TimeoutProcessor processor = new TimeoutProcessor(registry, useTreeMap, 1);
+    try {
+      CompletableFuture<Void> ran = new CompletableFuture<>();
+      processor.schedule(() -> ran.complete(null), 0, TimeUnit.MILLISECONDS);
+      ran.get(10, TimeUnit.SECONDS);
+      TimeoutProcessor.TimeoutFuture pending = processor.schedule(() -> {}, 1, TimeUnit.DAYS);
+
+      processor.shutdownNow();
+      processor.shutdownNow(); // second call is a no-op
+      Assert.assertThrows(RejectedExecutionException.class, () -> processor.schedule(() -> {}, 2, TimeUnit.DAYS));
+      Assert.assertThrows(RejectedExecutionException.class, () -> processor.execute(() -> {}));
+      Assert.assertTrue(pending.cancel());
+    } finally {
+      processor.shutdownNow();
+      registry.shutdown();
+      registry.waitForShutdown();
+    }
+  }
+
   @Test(groups = "unit", dataProvider = "eventStores", timeOut = 30_000)
   public void testSchedulingRacesWithShutdown(boolean useTreeMap) throws Exception {
     TimeoutProcessor processor = TimeoutProcessor.createManaged(useTreeMap, 1);

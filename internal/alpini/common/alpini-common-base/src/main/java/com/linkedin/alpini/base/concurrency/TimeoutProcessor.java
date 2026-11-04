@@ -19,7 +19,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -64,8 +63,8 @@ public class TimeoutProcessor implements Executor {
   /** ExecutorService for this timeout processor */
   private final ScheduledExecutorService _executor;
 
-  private final ReentrantReadWriteLock _lifecycleLock = new ReentrantReadWriteLock();
-  private boolean _shutdown;
+  /** Set before the executor stops, so no timeout can be accepted by a stopped processor. */
+  private volatile boolean _shutdown;
 
   /** A stack containing all tasks scheduled on the ExecutorService */
   private final DoublyLinkedList<TimeoutEvent> _nextEvent = new DoublyLinkedList<>();
@@ -434,37 +433,34 @@ public class TimeoutProcessor implements Executor {
    * @see ScheduledExecutorService#schedule(Runnable, long, java.util.concurrent.TimeUnit)
    */
   public TimeoutFuture schedule(Runnable task, long delay, TimeUnit unit) {
-    _lifecycleLock.readLock().lock();
-    try {
-      if (_shutdown || _executor.isShutdown()) {
-        throw new RejectedExecutionException("Timeout processor is shut down");
-      }
-      Long time = absoluteTime(delay, unit);
-      return _eventStore.schedule(
-          task,
-          new TimeoutEvent(time),
-          time,
-          _nextEvent,
-          _executor,
-          _drainingEvents,
-          _eventsMap,
-          _mapLock,
-          _nextEventLock);
-    } finally {
-      _lifecycleLock.readLock().unlock();
+    if (_shutdown || _executor.isShutdown()) {
+      throw new RejectedExecutionException("Timeout processor is shut down");
     }
+    Long time = absoluteTime(delay, unit);
+    TimeoutFuture future = _eventStore.schedule(
+        task,
+        new TimeoutEvent(time),
+        time,
+        _nextEvent,
+        _executor,
+        _drainingEvents,
+        _eventsMap,
+        _mapLock,
+        _nextEventLock);
+    // shutdownNow() may have run while this timeout was being queued. Undo it rather than leave a timeout that never
+    // fires. Re-checking here, after the queue write, avoids a lock on every schedule() call. If cancel() fails, the
+    // task already ran, so the caller gets the future as normal.
+    if (_shutdown && future.cancel()) {
+      throw new RejectedExecutionException("Timeout processor is shut down");
+    }
+    return future;
   }
 
   /**
    * @see java.util.concurrent.ScheduledExecutorService#shutdownNow()
    */
   public void shutdownNow() {
-    _lifecycleLock.writeLock().lock();
-    try {
-      _shutdown = true;
-    } finally {
-      _lifecycleLock.writeLock().unlock();
-    }
+    _shutdown = true;
     if (_registry != null) {
       _registry.shutdown();
       try {
@@ -499,15 +495,10 @@ public class TimeoutProcessor implements Executor {
 
   @Override
   public void execute(Runnable command) {
-    _lifecycleLock.readLock().lock();
-    try {
-      if (_shutdown) {
-        throw new RejectedExecutionException("Timeout processor is shut down");
-      }
-      _executor.execute(command);
-    } finally {
-      _lifecycleLock.readLock().unlock();
+    if (_shutdown) {
+      throw new RejectedExecutionException("Timeout processor is shut down");
     }
+    _executor.execute(command);
   }
 
   /**
