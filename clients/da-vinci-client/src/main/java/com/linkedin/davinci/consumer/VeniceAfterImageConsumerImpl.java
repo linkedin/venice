@@ -94,6 +94,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (timestamps.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
+    subscribeStoreAndRegisterVersionSwapListener();
     return internalSeekToTimestamps(timestamps);
   }
 
@@ -102,17 +103,50 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
+    subscribeStoreAndRegisterVersionSwapListener();
+    return super.subscribe(partitions);
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
+    if (!partitions.isEmpty()) {
+      subscribeStoreAndRegisterVersionSwapListener();
+    }
+    return super.seekToBeginningOfPush(partitions);
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
+    if (!partitions.isEmpty()) {
+      subscribeStoreAndRegisterVersionSwapListener();
+    }
+    return super.seekToTail(partitions);
+  }
+
+  @Override
+  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
+      throws VeniceCoordinateOutOfRangeException {
+    if (!checkpoints.isEmpty()) {
+      subscribeStoreAndRegisterVersionSwapListener();
+    }
+    return super.seekToCheckpoint(checkpoints);
+  }
+
+  /**
+   * Consumers can start consuming through {@link #subscribe} or any of the seek methods, and the version swap listener
+   * is the only version swap mechanism when version swap by control message is disabled. Every public entry point
+   * that assigns partitions must call this so that the consumer follows new current versions regardless of how it was
+   * started. The listener is registered at most once per consumer.
+   */
+  private void subscribeStoreAndRegisterVersionSwapListener() {
     try {
       storeRepository.subscribe(storeName);
     } catch (InterruptedException e) {
       throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
     }
-    if (!versionSwapThreadScheduled.get()) {
-      // schedule the version swap thread and set up the callback listener
-      this.storeRepository.registerStoreDataChangedListener(versionSwapListener);
-      versionSwapThreadScheduled.set(true);
+    if (versionSwapThreadScheduled.compareAndSet(false, true)) {
+      storeRepository.registerStoreDataChangedListener(versionSwapListener);
     }
-    return super.subscribe(partitions);
   }
 
   protected static void adjustSeekCheckPointsBasedOnHeartbeats(
@@ -390,6 +424,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
+    subscribeStoreAndRegisterVersionSwapListener();
     return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false);
   }
 

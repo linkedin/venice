@@ -407,6 +407,33 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testVersionSwapListenerRegisteredWhenConsumptionStartsWithSeek() throws Exception {
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+
+    try {
+      veniceChangelogConsumer.seekToCheckpoint(Collections.emptySet()).get(10, TimeUnit.SECONDS);
+      veniceChangelogConsumer.seekToBeginningOfPush(Collections.emptySet()).get(10, TimeUnit.SECONDS);
+      veniceChangelogConsumer.seekToTail(Collections.emptySet()).get(10, TimeUnit.SECONDS);
+      verify(mockRepository, never()).registerStoreDataChangedListener(any());
+
+      VeniceChangeCoordinate checkpoint =
+          new VeniceChangeCoordinate(oldVersionTopic.getName(), ApacheKafkaOffsetPosition.of(3L), 0);
+      veniceChangelogConsumer.seekToCheckpoint(Collections.singleton(checkpoint)).get(10, TimeUnit.SECONDS);
+      veniceChangelogConsumer.seekToBeginningOfPush(Collections.singleton(1)).get(10, TimeUnit.SECONDS);
+
+      verify(mockRepository, times(2)).subscribe(storeName);
+      verify(mockRepository).registerStoreDataChangedListener(any(VersionSwapDataChangeListener.class));
+    } finally {
+      veniceChangelogConsumer.close();
+    }
+  }
+
+  @Test
   public void testAdjustCheckpoints() {
     PubSubConsumerAdapter mockConsumer = Mockito.mock(PubSubConsumerAdapter.class);
     Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
