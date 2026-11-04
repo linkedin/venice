@@ -6,11 +6,8 @@ import static com.linkedin.venice.stats.metrics.MetricEntity.createWithCustomPre
 import static com.linkedin.venice.stats.metrics.MetricEntity.createWithNoDimensions;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -36,47 +33,6 @@ public class MetricEntityTest {
     Assert.assertEquals(metricEntity.getDescription(), description, "Description should match");
     Assert.assertNotNull(metricEntity.getDimensionsList(), "Dimensions list should not be null");
     Assert.assertEquals(metricEntity.getDimensionsList(), dimensions, "Dimensions list should match");
-    Assert.assertNull(metricEntity.getExplicitHistogramBoundaries());
-  }
-
-  @Test
-  public void testExplicitHistogramBoundariesAreValidatedAndImmutable() {
-    List<Double> boundaries = new ArrayList<>(Arrays.asList(0.0, 1.0, 300.0));
-    MetricEntity metric = new MetricEntity(
-        "test.count",
-        MetricType.HISTOGRAM,
-        MetricUnit.NUMBER,
-        "Count distribution",
-        Collections.singleton(VENICE_STORE_NAME),
-        boundaries);
-    boundaries.clear();
-    Assert.assertEquals(metric.getExplicitHistogramBoundaries(), Arrays.asList(0.0, 1.0, 300.0));
-    Assert.assertThrows(UnsupportedOperationException.class, () -> metric.getExplicitHistogramBoundaries().add(301.0));
-    for (List<Double> invalid: Arrays.asList(
-        Arrays.asList(1.0, 1.0),
-        Arrays.asList(1.0, 0.0),
-        Arrays.asList(Double.NaN),
-        Arrays.asList(Double.POSITIVE_INFINITY),
-        Arrays.asList((Double) null))) {
-      Assert.assertThrows(
-          IllegalArgumentException.class,
-          () -> new MetricEntity(
-              "test.count",
-              MetricType.HISTOGRAM,
-              MetricUnit.NUMBER,
-              "Count distribution",
-              Collections.singleton(VENICE_STORE_NAME),
-              invalid));
-    }
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> new MetricEntity(
-            "test.count",
-            MetricType.COUNTER,
-            MetricUnit.NUMBER,
-            "Count",
-            Collections.singleton(VENICE_STORE_NAME),
-            Collections.singletonList(0.0)));
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Metric name cannot be empty")

@@ -1,9 +1,7 @@
 package com.linkedin.venice.stats.metrics;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.Set;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -44,8 +42,6 @@ public class MetricEntity {
    * Check {@link MetricEntityState#validateRequiredDimensions} for more details.
    */
   private final Set<VeniceMetricsDimensions> dimensionsList;
-  /** Optional explicit aggregation overriding the exponential default; also provided as advice to external SDKs. */
-  private final List<Double> explicitHistogramBoundaries;
 
   public MetricEntity(
       @Nonnull String metricName,
@@ -53,16 +49,6 @@ public class MetricEntity {
       @Nonnull MetricUnit unit,
       @Nonnull String description,
       @Nonnull Set<VeniceMetricsDimensions> dimensionsList) {
-    this(metricName, metricType, unit, description, dimensionsList, (List<Double>) null);
-  }
-
-  public MetricEntity(
-      @Nonnull String metricName,
-      @Nonnull MetricType metricType,
-      @Nonnull MetricUnit unit,
-      @Nonnull String description,
-      @Nonnull Set<VeniceMetricsDimensions> dimensionsList,
-      @Nullable List<Double> explicitHistogramBoundaries) {
     validateCommonFields(metricName, metricType, unit, description);
     Validate.notEmpty(dimensionsList, "Dimensions list cannot be empty");
     this.metricName = metricName;
@@ -71,24 +57,6 @@ public class MetricEntity {
     this.description = description;
     this.dimensionsList = dimensionsList;
     this.customMetricPrefix = null;
-    if (explicitHistogramBoundaries != null) {
-      Validate.isTrue(metricType == MetricType.HISTOGRAM, "Explicit boundaries require a histogram");
-      double previous = Double.NEGATIVE_INFINITY;
-      for (Double boundary: explicitHistogramBoundaries) {
-        Validate.isTrue(
-            boundary != null && Double.isFinite(boundary) && boundary > previous,
-            "Histogram boundaries must be finite and strictly increasing");
-        previous = boundary;
-      }
-    }
-    this.explicitHistogramBoundaries = explicitHistogramBoundaries == null
-        ? null
-        : Collections.unmodifiableList(new ArrayList<>(explicitHistogramBoundaries));
-  }
-
-  @Nullable
-  public List<Double> getExplicitHistogramBoundaries() {
-    return explicitHistogramBoundaries;
   }
 
   @Nonnull
@@ -146,7 +114,6 @@ public class MetricEntity {
     this.description = description;
     this.dimensionsList = Collections.emptySet();
     this.customMetricPrefix = null;
-    this.explicitHistogramBoundaries = null;
   }
 
   /**
@@ -181,7 +148,6 @@ public class MetricEntity {
     this.description = description;
     this.dimensionsList = dimensionsList;
     this.customMetricPrefix = customMetricPrefix;
-    this.explicitHistogramBoundaries = null;
   }
 
   /** Validates fields common to all constructors, including the RATIO/double-type constraint. */

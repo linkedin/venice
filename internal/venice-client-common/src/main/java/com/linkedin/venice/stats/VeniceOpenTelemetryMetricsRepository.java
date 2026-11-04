@@ -53,15 +53,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -247,7 +243,6 @@ public class VeniceOpenTelemetryMetricsRepository {
    * for observable instruments (where the callback is bound at construction time).
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
-  private final Map<String, List<Double>> configuredHistogramBoundaries = new HashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongUpDownCounter> upDownCounterMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
@@ -267,8 +262,8 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * Sets exponential aggregation for {@link MetricType#HISTOGRAM} metrics without explicit boundary advice.
-   * Explicit histograms use the SDK's default aggregation, which honors instrument boundary advice.
+   * Setting Exponential Histogram aggregation for each {@link MetricType#HISTOGRAM} metric by looping through all
+   * the metric entities set for this service using views.
    *
    * Because the OpenTelemetry SDK cannot currently assign different histogram aggregations to different histogram
    * instruments, we deliberately avoid {@link OtlpHttpMetricExporterBuilder#setDefaultAggregationSelector}. Using it
@@ -288,13 +283,12 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
 
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
-      if (metricEntity.getMetricType() == MetricType.HISTOGRAM
-          && metricEntity.getExplicitHistogramBoundaries() == null) {
+      if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
         uniqueHistogramMetricNames.add(getFullMetricName(metricEntity));
       }
     }
 
-    // Explicit histogram advice must not be overridden by an exponential view.
+    // Register views for all MetricType.HISTOGRAM metrics to be aggregated/exported as exponential histograms
     for (String metricName: uniqueHistogramMetricNames) {
       InstrumentSelector selector =
           InstrumentSelector.builder().setType(InstrumentType.HISTOGRAM).setName(metricName).build();
@@ -332,43 +326,15 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   static String getMetricDescription(MetricEntity metricEntity, VeniceMetricsConfig metricsConfig) {
     String customDescription = metricsConfig.getOtelCustomDescriptionForHistogramMetrics();
-    if (metricEntity.getMetricType() == MetricType.HISTOGRAM && metricEntity.getExplicitHistogramBoundaries() == null
-        && customDescription != null && !customDescription.isEmpty()) {
+    if (metricEntity.getMetricType() == MetricType.HISTOGRAM && customDescription != null
+        && !customDescription.isEmpty()) {
       return customDescription;
     } else {
       return metricEntity.getDescription();
     }
   }
 
-  /**
-   * Registers one integer layout per instrument, shared by all its attribute streams.
-   * Call before instrument creation, using the largest capacity of all pools sharing this metric.
-   * SDK bucket layouts are immutable; conflicting or late registration is rejected.
-   */
-  public synchronized void configureIntegerHistogramBuckets(MetricEntity metricEntity, int maximum) {
-    if (!emitOpenTelemetryMetrics()) {
-      return;
-    }
-    if (maximum < 0 || metricEntity.getExplicitHistogramBoundaries() == null) {
-      throw new IllegalArgumentException("Integer buckets require an explicit histogram and a nonnegative maximum");
-    }
-    String name = metricEntity.getMetricName();
-    List<Double> boundaries = Collections.unmodifiableList(
-        IntStream.rangeClosed(0, maximum).mapToObj(value -> (double) value).collect(Collectors.toList()));
-    List<Double> existing = configuredHistogramBoundaries.get(name);
-    if (existing != null) {
-      if (!existing.equals(boundaries)) {
-        throw new IllegalStateException("Conflicting histogram capacities for " + name);
-      }
-      return;
-    }
-    if (histogramMap.containsKey(name)) {
-      throw new IllegalStateException("Configure histogram capacity before creating instrument " + name);
-    }
-    configuredHistogramBoundaries.put(name, boundaries);
-  }
-
-  public synchronized DoubleHistogram createDoubleHistogram(MetricEntity metricEntity) {
+  public DoubleHistogram createDoubleHistogram(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
@@ -377,11 +343,6 @@ public class VeniceOpenTelemetryMetricsRepository {
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(getMetricDescription(metricEntity, metricsConfig));
-      if (metricEntity.getExplicitHistogramBoundaries() != null) {
-        // With no exponential view for this instrument, the SDK's explicit default honors this advice.
-        builder.setExplicitBucketBoundariesAdvice(
-            configuredHistogramBoundaries.getOrDefault(key, metricEntity.getExplicitHistogramBoundaries()));
-      }
       if (metricEntity.getMetricType() == MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS) {
         // No buckets needed to get only min/max/count/sum aggregations
         builder.setExplicitBucketBoundariesAdvice(new ArrayList<>()).setDescription(metricEntity.getDescription());

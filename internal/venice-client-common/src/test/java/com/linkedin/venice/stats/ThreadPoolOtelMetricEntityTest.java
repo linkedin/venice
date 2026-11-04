@@ -48,22 +48,6 @@ public class ThreadPoolOtelMetricEntityTest {
             "Request-sampled number of threads executing the synchronous HTTP request pipeline",
             Collections.singleton(VENICE_THREAD_POOL_NAME)));
     map.put(
-        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_TIME_DISTRIBUTION,
-        new MetricEntityExpectation(
-            "thread_pool.thread.active_time_distribution",
-            MetricType.HISTOGRAM,
-            MetricUnit.NUMBER,
-            "Fixed-interval samples of active read or compute threads, including idle periods",
-            Collections.singleton(VENICE_THREAD_POOL_NAME)));
-    map.put(
-        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_REQUEST_TIME_DISTRIBUTION,
-        new MetricEntityExpectation(
-            "thread_pool.thread.active_request_time_distribution",
-            MetricType.HISTOGRAM,
-            MetricUnit.NUMBER,
-            "Fixed-interval samples of threads executing the synchronous HTTP pipeline, including idle periods",
-            Collections.singleton(VENICE_THREAD_POOL_NAME)));
-    map.put(
         ThreadPoolOtelMetricEntity.THREAD_POOL_QUEUE_TASK_COUNT,
         new MetricEntityExpectation(
             "thread_pool.queue.task_count",

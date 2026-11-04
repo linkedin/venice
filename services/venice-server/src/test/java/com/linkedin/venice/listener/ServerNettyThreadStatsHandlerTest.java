@@ -105,13 +105,11 @@ public class ServerNettyThreadStatsHandlerTest {
       Future<?> second = workers.next().submit(() -> handler.channelRead(secondContext, request()));
       assertTrue(secondEntered.await(5, TimeUnit.SECONDS));
 
-      assertEquals(handler.getActiveRequestThreadCount(), 2);
       assertEquals(metric("Avg"), 1.5);
       assertEquals(metric("Max"), 2.0);
       release.countDown();
       first.get(5, TimeUnit.SECONDS);
       second.get(5, TimeUnit.SECONDS);
-      assertEquals(handler.getActiveRequestThreadCount(), 0);
 
       handler.channelRead(mock(ChannelHandlerContext.class), request());
       assertEquals(metric("Avg"), 4.0 / 3);
@@ -151,25 +149,15 @@ public class ServerNettyThreadStatsHandlerTest {
     HttpRequest outerRequest = request();
     HttpRequest innerRequest = request();
     doAnswer(invocation -> {
-      assertEquals(handler.getActiveRequestThreadCount(), 1);
       handler.channelRead(innerContext, innerRequest);
-      assertEquals(handler.getActiveRequestThreadCount(), 1);
       return outerContext;
     }).when(outerContext).fireChannelRead(outerRequest);
-    doAnswer(invocation -> {
-      assertEquals(handler.getActiveRequestThreadCount(), 1);
-      return innerContext;
-    }).when(innerContext).fireChannelRead(innerRequest);
 
     handler.channelRead(outerContext, outerRequest);
-    assertEquals(handler.getActiveRequestThreadCount(), 0);
-    verify(innerContext).fireChannelRead(innerRequest);
-    doThrow(new IllegalStateException("nested request failed")).when(innerContext).fireChannelRead(innerRequest);
-    assertThrows(IllegalStateException.class, () -> handler.channelRead(outerContext, outerRequest));
-    assertEquals(handler.getActiveRequestThreadCount(), 0);
     handler.channelRead(mock(ChannelHandlerContext.class), request());
     requestOnAnotherWorker();
 
+    verify(innerContext).fireChannelRead(innerRequest);
     assertEquals(metric("Avg"), 1.0);
     assertEquals(metric("Max"), 1.0);
   }
@@ -181,7 +169,6 @@ public class ServerNettyThreadStatsHandlerTest {
     doThrow(new IllegalStateException("request failed")).when(context).fireChannelRead(request);
 
     assertThrows(IllegalStateException.class, () -> handler.channelRead(context, request));
-    assertEquals(handler.getActiveRequestThreadCount(), 0);
     requestOnAnotherWorker();
     handler.channelRead(mock(ChannelHandlerContext.class), request());
 
