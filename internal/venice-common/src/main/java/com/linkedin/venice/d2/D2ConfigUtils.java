@@ -1,5 +1,7 @@
 package com.linkedin.venice.d2;
 
+import com.linkedin.d2.balancer.config.ConfigWriter;
+import com.linkedin.d2.balancer.properties.PropertyKeys;
 import com.linkedin.d2.balancer.servers.ZKUriStoreFactory;
 import com.linkedin.d2.balancer.servers.ZooKeeperAnnouncer;
 import com.linkedin.d2.balancer.servers.ZooKeeperConnectionManager;
@@ -20,17 +22,28 @@ import java.util.Map;
  * This extracts production-ready D2 setup logic for use outside of test contexts.
  */
 public final class D2ConfigUtils {
+  private static final String DEFAULT_QUARANTINE_MAX_PERCENT = "0.1";
+
   private D2ConfigUtils() {
   }
 
   public static void setupD2Config(String zkHosts, boolean https, String d2ClusterName, String d2ServiceName) {
+    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, false);
+  }
+
+  public static void setupD2Config(
+      String zkHosts,
+      boolean https,
+      String d2ClusterName,
+      String d2ServiceName,
+      boolean useHealthCheckEndpoint) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
     int retryLimit = 10;
 
     try {
       Map<String, Object> clusterDefaults = Collections.emptyMap();
-      Map<String, Object> serviceDefaults = getD2ServiceDefaults();
+      Map<String, Object> serviceDefaults = getD2ServiceDefaults(useHealthCheckEndpoint);
       Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(d2ClusterName, d2ServiceName, https);
       Map<String, Object> extraClusterServiceConfigurations = Collections.emptyMap();
       Map<String, Object> serviceVariants = Collections.emptyMap();
@@ -51,6 +64,27 @@ public final class D2ConfigUtils {
     } catch (Exception e) {
       throw new VeniceException(e);
     }
+  }
+
+  /**
+   * Builds fresh quarantine defaults. False retains D2's OPTIONS/service-path probes; it does not disable quarantine.
+   */
+  public static Map<String, Object> getD2QuarantineDefaults(boolean useHealthCheckEndpoint) {
+    Map<String, Object> legacyDefaults = new HashMap<>();
+    legacyDefaults.put(PropertyKeys.HTTP_LB_QUARANTINE_MAX_PERCENT, DEFAULT_QUARANTINE_MAX_PERCENT);
+    Map<String, Object> quarantineDefaults = new HashMap<>();
+    quarantineDefaults.put(PropertyKeys.QUARANTINE_MAX_PERCENT, DEFAULT_QUARANTINE_MAX_PERCENT);
+    if (useHealthCheckEndpoint) {
+      legacyDefaults.put(PropertyKeys.HTTP_LB_QUARANTINE_METHOD, "GET:/health");
+      quarantineDefaults.put(PropertyKeys.QUARANTINE_HEALTH_CHECK_METHOD, "GET");
+      quarantineDefaults.put(PropertyKeys.QUARANTINE_HEALTH_CHECK_PATH, "/health");
+    }
+    Map<String, Object> relativeDefaults = new HashMap<>();
+    relativeDefaults.put(PropertyKeys.QUARANTINE_PROPERTIES, quarantineDefaults);
+    Map<String, Object> defaults = new HashMap<>();
+    defaults.put(PropertyKeys.LB_STRATEGY_PROPERTIES, legacyDefaults);
+    defaults.put(PropertyKeys.RELATIVE_STRATEGY_PROPERTIES, relativeDefaults);
+    return defaults;
   }
 
   public static D2Server createD2Server(String zkHosts, String localUri, String clusterName) {
@@ -108,7 +142,7 @@ public final class D2ConfigUtils {
     return d2List;
   }
 
-  private static Map<String, Object> getD2ServiceDefaults() {
+  private static Map<String, Object> getD2ServiceDefaults(boolean useHealthCheckEndpoint) {
     List<String> loadBalancerStrategyList = new ArrayList<>();
     loadBalancerStrategyList.add("degraderV3");
     loadBalancerStrategyList.add("degraderV2");
@@ -137,7 +171,7 @@ public final class D2ConfigUtils {
     serviceDefaults.put("transportClientProperties", transportClientProperties);
     serviceDefaults.put("degraderProperties", degraderProperties);
 
-    return serviceDefaults;
+    return ConfigWriter.merge(getD2QuarantineDefaults(useHealthCheckEndpoint), serviceDefaults);
   }
 
   private static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https) {

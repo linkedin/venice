@@ -52,7 +52,8 @@ public class TestD2ControllerClient {
           zkServer.getAddress(),
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
-          VeniceControllerWrapper.D2_SERVICE_NAME);
+          VeniceControllerWrapper.D2_SERVICE_NAME,
+          true);
 
       d2Client = D2TestUtils.getAndStartD2Client(zkServer.getAddress());
       String d2ServiceName = VeniceControllerWrapper.D2_SERVICE_NAME;
