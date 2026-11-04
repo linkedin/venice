@@ -134,6 +134,25 @@ public class HelixGroupRoutingStrategyTest {
     verify(mockStats).recordGroupResponseWaitingTime(eq(1), anyDouble());
   }
 
+  @Test
+  public void testTrackRequestRecordsLatencyOnFailedCompletion() {
+    HelixGroupStats mockStats = mock(HelixGroupStats.class);
+    HelixGroupRoutingStrategy strategy = new HelixGroupRoutingStrategy(instanceHealthMonitor, mockStats);
+    strategy.updateHelixGroupInfo(getHelixGroupInfo());
+
+    CompletableFuture resultFuture = new CompletableFuture();
+    resultFuture.completeExceptionally(new RuntimeException("boom"));
+    BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext(10, true);
+    batchGetRequestContext.setRetryRequest(false);
+    batchGetRequestContext.setHelixGroupId(1);
+    batchGetRequestContext.setResultFuture(resultFuture);
+
+    // Round-robin and least-loaded keep recording failures so a slow, failing group still raises its average.
+    assertTrue(strategy.trackRequest(batchGetRequestContext));
+    verify(mockStats).recordGroupRequest(1);
+    verify(mockStats).recordGroupResponseWaitingTime(eq(1), anyDouble());
+  }
+
   /**
    * Test that getReplicas handles missing replica in helixGroupInfo gracefully.
    * This tests defensive behavior when there's a race condition between routing info

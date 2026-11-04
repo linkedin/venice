@@ -16,7 +16,9 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
+import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -216,6 +218,41 @@ public class AbstractStoreMetadataTest {
     return new TestStoreMetadata(STORE_NAME);
   }
 
+  @Test
+  public void helixAssistedSelectsLeastLoadedGroupStrategy() {
+    assertEquals(
+        newHelixAssistedMetadata(HelixGroupRoutingStrategyType.LEAST_LOADED).routingStrategy.getClass(),
+        HelixLeastLoadedGroupRoutingStrategy.class);
+  }
+
+  @Test
+  public void helixAssistedSelectsLatencyAdaptiveGroupStrategy() {
+    assertEquals(
+        newHelixAssistedMetadata(HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE).routingStrategy.getClass(),
+        HelixLatencyAdaptiveGroupRoutingStrategy.class);
+  }
+
+  @Test
+  public void helixAssistedSelectsRoundRobinGroupStrategy() {
+    assertEquals(
+        newHelixAssistedMetadata(HelixGroupRoutingStrategyType.ROUND_ROBIN).routingStrategy.getClass(),
+        HelixGroupRoutingStrategy.class);
+  }
+
+  private static TestStoreMetadata newHelixAssistedMetadata(HelixGroupRoutingStrategyType type) {
+    ClientConfig clientConfig = mock(ClientConfig.class);
+    doReturn(STORE_NAME).when(clientConfig).getStoreName();
+    doReturn(ClientRoutingStrategyType.HELIX_ASSISTED).when(clientConfig).getClientRoutingStrategyType();
+    doReturn(type).when(clientConfig).getHelixGroupRoutingStrategyType();
+    doReturn(new MetricsRepository()).when(clientConfig).getMetricsRepository();
+    doReturn(BatchGetConfigUtils.parseRetryThresholdForBatchGet("1-10:5,11-:20")).when(clientConfig)
+        .getHelixGroupSizeAwareThresholds();
+    doReturn(1.0 / 3.0).when(clientConfig).getHelixGroupEvenUntilFraction();
+    doReturn(1.0).when(clientConfig).getHelixGroupSkewRampExponent();
+    doReturn(10L).when(clientConfig).getHelixGroupMinSampleCount();
+    return new TestStoreMetadata(clientConfig);
+  }
+
   /**
    * Concrete subclass of {@link AbstractStoreMetadata} used purely to drive the listener-plumbing tests. Methods
    * required by the {@link StoreMetadata} contract that the listener tests never exercise are stubbed to throw, so
@@ -227,6 +264,10 @@ public class AbstractStoreMetadataTest {
   private static final class TestStoreMetadata extends AbstractStoreMetadata {
     TestStoreMetadata(String storeName) {
       super(buildClientConfig(storeName));
+    }
+
+    TestStoreMetadata(ClientConfig clientConfig) {
+      super(clientConfig);
     }
 
     private static ClientConfig buildClientConfig(String storeName) {

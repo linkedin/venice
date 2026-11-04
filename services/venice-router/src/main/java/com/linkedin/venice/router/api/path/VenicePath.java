@@ -20,6 +20,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -46,6 +47,11 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
    */
   private Set<String> slowStorageNodeSet = new ConcurrentSkipListSet<>();
   private boolean ignoreSlowStorageNodes = false;
+  /**
+   * Shared by the original path and all of its sub-paths and retry paths, so the original path can tell whether any
+   * part of the request was retried.
+   */
+  private AtomicBoolean retryTriggered = new AtomicBoolean(false);
 
   public VenicePath(
       StoreVersionName storeVersionName,
@@ -113,11 +119,13 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   @Override
   public void setRetryRequest() {
     this.retryRequest = true;
+    this.retryTriggered.set(true);
   }
 
   @Override
   public void setRetryRequest(HttpResponseStatus hrs) {
     this.retryRequest = true;
+    this.retryTriggered.set(true);
     if (hrs.code() >= 500) {
       // ignore slow storage nodes for retry requests with 5xx status code
       this.ignoreSlowStorageNodes = true;
@@ -125,6 +133,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   }
 
   protected void setupRetryRelatedInfo(VenicePath originalPath) {
+    retryTriggered = originalPath.retryTriggered;
     if (originalPath.isRetryRequest()) {
       setRetryRequest();
     }
@@ -140,6 +149,13 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public boolean isRetryRequest() {
     return this.retryRequest;
+  }
+
+  /**
+   * Whether a long-tail or error retry fired for any part of this request, including its sub-paths.
+   */
+  public boolean isRetryTriggered() {
+    return retryTriggered.get();
   }
 
   public long getOriginalRequestStartTs() {
