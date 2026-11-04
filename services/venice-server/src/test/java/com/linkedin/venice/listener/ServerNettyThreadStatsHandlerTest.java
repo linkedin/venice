@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.OpenTelemetryDataTestUtils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.handler.codec.http.DefaultHttpContent;
@@ -30,12 +31,16 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.codec.http2.DefaultHttp2Headers;
+import io.netty.handler.codec.http2.DefaultHttp2HeadersFrame;
+import io.netty.handler.codec.http2.Http2StreamFrameToHttpObjectCodec;
 import io.netty.util.concurrent.Future;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.HistogramPointData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -65,6 +70,90 @@ public class ServerNettyThreadStatsHandlerTest {
   @AfterMethod
   public void tearDown() {
     metricsRepository.close();
+  }
+
+  @Test
+  public void testHttp2StreamPipelinesShareTimeSampledCounterIncludingIdle() {
+    try (ServerThreadPoolSampler sampler = new ServerThreadPoolSampler(
+        metricsRepository,
+        mock(ThreadPoolExecutor.class),
+        mock(ThreadPoolExecutor.class),
+        handler,
+        2)) {
+      EmbeddedChannel first = new EmbeddedChannel(
+          new Http2StreamFrameToHttpObjectCodec(true),
+          new HttpObjectAggregator(1024),
+          handler,
+          samplingHandler(sampler));
+      EmbeddedChannel second = new EmbeddedChannel(
+          new Http2StreamFrameToHttpObjectCodec(true),
+          new HttpObjectAggregator(1024),
+          handler,
+          samplingHandler(sampler));
+      try {
+        sampler.sample();
+        for (EmbeddedChannel stream: new EmbeddedChannel[] { first, second }) {
+          assertTrue(
+              stream.writeInbound(
+                  new DefaultHttp2HeadersFrame(
+                      new DefaultHttp2Headers().method("GET")
+                          .path("/storage/test/0/key")
+                          .scheme("https")
+                          .authority("localhost"),
+                      true)));
+          FullHttpRequest request = stream.readInbound();
+          request.release();
+          assertEquals(handler.getActiveRequestThreadCount(), 0);
+        }
+        sampler.sample();
+        HistogramPointData point = OpenTelemetryDataTestUtils.getHistogramPointData(
+            reader.collectAllMetrics(),
+            ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_REQUEST_TIME_DISTRIBUTION.getMetricEntity()
+                .getMetricName(),
+            "server",
+            Attributes.builder()
+                .put(VENICE_THREAD_POOL_NAME.getDimensionNameInDefaultFormat(), "netty_worker_thread_pool")
+                .build());
+        assertEquals(point.getCount(), 4);
+        assertEquals(point.getCounts().get(0).longValue(), 2);
+        assertEquals(point.getCounts().get(1).longValue(), 2);
+      } finally {
+        first.finishAndReleaseAll();
+        second.finishAndReleaseAll();
+      }
+    }
+  }
+
+  private ChannelInboundHandlerAdapter samplingHandler(ServerThreadPoolSampler sampler) {
+    return new ChannelInboundHandlerAdapter() {
+      @Override
+      public void channelRead(ChannelHandlerContext context, Object message) {
+        assertEquals(handler.getActiveRequestThreadCount(), 1);
+        sampler.sample();
+        context.fireChannelRead(message);
+      }
+    };
+  }
+
+  @Test
+  public void testActiveRequestCounterTracksNestedPipeline() {
+    ChannelHandlerContext outer = mock(ChannelHandlerContext.class);
+    ChannelHandlerContext inner = mock(ChannelHandlerContext.class);
+    doAnswer(invocation -> {
+      assertEquals(handler.getActiveRequestThreadCount(), 1);
+      handler.channelRead(inner, request());
+      assertEquals(handler.getActiveRequestThreadCount(), 1);
+      return outer;
+    }).when(outer).fireChannelRead(any());
+    doAnswer(invocation -> {
+      assertEquals(handler.getActiveRequestThreadCount(), 1);
+      throw new IllegalStateException("synthetic failure");
+    }).when(inner).fireChannelRead(any());
+    assertEquals(handler.getActiveRequestThreadCount(), 0);
+    assertThrows(IllegalStateException.class, () -> handler.channelRead(outer, request()));
+    assertEquals(handler.getActiveRequestThreadCount(), 0);
+    handler.channelRead(mock(ChannelHandlerContext.class), request());
+    assertEquals(handler.getActiveRequestThreadCount(), 0);
   }
 
   @Test
@@ -105,11 +194,13 @@ public class ServerNettyThreadStatsHandlerTest {
       Future<?> second = workers.next().submit(() -> handler.channelRead(secondContext, request()));
       assertTrue(secondEntered.await(5, TimeUnit.SECONDS));
 
+      assertEquals(handler.getActiveRequestThreadCount(), 2);
       assertEquals(metric("Avg"), 1.5);
       assertEquals(metric("Max"), 2.0);
       release.countDown();
       first.get(5, TimeUnit.SECONDS);
       second.get(5, TimeUnit.SECONDS);
+      assertEquals(handler.getActiveRequestThreadCount(), 0);
 
       handler.channelRead(mock(ChannelHandlerContext.class), request());
       assertEquals(metric("Avg"), 4.0 / 3);

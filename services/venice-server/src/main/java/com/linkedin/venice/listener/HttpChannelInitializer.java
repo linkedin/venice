@@ -192,6 +192,10 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     return quotaEnforcer;
   }
 
+  ServerNettyThreadStatsHandler getNettyThreadStatsHandler() {
+    return nettyThreadStatsHandler;
+  }
+
   interface ChannelPipelineConsumer {
     void accept(ChannelPipeline pipeline, boolean whetherNeedServerCodec);
   }

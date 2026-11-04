@@ -23,6 +23,10 @@ public class ServerNettyThreadStatsHandler extends ChannelInboundHandlerAdapter 
     stats = new ServerNettyThreadStats(metricsRepository);
   }
 
+  int getActiveRequestThreadCount() {
+    return activeRequestThreads.get();
+  }
+
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
     if (!(msg instanceof HttpRequest)) {
