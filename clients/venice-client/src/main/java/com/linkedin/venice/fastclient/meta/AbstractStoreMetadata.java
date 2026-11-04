@@ -71,7 +71,6 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     }
   }
 
-  /** For subclass constructors: release the owned monitor when construction fails, keeping the original error. */
   protected final void closeInstanceHealthMonitorAfterFailure(Throwable failure) {
     try {
       instanceHealthMonitor.close();
