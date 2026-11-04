@@ -638,6 +638,9 @@ public class TestUtils {
     etlStoreConfig.setEtledUserProxyAccount("etled_user_proxy_account");
     etlStoreConfig.setFutureVersionETLEnabled(true);
     etlStoreConfig.setRegularVersionETLEnabled(true);
+    etlStoreConfig.setInitialSlaTier("initial_sla_tier");
+    etlStoreConfig.setInitialGrantAclUsers(Arrays.asList("initial_grant_acl_user_1", "initial_grant_acl_user_2"));
+    etlStoreConfig.setInitialWorkloadType("initial_workload_type");
     return etlStoreConfig;
   }
 

@@ -188,6 +188,21 @@ public enum Arg {
       "etl-active-fabrics", "eaf", true,
       "Comma-separated list of fabrics where ETL onboard/offboard fires. Omit to fire in every fabric (default). Otherwise must be a non-empty list. To disable ETL entirely, use --regular-version-etl-enabled=false and --future-version-etl-enabled=false."
   ),
+  ETL_INITIAL_SLA_TIER(
+      "etl-initial-sla-tier", "eist", true,
+      "SLA tier the external ETL service should use when it first onboards the store in a fabric. "
+          + "Pass 'null' to clear the config; omit the flag to leave it unchanged."
+  ),
+  ETL_INITIAL_GRANT_ACL_USERS(
+      "etl-initial-grant-acl-users", "eigau", true,
+      "Comma-separated list of users the external ETL service should grant access to when it first onboards the store "
+          + "in a fabric. Pass 'null' to clear the config; omit the flag to leave it unchanged."
+  ),
+  ETL_INITIAL_WORKLOAD_TYPE(
+      "etl-initial-workload-type", "eiwt", true,
+      "ETL workload type the external ETL service should use when it first onboards the store in a fabric. Unrelated "
+          + "to --workload-type. Pass 'null' to clear the config; omit the flag to leave it unchanged."
+  ),
   BACKUP_VERSION_RETENTION_DAY(
       "backup-version-retention-day", "bvrd", true,
       "Backup version retention time in day after a new version is promoted to the current version, if not specified, Venice will use the configured retention as the default policy"

@@ -38,5 +38,31 @@ public interface ETLStoreConfig extends DataModelBackedStructure<StoreETLConfig>
 
   void setEtlActiveFabrics(List<String> etlActiveFabrics);
 
+  /**
+   * SLA tier the external ETL service should use when it first onboards this store in a fabric. It is sent with
+   * every onboard request and never synced back from the external ETL service, so it does not reflect the store's
+   * current tier. {@code null} means not set.
+   */
+  String getInitialSlaTier();
+
+  void setInitialSlaTier(String initialSlaTier);
+
+  /**
+   * Users the external ETL service should grant access to when it first onboards this store in a fabric. Sent with
+   * every onboard request and never synced back from the external ETL service. {@code null} means not set.
+   */
+  List<String> getInitialGrantAclUsers();
+
+  void setInitialGrantAclUsers(List<String> initialGrantAclUsers);
+
+  /**
+   * ETL workload type the external ETL service should use when it first onboards this store in a fabric. Unrelated
+   * to the store-level {@link Store#getWorkloadType()}. Sent with every onboard request and never synced back from
+   * the external ETL service. {@code null} means not set.
+   */
+  String getInitialWorkloadType();
+
+  void setInitialWorkloadType(String initialWorkloadType);
+
   ETLStoreConfig clone();
 }

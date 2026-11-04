@@ -27,6 +27,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_SLA_TIER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
@@ -252,6 +255,15 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
       updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
       updateStoreQueryParams.setETLStrategy(etlStoreConfig.getETLStrategy());
+      if (etlStoreConfig.getInitialSlaTier() != null) {
+        updateStoreQueryParams.setEtlInitialSlaTier(etlStoreConfig.getInitialSlaTier());
+      }
+      if (etlStoreConfig.getInitialGrantAclUsers() != null) {
+        updateStoreQueryParams.setEtlInitialGrantAclUsers(etlStoreConfig.getInitialGrantAclUsers());
+      }
+      if (etlStoreConfig.getInitialWorkloadType() != null) {
+        updateStoreQueryParams.setEtlInitialWorkloadType(etlStoreConfig.getInitialWorkloadType());
+      }
     }
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
@@ -783,6 +795,94 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<List<String>> getEtlActiveFabrics() {
     return Optional.ofNullable(params.get(ETL_ACTIVE_FABRICS)).map(s -> normalizeRegions(Arrays.asList(s.split(","))));
+  }
+
+  /**
+   * Sets the SLA tier the external ETL service should use when it first onboards the store in a fabric. Passing
+   * {@code null} records an explicit request to clear the config back to {@code null}, which is distinct from not
+   * calling this method at all (which leaves the config unchanged). See {@link #CLEAR_VALUE}.
+   */
+  public UpdateStoreQueryParams setEtlInitialSlaTier(String etlInitialSlaTier) {
+    return putString(ETL_INITIAL_SLA_TIER, etlInitialSlaTier == null ? CLEAR_VALUE : etlInitialSlaTier);
+  }
+
+  /**
+   * @return whether the caller provided a value for this config at all, including an explicit
+   *         request to clear it. When this returns {@code false} the config must be left unchanged.
+   */
+  public boolean isEtlInitialSlaTierSpecified() {
+    return params.containsKey(ETL_INITIAL_SLA_TIER);
+  }
+
+  /**
+   * @return the requested SLA tier, or {@code null} if the caller asked for the config to be cleared. Only
+   *         meaningful when {@link #isEtlInitialSlaTierSpecified()} returns {@code true}.
+   */
+  public String getEtlInitialSlaTier() {
+    String value = params.get(ETL_INITIAL_SLA_TIER);
+    return CLEAR_VALUE.equals(value) ? null : value;
+  }
+
+  /**
+   * Sets the users the external ETL service should grant access to when it first onboards the store in a fabric.
+   * Entries are trimmed and blank entries dropped. Passing {@code null}, or a list without any non-blank entry,
+   * records an explicit request to clear the config back to {@code null}; not calling this method leaves the config
+   * unchanged. The list is sent as JSON so that entries can contain commas.
+   */
+  public UpdateStoreQueryParams setEtlInitialGrantAclUsers(List<String> etlInitialGrantAclUsers) {
+    List<String> users = normalizeRegions(etlInitialGrantAclUsers);
+    return users.isEmpty()
+        ? putString(ETL_INITIAL_GRANT_ACL_USERS, CLEAR_VALUE)
+        : putStringList(ETL_INITIAL_GRANT_ACL_USERS, users);
+  }
+
+  /**
+   * @return whether the caller provided a value for this config at all, including an explicit
+   *         request to clear it. When this returns {@code false} the config must be left unchanged.
+   */
+  public boolean isEtlInitialGrantAclUsersSpecified() {
+    return params.containsKey(ETL_INITIAL_GRANT_ACL_USERS);
+  }
+
+  /**
+   * @return the requested users, or {@code null} if the caller asked for the config to be cleared. Entries are
+   *         normalized here as well, since requests built straight from HTTP parameters skip the setter, and a list
+   *         with no entry left counts as a clear. Only meaningful when {@link #isEtlInitialGrantAclUsersSpecified()}
+   *         returns {@code true}.
+   */
+  public List<String> getEtlInitialGrantAclUsers() {
+    if (CLEAR_VALUE.equals(params.get(ETL_INITIAL_GRANT_ACL_USERS))) {
+      return null;
+    }
+    List<String> users = normalizeRegions(getStringList(ETL_INITIAL_GRANT_ACL_USERS).orElse(null));
+    return users.isEmpty() ? null : users;
+  }
+
+  /**
+   * Sets the ETL workload type the external ETL service should use when it first onboards the store in a fabric.
+   * This is unrelated to the store-level workload type set by {@link #setWorkloadType(String)}. Passing {@code null}
+   * records an explicit request to clear the config back to {@code null}, which is distinct from not calling this
+   * method at all (which leaves the config unchanged). See {@link #CLEAR_VALUE}.
+   */
+  public UpdateStoreQueryParams setEtlInitialWorkloadType(String etlInitialWorkloadType) {
+    return putString(ETL_INITIAL_WORKLOAD_TYPE, etlInitialWorkloadType == null ? CLEAR_VALUE : etlInitialWorkloadType);
+  }
+
+  /**
+   * @return whether the caller provided a value for this config at all, including an explicit
+   *         request to clear it. When this returns {@code false} the config must be left unchanged.
+   */
+  public boolean isEtlInitialWorkloadTypeSpecified() {
+    return params.containsKey(ETL_INITIAL_WORKLOAD_TYPE);
+  }
+
+  /**
+   * @return the requested ETL workload type, or {@code null} if the caller asked for the config to be cleared. Only
+   *         meaningful when {@link #isEtlInitialWorkloadTypeSpecified()} returns {@code true}.
+   */
+  public String getEtlInitialWorkloadType() {
+    String value = params.get(ETL_INITIAL_WORKLOAD_TYPE);
+    return CLEAR_VALUE.equals(value) ? null : value;
   }
 
   public Optional<Boolean> getNativeReplicationEnabled() {

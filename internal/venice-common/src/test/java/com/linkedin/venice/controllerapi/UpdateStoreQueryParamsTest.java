@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WORKLOAD_TYPE;
@@ -148,6 +149,44 @@ public class UpdateStoreQueryParamsTest {
     Assert.assertNull(target.getVeniceUnits());
     Assert.assertTrue(target.isWorkloadTypeSpecified());
     Assert.assertNull(target.getWorkloadType());
+  }
+
+  @Test
+  public void testEtlInitialOnboardingValuesTriState() {
+    UpdateStoreQueryParams unset = new UpdateStoreQueryParams(toWireMap(new UpdateStoreQueryParams()));
+    Assert.assertFalse(unset.isEtlInitialSlaTierSpecified());
+    Assert.assertFalse(unset.isEtlInitialGrantAclUsersSpecified());
+    Assert.assertFalse(unset.isEtlInitialWorkloadTypeSpecified());
+
+    // Grant users travel as JSON, so entries can contain commas. They are trimmed and blank entries dropped.
+    UpdateStoreQueryParams set = new UpdateStoreQueryParams(
+        toWireMap(
+            new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
+                .setEtlInitialGrantAclUsers(Arrays.asList(" user-a ", "", "group:(a,b)"))
+                .setEtlInitialWorkloadType("BATCH")));
+    Assert.assertEquals(set.getEtlInitialSlaTier(), "TIER_A");
+    Assert.assertEquals(set.getEtlInitialGrantAclUsers(), Arrays.asList("user-a", "group:(a,b)"));
+    Assert.assertEquals(set.getEtlInitialWorkloadType(), "BATCH");
+
+    // An explicit null clears the value, which stays distinguishable from "not provided".
+    UpdateStoreQueryParams cleared = new UpdateStoreQueryParams(
+        toWireMap(
+            new UpdateStoreQueryParams().setEtlInitialSlaTier(null)
+                .setEtlInitialGrantAclUsers(null)
+                .setEtlInitialWorkloadType(null)));
+    Assert.assertTrue(cleared.isEtlInitialSlaTierSpecified());
+    Assert.assertNull(cleared.getEtlInitialSlaTier());
+    Assert.assertTrue(cleared.isEtlInitialGrantAclUsersSpecified());
+    Assert.assertNull(cleared.getEtlInitialGrantAclUsers());
+    Assert.assertTrue(cleared.isEtlInitialWorkloadTypeSpecified());
+    Assert.assertNull(cleared.getEtlInitialWorkloadType());
+
+    // Requests built straight from HTTP parameters skip the setter and get the same normalization.
+    Map<String, String> raw = new HashMap<>();
+    raw.put(ETL_INITIAL_GRANT_ACL_USERS, "[\" user-a \", \"\"]");
+    Assert.assertEquals(new UpdateStoreQueryParams(raw).getEtlInitialGrantAclUsers(), Arrays.asList("user-a"));
+    raw.put(ETL_INITIAL_GRANT_ACL_USERS, "[]");
+    Assert.assertNull(new UpdateStoreQueryParams(raw).getEtlInitialGrantAclUsers());
   }
 
   private static Map<String, String> toWireMap(UpdateStoreQueryParams params) {
