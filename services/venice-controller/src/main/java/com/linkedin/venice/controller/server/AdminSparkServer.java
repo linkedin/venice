@@ -41,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_MIGRATIO
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_STORAGE_PERSONAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEAD_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DEGRADED_DCS;
@@ -49,6 +50,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_HEARTBEAT_TI
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_INUSE_SCHEMA_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KAFKA_TOPIC_CONFIGS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ONGOING_INCREMENTAL_PUSH_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_PER_REGION_STORAGE_MODE;
@@ -377,6 +379,9 @@ public class AdminSparkServer extends AbstractVeniceService {
         SET_TOPIC_COMPACTION.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.setTopicCompaction(admin)));
 
+    httpService.get(
+        GET_CLUSTER_PROVISIONED_VENICE_UNITS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.getClusterProvisionedVeniceUnits(admin)));
     httpService.post(
         UPDATE_CLUSTER_CONFIG.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, clusterRoutes.updateClusterConfig(admin)));
@@ -494,6 +499,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         LIST_NODES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, nodesAndReplicas.listAllNodes(admin)));
+    httpService.get(
+        GET_LIVE_STORAGE_NODE_COUNT.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, nodesAndReplicas.getLiveStorageNodeCount(admin)));
     httpService.get(
         LIST_REPLICAS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, nodesAndReplicas.listReplicasForStore(admin)));

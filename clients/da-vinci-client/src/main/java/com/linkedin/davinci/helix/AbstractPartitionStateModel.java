@@ -318,6 +318,10 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   }
 
   protected CompletableFuture<Void> removePartitionFromStoreGracefully() {
+    return removePartitionFromStoreGracefully(false);
+  }
+
+  protected CompletableFuture<Void> removePartitionFromStoreGracefully(boolean customizedStateRemoved) {
     // Gracefully drop partition to drain the requests to this partition
     // This method is called during OFFLINE->DROPPED state transition. Due to Zk or other transient issues a store
     // version could miss ONLINE->OFFLINE transition and newer version could come online triggering this transition.
@@ -329,7 +333,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         partition,
         getStoreAndServerConfigs().getStopConsumptionTimeoutInSeconds(),
         storePartitionDescription);
-    removeCustomizedState();
+    if (!customizedStateRemoved) {
+      removeCustomizedState();
+    }
     return dropPartitionFuture;
   }
 
@@ -339,6 +345,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   protected void removeCustomizedState() {
     try {
       waitPartitionPushStatusAccessor();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Interrupted while initializing partition push status accessor.", e);
     } catch (Exception e) {
       throw new VeniceException(
           "Error when initializing partition push status accessor, " + "failed to remove customized state. ",
@@ -352,7 +361,9 @@ public abstract class AbstractPartitionStateModel extends StateModel {
         attempt++;
         if (attempt > 1) {
           logger.info("Wait {} ms to retry.", RETRY_DURATION_MS);
-          Utils.sleep(RETRY_DURATION_MS);
+          if (!Utils.sleep(RETRY_DURATION_MS)) {
+            throw new VeniceException("Interrupted while retrying customized state removal.");
+          }
           logger.info(
               "Attempt #{} in removing customized state for store: {}, partition: {}, on instance: {}",
               attempt,

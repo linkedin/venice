@@ -507,6 +507,10 @@ public final class VenicePushJobConstants {
   /** Sample size to collect for building dictionary: Can be assigned a max of 2GB as {@link ZstdDictTrainer} in ZSTD library takes in sample size as int */
   public static final String COMPRESSION_DICTIONARY_SAMPLE_SIZE = "compression.dictionary.sample.size";
   public static final int DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE = 200 * BYTES_PER_MB; // 200MB
+  /** Source-topic dictionary scan budget, including control messages, divided across partitions with a floor. */
+  public static final String COMPRESSION_DICTIONARY_MAX_MESSAGES = "compression.dictionary.max.messages";
+  public static final long DEFAULT_COMPRESSION_DICTIONARY_MAX_MESSAGES = 1_000_000L;
+  public static final long MIN_COMPRESSION_DICTIONARY_MESSAGES_PER_PARTITION = 1_000L;
   /** Maximum final dictionary size TODO add more details about the current limits */
   public static final String COMPRESSION_DICTIONARY_SIZE_LIMIT = "compression.dictionary.size.limit";
 
@@ -519,6 +523,21 @@ public final class VenicePushJobConstants {
 
   /** Enables Spark's pre-write quota check. Disabled by default. */
   public static final String SPARK_PRE_WRITE_QUOTA_CHECK = "spark.pre.write.quota.check";
+
+  /**
+   * Namespace for the optional VPJ primary-data-writer hook. Every property under this prefix is
+   * forwarded to executor task properties and passed to the hook constructor in the task JVM.
+   */
+  public static final String PUSH_JOB_WRITER_HOOK_PROP_PREFIX = "push.job.writer.hook.";
+
+  /**
+   * Fully-qualified class name of the optional
+   * {@code com.linkedin.venice.writer.VeniceWriterHook}. The class must have a public constructor taking
+   * {@code (String storeName, VeniceProperties taskProperties)}. VPJ constructs one hook per partition writer,
+   * attaches it only to the primary data writer, and does not close it. Hooks must not own resources requiring
+   * task-scoped cleanup. When absent or empty, VPJ creates writers without a hook.
+   */
+  public static final String PUSH_JOB_WRITER_HOOK_CLASS = PUSH_JOB_WRITER_HOOK_PROP_PREFIX + "class";
 
   /**
    * Namespace for the external-storage dual-write subsystem. Every property whose key starts with this

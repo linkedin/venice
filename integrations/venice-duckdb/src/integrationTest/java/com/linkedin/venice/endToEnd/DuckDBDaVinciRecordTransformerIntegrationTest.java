@@ -173,6 +173,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
           VeniceProperties.empty(),
+          null,
           null)) {
         producer.asyncDelete(getKey(1)).get();
       }

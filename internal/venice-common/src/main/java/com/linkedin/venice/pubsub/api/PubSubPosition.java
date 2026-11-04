@@ -32,6 +32,32 @@ public interface PubSubPosition extends Measurable {
   }
 
   /**
+   * Compares this position with {@code other} using only the information carried by the two positions,
+   * i.e. without a consumer, broker connection, or topic metadata. Both positions must belong to the same
+   * topic-partition.
+   * <p>
+   * The default implementation orders positions by their numeric offsets when both are non-negative and
+   * otherwise throws. Implementations whose numeric offset is not meaningful (e.g. log-structured positions
+   * without a dense offset) should override this method when their wire format carries enough information
+   * to establish an order offline.
+   *
+   * @param other the position to compare against; must not be null
+   * @return a negative integer, zero, or a positive integer if this position is respectively before, equal to,
+   *         or after {@code other}
+   * @throws UnsupportedOperationException if the two positions cannot be ordered without external state
+   */
+  default int comparePositionOffline(PubSubPosition other) {
+    long thisOffset = getNumericOffset();
+    long otherOffset = other.getNumericOffset();
+    if (thisOffset >= 0 && otherOffset >= 0) {
+      return Long.compare(thisOffset, otherOffset);
+    }
+    throw new UnsupportedOperationException(
+        "Cannot compare positions offline: " + this + " (" + getClass().getName() + ") vs " + other + " ("
+            + other.getClass().getName() + ")");
+  }
+
+  /**
    * Position wrapper is used to wrap the position type and the position value.
    * This is used to serialize and deserialize the position object when sending and receiving it over the wire.
    * @return the position wrapper

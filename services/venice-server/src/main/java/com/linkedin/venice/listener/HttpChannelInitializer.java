@@ -65,6 +65,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final ReadQuotaEnforcementHandler quotaEnforcer;
   private final VeniceHttp2PipelineInitializerBuilder http2PipelineInitializerBuilder;
   private final ServerConnectionStatsHandler serverConnectionStatsHandler;
+  private final ServerNettyThreadStatsHandler nettyThreadStatsHandler;
   private AggServerQuotaUsageStats quotaUsageStats;
   List<ServerInterceptor> aclInterceptors;
   private final IdentityParser identityParser;
@@ -85,6 +86,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
     this.isDaVinciClient = serverConfig.isDaVinciClient();
+    this.nettyThreadStatsHandler = new ServerNettyThreadStatsHandler(metricsRepository);
 
     boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
     this.singleGetStats = new AggServerHttpRequestStats(
@@ -235,6 +237,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       }
 
       pipeline.addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
+          .addLast(nettyThreadStatsHandler)
           .addLast(new OutboundHttpWrapperHandler(statsHandler))
           .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
       if (loadControllerHandler != null) {

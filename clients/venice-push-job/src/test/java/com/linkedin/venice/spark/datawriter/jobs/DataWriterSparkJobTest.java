@@ -203,7 +203,7 @@ public class DataWriterSparkJobTest {
         // Expected - no real Kafka to connect to. The configs are already set.
         List<Row> emptyRows = Arrays.asList(
             new GenericRowWithSchema(
-                new Object[] { "region1", 0, 0L, 0, 1, new byte[0], new byte[0], 0, new byte[0], null },
+                new Object[] { "region1", 0, 0L, 0, 1, new byte[0], new byte[0], 0, new byte[0], null, null },
                 SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA));
         return getSparkSession().createDataFrame(emptyRows, SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA);
       }

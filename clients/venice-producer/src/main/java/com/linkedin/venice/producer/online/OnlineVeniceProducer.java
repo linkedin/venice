@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.time.Duration;
@@ -50,7 +51,8 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       ClientConfig storeClientConfig,
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
-      ICProvider icProvider) {
+      ICProvider icProvider,
+      VeniceWriterHook writerHook) {
     LOGGER.info("Creating venice online producer for: {}", storeClientConfig.getStoreName());
     this.storeName = storeClientConfig.getStoreName();
     this.icProvider = icProvider;
@@ -95,7 +97,7 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       this.storeClient = (InternalAvroStoreClient<K, V>) tempStoreClient;
       this.schemaReader = ClientFactory.getSchemaReader(clientConfigForSchemaReader, icProvider);
       try (SchemaReader kmeSchemaReader = ClientFactory.getSchemaReader(kmeClientConfig, icProvider)) {
-        configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
+        configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader, writerHook);
       }
     } catch (Throwable e) {
       // When using D2TransportClient, the threads that D2 creates are non-daemon threads which hold up graceful

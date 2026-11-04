@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_MODE;
@@ -45,6 +46,8 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
+import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
@@ -60,12 +63,15 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.AdminMessageTooLargeException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -112,6 +118,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -128,15 +135,24 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.Logger;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -202,6 +218,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -223,6 +240,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         false,
         null,
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -249,6 +267,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             1,
             Version.PushType.INCREMENTAL,
             "remote-kafka-bootstrap-server",
+            -1,
             -1,
             1,
             testStore.getLargestUsedRTVersionNumber());
@@ -279,6 +298,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         "remote-kafka-bootstrap-server",
         -1,
         -1,
+        -1,
         false,
         -1,
         -1);
@@ -291,6 +311,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         1,
         Version.PushType.INCREMENTAL,
         "remote-kafka-bootstrap-server",
+        -1,
         -1,
         1,
         testStore.getLargestUsedRTVersionNumber());
@@ -949,6 +970,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             0,
             Optional.empty(),
             false,
@@ -983,6 +1005,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           Optional.empty(),
+          -1,
           -1,
           0,
           Optional.empty(),
@@ -1315,6 +1338,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -1333,6 +1357,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           Optional.empty(),
+          -1,
           -1,
           1,
           Optional.empty(),
@@ -1380,6 +1405,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             1,
             Optional.empty(),
             false,
@@ -1410,6 +1436,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -1487,6 +1514,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             1,
             Optional.empty(),
             false,
@@ -1512,6 +1540,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -1586,6 +1615,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1607,6 +1637,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             1,
             Optional.empty(),
@@ -1633,6 +1664,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         null,
         Optional.empty(),
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -1696,6 +1728,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1717,6 +1750,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             1,
             Optional.empty(),
@@ -1745,6 +1779,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             Optional.empty(),
+            -1,
             -1,
             Optional.empty(),
             false,
@@ -1808,6 +1843,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1830,6 +1866,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         null,
         Optional.empty(),
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -1895,6 +1932,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -1916,6 +1954,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             1,
             Optional.empty(),
@@ -1942,6 +1981,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         null,
         Optional.empty(),
         Optional.empty(),
+        -1,
         -1,
         Optional.empty(),
         false,
@@ -2008,6 +2048,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -2033,6 +2074,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             Optional.empty(),
+            -1,
             -1,
             Optional.empty(),
             false,
@@ -2100,6 +2142,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             Optional.empty(),
             Optional.empty(),
             -1,
+            -1,
             Optional.empty(),
             false,
             null,
@@ -2125,6 +2168,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -2141,8 +2185,27 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(mockParentAdmin, never()).killOfflinePush(clusterName, version.kafkaTopicName(), true);
   }
 
-  @Test
-  public void testDeferredVersionSwapWaitMessageIsDistinctFromConcurrentPush() {
+  @DataProvider(name = "deferredSwapRecovery")
+  public Object[][] deferredSwapRecovery() {
+    return new Object[][] { { null, new Integer[] { 1, 1 }, true }, { "", new Integer[] { 1, 1 }, true },
+        { "", new Integer[] { 1, 0 }, false }, { "", new Integer[] { 1, IGNORED_CURRENT_VERSION }, false },
+        { "", new Integer[] { 1, null }, false }, { "", new Integer[] {}, false }, { "", new Integer[] { 1 }, false },
+        { "dc-0", new Integer[] { 1, 0 }, false }, { "dc-0", new Integer[] { 1, 1 }, false } };
+  }
+
+  @Test(dataProvider = "deferredSwapRecovery")
+  public void testDeferredVersionSwapRecovery(
+      String targetSwapRegion,
+      Integer[] regionVersions,
+      boolean shouldRecover) {
+    verifyDeferredVersionSwapRecovery(targetSwapRegion, regionVersions, shouldRecover, (admin, name) -> {});
+  }
+
+  private void verifyDeferredVersionSwapRecovery(
+      String targetSwapRegion,
+      Integer[] regionVersions,
+      boolean shouldRecover,
+      BiConsumer<VeniceParentHelixAdmin, String> configureAdmin) {
     String storeName = Utils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin mockInternalAdmin = mock(VeniceHelixAdmin.class);
@@ -2159,37 +2222,40 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
 
-    // The existing version finished its push but is mid deferred (colo-by-colo) version swap: PUSHED on
-    // the parent (push complete but swap not yet done) and not yet current in every region.
     String userPushId = System.currentTimeMillis() + "_https://example.com/user-job";
     VersionImpl version = new VersionImpl(storeName, 1, userPushId);
     version.setVersionSwapDeferred(true);
-    version.setTargetSwapRegion("dc-0");
+    if (targetSwapRegion != null) {
+      version.setTargetSwapRegion(targetSwapRegion);
+    }
     version.setStatus(VersionStatus.PUSHED);
     store.addVersion(version);
     doReturn(store).when(mockParentAdmin).getStore(clusterName, storeName);
 
     Map<String, Integer> currentVersionsPerRegion = new HashMap<>();
-    currentVersionsPerRegion.put("dc-0", 1);
-    currentVersionsPerRegion.put("dc-1", 0);
-    doReturn(currentVersionsPerRegion).when(mockParentAdmin).getCurrentVersionsForMultiColos(clusterName, storeName);
+    for (int i = 0; i < regionVersions.length; i++) {
+      currentVersionsPerRegion.put("dc-" + i, regionVersions[i]);
+    }
+    doReturn(currentVersionsPerRegion).when(mockParentAdmin)
+        .getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(storeName), anyLong());
+    Map<String, ControllerClient> childClients = new HashMap<>();
+    childClients.put("dc-0", mock(ControllerClient.class));
+    childClients.put("dc-1", mock(ControllerClient.class));
+    doReturn(childClients).when(mockInternalAdmin).getControllerClientMap(clusterName);
+    doReturn(10L).when(mockInternalAdmin).getLastSucceededExecutionId(clusterName, storeName);
+    ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
+    doReturn(executionIdAccessor).when(mockInternalAdmin).getExecutionIdAccessor();
+    doReturn(10L).when(executionIdAccessor).getLastGeneratedExecutionId(clusterName);
+    for (ControllerClient client: childClients.values()) {
+      AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+      response.setExecutionId(10L);
+      doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+    }
 
-    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
-    configMap.put(clusterName, config);
-    doReturn(
-        (LingeringStoreVersionChecker) (
-            store1,
-            version1,
-            time,
-            controllerAdmin,
-            requesterCert,
-            identityParser) -> false).when(mockParentAdmin).getLingeringStoreVersionChecker();
-    doReturn(mock(UserSystemStoreLifeCycleHelper.class)).when(mockParentAdmin).getSystemStoreLifeCycleHelper();
-    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
     doReturn(Optional.of(version.kafkaTopicName())).when(mockParentAdmin)
         .getTopicForCurrentPushJob(eq(clusterName), eq(storeName), anyBoolean(), anyBoolean());
 
-    // A compliance push cannot kill the existing push, so the flow reaches the rejection path.
+    // A compliance push cannot preempt the existing user push.
     String incomingPushId = Version.generateCompliancePushId("compliance_push");
     // Stub both the 5-arg overload and the full 17-arg impl it delegates to.
     doCallRealMethod().when(mockParentAdmin).incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1);
@@ -2207,6 +2273,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             any(),
             anyBoolean(),
             any(),
@@ -2216,20 +2283,395 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     HelixVeniceClusterResources mockHelixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
     doReturn(mockHelixVeniceClusterResources).when(mockInternalAdmin).getHelixVeniceClusterResources(clusterName);
     doReturn(mock(VeniceAdminStats.class)).when(mockHelixVeniceClusterResources).getVeniceAdminStats();
+    doReturn(new ClusterLockManager(clusterName)).when(mockHelixVeniceClusterResources).getClusterLockManager();
+    ReadWriteStoreRepository repository = mock(ReadWriteStoreRepository.class);
+    doReturn(repository).when(mockHelixVeniceClusterResources).getStoreMetadataRepository();
+    doReturn(store).when(repository).getStore(storeName);
 
-    try {
-      mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1);
-      fail("Expected VeniceException to be thrown");
-    } catch (VeniceException e) {
+    Version newVersion = new VersionImpl(storeName, 2, incomingPushId);
+    doAnswer(invocation -> {
+      assertEquals(store.getCurrentVersion(), 1);
+      assertEquals(store.getVersion(1).getStatus(), ONLINE);
+      return newVersion;
+    }).when(mockParentAdmin)
+        .addVersionAndTopicOnly(
+            clusterName,
+            storeName,
+            incomingPushId,
+            VERSION_ID_UNSET,
+            1,
+            1,
+            Version.PushType.BATCH,
+            true,
+            false,
+            null,
+            Optional.empty(),
+            -1,
+            -1,
+            Optional.empty(),
+            false,
+            null,
+            -1,
+            store.getLargestUsedRTVersionNumber(),
+            -1,
+            false);
+
+    configureAdmin.accept(mockParentAdmin, storeName);
+    if (shouldRecover) {
+      assertSame(mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1), newVersion);
+      assertEquals(store.getVersion(1).getStatus(), ONLINE);
+      assertEquals(store.getCurrentVersion(), 1);
+      verify(repository).updateStore(store);
+    } else {
+      ConcurrentBatchPushException e = expectThrows(
+          ConcurrentBatchPushException.class,
+          () -> mockParentAdmin.incrementVersionIdempotent(clusterName, storeName, incomingPushId, 1, 1));
       assertTrue(
           e.getMessage().contains("waiting on deferred version swap"),
           "Blocking message should identify the deferred version swap wait: " + e.getMessage());
-      assertTrue(
-          e.getMessage().contains("target swap region(s): dc-0"),
-          "Blocking message should include the target swap region: " + e.getMessage());
+      if (targetSwapRegion != null && !targetSwapRegion.isEmpty()) {
+        assertTrue(
+            e.getMessage().contains("target swap region(s): " + targetSwapRegion),
+            "Blocking message should include the target swap region: " + e.getMessage());
+      }
       Assert.assertFalse(
           e.getMessage().contains("is still in progress"),
           "A deferred-swap wait must not be reported as an in-flight concurrent push: " + e.getMessage());
+      assertEquals(store.getVersion(1).getStatus(), PUSHED);
+      Assert.assertNotEquals(store.getCurrentVersion(), 1);
+      verify(repository, never()).updateStore(any());
+    }
+    verify(mockParentAdmin, never()).killOfflinePush(anyString(), anyString(), anyBoolean());
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryUsesClusterAdminCheckpoint() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+      ExecutionIdAccessor accessor = admin.getVeniceHelixAdmin().getExecutionIdAccessor();
+      doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        // Another store's command advances the cluster checkpoint, but not this store's checkpoint.
+        AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+        response.setExecutionId(11L);
+        doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      }
+    });
+  }
+
+  @DataProvider(name = "deferredSwapAdminConsumption")
+  public Object[][] deferredSwapAdminConsumption() {
+    return new Object[][] { { "pending", "is behind required ID" }, { "allocated", "is behind required ID" },
+        { "missing", "Missing generated admin execution ID" },
+        { "generated-error", "Could not read generated admin execution ID" },
+        { "error", "Cannot read child checkpoint" }, { "exception", "Could not verify child admin consumption" },
+        { "missing-response", "missing response" }, { "missing-child-id", "missing execution ID" } };
+  }
+
+  @Test(dataProvider = "deferredSwapAdminConsumption")
+  public void testDeferredVersionSwapRecoveryWaitsForChildAdminConsumption(String state, String expectedLog) {
+    Logger logger = (Logger) LogManager.getLogger(VeniceParentHelixAdmin.class);
+    InMemoryLogAppender appender = new InMemoryLogAppender.Builder().build();
+    appender.start();
+    logger.addAppender(appender);
+    try {
+      verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+        VeniceHelixAdmin internal = admin.getVeniceHelixAdmin();
+        ExecutionIdAccessor accessor = internal.getExecutionIdAccessor();
+        ControllerClient client = internal.getControllerClientMap(clusterName).get("dc-0");
+        AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+        response.setExecutionId(9L);
+        if ("missing".equals(state)) {
+          doReturn(null).when(accessor).getLastGeneratedExecutionId(clusterName);
+        } else if ("generated-error".equals(state)) {
+          doThrow(new VeniceException("Cannot read generated ID")).when(accessor)
+              .getLastGeneratedExecutionId(clusterName);
+        } else if ("error".equals(state)) {
+          response.setError("Cannot read child checkpoint");
+        } else if ("exception".equals(state)) {
+          doThrow(new VeniceException("Cannot reach child")).when(client)
+              .getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+          return;
+        } else if ("missing-response".equals(state)) {
+          response = null;
+        } else if ("missing-child-id".equals(state)) {
+          response.setExecutionId(-1L);
+        } else if ("allocated".equals(state)) {
+          doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+          response.setExecutionId(10L);
+        }
+        doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      });
+      assertTrue(
+          appender.getLogs().stream().anyMatch(message -> message.contains(expectedLog)),
+          appender.getLogs().toString());
+    } finally {
+      logger.removeAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @DataProvider(name = "pendingDeferredSwapRollback")
+  public Object[][] pendingDeferredSwapRollback() {
+    return new Object[][] { { false, false }, { false, true }, { true, false }, { true, true } };
+  }
+
+  @Test(dataProvider = "pendingDeferredSwapRollback")
+  public void testDeferredVersionSwapRecoveryWithPendingRollback(boolean deferredRollback, boolean parentConsumed) {
+    AtomicReference<VeniceParentHelixAdmin> recoveryAdmin = new AtomicReference<>();
+    AtomicReference<String> recoveryStoreName = new AtomicReference<>();
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+      recoveryAdmin.set(admin);
+      recoveryStoreName.set(name);
+      VeniceHelixAdmin internal = admin.getVeniceHelixAdmin();
+      ExecutionIdAccessor accessor = internal.getExecutionIdAccessor();
+      doCallRealMethod().when(admin).rollbackToBackupVersion(clusterName, name, "dc-0");
+      doCallRealMethod().when(admin).rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+      doAnswer(invocation -> {
+        AdminOperation message = invocation.getArgument(2);
+        assertEquals(message.operationType, AdminMessageType.ROLLBACK_CURRENT_VERSION.getValue());
+        doReturn(11L).when(accessor).getLastGeneratedExecutionId(clusterName);
+        if (!parentConsumed) {
+          // Publication succeeded, but parent consumption times out with no recorded store exception.
+          throw new AdminMessageConsumptionTimeoutException("Parent has not consumed rollback 11", null);
+        }
+        doReturn(11L).when(internal).getLastSucceededExecutionId(clusterName, name);
+        return null;
+      }).when(admin).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(name), any());
+      Runnable rollback = () -> {
+        if (deferredRollback) {
+          admin.rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+        } else {
+          admin.rollbackToBackupVersion(clusterName, name, "dc-0");
+        }
+      };
+      if (parentConsumed) {
+        rollback.run();
+      } else {
+        expectThrows(AdminMessageConsumptionTimeoutException.class, rollback::run);
+        assertEquals(internal.getLastSucceededExecutionId(clusterName, name), Long.valueOf(10L));
+        Assert.assertNull(internal.getLastExceptionForStore(clusterName, name));
+      }
+      assertEquals(admin.getStore(clusterName, name).getVersion(1).getStatus(), PUSHED);
+    });
+    VeniceParentHelixAdmin admin = recoveryAdmin.get();
+    String name = recoveryStoreName.get();
+    String incomingPushId = Version.generateCompliancePushId("compliance_push");
+    for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+      AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+      response.setExecutionId(11L);
+      doReturn(response).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+    }
+    Map<String, Integer> currentVersions = new HashMap<>();
+    currentVersions.put("dc-0", 0);
+    currentVersions.put("dc-1", 1);
+    doReturn(currentVersions).when(admin)
+        .getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(name), anyLong());
+    expectThrows(
+        ConcurrentBatchPushException.class,
+        () -> admin.incrementVersionIdempotent(clusterName, name, incomingPushId, 1, 1));
+    assertEquals(admin.getStore(clusterName, name).getVersion(1).getStatus(), PUSHED);
+
+    // Recovery waits for every child to serve the version.
+    currentVersions.put("dc-0", 1);
+    assertEquals(admin.incrementVersionIdempotent(clusterName, name, incomingPushId, 1, 1).getNumber(), 2);
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoverySerializesRollbackWithSnapshot() throws Exception {
+    CountDownLatch rollbackAttempted = new CountDownLatch(1);
+    AtomicBoolean rollbackBlocked = new AtomicBoolean();
+    AtomicBoolean rollbackSent = new AtomicBoolean();
+    ReentrantLock adminLock = new ReentrantLock();
+    Thread recoveryThread = Thread.currentThread();
+    CompletableFuture<?>[] rollback = new CompletableFuture<?>[1];
+    try {
+      verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+        doAnswer(invocation -> {
+          if (Thread.currentThread() != recoveryThread) {
+            boolean acquired = adminLock.tryLock();
+            rollbackBlocked.set(!acquired);
+            rollbackAttempted.countDown();
+            if (acquired) {
+              return null;
+            }
+          }
+          adminLock.lock();
+          return null;
+        }).when(admin).acquireAdminMessageLock(clusterName, name);
+        doAnswer(invocation -> {
+          adminLock.unlock();
+          return null;
+        }).when(admin).releaseAdminMessageLock(clusterName, name);
+        doCallRealMethod().when(admin).rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0");
+        doAnswer(invocation -> {
+          rollbackSent.set(true);
+          return null;
+        }).when(admin).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(name), any());
+        doAnswer(invocation -> {
+          rollback[0] = CompletableFuture
+              .runAsync(() -> admin.rollbackToBackupVersionForDeferredVersionSwap(clusterName, name, "dc-0"));
+          assertTrue(rollbackAttempted.await(10, TimeUnit.SECONDS));
+          assertTrue(rollbackBlocked.get(), "Rollback must not pass the admin lock between snapshot and finalization");
+          Assert.assertFalse(rollbackSent.get());
+          Map<String, Integer> currentVersions = new HashMap<>();
+          currentVersions.put("dc-0", 1);
+          currentVersions.put("dc-1", 1);
+          return currentVersions;
+        }).when(admin).getCurrentVersionsForDeferredSwapRecovery(eq(clusterName), eq(name), anyLong());
+      });
+    } finally {
+      if (rollback[0] != null) {
+        rollback[0].get(10, TimeUnit.SECONDS);
+      }
+    }
+    assertTrue(rollbackSent.get(), "Rollback must proceed after recovery releases the admin lock");
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryUsesOneDeadline() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, false, (admin, name) -> {
+      AtomicLong clock = new AtomicLong();
+      doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+      doCallRealMethod().when(admin).getCurrentVersionsForDeferredSwapRecovery(anyString(), anyString(), anyLong());
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        doAnswer(invocation -> {
+          assertTrue(invocation.<Integer>getArgument(1) <= 5000);
+          // Exhaust the global budget inside the first blocking request, without sleeping.
+          clock.set(TimeUnit.SECONDS.toNanos(10));
+          AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+          response.setExecutionId(10);
+          return response;
+        }).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      }
+    });
+  }
+
+  @Test
+  public void testDeferredVersionSwapRecoveryShrinksRequestBudgetAcrossRegions() {
+    verifyDeferredVersionSwapRecovery("", new Integer[] { 1, 1 }, true, (admin, name) -> {
+      AtomicLong clock = new AtomicLong();
+      doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+      doCallRealMethod().when(admin).getCurrentVersionsForDeferredSwapRecovery(anyString(), anyString(), anyLong());
+      for (ControllerClient client: admin.getVeniceHelixAdmin().getControllerClientMap(clusterName).values()) {
+        doAnswer(invocation -> {
+          assertEquals(
+              invocation.<Integer>getArgument(1).intValue(),
+              (int) Math.min(5000, 10000 - TimeUnit.NANOSECONDS.toMillis(clock.get())));
+          clock.addAndGet(TimeUnit.SECONDS.toNanos(2));
+          AdminTopicMetadataResponse response = new AdminTopicMetadataResponse();
+          response.setExecutionId(10);
+          return response;
+        }).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+        doAnswer(invocation -> {
+          assertEquals(
+              invocation.<Integer>getArgument(1).intValue(),
+              (int) Math.min(5000, 10000 - TimeUnit.NANOSECONDS.toMillis(clock.get())));
+          clock.addAndGet(TimeUnit.SECONDS.toNanos(2));
+          StoreResponse response = new StoreResponse();
+          StoreInfo child = new StoreInfo();
+          child.setCurrentVersion(1);
+          response.setStore(child);
+          return response;
+        }).when(client).getStoreWithTimeout(eq(name), anyInt());
+      }
+    });
+  }
+
+  @DataProvider
+  public Object[][] explicitDeferredSwapRecovery() {
+    return new Object[][] { { "complete", true }, { "allocated", false }, { "child-rollback-pending", false },
+        { "missing-checkpoint", false }, { "checkpoint-error", false }, { "missing-child-id", false },
+        { "missing-store", false }, { "store-error", false }, { "rolled-back", false }, { "deadline", false },
+        { "targeted", false }, { "newer-parent-version", false }, { "empty-regions", false }, { "not-deferred", false },
+        { "not-pushed", false }, { "filtered", true }, { "filtered-lagging", false },
+        { "filtered-rolled-back", false } };
+  }
+
+  @Test(dataProvider = "explicitDeferredSwapRecovery")
+  public void testRollForwardReconcilesAlreadyCurrentDeferredVersion(String state, boolean recover) {
+    VeniceParentHelixAdmin admin = spy(parentAdmin);
+    doNothing().when(admin).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(admin).releaseAdminMessageLock(clusterName, storeName);
+    doReturn(store).when(admin).getStore(clusterName, storeName);
+    Version version = new VersionImpl(storeName, 5, "synthetic-push");
+    version.setVersionSwapDeferred(true);
+    version.setStatus(PUSHED);
+    if ("targeted".equals(state)) {
+      version.setTargetSwapRegion("dc-0");
+    }
+    if ("not-deferred".equals(state)) {
+      version.setVersionSwapDeferred(false);
+    }
+    if ("not-pushed".equals(state)) {
+      version.setStatus(ONLINE);
+    }
+    if ("newer-parent-version".equals(state)) {
+      doReturn(6).when(store).getCurrentVersion();
+    }
+    doReturn(Collections.singletonList(version)).when(store).getVersions();
+    doReturn(version).when(store).getVersion(5);
+    ExecutionIdAccessor accessor = internalAdmin.getExecutionIdAccessor();
+    doReturn("allocated".equals(state) ? 11L : 10L).when(accessor).getLastGeneratedExecutionId(clusterName);
+    Map<String, ControllerClient> clients = new HashMap<>();
+    clients.put("dc-1", mock(ControllerClient.class));
+    clients.put("dc-0", mock(ControllerClient.class));
+    if ("empty-regions".equals(state)) {
+      clients.clear();
+    }
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(Collections.singletonMap("dc-0", String.valueOf(Store.NON_EXISTING_VERSION))).when(admin)
+        .getFutureVersionsForMultiColos(clusterName, storeName);
+    AtomicLong clock = new AtomicLong();
+    doAnswer(invocation -> clock.get()).when(admin).deferredSwapRecoveryTimeNs();
+    for (ControllerClient client: clients.values()) {
+      AdminTopicMetadataResponse checkpoint = new AdminTopicMetadataResponse();
+      checkpoint.setExecutionId("child-rollback-pending".equals(state) ? 9 : 10);
+      if ("filtered-lagging".equals(state) && client == clients.get("dc-1")) {
+        checkpoint.setExecutionId(9L);
+      }
+      if ("missing-child-id".equals(state)) {
+        checkpoint.setExecutionId(-1);
+      }
+      if ("checkpoint-error".equals(state)) {
+        checkpoint.setError("Cannot read checkpoint");
+      }
+      if ("missing-checkpoint".equals(state)) {
+        checkpoint = null;
+      }
+      doReturn(checkpoint).when(client).getAdminTopicMetadataWithTimeout(eq(Optional.empty()), anyInt());
+      StoreResponse response = new StoreResponse();
+      StoreInfo child = new StoreInfo();
+      child.setCurrentVersion(
+          "rolled-back".equals(state) || ("filtered-rolled-back".equals(state) && client == clients.get("dc-1"))
+              ? 4
+              : 5);
+      if (!"missing-store".equals(state)) {
+        response.setStore(child);
+      }
+      if ("store-error".equals(state)) {
+        response.setError("Cannot read store");
+      }
+      doAnswer(invocation -> {
+        if ("deadline".equals(state)) {
+          clock.set(TimeUnit.SECONDS.toNanos(10));
+        }
+        return response;
+      }).when(client).getStoreWithTimeout(eq(storeName), anyInt());
+    }
+    String regionFilter = state.startsWith("filtered") ? "dc-0" : "";
+    if (recover) {
+      admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
+      verify(store).updateVersionStatus(5, ONLINE);
+      verify(store).setCurrentVersion(5);
+    } else {
+      expectThrows(VeniceException.class, () -> admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter));
+      verify(store, never()).updateVersionStatus(5, ONLINE);
+      verify(store, never()).setCurrentVersion(5);
+    }
+    verify(admin).releaseAdminMessageLock(clusterName, storeName);
+    verify(admin, never()).sendAdminMessageAndWaitForConsumed(anyString(), anyString(), any());
+    for (ControllerClient client: clients.values()) {
+      verify(client, never()).rollForwardToFutureVersion(anyString(), anyString(), anyInt());
     }
   }
 
@@ -3457,6 +3899,99 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
+  public void testGetClusterProvisionedVeniceUnitsUsesLocalStoreMetadata() {
+    Store userStore = TestUtils.createTestStore("user_store", "owner", 0);
+    userStore.setVeniceUnits(20);
+    Store systemStore = TestUtils.createTestStore(Store.SYSTEM_STORE_NAME_PREFIX + "metadata", "owner", 0);
+    systemStore.setVeniceUnits(100);
+    doReturn(Arrays.asList(userStore, systemStore)).when(internalAdmin).getAllStores(clusterName);
+    doCallRealMethod().when(internalAdmin).getClusterProvisionedVeniceUnits(clusterName);
+
+    assertEquals(parentAdmin.getClusterProvisionedVeniceUnits(clusterName), 20L);
+    verify(internalAdmin).getClusterProvisionedVeniceUnits(clusterName);
+    doThrow(new VeniceException("Not the leader")).when(internalAdmin).getAllStores(clusterName);
+    assertThrows(VeniceException.class, () -> parentAdmin.getClusterProvisionedVeniceUnits(clusterName));
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountAcrossChildFabrics() {
+    ControllerClient firstClient = mock(ControllerClient.class);
+    ControllerClient secondClient = mock(ControllerClient.class);
+    Map<String, ControllerClient> clients = new LinkedHashMap<>();
+    clients.put("dc-0", firstClient);
+    clients.put("dc-1", secondClient);
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    LiveStorageNodeCountResponse firstResponse = new LiveStorageNodeCountResponse();
+    firstResponse.setLiveStorageNodeCountPerFabric(Collections.singletonMap("dc-0", 3));
+    LiveStorageNodeCountResponse secondResponse = new LiveStorageNodeCountResponse();
+    secondResponse.setLiveStorageNodeCountPerFabric(Collections.singletonMap("dc-1", 0));
+    doReturn(firstResponse).when(firstClient).getLiveStorageNodeCount();
+    doReturn(secondResponse).when(secondClient).getLiveStorageNodeCount();
+
+    Map<String, Integer> expected = new HashMap<>();
+    expected.put("dc-0", 3);
+    expected.put("dc-1", 0);
+    assertEquals(parentAdmin.getLiveStorageNodeCount(clusterName), expected);
+    verify(firstClient).getLiveStorageNodeCount();
+    verify(secondClient).getLiveStorageNodeCount();
+
+    secondResponse.setError("Child unavailable");
+    VeniceException error = expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(error.getMessage().contains("dc-1"));
+    assertTrue(error.getMessage().contains("Child unavailable"));
+  }
+
+  @DataProvider
+  public Object[][] invalidLiveStorageNodeCounts() {
+    Map<String, Integer> extraFabric = new HashMap<>();
+    extraFabric.put("dc-0", 1);
+    extraFabric.put("dc-1", 2);
+    return new Object[][] { { null }, { Collections.emptyMap() }, { Collections.singletonMap("wrong-fabric", 1) },
+        { Collections.singletonMap("dc-0", null) }, { Collections.singletonMap("dc-0", -1) }, { extraFabric } };
+  }
+
+  @Test(dataProvider = "invalidLiveStorageNodeCounts")
+  public void testGetLiveStorageNodeCountRejectsInvalidChildCounts(Map<String, Integer> counts) {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    LiveStorageNodeCountResponse response = new LiveStorageNodeCountResponse();
+    response.setLiveStorageNodeCountPerFabric(counts);
+    doReturn(response).when(client).getLiveStorageNodeCount();
+
+    VeniceException error = expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(error.getMessage().contains("dc-0"));
+    assertTrue(error.getMessage().contains("invalid fabric counts"));
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountRejectsChildRequestFailures() {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    doReturn(null).when(client).getLiveStorageNodeCount();
+    VeniceException nullResponseError =
+        expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(nullResponseError.getMessage().contains("dc-0"));
+    assertTrue(nullResponseError.getMessage().contains("null response"));
+
+    VeniceException cause = new VeniceException("Request failed");
+    doThrow(cause).when(client).getLiveStorageNodeCount();
+    VeniceException requestError =
+        expectThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    assertTrue(requestError.getMessage().contains("dc-0"));
+    assertSame(requestError.getCause(), cause);
+  }
+
+  @Test
+  public void testGetLiveStorageNodeCountRequiresParentLeadership() {
+    ControllerClient client = mock(ControllerClient.class);
+    doReturn(Collections.singletonMap("dc-0", client)).when(internalAdmin).getControllerClientMap(clusterName);
+    doThrow(new VeniceException("Not the leader")).when(internalAdmin).checkControllerLeadershipFor(clusterName);
+
+    assertThrows(VeniceException.class, () -> parentAdmin.getLiveStorageNodeCount(clusterName));
+    verify(client, never()).getLiveStorageNodeCount();
+  }
+
+  @Test
   public void testGetStorageModePerRegion() {
     String storeName = "test_store_per_region_storage_mode";
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
@@ -4118,6 +4653,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               null,
               Optional.empty(),
               -1,
+              -1,
               1,
               Optional.empty(),
               false,
@@ -4156,6 +4692,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
               Optional.empty(),
               Optional.empty(),
               -1,
+              -1,
               Optional.empty(),
               false,
               null,
@@ -4182,6 +4719,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                 null,
                 Optional.empty(),
                 Optional.empty(),
+                -1,
                 -1,
                 Optional.empty(),
                 false,
@@ -4218,6 +4756,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             0,
             Optional.empty(),
             false,
@@ -4240,6 +4779,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             null,
             Optional.empty(),
+            -1,
             -1,
             0,
             Optional.empty(),
@@ -4445,6 +4985,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           null,
+          -1,
           -1,
           null,
           false,
@@ -4740,6 +5281,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             null,
             Optional.empty(),
             -1,
+            -1,
             0,
             Optional.empty(),
             expectedVersionSwapDeferred,
@@ -4770,6 +5312,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           true, // versionSwapDeferred input - reset to false for system stores
           regionName, // targetedRegions input - reset to null for system stores
@@ -4791,6 +5334,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           null,
           Optional.empty(),
+          -1,
           -1,
           0,
           Optional.empty(),
@@ -4847,6 +5391,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -4877,6 +5422,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -4906,6 +5452,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -4946,6 +5493,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -4990,6 +5538,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5028,6 +5577,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5056,6 +5606,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5088,6 +5639,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5145,6 +5697,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -5168,6 +5721,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5193,6 +5747,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         any(),
         any(),
         any(),
+        anyLong(),
         anyLong(),
         anyInt(),
         any(),
@@ -5241,6 +5796,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5298,6 +5854,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -5322,6 +5879,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           "dc-0,dc-2",
@@ -5345,6 +5903,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         any(),
         any(),
         any(),
+        anyLong(),
         anyLong(),
         anyInt(),
         any(),
@@ -5377,6 +5936,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5416,6 +5976,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           Optional.empty(),
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,
@@ -5452,6 +6013,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5503,6 +6065,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             any(),
             any(),
             anyLong(),
+            anyLong(),
             anyInt(),
             any(),
             anyBoolean(),
@@ -5525,6 +6088,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           null,
           Optional.empty(),
           Optional.empty(),
+          -1,
           -1,
           Optional.empty(),
           false,
@@ -5551,6 +6115,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         any(),
         any(),
         anyLong(),
+        anyLong(),
         anyInt(),
         any(),
         deferredSwapCaptor.capture(),
@@ -5566,5 +6131,68 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertTrue(capturedRegions.contains("dc-0"));
     assertTrue(capturedRegions.contains("dc-2"));
     Assert.assertFalse(capturedRegions.contains("dc-1"));
+  }
+
+  /**
+   * The absolute rewind-epoch field was introduced in AdminOperation schema v106. Until the cluster's agreed
+   * admin-operation protocol version (ZK) advances to v106, a non-default epoch must be suppressed so the
+   * SemanticDetector serialization guard does not reject the AddVersion message; the relative rewind override
+   * carries the behavior in the meantime. Once the cluster reaches v106 the exact epoch flows through unchanged.
+   */
+  @Test
+  public void testGetAddVersionMessageAppliesProtocolAwareRewindEpochFallback() {
+    String hybridStoreName = "test-rewind-epoch-store";
+    long configuredEpoch = 1_700_000_000L;
+
+    // Legacy cluster still pinned below v106: epoch must be suppressed, relative override preserved.
+    AddVersion suppressed = buildAddVersionMessage(
+        hybridStoreName,
+        configuredEpoch,
+        (long) (VeniceParentHelixAdmin.REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION - 1));
+    assertEquals(
+        suppressed.rewindEpochTimeInSecondsOverride,
+        -1L,
+        "Absolute epoch must be suppressed when the cluster protocol version is below v106");
+    assertEquals(suppressed.rewindTimeInSecondsOverride, 100L, "Relative rewind override must still be propagated");
+
+    // Cluster at exactly v106: epoch flows through.
+    AddVersion atTargetVersion = buildAddVersionMessage(
+        hybridStoreName,
+        configuredEpoch,
+        (long) VeniceParentHelixAdmin.REWIND_EPOCH_ADMIN_OPERATION_PROTOCOL_VERSION);
+    assertEquals(
+        atTargetVersion.rewindEpochTimeInSecondsOverride,
+        configuredEpoch,
+        "Absolute epoch must flow through once the cluster protocol version reaches v106");
+
+    // Unset protocol version (defaults to latest): epoch flows through.
+    AddVersion unsetVersion = buildAddVersionMessage(hybridStoreName, configuredEpoch, null);
+    assertEquals(
+        unsetVersion.rewindEpochTimeInSecondsOverride,
+        configuredEpoch,
+        "Absolute epoch must flow through when the protocol version is unset (defaults to latest)");
+  }
+
+  private AddVersion buildAddVersionMessage(String hybridStoreName, long configuredEpoch, Long adminProtocolVersion) {
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setAdminOperationProtocolVersion(adminProtocolVersion);
+    doReturn(metadata).when(adminTopicMetadataAccessor).getMetadata(clusterName);
+
+    HybridStoreConfigImpl hybridStoreConfig =
+        new HybridStoreConfigImpl(100L, 1000L, 10L, BufferReplayPolicy.REWIND_FROM_EOP);
+    hybridStoreConfig.setRewindEpochTimeInSecondsOverride(configuredEpoch);
+    Version version = new VersionImpl(hybridStoreName, 1, "test-push-id");
+    version.setHybridStoreConfig(hybridStoreConfig);
+
+    return parentAdmin.getAddVersionMessage(
+        clusterName,
+        hybridStoreName,
+        "test-push-id",
+        version,
+        1,
+        Version.PushType.BATCH,
+        null,
+        -1,
+        -1);
   }
 }

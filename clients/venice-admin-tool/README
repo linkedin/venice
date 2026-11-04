@@ -154,6 +154,8 @@ Commands:
                                                       Requires: --infile --outfile --cluster-list --base-path
     --get-all-migration-push-strategies               Get migration push strategies for all the voldemort stores.
                                                       Requires: --url --cluster
+    --get-cluster-provisioned-venice-units             Get total configured Venice Units across all non-system stores in a cluster.
+                                                      Requires: --url --cluster
     --get-deletable-store-topics                      Get a list of deletable store topics in the fabric that belongs to the controller
                                                       handling the request.
                                                       Requires: --url --cluster
@@ -161,6 +163,9 @@ Commands:
                                                       Requires: --url --cluster --execution
     --get-kafka-topic-configs                         Get configs of a topic through controllers.
                                                       Requires: --url --kafka-topic-name
+    --get-live-storage-node-count                     Get live, enabled storage-node counts for the local fabric (child controller)
+                                                      or all child fabrics (parent controller).
+                                                      Requires: --url --cluster
     --get-migration-push-strategy                     Get migration push strategy for the specified voldemort store.
                                                       Requires: --url --cluster --voldemort-store
     --get-routers-cluster-config                      Get cluster level router's config.
@@ -542,9 +547,11 @@ java -jar venice-admin-tool-all.jar --estimate-data-recovery-time --url <url> --
 java -jar venice-admin-tool-all.jar --execute-data-recovery --url <url> --recovery-command <recovery-command> --source-fabric <source-fabric> --dest-fabric <dest-fabric> --datetime <datetime> [--stores <stores>] [--cluster <cluster>] [--extra-command-args <extra-command-args>] [--debug ] [--non-interactive ]
 java -jar venice-admin-tool-all.jar --extract-venice-zk-paths --infile <infile> --outfile <outfile> --cluster-list <cluster-list> --base-path <base-path>
 java -jar venice-admin-tool-all.jar --get-all-migration-push-strategies --url <url> --cluster <cluster>
+java -jar venice-admin-tool-all.jar --get-cluster-provisioned-venice-units --url <url> --cluster <cluster>
 java -jar venice-admin-tool-all.jar --get-deletable-store-topics --url <url> --cluster <cluster>
 java -jar venice-admin-tool-all.jar --get-execution --url <url> --cluster <cluster> --execution <execution>
 java -jar venice-admin-tool-all.jar --get-kafka-topic-configs --url <url> --kafka-topic-name <kafka-topic-name>
+java -jar venice-admin-tool-all.jar --get-live-storage-node-count --url <url> --cluster <cluster>
 java -jar venice-admin-tool-all.jar --get-migration-push-strategy --url <url> --cluster <cluster> --voldemort-store <voldemort-store>
 java -jar venice-admin-tool-all.jar --get-routers-cluster-config --url <url> --cluster <cluster>
 java -jar venice-admin-tool-all.jar --get-storage-persona --url <url> --cluster <cluster> --storage-persona <storage-persona>
@@ -604,4 +611,3 @@ Summarize the replicas status from the result of command "--replicas-on-storage-
 > output | jq '.replicas | group_by(.instance)[]|.[0].instance.nodeId, length'
 4. Get number of ${status} replicas per node from result of "--replicas-of-store"
 > output | jq '[.replicas[]|select(.status=="${status}")] | group_by(.instance)[]|.[0].instance.nodeId, length'
-

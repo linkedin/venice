@@ -158,6 +158,39 @@ Store-load-controller metrics are registered and emitted in RRD and OpenTelemetr
 `setStoreLoadControllerEnabled(true)` is configured. Both features are disabled by default. These settings do not
 disable core request metrics, no-available-replica metrics, or aggregate instance-health metrics.
 
+### Application Execution Context
+
+Applications with thread-bound context can configure `setExecutionContextProvider(ExecutionContextProvider)`. The
+provider captures the caller's context before asynchronous work and supplies a reusable snapshot that runs tasks
+synchronously under that context. Fast Client uses it for single-get and batch/compute retries, response
+deserialization, and future/streaming completion tasks, including requests that do not retry and optional dual-read
+completion when either the Fast Client or Thin Client finishes.
+
+One snapshot is captured per logical request and shared by its routes and retry attempts. All records in one batch
+invocation use that request's originating context; separate invocations may have different contexts. Propagation is
+scoped to response/decoder tasks rather than individual records, so its scope count does not grow with the number of
+records in a response. Application callbacks must restore any context changes they make before returning.
+
+The provider must restore each worker's previous context in a `finally` block, including on exceptions, and must not
+swallow exceptions or execute failed callbacks again. Snapshots must support concurrent use by the original request and
+its retry. The default provider runs tasks directly without capturing or changing context, and returns tasks and
+callbacks unchanged instead of decorating them, preserving existing behavior. Applications must supply their context
+implementation; no context framework is selected automatically.
+
+Failures from scoped work are reported before the installed scope exits, without replaying callbacks. If installation or
+scope cleanup itself fails while the request is still pending, the affected operation reports the failure through its
+request completion rather than running work without context. That failure notification may run under the worker's
+previous context; a failure already reported from inside the scope is not reported again. A cleanup failure cannot
+replace an already-delivered result. With a configured provider, terminal streaming notification waits for record
+callbacks already in progress; records arriving after completion has been claimed are ignored.
+
+The guarantee covers code that executes within the client's scoped tasks, including streaming callbacks and future
+continuations that actually run inline on the scoped completing thread. A plain `CompletableFuture` can also execute a
+pending synchronous continuation on another thread helping complete the future, such as a timed `get()` waiter, even
+when the continuation was registered before completion. Such execution is outside the client's scope. Applications
+remain responsible for propagating context to these continuations, to asynchronous continuation executors, and to
+callbacks attached after completion, which Java executes on the registering thread.
+
 ## Configuration Options
 
 Key configuration options for `ClientConfig`:

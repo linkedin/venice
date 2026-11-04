@@ -25,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.spark.utils.OfflineOrderedTestPosition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import com.linkedin.venice.vpj.pubsub.input.PubSubSplitIterator;
@@ -308,9 +309,31 @@ public class SparkPubSubInputPartitionReaderTest {
     assertNotNull(row, "Row should not be null");
     assertEquals(
         row.numFields(),
-        10,
-        "Row should have 10 fields as per RAW_PUBSUB_INPUT_TABLE_SCHEMA (including chunked_key_suffix)");
+        11,
+        "Row should have 11 fields as per RAW_PUBSUB_INPUT_TABLE_SCHEMA (including chunked_key_suffix and position)");
+    assertEquals(
+        row.getBinary(10),
+        ApacheKafkaOffsetPosition.of(500L).toWireFormatBytes(),
+        "Position column should hold the serialized source position");
 
+    reader.close();
+
+    // Case 1b: a position without a numeric offset (-1) still yields its serialized bytes, so records can be
+    // ordered by position downstream
+    reader = createReaderWithMockIterator();
+    PubSubPosition offlineOrderedPosition = new OfflineOrderedTestPosition(3, 7L);
+    PubSubSplitIterator.PubSubInputRecord noOffsetRecord =
+        createMockPutRecord(-1L, "no-offset-key", "no-offset-value", 40, null, 0);
+    when(noOffsetRecord.getPubSubMessage().getPosition()).thenReturn(offlineOrderedPosition);
+    when(mockSplitIterator.next()).thenReturn(noOffsetRecord).thenReturn(null);
+
+    assertTrue(reader.next(), "Reader should process message without numeric offset");
+    row = reader.get();
+    assertEquals(row.getLong(2), -1L, "Offset column should keep the numeric offset as-is");
+    assertEquals(
+        row.getBinary(10),
+        offlineOrderedPosition.toWireFormatBytes(),
+        "Position column should hold the serialized position even when the numeric offset is -1");
     reader.close();
 
     // Case 2: Verify region and partition are properly set
@@ -445,7 +468,7 @@ public class SparkPubSubInputPartitionReaderTest {
     InternalRow row = reader.get();
 
     assertNotNull(row, "Row should not be null");
-    assertEquals(row.numFields(), 10, "Row should have 10 fields including chunked_key_suffix");
+    assertEquals(row.numFields(), 11, "Row should have 11 fields including chunked_key_suffix and position");
 
     // Field index 9 is chunked_key_suffix (should be null for non-chunked messages)
     assertTrue(row.isNullAt(9), "chunked_key_suffix should be null for non-chunked messages");
@@ -487,7 +510,7 @@ public class SparkPubSubInputPartitionReaderTest {
     InternalRow row = reader.get();
 
     assertNotNull(row, "Row should not be null");
-    assertEquals(row.numFields(), 10, "Row should have 10 fields");
+    assertEquals(row.numFields(), 11, "Row should have 11 fields");
 
     // Verify the key was split correctly - should contain only the user key
     byte[] keyBytes = row.getBinary(5);

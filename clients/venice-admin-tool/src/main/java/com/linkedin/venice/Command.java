@@ -275,6 +275,15 @@ public enum Command {
       "remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
       new Arg[] { URL, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }, new Arg[] { CLUSTER }
   ), LIST_STORAGE_NODES("list-storage-nodes", "", new Arg[] { URL, CLUSTER }),
+  GET_CLUSTER_PROVISIONED_VENICE_UNITS(
+      "get-cluster-provisioned-venice-units",
+      "Get total configured Venice Units across all non-system stores in a cluster", new Arg[] { URL, CLUSTER }
+  ),
+  GET_LIVE_STORAGE_NODE_COUNT(
+      "get-live-storage-node-count",
+      "Get live, enabled storage-node counts for the local fabric (child controller) or all child fabrics (parent controller)",
+      new Arg[] { URL, CLUSTER }
+  ),
   CLUSTER_HEALTH_INSTANCES(
       "cluster-health-instances", "List the status for every instance", new Arg[] { URL, CLUSTER },
       new Arg[] { ENABLE_DISABLED_REPLICA }

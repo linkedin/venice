@@ -2,11 +2,14 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_NAME;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerRoute.HEALTH;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -15,11 +18,19 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ParentControllerRegionState;
+import com.linkedin.venice.controllerapi.ClusterProvisionedVeniceUnitsResponse;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
+import com.linkedin.venice.controllerapi.LiveStorageNodeCountResponse;
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -34,7 +45,9 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -59,6 +72,113 @@ import spark.Response;
 
 
 public class AdminSparkServerTest {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 30000)
+  public void testClusterCapacityEndpointsThroughControllerClient(boolean parent) throws Exception {
+    String clusterName = "capacity_cluster";
+    int port = TestUtils.getFreePort();
+    String controllerUrl = "http://localhost:" + port;
+    Admin admin = mock(Admin.class);
+    when(admin.getLogContext()).thenReturn(LogContext.EMPTY);
+    when(admin.isParent()).thenReturn(parent);
+    when(admin.getParentControllerRegionState()).thenReturn(ParentControllerRegionState.ACTIVE);
+    when(admin.isLeaderControllerFor(clusterName)).thenReturn(true);
+    when(admin.getClusterProvisionedVeniceUnits(clusterName)).thenReturn((long) Integer.MAX_VALUE + 10);
+    Map<String, Integer> counts = new HashMap<>();
+    counts.put("dc-0", 3);
+    if (parent) {
+      counts.put("dc-1", 0);
+    }
+    when(admin.getLiveStorageNodeCount(clusterName)).thenReturn(counts);
+    VeniceControllerRequestHandler requestHandler = mock(VeniceControllerRequestHandler.class);
+    when(requestHandler.getStoreRequestHandler()).thenReturn(mock(StoreRequestHandler.class));
+    when(requestHandler.getSchemaRequestHandler()).thenReturn(mock(SchemaRequestHandler.class));
+    when(requestHandler.getClusterAdminOpsRequestHandler()).thenReturn(mock(ClusterAdminOpsRequestHandler.class));
+    when(requestHandler.getLeaderControllerDetails(any())).thenReturn(
+        LeaderControllerGrpcResponse.newBuilder().setClusterName(clusterName).setHttpUrl(controllerUrl).build());
+
+    MetricsRepository metricsRepository = new MetricsRepository();
+    try (
+        InternalAvroSpecificSerializer<PushJobDetails> serializer =
+            AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+        AdminSparkServer server = new AdminSparkServer(
+            port,
+            admin,
+            metricsRepository,
+            Collections.singleton(clusterName),
+            false,
+            Optional.empty(),
+            false,
+            Optional.empty(),
+            Collections.emptyList(),
+            VeniceProperties.empty(),
+            false,
+            new PubSubTopicRepository(),
+            requestHandler,
+            serializer,
+            () -> true);
+        ControllerClient client = new ControllerClient(clusterName, controllerUrl);
+        CloseableHttpClient httpClient = HttpClients.custom()
+            .setDefaultRequestConfig(RequestConfig.custom().setConnectTimeout(5000).setSocketTimeout(5000).build())
+            .build()) {
+      server.start();
+      ClusterProvisionedVeniceUnitsResponse vuResponse = client.getClusterProvisionedVeniceUnits();
+      assertFalse(vuResponse.isError(), vuResponse.getError());
+      assertEquals(vuResponse.getCluster(), clusterName);
+      assertEquals(vuResponse.getProvisionedVeniceUnits(), (long) Integer.MAX_VALUE + 10);
+      LiveStorageNodeCountResponse nodeResponse = client.getLiveStorageNodeCount();
+      assertFalse(nodeResponse.isError(), nodeResponse.getError());
+      assertEquals(nodeResponse.getCluster(), clusterName);
+      assertEquals(nodeResponse.getLiveStorageNodeCountPerFabric(), counts);
+
+      clearInvocations(admin);
+      ControllerRoute[] routes = { GET_CLUSTER_PROVISIONED_VENICE_UNITS, GET_LIVE_STORAGE_NODE_COUNT };
+      for (ControllerRoute route: routes) {
+        assertControllerError(
+            httpClient,
+            controllerUrl + route.getPath(),
+            HttpStatus.SC_BAD_REQUEST,
+            ErrorType.BAD_REQUEST);
+      }
+      when(admin.isLeaderControllerFor(clusterName)).thenReturn(false);
+      for (ControllerRoute route: routes) {
+        assertControllerError(
+            httpClient,
+            controllerUrl + route.getPath() + "?" + CLUSTER + "=" + clusterName,
+            HttpConstants.SC_MISDIRECTED_REQUEST,
+            ErrorType.INCORRECT_CONTROLLER);
+      }
+      verify(admin, never()).getClusterProvisionedVeniceUnits(any());
+      verify(admin, never()).getLiveStorageNodeCount(any());
+
+      when(admin.isLeaderControllerFor(clusterName)).thenReturn(true);
+      doThrow(new VeniceException("Metadata unavailable")).when(admin).getClusterProvisionedVeniceUnits(clusterName);
+      doThrow(new VeniceException("Child unavailable")).when(admin).getLiveStorageNodeCount(clusterName);
+      for (ControllerRoute route: routes) {
+        assertControllerError(
+            httpClient,
+            controllerUrl + route.getPath() + "?" + CLUSTER + "=" + clusterName,
+            HttpStatus.SC_INTERNAL_SERVER_ERROR,
+            ErrorType.GENERAL_ERROR);
+      }
+    } finally {
+      metricsRepository.close();
+    }
+  }
+
+  private void assertControllerError(
+      CloseableHttpClient client,
+      String url,
+      int expectedStatus,
+      ErrorType expectedErrorType) throws IOException {
+    try (CloseableHttpResponse response = client.execute(new HttpGet(url))) {
+      assertEquals(response.getStatusLine().getStatusCode(), expectedStatus);
+      ControllerResponse controllerResponse = AdminSparkServer.OBJECT_MAPPER
+          .readValue(EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8), ControllerResponse.class);
+      assertTrue(controllerResponse.isError());
+      assertEquals(controllerResponse.getErrorType(), expectedErrorType);
+    }
+  }
+
   @Test
   public void testHealthResponseAndFailureMarker() throws Exception {
     for (boolean ready: new boolean[] { false, true }) {

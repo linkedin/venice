@@ -107,6 +107,7 @@ public class UserSystemStoreLifeCycleHelper {
           null,
           Optional.empty(),
           -1,
+          -1,
           Optional.empty(),
           false,
           null,

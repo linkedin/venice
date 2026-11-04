@@ -12,7 +12,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
@@ -306,6 +305,7 @@ public class TestVeniceControllerClusterConfig {
   public void testHelixCloudConfig() {
     Properties baseProps = getBaseSingleRegionProperties(false);
     baseProps.setProperty(CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED, "true");
+    baseProps.setProperty("controller.helix.cloud.id", "legacy-id");
 
     UndefinedPropertyException e1 = expectThrows(
         UndefinedPropertyException.class,
@@ -319,32 +319,29 @@ public class TestVeniceControllerClusterConfig {
 
     baseProps.setProperty(CONTROLLER_HELIX_CLOUD_PROVIDER, CloudProvider.AZURE.name());
     VeniceControllerClusterConfig clusterConfig1 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
-    validateCloudConfig(clusterConfig1, CloudProvider.AZURE, null, null, null);
+    validateCloudConfig(clusterConfig1, CloudProvider.AZURE, null, null);
 
     CloudProvider cloudProvider = CloudProvider.CUSTOMIZED;
-    String cloudId = "ABC";
     String processorName = "testProcessor";
     List<String> cloudInfoSources = Arrays.asList("source1", "source2");
 
     baseProps.setProperty(CONTROLLER_HELIX_CLOUD_PROVIDER, cloudProvider.name());
-    baseProps.setProperty(CONTROLLER_HELIX_CLOUD_ID, cloudId);
     baseProps.setProperty(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, processorName);
     baseProps.setProperty(CONTROLLER_HELIX_CLOUD_INFO_SOURCES, StringUtils.join(cloudInfoSources, ","));
 
     VeniceControllerClusterConfig clusterConfig2 = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
-    validateCloudConfig(clusterConfig2, CloudProvider.CUSTOMIZED, cloudId, processorName, cloudInfoSources);
+    validateCloudConfig(clusterConfig2, CloudProvider.CUSTOMIZED, processorName, cloudInfoSources);
   }
 
   private void validateCloudConfig(
       VeniceControllerClusterConfig clusterConfig,
       CloudProvider cloudProvider,
-      String cloudId,
       String processorName,
       List<String> cloudInfoSources) {
     CloudConfig cloudConfig = clusterConfig.getHelixCloudConfig();
     assertTrue(cloudConfig.isCloudEnabled());
     assertEquals(cloudConfig.getCloudProvider(), cloudProvider.name());
-    assertEquals(cloudConfig.getCloudID(), cloudId);
+    assertFalse(cloudConfig.getRecord().getSimpleFields().containsKey("CLOUD_ID"));
     assertEquals(cloudConfig.getCloudInfoProcessorName(), processorName);
     assertEquals(cloudConfig.getCloudInfoSources(), cloudInfoSources);
   }

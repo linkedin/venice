@@ -177,6 +177,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -1664,18 +1665,22 @@ public class VenicePushJob implements AutoCloseable {
     return externalD2Client != null ? externalD2Client : D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
   }
 
-  private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
+  @VisibleForTesting
+  Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
     if (!pushJobSetting.isZstdDictCreationRequired) {
       return Optional.empty();
     }
 
+    throwIfDictionaryBuildInterrupted(null);
     ByteBuffer compressionDictionary;
     try {
       compressionDictionary = fetchOrBuildCompressionDictionary();
     } catch (Exception e) {
+      throwIfDictionaryBuildInterrupted(e);
       LOGGER.warn("Failed to fetch or build compression dictionary", e);
       compressionDictionary = null;
     }
+    throwIfDictionaryBuildInterrupted(null);
 
     if (compressionDictionary != null && compressionDictionary.remaining() > 0) {
       pushJobSetting.isZstdDictCreationSuccess = true;
@@ -1693,6 +1698,14 @@ public class VenicePushJob implements AutoCloseable {
     LOGGER.info("No dictionary fetched. Creating a default dictionary since compression strategy is ZSTD_WITH_DICT");
     pushJobSetting.isZstdDictCreationSuccess = true;
     return Optional.of(emptyPushZstdDictionary.get());
+  }
+
+  private static void throwIfDictionaryBuildInterrupted(Throwable cause) {
+    if (Thread.currentThread().isInterrupted()
+        || ExceptionUtils.recursiveClassEquals(cause, InterruptedException.class)) {
+      Thread.currentThread().interrupt();
+      throw new VeniceException("Dictionary build interrupted", cause);
+    }
   }
 
   private VeniceProperties getSourceDictionaryConsumerProperties() {
@@ -1739,7 +1752,8 @@ public class VenicePushJob implements AutoCloseable {
     return new VeniceProperties(consumerProperties);
   }
 
-  private ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
+  @VisibleForTesting
+  ByteBuffer fetchOrBuildCompressionDictionary() throws VeniceException {
     // Prepare the param builder, which can be used by different scenarios.
     KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
         .setKeySchema(AvroCompatibilityHelper.toParsingForm(pushJobSetting.storeKeySchema))
@@ -2435,20 +2449,29 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Convert a user-provided rewind-epoch override into a relative {@link PushJobSetting#rewindTimeInSecondsOverride},
    * anchored just before version creation rather than at job start, so the job's pre-SOP work (input sampling and
-   * ZSTD dictionary build) is not folded into the rewind. No-op when no epoch override was provided.
+   * ZSTD dictionary build) is not folded into the rewind. The configured epoch buffer is also subtracted from the
+   * absolute {@link PushJobSetting#rewindEpochTimeInSecondsOverride} carried downstream, so the A/A absolute-epoch
+   * path ({@code RealTimeTopicSwitcher.getRewindStartTime}) lands at {@code epoch - buffer} to absorb clock skew
+   * between the snapshot-timestamp source and RT producers, consistent with the relative path. No-op when no epoch
+   * override was provided.
    */
   void convertEpochRewindOverrideToRelativeDuration(PushJobSetting setting) {
     if (setting.rewindEpochTimeInSecondsOverride == NOT_SET) {
       return;
     }
     long nowInSeconds = System.currentTimeMillis() / 1000;
+    long bufferedEpochInSeconds =
+        setting.rewindEpochTimeInSecondsOverride - setting.rewindEpochTimeBufferInSecondsOverride;
     setting.rewindTimeInSecondsOverride =
         (nowInSeconds - setting.rewindEpochTimeInSecondsOverride) + setting.rewindEpochTimeBufferInSecondsOverride;
     LOGGER.info(
-        "Converted rewind epoch override {} (buffer {}s) to rewindTimeInSecondsOverride {}s at version-creation time",
+        "Converted rewind epoch override {} (buffer {}s) to rewindTimeInSecondsOverride {}s and buffered epoch {} at "
+            + "version-creation time",
         setting.rewindEpochTimeInSecondsOverride,
         setting.rewindEpochTimeBufferInSecondsOverride,
-        setting.rewindTimeInSecondsOverride);
+        setting.rewindTimeInSecondsOverride,
+        bufferedEpochInSeconds);
+    setting.rewindEpochTimeInSecondsOverride = bufferedEpochInSeconds;
   }
 
   protected void validateRemoteHybridSettings(PushJobSetting setting) {
@@ -2589,6 +2612,9 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
+      if (getValueSchemaIdResponse.getErrorType() == ErrorType.INVALID_SCHEMA) {
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INPUT_DATA_SCHEMA_VALIDATION_FAILED);
+      }
       MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
       if (response.isError()) {
         LOGGER.error("Failed to fetch all value schemas, so they will not be printed. " + response.getError());
@@ -2759,6 +2785,7 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("Unable to fetch store to validate if regular push is allowed with TTL re-push");
     }
     if (storeResponse.getStore().isTTLRepushEnabled()) {
+      updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED);
       String errorMessage = "Store: %s is TTL re-push enabled and regular batch push is not allowed with TTL re-push";
       throw new VeniceException(String.format(errorMessage, storeResponse.getName()));
     }
@@ -2974,6 +3001,7 @@ public class VenicePushJob implements AutoCloseable {
             Optional.ofNullable(setting.sourceGridFabric),
             setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
+            setting.rewindEpochTimeInSecondsOverride,
             setting.deferVersionSwap,
             setting.targetedRegions,
             pushJobSetting.repushSourceVersion,

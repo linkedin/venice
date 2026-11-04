@@ -128,6 +128,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
@@ -229,6 +230,7 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.stats.dimensions.StoreRepushTriggerSource;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDataWriterSink;
 import com.linkedin.venice.stats.dimensions.VenicePushJobDurationBucket;
+import com.linkedin.venice.stats.dimensions.VenicePushJobSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -1660,12 +1662,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (pushJobDetailsValue.getPushJobConfigs().containsKey(incPushKey)) {
           isIncrementalPush = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(incPushKey).toString());
         }
+        // An ETL repush gets no push id prefix, so the push job's source.etl config is the only thing that
+        // identifies it. The config key is read by name because the controller does not depend on the push job
+        // module that declares it.
+        Utf8 sourceEtlKey = new Utf8("source.etl");
+        boolean isSourceEtl = false;
+        if (pushJobDetailsValue.getPushJobConfigs().containsKey(sourceEtlKey)) {
+          isSourceEtl = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(sourceEtlKey).toString());
+        }
         StringBuilder logMessage = new StringBuilder();
         CharSequence storeName = pushJobDetailsKey.getStoreName();
         long jobDurationInMs = pushJobDetailsValue.getJobDurationInMs();
         VenicePushJobDurationBucket durationBucket = jobDurationInMs < pushJobSlaMs
             ? VenicePushJobDurationBucket.UNDER_SLA
             : VenicePushJobDurationBucket.AT_OR_OVER_SLA;
+        // What originated the push. PushType reports a repush as BATCH, so only the push id separates a push
+        // that brought in fresh data from one that re-ingested data Venice already held.
+        CharSequence pushId = pushJobDetailsValue.getPushId();
+        VenicePushJobSource pushSource =
+            Version.getPushJobSource(pushId == null ? null : pushId.toString(), isSourceEtl);
         logMessage.append("Push job status for store name: ")
             .append(storeName)
             .append(", version: ")
@@ -1679,35 +1694,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (isIncrementalPush) {
               pushJobStatusStats.recordIncrementalPushFailureDueToUserErrorSensor(
                   storeName.toString(),
+                  pushSource,
                   overallStatus,
                   durationBucket);
             } else {
-              pushJobStatusStats
-                  .recordBatchPushFailureDueToUserErrorSensor(storeName.toString(), overallStatus, durationBucket);
+              pushJobStatusStats.recordBatchPushFailureDueToUserErrorSensor(
+                  storeName.toString(),
+                  pushSource,
+                  overallStatus,
+                  durationBucket);
             }
           } else {
             logMessage.append(" due to non-user error");
             if (isIncrementalPush) {
               pushJobStatusStats.recordIncrementalPushFailureNotDueToUserErrorSensor(
                   storeName.toString(),
+                  pushSource,
                   overallStatus,
                   durationBucket);
             } else {
-              pushJobStatusStats
-                  .recordBatchPushFailureNotDueToUserErrorSensor(storeName.toString(), overallStatus, durationBucket);
+              pushJobStatusStats.recordBatchPushFailureNotDueToUserErrorSensor(
+                  storeName.toString(),
+                  pushSource,
+                  overallStatus,
+                  durationBucket);
             }
           }
         } else if (PushJobDetailsStatus.isSucceeded(overallStatus)) {
           logMessage.append(" succeeded with status: ").append(overallStatus);
           // Emit metrics for successful push jobs
           if (isIncrementalPush) {
-            pushJobStatusStats.recordIncrementalPushSuccessSensor(storeName.toString(), overallStatus, durationBucket);
+            pushJobStatusStats
+                .recordIncrementalPushSuccessSensor(storeName.toString(), pushSource, overallStatus, durationBucket);
           } else {
-            pushJobStatusStats.recordBatchPushSuccessSensor(storeName.toString(), overallStatus, durationBucket);
+            pushJobStatusStats
+                .recordBatchPushSuccessSensor(storeName.toString(), pushSource, overallStatus, durationBucket);
           }
 
           // Scheduled log compaction metric
-          if (Version.isPushIdRePush(pushJobDetailsValue.getPushId().toString())) {
+          if (pushSource == VenicePushJobSource.REPUSH) {
             logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
           }
           // Only a completed push's data-writer timings are meaningful for "why was this push slow" — a push
@@ -2092,6 +2117,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Before migration ends, dest stores all leaders and followers consume version topics in local fabric.
             version.getPushStreamSourceAddress(),
             version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
+            version.getHybridStoreConfig() == null
+                ? -1
+                : version.getHybridStoreConfig().getRewindEpochTimeInSecondsOverride(),
             version.getRmdVersionId());
         if (versionResponse.isError()) {
           throw new VeniceException(
@@ -2551,6 +2579,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       int repushSourceVersion,
@@ -2564,6 +2593,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pushType,
         remoteKafkaBootstrapServers,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         versionSwapDeferred,
         null,
@@ -2586,6 +2616,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -2638,6 +2669,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         remoteKafkaBootstrapServers,
         Optional.empty(),
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         Optional.empty(),
         versionSwapDeferred,
@@ -2660,6 +2692,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId) {
     checkControllerLeadershipFor(clusterName);
     try {
@@ -2682,6 +2715,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               pushType,
               remoteKafkaBootstrapServers,
               rewindTimeInSecondsOverride,
+              rewindEpochTimeInSecondsOverride,
               replicationMetadataVersionId);
           if (response.isError()) {
             // Throw exceptions here to utilize admin channel's retry property to overcome transient errors.
@@ -2704,6 +2738,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushType,
             remoteKafkaBootstrapServers,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId);
         if (response.isError()) {
           throw new VeniceException(
@@ -2739,6 +2774,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
@@ -2763,6 +2799,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         remoteKafkaBootstrapServers,
         sourceGridFabric,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
@@ -2786,6 +2823,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       int largestUsedRTVersionNumber) {
     checkControllerLeadershipFor(clusterName);
@@ -2832,7 +2870,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         /**
          * Version-level rewind time override.
          */
-        handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
+        handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride, rewindEpochTimeInSecondsOverride);
 
         version.setRmdVersionId(replicationMetadataVersionId);
 
@@ -2843,10 +2881,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return version;
   }
 
-  private void handleRewindTimeOverride(Store store, Version version, long rewindTimeInSecondsOverride) {
-    if (store.isHybrid() && rewindTimeInSecondsOverride >= 0
-        && rewindTimeInSecondsOverride != version.getHybridStoreConfig().getRewindTimeInSeconds()) {
-      HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
+  private void handleRewindTimeOverride(
+      Store store,
+      Version version,
+      long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride) {
+    if (!store.isHybrid()) {
+      return;
+    }
+    HybridStoreConfig hybridStoreConfig = version.getHybridStoreConfig();
+    boolean updated = false;
+    // Store epoch if provided — new controllers/servers use this directly
+    if (rewindEpochTimeInSecondsOverride >= 0) {
+      LOGGER.info(
+          "Setting rewind epoch time override: {} for store: {} and version: {}",
+          rewindEpochTimeInSecondsOverride,
+          store.getName(),
+          version.getNumber());
+      hybridStoreConfig.setRewindEpochTimeInSecondsOverride(rewindEpochTimeInSecondsOverride);
+      updated = true;
+    }
+    // Also store relative override if provided — old child controllers read this
+    // from the AddVersion admin message as a backward-compatible fallback
+    if (rewindTimeInSecondsOverride >= 0 && rewindTimeInSecondsOverride != hybridStoreConfig.getRewindTimeInSeconds()) {
       LOGGER.info(
           "Overriding rewind time in seconds: {} for store: {} and version: {} the original rewind time config: {}",
           rewindTimeInSecondsOverride,
@@ -2854,6 +2911,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           version.getNumber(),
           hybridStoreConfig.getRewindTimeInSeconds());
       hybridStoreConfig.setRewindTimeInSeconds(rewindTimeInSecondsOverride);
+      updated = true;
+    }
+    if (updated) {
       version.setHybridStoreConfig(hybridStoreConfig);
     }
   }
@@ -3115,7 +3175,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
     }
-    if (store.isHybrid() || VeniceSystemStoreUtils.isSystemStore(storeName)) {
+    if (VeniceSystemStoreUtils.isSystemStore(storeName)) {
       return staticAlternative;
     }
 
@@ -3125,7 +3185,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeName,
         versionTopic.getName(),
         topicManager.getPubSubClusterAddress(),
-        staticAlternative);
+        staticAlternative,
+        store);
     TopicPlacement.Selection selection = Objects.requireNonNull(topicPlacement.select(context));
     boolean proposedAlternative = selection == TopicPlacement.Selection.TREATMENT;
     if (!shadowMode) {
@@ -3160,6 +3221,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
@@ -3181,6 +3243,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         remoteKafkaBootstrapServers,
         sourceGridFabric,
         rewindTimeInSecondsOverride,
+        rewindEpochTimeInSecondsOverride,
         replicationMetadataVersionId,
         emergencySourceRegion,
         versionSwapDeferred,
@@ -3277,6 +3340,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String remoteKafkaBootstrapServers,
       Optional<String> sourceGridFabric,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
@@ -3466,7 +3530,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             /**
              * Version-level rewind time override.
              */
-            handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride);
+            handleRewindTimeOverride(store, version, rewindTimeInSecondsOverride, rewindEpochTimeInSecondsOverride);
             store.setPersistenceType(PersistenceType.ROCKS_DB);
 
             version.setRmdVersionId(replicationMetadataVersionId);
@@ -3970,6 +4034,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<String> sourceGridFabric,
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -4004,6 +4069,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             null,
             sourceGridFabric,
             rewindTimeInSecondsOverride,
+            rewindEpochTimeInSecondsOverride,
             replicationMetadataVersionId,
             emergencySourceRegion,
             versionSwapDeferred,
@@ -5093,6 +5159,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     return resources.getStoreMetadataRepository().getAllStores();
+  }
+
+  @Override
+  public long getClusterProvisionedVeniceUnits(String clusterName) {
+    long provisionedVeniceUnits = 0;
+    for (Store store: getAllStores(clusterName)) {
+      if (!store.isSystemStore()) {
+        Integer veniceUnits = store.getVeniceUnits();
+        if (veniceUnits != null) {
+          provisionedVeniceUnits += veniceUnits;
+        }
+      }
+    }
+    return provisionedVeniceUnits;
   }
 
   /**
@@ -6899,6 +6979,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<String> getStorageNodes(String clusterName) {
     checkControllerLeadershipFor(clusterName);
     return helixAdminClient.getInstancesInCluster(clusterName);
+  }
+
+  @Override
+  public Map<String, Integer> getLiveStorageNodeCount(String clusterName) {
+    checkControllerLeadershipFor(clusterName);
+    HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
+    RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
+    SafeHelixDataAccessor accessor = resources.getHelixManager().getHelixDataAccessor();
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    ClusterConfig clusterConfig = accessor.getProperty(keyBuilder.clusterConfig());
+    if (clusterConfig == null) {
+      throw new VeniceException("Got a null clusterConfig from: " + keyBuilder.clusterConfig());
+    }
+    List<InstanceConfig> instanceConfigs = accessor.getChildValues(keyBuilder.instanceConfigs());
+    int liveStorageNodeCount = 0;
+    for (InstanceConfig instanceConfig: instanceConfigs) {
+      String instanceName = instanceConfig.getInstanceName();
+      if (routingDataRepository.isLiveInstance(instanceName) && instanceConfig.getInstanceEnabled()) {
+        liveStorageNodeCount++;
+      }
+    }
+    return Collections.singletonMap(getRegionName(), liveStorageNodeCount);
   }
 
   public HelixAdminClient getHelixAdminClient() {

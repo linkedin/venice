@@ -115,6 +115,16 @@ repush.ttl.enable = true
 
 More details on how to configure TTL can be found in the [TTL](ttl.md) guide.
 
+### Dictionary sampling
+
+Source-topic dictionary sampling for Kafka-input rebuilds and hybrid empty pushes scans at most
+`max(1000, compression.dictionary.max.messages / partitionCount)` messages per partition, including
+heartbeats. The positive message budget defaults to `1000000`; the per-partition floor can make the
+aggregate limit exceed that budget. The existing sample-byte limit and synthetic-dictionary fallback
+are unchanged. Interrupted dictionary builds fail without falling back.
+
+This bounds messages scanned, not elapsed time spent planning, polling, or reading the source dictionary.
+
 ## Future Work
 
 One potential enhancement would be to add support for changing the compression setting of a store, which currently

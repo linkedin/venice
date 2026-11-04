@@ -148,13 +148,18 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
      *  Enforce the region to be UTF8String for Spark compatibility and additionally handle ordering of columns per
      *  the schema.
      *
-     *  Schema: region, partition, offset, message_type, schema_id, key, value, rmd_version_id, rmd_payload, chunked_key_suffix
+     *  Schema: region, partition, offset, message_type, schema_id, key, value, rmd_version_id, rmd_payload,
+     *  chunked_key_suffix, position
+     *
+     *  The serialized position is carried alongside the numeric offset so that per-key ordering downstream can
+     *  still be established when the offset is not meaningful (e.g. -1 for pub-sub systems without dense offsets).
      */
     currentRow = new GenericInternalRow(
         new Object[] { UTF8String.fromString(region), topicPartition.getPartitionNumber(), rec.getOffset(), messageType,
             schemaId, ByteUtils.extractByteArray(key), ByteUtils.extractByteArray(value), replicationMetadataVersionId,
             ByteUtils.extractByteArray(replicationMetadataPayload),
-            chunkedKeySuffix != null ? ByteUtils.extractByteArray(chunkedKeySuffix) : null });
+            chunkedKeySuffix != null ? ByteUtils.extractByteArray(chunkedKeySuffix) : null,
+            pubSubMessage.getPosition().toWireFormatBytes() });
 
     logProgressPercent();
     return true;

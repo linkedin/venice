@@ -42,8 +42,15 @@ import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -55,8 +62,10 @@ import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -561,6 +570,64 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         veniceChangelogConsumer.poll(POLL_TIMEOUT).size(),
         0,
         "Record arriving after partition-state teardown should be skipped, not buffered");
+  }
+
+  @Test
+  public void testPollCommitsLastPolledPositions() throws Exception {
+    // The consumer built in setUp uses the default config, so it must not create a commit consumer.
+    verify(veniceChangelogConsumerClientFactory, never()).getOffsetCommitPubSubConsumer(any());
+    PubSubConsumerAdapter commitConsumer = mock(PubSubConsumerAdapter.class);
+    doReturn(commitConsumer).when(veniceChangelogConsumerClientFactory).getOffsetCommitPubSubConsumer(any());
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> consumer =
+        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
+            changelogClientConfig.setConsumerOffsetCommitEnabled(true).setConsumerOffsetCommitIntervalMs(0),
+            veniceChangelogConsumerClientFactory);
+    Field daVinciClientField =
+        VeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("daVinciClient");
+    daVinciClientField.setAccessible(true);
+    daVinciClientField.set(consumer, mockDaVinciClient);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer transformer =
+        consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, CURRENT_STORE_VERSION, keySchema,
+            valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+    consumer.start();
+    for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
+      transformer.onStartVersionIngestion(partitionId, true);
+    }
+
+    transformer.processPut(keys.get(0), lazyValue, 0, new DaVinciRecordTransformerRecordMetadata(0, offset(5), 0));
+    transformer.processPut(keys.get(1), lazyValue, 0, new DaVinciRecordTransformerRecordMetadata(0, offset(6), 0));
+    transformer.processPut(keys.get(2), lazyValue, 2, new DaVinciRecordTransformerRecordMetadata(0, offset(3), 0));
+    // Symbolic positions (e.g. heartbeats) are not committed.
+    transformer.processPut(keys.get(2), lazyValue, 1, recordMetadata);
+    consumer.poll(POLL_TIMEOUT);
+    PubSubTopic topic = new PubSubTopicImpl("test_store_v1");
+    Map<PubSubTopicPartition, PubSubPosition> expected = new HashMap<>();
+    expected.put(new PubSubTopicPartitionImpl(topic, 0), offset(6));
+    expected.put(new PubSubTopicPartitionImpl(topic, 2), offset(3));
+    verify(commitConsumer).commitSync(eq(expected), any());
+    // The tracked positions map is passed by reference, so earlier invocations reflect later retirements.
+    clearInvocations(commitConsumer);
+
+    // Commit failures are swallowed, and an idle partition's old version topic is retired after a version swap.
+    doThrow(new RuntimeException("commit failed")).when(commitConsumer).commitSync(any(), any());
+    consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema,
+        valueSchema, valueSchema, mockDaVinciRecordTransformerConfig)
+            .onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
+    consumer.commitOffsets();
+    verify(commitConsumer)
+        .commitSync(eq(Collections.singletonMap(new PubSubTopicPartitionImpl(topic, 2), offset(3))), any());
+
+    // Unsubscribed partitions are no longer committed.
+    consumer.unsubscribe(Collections.singleton(2));
+    consumer.commitOffsets();
+    verify(commitConsumer).commitSync(any(), any());
+
+    consumer.stop();
+    verify(commitConsumer).close();
+  }
+
+  private static PubSubPosition offset(long offset) {
+    return ApacheKafkaOffsetPosition.of(offset);
   }
 
   @Test

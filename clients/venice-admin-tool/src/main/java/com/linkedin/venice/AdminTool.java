@@ -410,6 +410,14 @@ public class AdminTool {
         case LIST_STORAGE_NODES:
           printStorageNodeList();
           break;
+        case GET_CLUSTER_PROVISIONED_VENICE_UNITS:
+          response = controllerClient.getClusterProvisionedVeniceUnits();
+          printObject(response);
+          break;
+        case GET_LIVE_STORAGE_NODE_COUNT:
+          response = controllerClient.getLiveStorageNodeCount();
+          printObject(response);
+          break;
         case CLUSTER_HEALTH_INSTANCES:
           printInstancesStatuses(cmd);
           break;

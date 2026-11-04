@@ -60,7 +60,6 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_GRPC_SERVER_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
@@ -1180,7 +1179,6 @@ public class VeniceControllerClusterConfig {
                 + Arrays.toString(CloudProvider.values()));
       }
 
-      String helixCloudId = props.getString(CONTROLLER_HELIX_CLOUD_ID, "");
       String helixCloudInfoProcessorPackage = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_PACKAGE, "");
       String helixCloudInfoProcessorName = props.getString(CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME, "");
 
@@ -1193,7 +1191,6 @@ public class VeniceControllerClusterConfig {
 
       helixCloudConfig = HelixUtils.getCloudConfig(
           helixCloudProvider,
-          helixCloudId,
           helixCloudInfoSources,
           helixCloudInfoProcessorPackage,
           helixCloudInfoProcessorName);

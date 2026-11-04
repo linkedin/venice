@@ -506,7 +506,6 @@ public class TestHAASController {
       when(commonConfig.isStorageClusterHelixCloudEnabled()).thenReturn(true);
       CloudConfig cloudConfig = HelixUtils.getCloudConfig(
           CloudProvider.CUSTOMIZED,
-          "NA",
           cloudInfoSources,
           "com.linkedin.venice.controller.helix",
           "TestProcessor");

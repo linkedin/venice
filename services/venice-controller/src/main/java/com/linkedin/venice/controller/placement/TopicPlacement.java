@@ -19,6 +19,6 @@ public interface TopicPlacement {
     return false;
   }
 
-  /** Called once per creation request, not on each retry. */
+  /** Called once per creation request, not on each retry. The implementation decides category eligibility. */
   Selection select(TopicPlacementContext context);
 }

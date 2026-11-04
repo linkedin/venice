@@ -216,6 +216,7 @@ public interface Admin extends AutoCloseable, Closeable {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId,
       boolean versionSwapDeferred,
       int repushSourceVersion,
@@ -253,6 +254,7 @@ public interface Admin extends AutoCloseable, Closeable {
         Optional.empty(),
         Optional.empty(),
         -1,
+        -1,
         Optional.empty(),
         false,
         null,
@@ -289,6 +291,7 @@ public interface Admin extends AutoCloseable, Closeable {
         sourceGridFabric,
         requesterCert,
         rewindTimeInSecondsOverride,
+        -1,
         emergencySourceRegion,
         versionSwapDeferred,
         null,
@@ -309,6 +312,7 @@ public interface Admin extends AutoCloseable, Closeable {
       Optional<String> sourceGridFabric,
       Optional<X509Certificate> requesterCert,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       Optional<String> emergencySourceRegion,
       boolean versionSwapDeferred,
       String targetedRegions,
@@ -350,6 +354,11 @@ public interface Admin extends AutoCloseable, Closeable {
   List<Version> versionsForStore(String clusterName, String storeName);
 
   List<Store> getAllStores(String clusterName);
+
+  /**
+   * Sums configured Venice Units across non-system stores. Unset values contribute zero.
+   */
+  long getClusterProvisionedVeniceUnits(String clusterName);
 
   /**
    * Get the statuses of all stores. The store status is decided by the current version. For example, if one partition
@@ -489,6 +498,11 @@ public interface Admin extends AutoCloseable, Closeable {
   double getStorageEngineOverheadRatio(String clusterName);
 
   List<String> getStorageNodes(String clusterName);
+
+  /**
+   * Counts only live, enabled storage nodes. Children return their local fabric; parents query all child fabrics.
+   */
+  Map<String, Integer> getLiveStorageNodeCount(String clusterName);
 
   Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica);
 

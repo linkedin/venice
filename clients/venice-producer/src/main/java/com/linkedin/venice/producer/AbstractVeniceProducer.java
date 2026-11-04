@@ -29,6 +29,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterHook;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
@@ -81,6 +82,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
   private SchemaReader schemaReader;
   private PartitionedProducerExecutor asyncDispatcher;
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
+  private VeniceWriterHook writerHook;
   private VenicePartitioner partitioner;
   private int partitionCount;
 
@@ -100,7 +102,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
       SchemaReader schemaReader,
-      SchemaReader kmeSchemaReader) {
+      SchemaReader kmeSchemaReader,
+      VeniceWriterHook writerHook) {
+    this.writerHook = writerHook;
     this.configured = true;
     this.producerConfigs = producerConfigs;
     this.schemaReader = schemaReader;
@@ -187,7 +191,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     VeniceWriterOptions.Builder optionsBuilder =
         new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(partitioner)
             .setPartitionCount(partitionCount)
-            .setChunkingEnabled(false);
+            .setChunkingEnabled(false)
+            .setWriterHook(writerHook);
 
     // Extract concurrent producer configs from properties
     String producerCountProp = veniceWriterProperties.getProperty(VeniceWriter.PRODUCER_COUNT);

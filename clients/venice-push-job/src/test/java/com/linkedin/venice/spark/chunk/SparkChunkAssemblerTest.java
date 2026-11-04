@@ -28,6 +28,7 @@ import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.spark.utils.OfflineOrderedTestPosition;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -47,6 +48,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Random;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -596,6 +598,78 @@ public class SparkChunkAssemblerTest {
         (int) assembledChunked.getAs(SCHEMA_ID_COLUMN_NAME),
         REGULAR_SCHEMA_ID,
         "Assembled record should have original schema ID from manifest");
+
+    // ===== Test 3: Two chunked versions of one key with tied (-1) offsets, ordered only by position =====
+    // Pub-sub systems without dense numeric offsets report -1 for every record. The per-key sort done before
+    // assembly must then order rows by their serialized position; otherwise the assembler sees an arbitrary order
+    // and fails with "Missing N / N chunks" or picks the wrong version.
+    byte[] olderValue = new byte[2 * chunkSize];
+    Arrays.fill(olderValue, (byte) 1);
+    byte[] newerValue = new byte[2 * chunkSize];
+    Arrays.fill(newerValue, (byte) 2);
+    List<Row> versionRows = new ArrayList<>();
+    versionRows.addAll(createChunkedVersionWithPositions(chunkedKey, olderValue, chunkSize, 200, 1));
+    versionRows.addAll(createChunkedVersionWithPositions(chunkedKey, newerValue, chunkSize, 300, 10));
+    Collections.shuffle(versionRows, new Random(42));
+
+    OfflineOrderedTestPosition.newRowComparator().sortLatestFirst(versionRows);
+    Row assembledLatest = assembler.assembleChunks(chunkedKey, versionRows.iterator());
+
+    assertNotNull(assembledLatest, "Newest chunked version should be assembled");
+    assertTrue(Arrays.equals(assembledLatest.getAs(VALUE_COLUMN_NAME), newerValue), "Newest version should win");
+  }
+
+  /**
+   * Creates the chunk rows followed by the manifest row of one chunked value, all with offset -1 and increasing
+   * {@link OfflineOrderedTestPosition}s starting at {@code firstPositionSequence} (chunks before their manifest).
+   */
+  private List<Row> createChunkedVersionWithPositions(
+      byte[] key,
+      byte[] value,
+      int chunkSize,
+      int sequenceNumber,
+      long firstPositionSequence) {
+    KeyWithChunkingSuffixSerializer keySerializer = new KeyWithChunkingSuffixSerializer();
+    int numChunks = value.length / chunkSize;
+    List<ByteBuffer> chunkKeysWithSuffix = new ArrayList<>();
+    List<Row> rows = new ArrayList<>();
+    long positionSequence = firstPositionSequence;
+    for (int i = 0; i < numChunks; i++) {
+      ChunkedKeySuffix suffix = createChunkedKeySuffix(1, sequenceNumber, i);
+      chunkKeysWithSuffix.add(keySerializer.serializeChunkedKey(key, suffix));
+      rows.add(
+          createRowWithPosition(
+              key,
+              Arrays.copyOfRange(value, i * chunkSize, (i + 1) * chunkSize),
+              CHUNK_SCHEMA_ID,
+              serializeChunkedKeySuffix(suffix),
+              positionSequence++));
+    }
+    ChunkedValueManifest manifest = new ChunkedValueManifest();
+    manifest.keysWithChunkIdSuffix = chunkKeysWithSuffix;
+    manifest.schemaId = REGULAR_SCHEMA_ID;
+    manifest.size = value.length;
+    byte[] manifestBytes = ByteUtils.extractByteArray(new ChunkedValueManifestSerializer(true).serialize(manifest));
+    rows.add(
+        createRowWithPosition(
+            key,
+            manifestBytes,
+            AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+            null,
+            positionSequence));
+    return rows;
+  }
+
+  private Row createRowWithPosition(
+      byte[] key,
+      byte[] value,
+      int schemaId,
+      byte[] chunkedKeySuffix,
+      long positionSequence) {
+    return new GenericRowWithSchema(
+        new Object[] { key, value, new byte[0], schemaId, -1, -1L, 0, chunkedKeySuffix,
+            OfflineOrderedTestPosition.positionBytes(0, positionSequence) },
+        SCHEMA_FOR_CHUNK_ASSEMBLY);
   }
 
   /**
@@ -722,7 +796,7 @@ public class SparkChunkAssemblerTest {
       int messageType) {
     // SCHEMA_FOR_CHUNK_ASSEMBLY: key, value, rmd, schema_id, rmd_version_id, offset, message_type, chunked_key_suffix
     return new GenericRowWithSchema(
-        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, messageType, null },
+        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, messageType, null, null },
         SCHEMA_FOR_CHUNK_ASSEMBLY);
   }
 
@@ -737,7 +811,7 @@ public class SparkChunkAssemblerTest {
       byte[] chunkedKeySuffix) {
     // SCHEMA_FOR_CHUNK_ASSEMBLY: key, value, rmd, schema_id, rmd_version_id, offset, message_type, chunked_key_suffix
     return new GenericRowWithSchema(
-        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, messageType, chunkedKeySuffix },
+        new Object[] { key, value, rmd, schemaId, rmdVersionId, offset, messageType, chunkedKeySuffix, null },
         SCHEMA_FOR_CHUNK_ASSEMBLY);
   }
 

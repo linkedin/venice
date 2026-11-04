@@ -41,6 +41,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
         .put(-12, PushJobCheckpoints.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED)
         .put(-13, PushJobCheckpoints.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
         .put(-14, PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER)
+        .put(-15, PushJobCheckpoints.TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED)
         .build();
   }
 
@@ -59,6 +60,7 @@ public class PushJobCheckPointsTest extends VeniceEnumValueTest<PushJobCheckpoin
         case INVALID_INPUT_FILE:
         case DVC_INGESTION_ERROR_DISK_FULL:
         case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
+        case TTL_REPUSH_REGULAR_BATCH_PUSH_REJECTED:
           assertTrue(PushJobCheckpoints.DEFAULT_PUSH_JOB_USER_ERROR_CHECKPOINTS.contains(checkpoint));
           break;
 

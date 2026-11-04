@@ -96,6 +96,7 @@ public class TestVeniceServer extends VeniceServer {
             serverConfig,
             executor,
             computeExecutor,
+            metricsRepository,
             storageEngineRepository,
             metadataRepository,
             schemaRepository,

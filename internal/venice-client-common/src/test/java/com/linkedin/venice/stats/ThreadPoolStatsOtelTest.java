@@ -3,6 +3,8 @@ package com.linkedin.venice.stats;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_THREAD_POOL_NAME;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
@@ -129,6 +131,31 @@ public class ThreadPoolStatsOtelTest {
   }
 
   @Test
+  public void testRecordActiveThreadsCount() {
+    assertTrue(
+        inMemoryMetricReader.collectAllMetrics()
+            .stream()
+            .noneMatch(metric -> metric.getName().endsWith(".thread_pool.thread.active_distribution")),
+        "No active-thread distribution should be emitted before sampling");
+    stats.recordActiveThreadsCount();
+    Mockito.doReturn(10).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadsCount();
+    Mockito.doReturn(0).when(mockThreadPool).getActiveCount();
+    stats.recordActiveThreadsCount();
+
+    validateHistogram(
+        ThreadPoolOtelMetricEntity.THREAD_POOL_THREAD_ACTIVE_DISTRIBUTION.getMetricEntity().getMetricName(),
+        0.0,
+        10.0,
+        3,
+        15.0,
+        threadPoolAttributes());
+    assertNull(metricsRepository.getMetric("." + TEST_POOL_NAME + "--active_thread_count.Avg"));
+    assertNull(metricsRepository.getMetric("." + TEST_POOL_NAME + "--active_thread_count.Max"));
+    validateTehutiMetric("active_thread_number", "LambdaStat", 0.0);
+  }
+
+  @Test
   public void testBlankThreadPoolNameSanitizedToUnknown() {
     verifyThreadPoolNameDimension("   ", "unknown");
   }
@@ -234,6 +261,11 @@ public class ThreadPoolStatsOtelTest {
     Mockito.doReturn(0).when(queue).size();
 
     ThreadPoolStats localStats = new ThreadPoolStats(repo, pool, poolName);
+    localStats.recordActiveThreadsCount();
+    Mockito.verify(pool, Mockito.never()).getActiveCount();
+    assertNull(repo.getMetric("." + poolName + "--active_thread_count.Avg"));
+    assertNull(repo.getMetric("." + poolName + "--active_thread_count.Max"));
     localStats.recordQueuedTasksCount();
+    assertEquals(repo.getMetric("." + poolName + "--queued_task_count.Avg").value(), 0.0);
   }
 }

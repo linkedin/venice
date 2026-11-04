@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
@@ -45,6 +46,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final String storeName;
   private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final Executor deserializationExecutor;
+  private final ExecutionContextProvider executionContextProvider;
   private final ScheduledExecutorService metadataRefreshExecutor;
   private final ClientRoutingStrategyType clientRoutingStrategyType;
   /**
@@ -163,6 +165,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.clusterStats = new ClusterStats(this.metricsRepository, storeName);
     this.specificValueClass = builder.specificValueClass;
     this.deserializationExecutor = builder.deserializationExecutor;
+    this.executionContextProvider = builder.executionContextProvider;
     this.metadataRefreshExecutor = builder.metadataRefreshExecutor;
     this.clientRoutingStrategyType = builder.clientRoutingStrategyType == null
         ? ClientRoutingStrategyType.LEAST_LOADED
@@ -302,6 +305,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
   public Executor getDeserializationExecutor() {
     return deserializationExecutor;
+  }
+
+  public ExecutionContextProvider getExecutionContextProvider() {
+    return executionContextProvider;
   }
 
   public ScheduledExecutorService getMetadataRefreshExecutor() {
@@ -477,6 +484,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private Class<T> specificValueClass;
     private String storeName;
     private Executor deserializationExecutor;
+    private ExecutionContextProvider executionContextProvider = ExecutionContextProvider.NO_OP;
     private ScheduledExecutorService metadataRefreshExecutor;
     private ClientRoutingStrategyType clientRoutingStrategyType;
     private Client r2Client;
@@ -569,6 +577,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setDeserializationExecutor(Executor deserializationExecutor) {
       this.deserializationExecutor = deserializationExecutor;
+      return this;
+    }
+
+    /**
+     * Propagate application context through retries, response processing, and callbacks run within those task scopes.
+     * Future continuations that execute on other threads require application-managed context propagation.
+     * By default the client does not capture or install application context.
+     */
+    public ClientConfigBuilder<K, V, T> setExecutionContextProvider(ExecutionContextProvider executionContextProvider) {
+      this.executionContextProvider = Objects.requireNonNull(executionContextProvider, "executionContextProvider");
       return this;
     }
 
@@ -814,6 +832,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setDisableRouteMetrics(disableRouteMetrics)
           .setSpecificValueClass(specificValueClass)
           .setDeserializationExecutor(deserializationExecutor)
+          .setExecutionContextProvider(executionContextProvider)
           .setMetadataRefreshExecutor(metadataRefreshExecutor)
           .setClientRoutingStrategyType(clientRoutingStrategyType)
           .setDualReadEnabled(dualReadEnabled)

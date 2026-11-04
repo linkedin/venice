@@ -1,7 +1,9 @@
 package com.linkedin.venice.listener;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -17,12 +19,14 @@ import com.linkedin.venice.security.SSLFactory;
 import io.grpc.ServerInterceptor;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.SocketChannel;
+import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.util.Attribute;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
+import org.mockito.InOrder;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -118,6 +122,9 @@ public class HttpChannelInitializerTest {
         requestHandler,
         storageEngineRepository);
     initializer.initChannel(ch);
+    InOrder pipelineOrder = inOrder(channelPipeline);
+    pipelineOrder.verify(channelPipeline).addLast(isA(HttpObjectAggregator.class));
+    pipelineOrder.verify(channelPipeline).addLast(isA(ServerNettyThreadStatsHandler.class));
   }
 
   @Test

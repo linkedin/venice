@@ -2,7 +2,7 @@
     name: $FlowName
     strategy:
       fail-fast: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
      contents: read
     needs: $Dependency

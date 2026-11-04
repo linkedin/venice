@@ -22,7 +22,7 @@ public class ThreadPoolStatsTest {
 
       ThreadPoolExecutor threadPool = Mockito.mock(ThreadPoolExecutor.class);
       String name = "test_pool";
-      new ThreadPoolStats(metricsRepository, threadPool, name);
+      ThreadPoolStats stats = new ThreadPoolStats(metricsRepository, threadPool, name);
 
       int activeThreadNumber = 1;
       int maxThreadNumber = 2;
@@ -40,6 +40,15 @@ public class ThreadPoolStatsTest {
       Assert.assertEquals(
           (int) reporter.query("." + name + "--queued_task_count_gauge.LambdaStat").value(),
           queuedTaskNumber);
+
+      stats.recordActiveThreadsCount();
+      Mockito.doReturn(5).when(threadPool).getActiveCount();
+      stats.recordActiveThreadsCount();
+      Mockito.doReturn(0).when(threadPool).getActiveCount();
+      stats.recordActiveThreadsCount();
+      Assert.assertNull(metricsRepository.getMetric("." + name + "--active_thread_count.Avg"));
+      Assert.assertNull(metricsRepository.getMetric("." + name + "--active_thread_count.Max"));
+      Assert.assertEquals(reporter.query("." + name + "--active_thread_number.LambdaStat").value(), 0.0);
     } finally {
       metricsRepository.close();
     }

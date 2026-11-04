@@ -169,6 +169,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected volatile VersionSwapMessageState versionSwapMessageState = null;
   protected Time time;
 
+  /**
+   * Monitoring-only offset commit settings. See {@link ChangelogClientConfig#setConsumerOffsetCommitEnabled(boolean)}.
+   */
+  protected final boolean consumerOffsetCommitEnabled;
+  protected final long consumerOffsetCommitIntervalMs;
+  protected final Duration consumerOffsetCommitTimeout;
+  private final AtomicLong lastCommitTimeMs = new AtomicLong();
+
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
@@ -198,6 +206,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.totalRegionCount = changelogClientConfig.getTotalRegionCount();
     this.clientRegionName = changelogClientConfig.getClientRegionName();
     this.versionSwapTimeoutInMs = changelogClientConfig.getVersionSwapTimeoutInMs();
+    this.consumerOffsetCommitEnabled = changelogClientConfig.isConsumerOffsetCommitEnabled();
+    this.consumerOffsetCommitIntervalMs = changelogClientConfig.getConsumerOffsetCommitIntervalMs();
+    this.consumerOffsetCommitTimeout = Duration.ofMillis(changelogClientConfig.getConsumerOffsetCommitTimeoutMs());
     this.time = new SystemTime();
     this.onGoingVersionSwapSignal.set(new CountDownLatch(0));
     if (versionSwapByControlMessage) {
@@ -850,6 +861,46 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return internalPoll(timeoutInMs);
   }
 
+  /**
+   * Commits current consumer positions back to the broker for monitoring (consumer-group
+   * lag). See {@link VeniceChangelogConsumer#commitOffsets()} for semantics. Offsets are committed under the
+   * {@code kafka.group.id} from the consumer properties; without one, the underlying adapter skips the commit.
+   *
+   * <p>Defensive try/catch as a second safety layer: this method is in the {@code poll()} hot
+   * path and the contract is "monitoring-only, must not affect correctness". Any unexpected
+   * runtime from a {@link PubSubConsumerAdapter} implementation gets logged and swallowed here
+   * rather than bubbling out of {@link #poll(long)}.
+   */
+  @Override
+  public void commitOffsets() {
+    if (!consumerOffsetCommitEnabled) {
+      return;
+    }
+    try {
+      pubSubConsumer.commitSync(consumerOffsetCommitTimeout);
+    } catch (Exception e) {
+      LOGGER.warn("Monitoring offset commit failed (non-fatal)", e);
+    }
+  }
+
+  /**
+   * Invoked from {@link #poll(long)} to commit positions at most once per configured interval.
+   * Cadence-bounded so the commit cost doesn't grow with poll frequency.
+   *
+   * <p>Each interval slot is claimed with a CAS before committing, so concurrent polls start at most one commit per
+   * interval.
+   */
+  private void maybeCommitOffsets() {
+    if (!consumerOffsetCommitEnabled) {
+      return;
+    }
+    long now = time.getMilliseconds();
+    long last = lastCommitTimeMs.get();
+    if (now - last >= consumerOffsetCommitIntervalMs && lastCommitTimeMs.compareAndSet(last, now)) {
+      commitOffsets();
+    }
+  }
+
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(
       long timeoutInMs,
       boolean includeControlMessage) {
@@ -1046,7 +1097,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   protected Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> internalPoll(long timeoutInMs) {
-    return internalPoll(timeoutInMs, false);
+    Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> result = internalPoll(timeoutInMs, false);
+    maybeCommitOffsets();
+    return result;
   }
 
   /**

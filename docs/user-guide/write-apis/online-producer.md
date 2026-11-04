@@ -43,7 +43,7 @@ ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName)
     .setVeniceURL("http://router.host:7777")
     ...;
 VeniceProperties producerConfig = VeniceProperties.empty();
-OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(clientConfig, producerConfig, null);
+OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(clientConfig, producerConfig, null, null);
 
 producer.asyncPut(key, value).get();
 producer.asyncDelete(key).get();

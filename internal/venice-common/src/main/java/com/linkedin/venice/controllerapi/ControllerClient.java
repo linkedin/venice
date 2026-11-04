@@ -56,6 +56,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REMOTE_KA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_SOURCE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPUSH_TTL_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_COMPAT_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
@@ -115,6 +116,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -275,6 +277,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null, null);
   }
 
+  /** Single attempt, with one budget shared by leader discovery and the store query. */
+  public StoreResponse getStoreWithTimeout(String storeName, int timeoutMs) {
+    return requestWithTimeout(ControllerRoute.STORE, newParams().add(NAME, storeName), StoreResponse.class, timeoutMs);
+  }
+
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
     QueryParams params = newParams().add(NAME, storeName);
     fabricName.ifPresent(s -> params.add(FABRIC, s));
@@ -345,6 +352,7 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
+        -1,
         false,
         null,
         -1,
@@ -379,6 +387,7 @@ public class ControllerClient implements Closeable {
         sourceGridFabric,
         batchJobHeartbeatEnabled,
         rewindTimeInSecondsOverride,
+        -1,
         deferVersionSwap,
         null,
         -1,
@@ -425,6 +434,7 @@ public class ControllerClient implements Closeable {
       Optional<String> sourceGridFabric,
       boolean batchJobHeartbeatEnabled,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       boolean deferVersionSwap,
       String targetedRegions,
       int repushSourceVersion,
@@ -443,6 +453,7 @@ public class ControllerClient implements Closeable {
         .add(SOURCE_GRID_FABRIC, sourceGridFabric)
         .add(BATCH_JOB_HEARTBEAT_ENABLED, batchJobHeartbeatEnabled)
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
+        .add(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, rewindEpochTimeInSecondsOverride)
         .add(DEFER_VERSION_SWAP, deferVersionSwap)
         .add(REPUSH_SOURCE_VERSION, repushSourceVersion)
         .add(SEPARATE_REAL_TIME_TOPIC_ENABLED, pushToSeparateRealtimeTopic)
@@ -476,6 +487,7 @@ public class ControllerClient implements Closeable {
       Version.PushType pushType,
       String remoteKafkaBootstrapServers,
       long rewindTimeInSecondsOverride,
+      long rewindEpochTimeInSecondsOverride,
       int replicationMetadataVersionId) {
     QueryParams params = newParams().add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
@@ -483,6 +495,7 @@ public class ControllerClient implements Closeable {
         .add(PARTITION_COUNT, partitionCount)
         .add(PUSH_TYPE, pushType.toString())
         .add(REWIND_TIME_IN_SECONDS_OVERRIDE, rewindTimeInSecondsOverride)
+        .add(REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE, rewindEpochTimeInSecondsOverride)
         .add(REPLICATION_METADATA_VERSION_ID, replicationMetadataVersionId);
     if (remoteKafkaBootstrapServers != null) {
       params.add(REMOTE_KAFKA_BOOTSTRAP_SERVERS, remoteKafkaBootstrapServers);
@@ -1084,6 +1097,23 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
+  /**
+   * Returns the configured VU total across non-system stores in this client's cluster.
+   */
+  public ClusterProvisionedVeniceUnitsResponse getClusterProvisionedVeniceUnits() {
+    return request(
+        ControllerRoute.GET_CLUSTER_PROVISIONED_VENICE_UNITS,
+        newParams(),
+        ClusterProvisionedVeniceUnitsResponse.class);
+  }
+
+  /**
+   * Returns live, enabled storage-node counts for the local fabric (child) or all child fabrics (parent).
+   */
+  public LiveStorageNodeCountResponse getLiveStorageNodeCount() {
+    return request(ControllerRoute.GET_LIVE_STORAGE_NODE_COUNT, newParams(), LiveStorageNodeCountResponse.class);
+  }
+
   public StoppableNodeStatusResponse getAggregatedHealthStatus(
       String clusterName,
       List<String> instances,
@@ -1616,6 +1646,15 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_ADMIN_TOPIC_METADATA, params, AdminTopicMetadataResponse.class);
   }
 
+  /** Single attempt, including leader discovery in the supplied budget. */
+  public AdminTopicMetadataResponse getAdminTopicMetadataWithTimeout(Optional<String> storeName, int timeoutMs) {
+    return requestWithTimeout(
+        ControllerRoute.GET_ADMIN_TOPIC_METADATA,
+        newParams().add(NAME, storeName),
+        AdminTopicMetadataResponse.class,
+        timeoutMs);
+  }
+
   public AdminTopicMetadataResponse updateAdminTopicMetadata(
       long executionId,
       Optional<String> storeName,
@@ -1723,6 +1762,46 @@ public class ControllerClient implements Closeable {
 
   protected static String encodeQueryParams(QueryParams params) {
     return URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
+  }
+
+  protected long requestTimeNs() {
+    return System.nanoTime();
+  }
+
+  protected int remainingRequestTimeMs(long deadlineNs) throws TimeoutException {
+    long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNs - requestTimeNs());
+    if (remainingMs <= 0 || Thread.currentThread().isInterrupted()) {
+      throw new TimeoutException("Controller query budget exhausted or interrupted");
+    }
+    return (int) Math.min(Integer.MAX_VALUE, remainingMs);
+  }
+
+  protected String discoverLeaderController(ControllerTransport transport, long deadlineNs) throws Exception {
+    List<String> urls = new ArrayList<>(controllerDiscoveryUrls);
+    Collections.shuffle(urls);
+    return transport
+        .request(
+            urls.get(0),
+            ControllerRoute.LEADER_CONTROLLER,
+            newParams(),
+            LeaderControllerResponse.class,
+            remainingRequestTimeMs(deadlineNs),
+            null)
+        .getUrl();
+  }
+
+  private <T extends ControllerResponse> T requestWithTimeout(
+      ControllerRoute route,
+      QueryParams params,
+      Class<T> responseType,
+      int timeoutMs) {
+    long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+    try (ControllerTransport transport = getNewControllerTransport()) {
+      String leader = discoverLeaderController(transport, deadlineNs);
+      return transport.request(leader, route, params, responseType, remainingRequestTimeMs(deadlineNs), null);
+    } catch (Exception e) {
+      return makeErrorResponse("Single-attempt controller query failed for " + route.getPath(), e, responseType);
+    }
   }
 
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {

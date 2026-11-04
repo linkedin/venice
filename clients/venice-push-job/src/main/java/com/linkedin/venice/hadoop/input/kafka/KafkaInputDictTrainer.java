@@ -199,7 +199,7 @@ public class KafkaInputDictTrainer {
 
     // Prepare input: Get one split per partition
     Properties splitProps = new Properties();
-    splitProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION.name());
+    splitProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.CAPPED_SINGLE_SPLIT_PER_PARTITION.name());
     VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(jobConf, splitProps);
     Function<String, String> encryptionKeyUrnLookup =
         !reusedConsumerOptional.isPresent() && veniceProperties.getBoolean(PUB_SUB_ENCRYPTION_ENABLED, false)

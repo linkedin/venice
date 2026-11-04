@@ -70,6 +70,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.AvroRecordUtils;
@@ -83,6 +84,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -117,6 +119,8 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final DiskHealthCheckService diskHealthCheckService;
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
+  private final ThreadPoolStats storageExecutionThreadPoolStats;
+  private final ThreadPoolStats computeThreadPoolStats;
   private final StorageEngineRepository storageEngineRepository;
   private final ReadOnlyStoreRepository metadataRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -196,6 +200,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       VeniceServerConfig serverConfig,
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
+      MetricsRepository metricsRepository,
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository metadataStoreRepository,
       ReadOnlySchemaRepository schemaRepository,
@@ -208,6 +213,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         serverConfig,
         executor,
         computeExecutor,
+        metricsRepository,
         storageEngineRepository,
         metadataStoreRepository,
         schemaRepository,
@@ -217,11 +223,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         compressorFactory,
         optionalResourceReadUsageTracker,
         MultiGetResponseWrapper::new,
-        ComputeResponseWrapper::new,
-        new KeyPartitionProfilerManager(
-            storeVersion -> resolvePartitionCount(metadataStoreRepository, storeVersion),
-            KeyPartitionProfilerManager.DEFAULT_MAX_CONCURRENT_SESSIONS,
-            serverConfig.getLogContext()));
+        ComputeResponseWrapper::new);
   }
 
   /**
@@ -231,6 +233,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       VeniceServerConfig serverConfig,
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
+      MetricsRepository metricsRepository,
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository metadataStoreRepository,
       ReadOnlySchemaRepository schemaRepository,
@@ -245,6 +248,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         serverConfig,
         executor,
         computeExecutor,
+        metricsRepository,
         storageEngineRepository,
         metadataStoreRepository,
         schemaRepository,
@@ -268,6 +272,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       VeniceServerConfig serverConfig,
       ThreadPoolExecutor executor,
       ThreadPoolExecutor computeExecutor,
+      MetricsRepository metricsRepository,
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository metadataStoreRepository,
       ReadOnlySchemaRepository schemaRepository,
@@ -281,6 +286,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       KeyPartitionProfilerManager keyPartitionProfilerManager) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
+    this.storageExecutionThreadPoolStats =
+        new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
+    this.computeThreadPoolStats =
+        new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
     this.storageEngineRepository = storageEngineRepository;
     this.metadataRepository = metadataStoreRepository;
     this.schemaRepository = schemaRepository;
@@ -530,6 +539,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   public CompletableFuture<ReadResponse> handleSingleGetRequest(GetRouterRequest request) {
+    storageExecutionThreadPoolStats.recordActiveThreadsCount();
     final int queueLen = this.executor.getQueue().size();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
@@ -573,6 +583,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(MultiGetRouterRequestWrapper request) {
+    storageExecutionThreadPoolStats.recordActiveThreadsCount();
     List<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     RequestContext requestContext = new RequestContext(request, this);
 
@@ -690,6 +701,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   public CompletableFuture<ReadResponse> handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
+    storageExecutionThreadPoolStats.recordActiveThreadsCount();
     final int queueLen = this.executor.getQueue().size();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
@@ -721,6 +733,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       return failFast;
     }
 
+    computeThreadPoolStats.recordActiveThreadsCount();
     final int queueLen = this.computeExecutor.getQueue().size();
     final long preSubmissionTimeNs = System.nanoTime();
     return CompletableFuture.supplyAsync(() -> {
@@ -751,6 +764,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       return failFast;
     }
 
+    computeThreadPoolStats.recordActiveThreadsCount();
     List<ComputeRouterRequestKeyV1> keys = request.getKeys();
     ComputeRequestContext requestContext = new ComputeRequestContext(request, this);
 

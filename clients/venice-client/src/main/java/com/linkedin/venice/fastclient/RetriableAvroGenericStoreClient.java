@@ -48,6 +48,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
+  private final ExecutionContextProvider executionContextProvider;
   private final ClientRequestTracker requestTracker;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final String longTailBatchGetRangeBasedRetryThresholdInMilliSeconds;
@@ -86,6 +87,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     this.longTailRetryThresholdForSingleGetInMicroSeconds =
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
+    this.executionContextProvider = clientConfig.getExecutionContextProvider();
     this.requestTracker = delegate instanceof GracefulShutdownAvroGenericStoreClient
         ? ((GracefulShutdownAvroGenericStoreClient<K, V>) delegate).getRequestTracker()
         : null;
@@ -179,6 +181,8 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
    */
   @Override
   protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
     final CompletableFuture<V> originalRequestFuture = super.get(requestContext, key);
     if (singleKeyLongTailRetryManager != null) {
       singleKeyLongTailRetryManager.recordRequest();
@@ -227,7 +231,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
     // Schedule the created task for long-tail retry
     TimeoutProcessor.TimeoutFuture timeoutFuture = timeoutProcessor.schedule(
-        new RetryRunnable(requestContext, RetryType.LONG_TAIL_RETRY, retryTask),
+        ExecutionContextUtils.wrap(
+            executionContext,
+            new RetryRunnable(requestContext, RetryType.LONG_TAIL_RETRY, retryTask),
+            failure -> ExecutionContextUtils.completeExceptionally(retryFuture, failure)),
         longTailRetryThresholdForSingleGetInMicroSeconds,
         TimeUnit.MICROSECONDS);
 
@@ -248,7 +255,12 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         if (!timeoutFuture.isDone()) {
           timeoutFuture.cancel();
           if (!isExceptionCausedByTooManyRequests(throwable)) {
-            new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask).run();
+            ExecutionContextUtils
+                .wrap(
+                    executionContext,
+                    new RetryRunnable(requestContext, RetryType.ERROR_RETRY, retryTask),
+                    failure -> ExecutionContextUtils.completeExceptionally(retryFuture, failure))
+                .run();
           } else {
             // 429 received before long-tail fired: retryTask won't run, complete retryFuture directly
             retryFuture.completeExceptionally(throwable);
@@ -334,10 +346,17 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private <R extends MultiKeyRequestContext<K, V>, RESPONSE> void retryStreamingMultiKeyRequest(
       R requestContext,
       Set<K> keys,
-      StreamingCallback<K, RESPONSE> callback,
+      StreamingCallback<K, RESPONSE> originalCallback,
       int longTailRetryThresholdInMicroSeconds,
       RequestContextConstructor<K, V, R> requestContextConstructor,
       StreamingRequestExecutor<K, V, R, RESPONSE> streamingRequestExecutor) throws VeniceClientException {
+    ExecutionContextProvider.CapturedContext executionContext =
+        requestContext.getOrCaptureExecutionContext(executionContextProvider);
+    ExecutionContextUtils.CompletionGuard<K, RESPONSE> completionGuard =
+        executionContext == ExecutionContextProvider.CapturedContext.NO_OP
+            ? null
+            : new ExecutionContextUtils.CompletionGuard<>(originalCallback);
+    StreamingCallback<K, RESPONSE> callback = completionGuard == null ? originalCallback : completionGuard;
     requestContext.retryContext = new MultiKeyRequestContext.RetryContext<K, V>();
 
     /** Track the final completion of the request. It will be completed normally if
@@ -352,9 +371,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
      callback. Removal is thread safe, so we will do it only once. We can then complete the future for that key */
     VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture = new VeniceConcurrentHashMap<>();
     for (K key: keys) {
-      CompletableFuture<RESPONSE> originalCompletion = new CompletableFuture<>();
+      CompletableFuture<RESPONSE> originalCompletion = newKeyCompletionFuture();
       originalCompletion.whenComplete((value, throwable) -> {
-        callback.onRecordReceived(key, value);
+        originalCallback.onRecordReceived(key, value);
       });
       pendingKeysFuture.put(key, originalCompletion);
     }
@@ -385,6 +404,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
                   finalRequestCompletionFuture,
                   savedException,
                   pendingKeysFuture,
+                  completionGuard,
                   null));
         }
       } else {
@@ -394,8 +414,27 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       }
     };
 
-    TimeoutProcessor.TimeoutFuture scheduledRetryTask = timeoutProcessor
-        .schedule(trackedRetryTask(retryTask), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
+    TimeoutProcessor.TimeoutFuture scheduledRetryTask =
+        timeoutProcessor.schedule(trackedRetryTask(ExecutionContextUtils.wrap(executionContext, retryTask, failure -> {
+          MultiKeyRequestContext<K, V> retryRequestContext = requestContext.retryContext.retryRequestContext;
+          if (retryRequestContext == null) {
+            retryRequestContext = requestContextConstructor.construct(pendingKeysFuture.size());
+            requestContext.retryContext.retryRequestContext = retryRequestContext;
+          }
+          if (retryRequestContext.resultFuture != null
+              && !retryRequestContext.resultFuture.completeExceptionally(failure)) {
+            LOGGER.error("Execution context task failed after multi-key retry completion", failure);
+            return;
+          }
+          getStreamingCallback(
+              retryRequestContext,
+              finalRequestCompletionFuture,
+              savedException,
+              pendingKeysFuture,
+              completionGuard,
+              null).onCompletion(
+                  Optional.of(new VeniceClientException("Failed to execute retry with execution context", failure)));
+        })), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
 
     /**
      * Retry for streaming multi-key request is done at the request level. This mean we will perform one retry for the
@@ -414,6 +453,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             finalRequestCompletionFuture,
             savedException,
             pendingKeysFuture,
+            completionGuard,
             scheduledRetryTask));
     if (multiKeyLongTailRetryManager != null) {
       multiKeyLongTailRetryManager.recordRequests(requestContext.numKeysInRequest);
@@ -445,15 +485,31 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     });
   }
 
+  @VisibleForTesting
+  <RESPONSE> CompletableFuture<RESPONSE> newKeyCompletionFuture() {
+    return new CompletableFuture<>();
+  }
+
   private <RESPONSE> StreamingCallback<K, RESPONSE> getStreamingCallback(
       MultiKeyRequestContext<K, V> requestContext,
       CompletableFuture<Void> finalRequestCompletionFuture,
       AtomicReference<Throwable> savedException,
       VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture,
+      ExecutionContextUtils.CompletionGuard<K, RESPONSE> completionGuard,
       TimeoutProcessor.TimeoutFuture scheduledRetryTask) {
+    // Dispatch scopes the response/decoder task, including all records and synchronous future continuations.
     return new StreamingCallback<K, RESPONSE>() {
       @Override
       public void onRecordReceived(K key, RESPONSE value) {
+        if (completionGuard == null) {
+          deliverRecord(key, value);
+        } else {
+          // Reserve the delivery before removing its key so completion cannot overtake it.
+          completionGuard.runRecord(() -> deliverRecord(key, value));
+        }
+      }
+
+      private void deliverRecord(K key, RESPONSE value) {
         // Remove the key and if successful , mark it as complete
         CompletableFuture<RESPONSE> removed = pendingKeysFuture.remove(key);
         if (removed != null) {
