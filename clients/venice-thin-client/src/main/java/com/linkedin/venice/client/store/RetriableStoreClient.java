@@ -102,7 +102,8 @@ public class RetriableStoreClient<K, V> extends DelegatingStoreClient<K, V> {
             }
           }
           try {
-            T retryVal = supplier.get().get(10, TimeUnit.SECONDS);
+            // thenApply yields a plain future, so this internal wait is not recorded as a caller timeout.
+            T retryVal = supplier.get().thenApply(v -> v).get(10, TimeUnit.SECONDS);
             retryFuture.complete(retryVal);
             retryThrowable = null;
             break;

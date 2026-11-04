@@ -1,6 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
 import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequestHttpStatus;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -120,8 +119,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(key, Optional.of(singleGetStats), startTimeInNS);
     singleGetStats.recordRequestKeyCount(1);
-    CompletableFuture<V> statFuture = innerFuture
-        .handle((BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS, 1));
+    CompletableFuture<V> statFuture = handlePreservingException(
+        innerFuture,
+        StatTrackingStoreClient.<V>getStatCallback(singleGetStats, startTimeInNS, 1));
     return AppTimeOutTrackingCompletableFuture.track(statFuture, singleGetStats);
   }
 
@@ -130,9 +130,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath, Optional.of(schemaReaderStats), startTimeInNS);
     schemaReaderStats.recordRequestKeyCount(1);
-    CompletableFuture<byte[]> statFuture = innerFuture.handle(
-        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, startTimeInNS, 1));
-    return statFuture;
+    return handlePreservingException(
+        innerFuture,
+        StatTrackingStoreClient.<byte[]>getStatCallback(schemaReaderStats, startTimeInNS, 1));
   }
 
   @Override
@@ -273,10 +273,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   /**
-   * Builds a completion handler that records healthy/unhealthy client metrics. Callers pass the
+   * Builds a single-key completion handler that records healthy/unhealthy client metrics. Callers pass the
    * number of keys originally requested; it feeds the key-count-bucket OTel dimension and the
-   * unhealthy-path recording. {@code T} may be a single value (single-get, getRaw) or a
-   * multi-key result (e.g. {@link Map}) — the caller owns knowing how many keys they asked for.
+   * unhealthy-path recording. Every non-null value (including a map-valued record) represents
+   * one successful key for single-get and getRaw.
    */
   public static <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
       ClientStats clientStats,
@@ -289,7 +289,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         handleStoreExceptionInternally(throwable);
       }
 
-      int successfulKeyCount = getSuccessfulKeyCount(value);
+      int successfulKeyCount = value == null ? 0 : 1;
       clientStats.emitHealthyRequestMetricsNonDavinciClient(latency, successfulKeyCount, requestedKeyCount);
       clientStats.recordResponseKeyCount(successfulKeyCount);
       return value;
