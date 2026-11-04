@@ -235,49 +235,46 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(requestContext.route, routeRequestFuture);
 
       CompletableFuture<Integer> routeRequestFutureFinal = routeRequestFuture;
-      transportFuture.whenCompleteAsync(
-          ExecutionContextUtils
-              .wrap(executionContext, (response, throwable) -> requestContext.clientResourceTask(() -> {
-                requestContext.requestSubmissionToResponseHandlingTime =
-                    LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
-                if (throwable != null) {
-                  routeRequestFutureFinal.completeExceptionally(throwable);
-                  valueFuture.completeExceptionally(throwable);
-                } else if (response == null) {
-                  routeRequestFutureFinal.complete(SC_NOT_FOUND);
-                  valueFuture.complete(null);
-                } else {
-                  try {
-                    routeRequestFutureFinal.complete(SC_OK);
-                    CompressionStrategy compressionStrategy = response.getCompressionStrategy();
-                    long nanoTsBeforeDecompression = System.nanoTime();
-                    ByteBuffer data = decompressRecord(
-                        compressionStrategy,
-                        ByteBuffer.wrap(response.getBody()),
-                        requestContext.currentVersion,
-                        metadata.getCompressor(compressionStrategy, requestContext.currentVersion));
-                    requestContext.decompressionTime = LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDecompression);
-                    long nanoTsBeforeDeserialization = System.nanoTime();
-                    RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
-                    V value = tryToDeserialize(deserializer, data, response.getSchemaId(), key);
-                    requestContext.responseDeserializationTime =
-                        LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDeserialization);
-                    requestContext.successRequestKeyCount.incrementAndGet();
-                    valueFuture.complete(value);
+      transportFuture.whenCompleteAsync(ExecutionContextUtils.wrap(executionContext, (response, throwable) -> {
+        requestContext.requestSubmissionToResponseHandlingTime =
+            LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeSendingRequest);
+        if (throwable != null) {
+          routeRequestFutureFinal.completeExceptionally(throwable);
+          valueFuture.completeExceptionally(throwable);
+        } else if (response == null) {
+          routeRequestFutureFinal.complete(SC_NOT_FOUND);
+          valueFuture.complete(null);
+        } else {
+          try {
+            routeRequestFutureFinal.complete(SC_OK);
+            CompressionStrategy compressionStrategy = response.getCompressionStrategy();
+            long nanoTsBeforeDecompression = System.nanoTime();
+            ByteBuffer data = decompressRecord(
+                compressionStrategy,
+                ByteBuffer.wrap(response.getBody()),
+                requestContext.currentVersion,
+                metadata.getCompressor(compressionStrategy, requestContext.currentVersion));
+            requestContext.decompressionTime = LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDecompression);
+            long nanoTsBeforeDeserialization = System.nanoTime();
+            RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
+            V value = tryToDeserialize(deserializer, data, response.getSchemaId(), key);
+            requestContext.responseDeserializationTime =
+                LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDeserialization);
+            requestContext.successRequestKeyCount.incrementAndGet();
+            valueFuture.complete(value);
 
-                  } catch (Exception e) {
-                    if (!valueFuture.isDone()) {
-                      valueFuture.completeExceptionally(e);
-                    }
-                  }
-                }
-              }).run(), failure -> {
-                routeRequestFutureFinal.completeExceptionally(failure);
-                if (!valueFuture.completeExceptionally(failure)) {
-                  LOGGER.error("Execution context task failed after single-get completion", failure);
-                }
-              }),
-          deserializationExecutor);
+          } catch (Exception e) {
+            if (!valueFuture.isDone()) {
+              valueFuture.completeExceptionally(e);
+            }
+          }
+        }
+      }, failure -> {
+        routeRequestFutureFinal.completeExceptionally(failure);
+        if (!valueFuture.completeExceptionally(failure)) {
+          LOGGER.error("Execution context task failed after single-get completion", failure);
+        }
+      }), deserializationExecutor);
 
     } catch (Exception e) {
       LOGGER.error("Received exception while sending request to route: {}", requestContext.route, e);
@@ -410,21 +407,18 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.routeRequestMap.put(route, routeRequestFuture.getOriginalFuture());
       requestCompletionFutures[routeIndex] = routeRequestFuture.getResultFuture();
 
-      transportClientFutureForRoute.whenComplete(
-          ExecutionContextUtils
-              .wrap(executionContext, (transportClientResponse, throwable) -> requestContext.clientResourceTask(() -> {
-                requestContext.recordRequestSubmissionToResponseHandlingTime(route);
-                TransportClientResponseForRoute response = TransportClientResponseForRoute.fromTransportClientWithRoute(
-                    transportClientResponse,
-                    route,
-                    routeRequestFuture.getOriginalFuture());
-                routeResponseHandler.handle(keysForRoutes, response, throwable);
-              }).run(), failure -> {
-                requestContext.setPartialResponseExceptionIfNull(failure);
-                if (!routeRequestFuture.getOriginalFuture().completeExceptionally(failure)) {
-                  LOGGER.error("Execution context task failed after route completion: {}", route, failure);
-                }
-              }));
+      transportClientFutureForRoute
+          .whenComplete(ExecutionContextUtils.wrap(executionContext, (transportClientResponse, throwable) -> {
+            requestContext.recordRequestSubmissionToResponseHandlingTime(route);
+            TransportClientResponseForRoute response = TransportClientResponseForRoute
+                .fromTransportClientWithRoute(transportClientResponse, route, routeRequestFuture.getOriginalFuture());
+            routeResponseHandler.handle(keysForRoutes, response, throwable);
+          }, failure -> {
+            requestContext.setPartialResponseExceptionIfNull(failure);
+            if (!routeRequestFuture.getOriginalFuture().completeExceptionally(failure)) {
+              LOGGER.error("Execution context task failed after route completion: {}", route, failure);
+            }
+          }));
       routeIndex++;
     }
 
@@ -666,8 +660,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         computeResultRecordDeserializer) {
       @Override
       protected CompletableFuture<Void> deserializeAsync(Runnable task) {
-        return ExecutionContextUtils
-            .runAsync(executionContext, requestContext.clientResourceTask(task), deserializationExecutor);
+        return ExecutionContextUtils.runAsync(executionContext, task, deserializationExecutor);
       }
     };
   }

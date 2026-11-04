@@ -17,12 +17,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public abstract class RequestContext {
   ExecutionContextProvider.CapturedContext executionContext;
 
-  ClientRequestTracker clientRequestTracker;
-
-  Runnable clientResourceTask(Runnable task) {
-    return clientRequestTracker == null ? task : clientRequestTracker.resourceTask(task);
-  }
-
   int currentVersion = -1;
   boolean noAvailableReplica = false;
 

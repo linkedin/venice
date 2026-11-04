@@ -80,7 +80,7 @@ public class InstanceHealthMonitor implements Closeable {
 
   public InstanceHealthMonitor(InstanceHealthMonitorConfig config) {
     this.config = config;
-    // Not registered with ResourceRegistry: a JVM shutdown hook must not stop the timer while requests still drain.
+    // Not registered with ResourceRegistry: a JVM shutdown hook must not stop the timer while requests are in flight.
     // close() is the only way to stop it.
     this.timeoutProcessor = TimeoutProcessor.createManaged(true, 1);
     this.heartBeatClient = new R2TransportClient(config.getClient());

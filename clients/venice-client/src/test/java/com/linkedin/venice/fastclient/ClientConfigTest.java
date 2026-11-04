@@ -582,17 +582,4 @@ public class ClientConfigTest {
       }
     }
   }
-
-  @Test
-  public void testClientCloseTimeoutDefaultValidationAndClone() {
-    ClientConfig.ClientConfigBuilder builder = getClientConfigWithMinimumRequiredInputs();
-    assertEquals(builder.build().getClientCloseTimeoutMs(), 1000);
-    for (long timeout: new long[] { 0, 42, Long.MAX_VALUE }) {
-      builder.setClientCloseTimeoutMs(timeout);
-      assertEquals(builder.build().getClientCloseTimeoutMs(), timeout);
-      assertEquals(builder.clone().build().getClientCloseTimeoutMs(), timeout);
-    }
-    builder.setClientCloseTimeoutMs(-1);
-    assertThrows(VeniceClientException.class, builder::build);
-  }
 }
