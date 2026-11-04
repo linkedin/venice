@@ -122,9 +122,6 @@ public class InstanceHealthMonitor implements Closeable {
       return;
     }
     for (String instance: heartBeatInstances) {
-      if (closed.get()) {
-        return;
-      }
       String heartBeatUrl = instance + "/" + QueryAction.HEALTH.toString().toLowerCase();
       CompletableFuture<TransportClientResponse> heartBeatFuture = heartBeatClient.get(heartBeatUrl);
       TimeoutProcessor.TimeoutFuture timeoutFuture = null;
@@ -143,13 +140,21 @@ public class InstanceHealthMonitor implements Closeable {
               config.getHeartBeatRequestTimeoutMS(),
               TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException e) {
-          // The monitor is closing.
+          String logMessage = String.format(
+              "Stopping heartbeats: timeout processor rejected the heartbeat timeout for instance: %s, monitor closed: %s",
+              instance,
+              closed.get());
+          if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+            LOGGER.info(logMessage);
+          }
           return;
         }
 
         TimeoutProcessor.TimeoutFuture finalTimeoutFuture = timeoutFuture;
         heartBeatFuture.whenComplete((response, throwable) -> {
-          cancelTimeout(finalTimeoutFuture);
+          if (finalTimeoutFuture != null && !finalTimeoutFuture.isDone()) {
+            finalTimeoutFuture.cancel();
+          }
           if (throwable != null) {
             // Skip hosts removed since the last refresh, so a heartbeat in flight during a prune does not re-add them.
             if (isInstanceLive(instance) && !unhealthyInstanceSet.contains(instance)) {
@@ -226,13 +231,15 @@ public class InstanceHealthMonitor implements Closeable {
             config.getRoutingRequestDefaultTimeoutMS(),
             TimeUnit.MILLISECONDS);
       } catch (RejectedExecutionException e) {
-        throw new IllegalStateException("Instance health monitor is closed");
+        throw new IllegalStateException("Instance health monitor is closed", e);
       }
     }
 
     TimeoutProcessor.TimeoutFuture finalTimeoutFuture = timeoutFuture;
     CompletableFuture<Integer> resultFuture = requestFuture.whenComplete((httpStatus, throwable) -> {
-      cancelTimeout(finalTimeoutFuture);
+      if (finalTimeoutFuture != null && !finalTimeoutFuture.isDone()) {
+        finalTimeoutFuture.cancel();
+      }
 
       if (throwable != null) {
         httpStatus = (throwable instanceof VeniceClientHttpException)
@@ -257,17 +264,6 @@ public class InstanceHealthMonitor implements Closeable {
     return new ChainedCompletableFuture<>(requestFuture, resultFuture);
   }
 
-  private void cancelTimeout(TimeoutProcessor.TimeoutFuture timeoutFuture) {
-    if (timeoutFuture == null || timeoutFuture.isDone() || closed.get()) {
-      return;
-    }
-    try {
-      timeoutFuture.cancel();
-    } catch (RejectedExecutionException e) {
-      // The task is already cancelled; only the timer's cleanup task was rejected because close() stopped the timer.
-    }
-  }
-
   /** After close, the timer is stopped, so the counter is reset immediately. */
   private void scheduleCounterReset(String instance) {
     if (!closed.get()) {
@@ -278,7 +274,11 @@ public class InstanceHealthMonitor implements Closeable {
             TimeUnit.MILLISECONDS);
         return;
       } catch (RejectedExecutionException e) {
-        // close() stopped the timer after the check above.
+        String logMessage = String
+            .format("Timeout processor rejected the delayed counter reset for instance: %s, resetting now", instance);
+        if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+          LOGGER.info(logMessage);
+        }
       }
     }
     counterResetConsumer.accept(instance);

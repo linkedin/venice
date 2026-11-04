@@ -532,10 +532,11 @@ public class TimeoutProcessor implements Executor {
             });
           } catch (RejectedExecutionException e) {
             _purgePending = false;
-            // The task was removed; no executor cleanup is needed after shutdown.
             if (!_executor.isShutdown()) {
               throw e;
             }
+            // The task was already removed; the cleanup is not needed once the executor is stopped.
+            LOG.debug("Skipped timeout cleanup after shutdown: {}", e.getMessage());
           }
         }
         return success;

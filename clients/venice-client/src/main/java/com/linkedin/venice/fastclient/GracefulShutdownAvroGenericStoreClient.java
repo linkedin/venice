@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -10,6 +11,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -17,6 +20,10 @@ import org.apache.avro.Schema;
  * Both share a tracker, so an early retry/dual-read winner cannot close resources used by a slower attempt.
  */
 public class GracefulShutdownAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient<K, V> {
+  private static final Logger LOGGER = LogManager.getLogger(GracefulShutdownAvroGenericStoreClient.class);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+
   private final ClientRequestTracker tracker;
   private final boolean applicationRequests;
   private final InternalAvroStoreClient<K, V> requestDelegate;
@@ -30,6 +37,14 @@ public class GracefulShutdownAvroGenericStoreClient<K, V> extends DelegatingAvro
     this.tracker = tracker;
     this.applicationRequests = applicationRequests;
     this.requestDelegate = delegate;
+  }
+
+  /** The caller was already failed by the shutdown deadline, so this failure is only logged. */
+  private static void logFailureAfterShutdown(Throwable failure) {
+    String logMessage = "Ignoring a request failure that arrived after the Fast Client shutdown deadline: " + failure;
+    if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+      LOGGER.info(logMessage);
+    }
   }
 
   ClientRequestTracker getRequestTracker() {
@@ -46,6 +61,9 @@ public class GracefulShutdownAvroGenericStoreClient<K, V> extends DelegatingAvro
       send.get().whenComplete((value, error) -> {
         try {
           if (tracker.isStopped()) {
+            if (error != null) {
+              logFailureAfterShutdown(error);
+            }
             return;
           } else if (error == null) {
             result.complete(value);
@@ -60,6 +78,8 @@ public class GracefulShutdownAvroGenericStoreClient<K, V> extends DelegatingAvro
       try {
         if (!tracker.isStopped()) {
           result.completeExceptionally(e);
+        } else {
+          logFailureAfterShutdown(e);
         }
       } finally {
         ticket.close();
@@ -116,6 +136,8 @@ public class GracefulShutdownAvroGenericStoreClient<K, V> extends DelegatingAvro
         try {
           if (!tracker.isStopped()) {
             guarded.onCompletion(exception);
+          } else if (exception.isPresent()) {
+            logFailureAfterShutdown(exception.get());
           }
         } finally {
           if (released.compareAndSet(false, true)) {

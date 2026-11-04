@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -28,6 +29,8 @@ import org.apache.logging.log4j.Logger;
  */
 public final class ClientRequestTracker {
   private static final Logger LOGGER = LogManager.getLogger(ClientRequestTracker.class);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   /** Tickets not yet released. Guarded by {@code this}. */
   private final Set<Ticket> pending = new HashSet<>();
   /** Completes once cleanup has run; every {@link #close} caller waits on it. */
@@ -78,7 +81,11 @@ public final class ClientRequestTracker {
       Ticket ticket;
       try {
         ticket = acquire(false, null);
-      } catch (VeniceClientException ignored) {
+      } catch (VeniceClientException e) {
+        String logMessage = "Skipping a background task because the Fast Client is closed: " + e.getMessage();
+        if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+          LOGGER.info(logMessage);
+        }
         return;
       }
       try {
@@ -114,6 +121,7 @@ public final class ClientRequestTracker {
           closed.get();
           return;
         } catch (InterruptedException e) {
+          LOGGER.warn("Interrupted while waiting for the Fast Client to close; in-flight requests will be failed now");
           restoreInterrupt = true;
           synchronized (this) {
             interrupted = true;
