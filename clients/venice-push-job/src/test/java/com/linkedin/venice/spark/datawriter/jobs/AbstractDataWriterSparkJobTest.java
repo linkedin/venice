@@ -7,6 +7,7 @@ import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.MESSAGE_TYPE_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.POSITION_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RMD_VERSION_ID_COLUMN_NAME;
@@ -383,7 +384,8 @@ public class AbstractDataWriterSparkJobTest {
             new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
             new StructField(OFFSET_COLUMN_NAME, LongType, false, Metadata.empty()),
             new StructField(MESSAGE_TYPE_COLUMN_NAME, IntegerType, false, Metadata.empty()),
-            new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
+            new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+            new StructField(POSITION_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
     Dataset<Row> mockDataset = mock(Dataset.class);
     when(mockDataset.schema()).thenReturn(chunkedKifSchema);
@@ -897,11 +899,11 @@ public class AbstractDataWriterSparkJobTest {
       List<Row> rows = Arrays.asList(
           new GenericRowWithSchema(
               new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "test-key-1".getBytes(),
-                  "test-value-1".getBytes(), 1, "rmd".getBytes(), null },
+                  "test-value-1".getBytes(), 1, "rmd".getBytes(), null, null },
               RAW_PUBSUB_INPUT_TABLE_SCHEMA),
           new GenericRowWithSchema(
               new Object[] { "region1", 1, 101L, MessageType.PUT.getValue(), 1, "test-key-2".getBytes(),
-                  "test-value-2".getBytes(), 1, "rmd".getBytes(), null },
+                  "test-value-2".getBytes(), 1, "rmd".getBytes(), null, null },
               RAW_PUBSUB_INPUT_TABLE_SCHEMA));
       return getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
     }
@@ -935,7 +937,7 @@ public class AbstractDataWriterSparkJobTest {
       List<Row> rows = Collections.singletonList(
           new GenericRowWithSchema(
               new Object[] { "region1", 0, 100L, MessageType.PUT.getValue(), 1, "test-key".getBytes(),
-                  "test-value".getBytes(), 1, "rmd".getBytes(), null },
+                  "test-value".getBytes(), 1, "rmd".getBytes(), null, null },
               RAW_PUBSUB_INPUT_TABLE_SCHEMA));
       return getSparkSession().createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
     }

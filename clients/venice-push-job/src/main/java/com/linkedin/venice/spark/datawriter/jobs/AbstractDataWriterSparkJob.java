@@ -21,6 +21,7 @@ import static com.linkedin.venice.spark.SparkConstants.OFFSET;
 import static com.linkedin.venice.spark.SparkConstants.OFFSET_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.PARTITION_RECORD_COUNT_SCHEMA;
+import static com.linkedin.venice.spark.SparkConstants.POSITION_COLUMN_NAME;
 import static com.linkedin.venice.spark.SparkConstants.RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.REPLICATION_METADATA_PAYLOAD;
 import static com.linkedin.venice.spark.SparkConstants.RMD_COLUMN_NAME;
@@ -110,6 +111,7 @@ import com.linkedin.venice.spark.datawriter.task.StageMetricsRegistry;
 import com.linkedin.venice.spark.datawriter.task.TimedIterator;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
 import com.linkedin.venice.spark.input.kafka.ttl.SparkKafkaInputTTLFilter;
+import com.linkedin.venice.spark.utils.PubSubPositionRowComparator;
 import com.linkedin.venice.spark.utils.RmdPushUtils;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
@@ -122,7 +124,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -495,7 +496,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             RMD_VERSION_ID_COLUMN_NAME + " as " + RMD_VERSION_ID_COLUMN_NAME,
             OFFSET + " as " + OFFSET_COLUMN_NAME,
             MESSAGE_TYPE + " as " + MESSAGE_TYPE_COLUMN_NAME,
-            CHUNKED_KEY_SUFFIX_COLUMN_NAME + " as " + CHUNKED_KEY_SUFFIX_COLUMN_NAME);
+            CHUNKED_KEY_SUFFIX_COLUMN_NAME + " as " + CHUNKED_KEY_SUFFIX_COLUMN_NAME,
+            POSITION_COLUMN_NAME);
       } else {
         // Non-chunked: keep schema IDs for per-record schema fidelity in partition writer
         return processedInput.selectExpr(
@@ -656,6 +658,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     final int compKeyIdx = RAW_PUBSUB_INPUT_TABLE_SCHEMA.fieldIndex(KEY_COLUMN_NAME);
     final int compValIdx = RAW_PUBSUB_INPUT_TABLE_SCHEMA.fieldIndex(VALUE_COLUMN_NAME);
     final int compRmdIdx = RAW_PUBSUB_INPUT_TABLE_SCHEMA.fieldIndex(REPLICATION_METADATA_PAYLOAD);
+    final PubSubPositionRowComparator positionComparator = new PubSubPositionRowComparator(getJobProperties());
 
     dataFrame = dataFrame
         // Group by key
@@ -698,9 +701,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
             }
           }
 
-          // Sort by offset DESC and keep the first (latest) record
-          Row latestRecord =
-              rowsList.stream().max(Comparator.comparingLong(r -> (long) r.getAs(OFFSET_COLUMN_NAME))).orElse(null);
+          // Keep the latest record by source position (numeric offset when available)
+          Row latestRecord = positionComparator.selectLatest(rowsList);
 
           if (latestRecord == null) {
             return Collections.emptyIterator();
@@ -777,7 +779,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
                 outValIdx,
                 outRmdIdx,
                 emptyRecordAcc,
-                chunkMetrics),
+                chunkMetrics,
+                new PubSubPositionRowComparator(getJobProperties())),
             encoder);
 
     LOGGER.info("Chunk assembly completed. Output schema: {}", dataFrame.schema());
@@ -807,6 +810,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     private final int outRmdIdx;
     private final LongAccumulator emptyRecordAcc;
     private final StageMetrics chunkMetrics;
+    private final PubSubPositionRowComparator positionComparator;
 
     private transient SparkChunkAssembler assembler;
 
@@ -822,7 +826,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         int outValIdx,
         int outRmdIdx,
         LongAccumulator emptyRecordAcc,
-        StageMetrics chunkMetrics) {
+        StageMetrics chunkMetrics,
+        PubSubPositionRowComparator positionComparator) {
       this.isRmdChunkingEnabled = isRmdChunkingEnabled;
       this.isTTLEnabled = isTTLEnabled;
       this.needsSslForDictionaryConsumer = needsSslForDictionaryConsumer;
@@ -835,6 +840,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       this.outRmdIdx = outRmdIdx;
       this.emptyRecordAcc = emptyRecordAcc;
       this.chunkMetrics = chunkMetrics;
+      this.positionComparator = positionComparator;
     }
 
     @Override
@@ -853,12 +859,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         return Collections.emptyIterator();
       }
 
-      // Sort by offset DESC
-      rowsList.sort((r1, r2) -> {
-        long offset1 = r1.getAs(OFFSET_COLUMN_NAME);
-        long offset2 = r2.getAs(OFFSET_COLUMN_NAME);
-        return Long.compare(offset2, offset1);
-      });
+      // Sort by source position DESC (numeric offset when available)
+      positionComparator.sortLatestFirst(rowsList);
 
       Row assembled = getOrCreateAssembler().assembleChunks(keyBytes, rowsList.iterator());
 
@@ -1304,7 +1306,8 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
               RMD_VERSION_ID_COLUMN_NAME,
               OFFSET_COLUMN_NAME,
               MESSAGE_TYPE_COLUMN_NAME,
-              CHUNKED_KEY_SUFFIX_COLUMN_NAME));
+              CHUNKED_KEY_SUFFIX_COLUMN_NAME,
+              POSITION_COLUMN_NAME));
     }
 
     for (StructField field: fields) {
