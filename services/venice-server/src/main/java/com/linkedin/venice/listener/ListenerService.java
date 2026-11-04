@@ -9,6 +9,7 @@ import com.linkedin.davinci.storage.ReadMetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
@@ -274,6 +275,21 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getLogContext(),
         capacity,
         serverConfig.getBlockingQueueType());
+  }
+
+  @VisibleForTesting
+  ServerBootstrap getBootstrap() {
+    return bootstrap;
+  }
+
+  @VisibleForTesting
+  ChannelFuture getServerFuture() {
+    return serverFuture;
+  }
+
+  @VisibleForTesting
+  ServerThreadPoolSampler getThreadPoolSampler() {
+    return threadPoolSampler;
   }
 
   protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity, int priority) {

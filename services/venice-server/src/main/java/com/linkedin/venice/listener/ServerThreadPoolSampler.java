@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -115,5 +116,10 @@ final class ServerThreadPoolSampler implements AutoCloseable {
       future.cancel(false);
       future = null;
     }
+  }
+
+  @VisibleForTesting
+  synchronized ScheduledFuture<?> getSamplingTask() {
+    return future;
   }
 }

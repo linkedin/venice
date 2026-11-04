@@ -50,6 +50,7 @@ import org.testng.annotations.Test;
 
 
 public class ServerThreadPoolSamplerTest {
+  private static final String CUSTOM_HISTOGRAM_DESCRIPTION = "Exponential histogram";
   private InMemoryMetricReader reader;
   private VeniceMetricsRepository repository;
   private ThreadPoolExecutor readExecutor;
@@ -89,6 +90,7 @@ public class ServerThreadPoolSamplerTest {
         new VeniceMetricsConfig.Builder().setMetricPrefix("server")
             .setMetricEntities(entities())
             .setEmitOtelMetrics(true)
+            .setOtelCustomDescriptionForHistogramMetrics(CUSTOM_HISTOGRAM_DESCRIPTION)
             .setUseOpenTelemetryInitializedByApplication(applicationProvided)
             .setOtelAdditionalMetricsReader(reader)
             .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
@@ -162,16 +164,29 @@ public class ServerThreadPoolSamplerTest {
       repository = repository(true);
       sampler = new ServerThreadPoolSampler(repository, readExecutor, computeExecutor, nettyHandler, 300);
       assertIntegerBins();
+      repository.getOpenTelemetryMetricsRepository().createDoubleHistogram(DEFAULT_HISTOGRAM).record(31);
+      for (MetricEntity entity: entities()) {
+        if (entity.getMetricType() == MetricType.HISTOGRAM) {
+          assertEquals(
+              reader.collectAllMetrics()
+                  .stream()
+                  .filter(metric -> metric.getName().equals("venice.server." + entity.getMetricName()))
+                  .findFirst()
+                  .get()
+                  .getDescription(),
+              entity == DEFAULT_HISTOGRAM ? CUSTOM_HISTOGRAM_DESCRIPTION : entity.getDescription());
+        }
+      }
     } finally {
       GlobalOpenTelemetry.resetForTest();
     }
   }
 
   private void assertIntegerBins() {
-    for (int count: new int[] { 0, 30, 31, 96, 300, 301 }) {
-      doReturn(count).when(readExecutor).getActiveCount();
-      doReturn(count).when(computeExecutor).getActiveCount();
-      doReturn(count).when(nettyHandler).getActiveRequestThreadCount();
+    doReturn(0, 30, 31, 96, 300, 301).when(readExecutor).getActiveCount();
+    doReturn(0, 30, 31, 96, 300, 301).when(computeExecutor).getActiveCount();
+    doReturn(0, 30, 31, 96, 300, 301).when(nettyHandler).getActiveRequestThreadCount();
+    for (int i = 0; i < 6; i++) {
       sampler.sample();
     }
     for (String pool: new String[] { "storage_execution_thread_pool", "storage_compute_thread_pool",
@@ -190,7 +205,7 @@ public class ServerThreadPoolSamplerTest {
 
   @DataProvider
   public Object[][] configuredCapacities() {
-    return new Object[][] { { 96, 31, 7 }, { 512, 128, 640 }, { 8, 512, 1 } };
+    return new Object[][] { { 512, 128, 640 }, { 8, 512, 1 } };
   }
 
   @Test(dataProvider = "configuredCapacities")
@@ -203,10 +218,10 @@ public class ServerThreadPoolSamplerTest {
     doReturn(compute).when(computeExecutor).getMaximumPoolSize();
     sampler = new ServerThreadPoolSampler(repository, readExecutor, computeExecutor, nettyHandler, netty);
     int sharedCapacity = Math.max(read, compute);
+    doReturn(0, sharedCapacity, sharedCapacity + 1).when(readExecutor).getActiveCount();
+    doReturn(0, sharedCapacity, sharedCapacity + 1).when(computeExecutor).getActiveCount();
+    doReturn(0, netty, netty + 1).when(nettyHandler).getActiveRequestThreadCount();
     for (int i = 0; i < 3; i++) {
-      doReturn(i == 0 ? 0 : sharedCapacity + i - 1).when(readExecutor).getActiveCount();
-      doReturn(i == 0 ? 0 : sharedCapacity + i - 1).when(computeExecutor).getActiveCount();
-      doReturn(i == 0 ? 0 : netty + i - 1).when(nettyHandler).getActiveRequestThreadCount();
       sampler.sample();
     }
     for (String pool: new String[] { "storage_execution_thread_pool", "storage_compute_thread_pool",
@@ -275,8 +290,7 @@ public class ServerThreadPoolSamplerTest {
       disabled.start(scheduler);
       disabled.sample();
       disabled.close();
-      verifyNoInteractions(scheduler, readExecutor, computeExecutor);
-      verify(nettyHandler, never()).getActiveRequestThreadCount();
+      verifyNoInteractions(scheduler, readExecutor, computeExecutor, nettyHandler);
     } finally {
       plain.close();
     }

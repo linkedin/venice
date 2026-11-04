@@ -332,8 +332,8 @@ public class VeniceOpenTelemetryMetricsRepository {
 
   static String getMetricDescription(MetricEntity metricEntity, VeniceMetricsConfig metricsConfig) {
     String customDescription = metricsConfig.getOtelCustomDescriptionForHistogramMetrics();
-    if (metricEntity.getMetricType() == MetricType.HISTOGRAM && customDescription != null
-        && !customDescription.isEmpty()) {
+    if (metricEntity.getMetricType() == MetricType.HISTOGRAM && metricEntity.getExplicitHistogramBoundaries() == null
+        && customDescription != null && !customDescription.isEmpty()) {
       return customDescription;
     } else {
       return metricEntity.getDescription();
