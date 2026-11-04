@@ -7,11 +7,14 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.ClientRequestTracker;
 import com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DispatchingAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.DispatchingVsonStoreClient;
 import com.linkedin.venice.fastclient.DualReadAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DualReadAvroSpecificStoreClient;
+import com.linkedin.venice.fastclient.GracefulShutdownAvroGenericStoreClient;
+import com.linkedin.venice.fastclient.GracefulShutdownAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.InternalAvroStoreClient;
 import com.linkedin.venice.fastclient.LoadControlledAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.LoadControlledAvroSpecificStoreClient;
@@ -22,14 +25,14 @@ import com.linkedin.venice.fastclient.StatsAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import java.util.Objects;
+import java.util.function.Supplier;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(ClientConfig clientConfig) {
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
-
-    return getAndStartGenericStoreClient(storeMetadata, clientConfig);
+    return closeMetadataOnFailure(storeMetadata, () -> getAndStartGenericStoreClient(storeMetadata, clientConfig));
   }
 
   /**
@@ -44,7 +47,7 @@ public class ClientFactory {
    */
   public static <K, V> AvroGenericStoreClient<K, V> getGenericStoreClient(ClientConfig clientConfig) {
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
-    return buildGenericStoreClient(storeMetadata, clientConfig);
+    return closeMetadataOnFailure(storeMetadata, () -> buildGenericStoreClient(storeMetadata, clientConfig));
   }
 
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(
@@ -55,8 +58,23 @@ public class ClientFactory {
      * the lifecycle of the metadata instance.
      */
     StoreMetadata storeMetadata = constructStoreMetadataReader(clientConfig);
+    return closeMetadataOnFailure(storeMetadata, () -> getAndStartSpecificStoreClient(storeMetadata, clientConfig));
+  }
 
-    return getAndStartSpecificStoreClient(storeMetadata, clientConfig);
+  /**
+   * The metadata (and the health monitor it owns) was created here, so close it if no client is returned to own it.
+   */
+  private static <C> C closeMetadataOnFailure(StoreMetadata storeMetadata, Supplier<C> clientSupplier) {
+    try {
+      return clientSupplier.get();
+    } catch (RuntimeException | Error e) {
+      try {
+        storeMetadata.close();
+      } catch (Throwable closeFailure) {
+        e.addSuppressed(closeFailure);
+      }
+      throw e;
+    }
   }
 
   private static StoreMetadata constructStoreMetadataReader(ClientConfig clientConfig) {
@@ -94,11 +112,14 @@ public class ClientFactory {
         ? new DispatchingVsonStoreClient<>(storeMetadata, clientConfig)
         : new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
 
-    InternalAvroStoreClient<K, V> retryClient = dispatchingStoreClient;
+    ClientRequestTracker tracker = new ClientRequestTracker(clientConfig.getClientCloseTimeoutMs());
+    InternalAvroStoreClient<K, V> trackedDispatch =
+        new GracefulShutdownAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig, tracker, false);
+    InternalAvroStoreClient<K, V> retryClient = trackedDispatch;
     if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
         || clientConfig.isLongTailRetryEnabledForCompute()) {
       retryClient = new RetriableAvroGenericStoreClient<>(
-          dispatchingStoreClient,
+          trackedDispatch,
           clientConfig,
           /**
            * Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
@@ -116,11 +137,11 @@ public class ClientFactory {
     StatsAvroGenericStoreClient<K, V> statsStoreClient =
         new StatsAvroGenericStoreClient<>(loadControlClient, clientConfig);
 
-    AvroGenericStoreClient<K, V> dualReadClient = statsStoreClient;
+    InternalAvroStoreClient<K, V> dualReadClient = statsStoreClient;
     if (clientConfig.isDualReadEnabled()) {
       dualReadClient = new DualReadAvroGenericStoreClient<>(statsStoreClient, clientConfig);
     }
-    return dualReadClient;
+    return new GracefulShutdownAvroGenericStoreClient<>(dualReadClient, clientConfig, tracker, true);
   }
 
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificStoreClient(
@@ -129,11 +150,14 @@ public class ClientFactory {
     final DispatchingAvroSpecificStoreClient<K, V> dispatchingStoreClient =
         new DispatchingAvroSpecificStoreClient<>(storeMetadata, clientConfig);
 
-    InternalAvroStoreClient<K, V> retryClient = dispatchingStoreClient;
+    ClientRequestTracker tracker = new ClientRequestTracker(clientConfig.getClientCloseTimeoutMs());
+    InternalAvroStoreClient<K, V> trackedDispatch =
+        new GracefulShutdownAvroGenericStoreClient<>(dispatchingStoreClient, clientConfig, tracker, false);
+    InternalAvroStoreClient<K, V> retryClient = trackedDispatch;
     if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()
         || clientConfig.isLongTailRetryEnabledForCompute()) {
       retryClient = new RetriableAvroSpecificStoreClient<>(
-          dispatchingStoreClient,
+          trackedDispatch,
           clientConfig,
           storeMetadata.getInstanceHealthMonitor().getTimeoutProcessor(),
           storeMetadata::getMultiKeyLongTailRetryThresholds);
@@ -146,12 +170,13 @@ public class ClientFactory {
 
     StatsAvroSpecificStoreClient<K, V> statsStoreClient =
         new StatsAvroSpecificStoreClient<>(loadControlClient, clientConfig);
-    AvroSpecificStoreClient<K, V> dualReadClient = statsStoreClient;
+    InternalAvroStoreClient<K, V> dualReadClient = statsStoreClient;
     if (clientConfig.isDualReadEnabled()) {
       dualReadClient = new DualReadAvroSpecificStoreClient<>(statsStoreClient, clientConfig);
     }
-    dualReadClient.start();
-
-    return dualReadClient;
+    AvroSpecificStoreClient<K, V> client =
+        new GracefulShutdownAvroSpecificStoreClient<>(dualReadClient, clientConfig, tracker);
+    client.start();
+    return client;
   }
 }

@@ -49,6 +49,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final TimeoutProcessor timeoutProcessor;
   private final ExecutionContextProvider executionContextProvider;
+  private final ClientRequestTracker requestTracker;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final String longTailBatchGetRangeBasedRetryThresholdInMilliSeconds;
   private final String longTailComputeRangeBasedRetryThresholdInMilliSeconds;
@@ -87,6 +88,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.timeoutProcessor = timeoutProcessor;
     this.executionContextProvider = clientConfig.getExecutionContextProvider();
+    this.requestTracker = delegate instanceof GracefulShutdownAvroGenericStoreClient
+        ? ((GracefulShutdownAvroGenericStoreClient<K, V>) delegate).getRequestTracker()
+        : null;
 
     this.singleKeyLongTailRetryManager = new RetryManager(
         clientConfig.getClusterStats().getMetricsRepository(),
@@ -163,7 +167,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         default:
           throw new VeniceClientException("Unknown retry type: " + retryType);
       }
-      retryTask.run();
+      trackedRetryTask(retryTask).run();
     }
   }
 
@@ -411,7 +415,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     };
 
     TimeoutProcessor.TimeoutFuture scheduledRetryTask =
-        timeoutProcessor.schedule(ExecutionContextUtils.wrap(executionContext, retryTask, failure -> {
+        timeoutProcessor.schedule(trackedRetryTask(ExecutionContextUtils.wrap(executionContext, retryTask, failure -> {
           MultiKeyRequestContext<K, V> retryRequestContext = requestContext.retryContext.retryRequestContext;
           if (retryRequestContext == null) {
             retryRequestContext = requestContextConstructor.construct(pendingKeysFuture.size());
@@ -430,7 +434,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
               completionGuard,
               null).onCompletion(
                   Optional.of(new VeniceClientException("Failed to execute retry with execution context", failure)));
-        }), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
+        })), longTailRetryThresholdInMicroSeconds, TimeUnit.MICROSECONDS);
 
     /**
      * Retry for streaming multi-key request is done at the request level. This mean we will perform one retry for the
@@ -552,6 +556,10 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         }
       }
     };
+  }
+
+  private Runnable trackedRetryTask(Runnable task) {
+    return requestTracker == null ? task : requestTracker.resourceTask(task);
   }
 
   private boolean isExceptionCausedByTooManyRequests(Throwable e) {

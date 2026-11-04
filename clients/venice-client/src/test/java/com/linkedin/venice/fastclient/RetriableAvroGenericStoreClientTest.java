@@ -1585,7 +1585,6 @@ public class RetriableAvroGenericStoreClientTest {
               .setR2Client(mock(Client.class))
               .setD2Client(mock(D2Client.class))
               .setClusterDiscoveryD2Service("discovery")
-              .setInstanceHealthMonitor(mock(InstanceHealthMonitor.class))
               .setMetricsRepository(repository)
               .setExecutionContextProvider(provider)
               .setDeserializationExecutor(deserialization::add)

@@ -21,7 +21,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
+import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.stats.FastClientMetricEntity;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
@@ -41,6 +41,7 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -109,9 +110,7 @@ public class ClientConfigTest {
     MetricsRepository repository = new MetricsRepository();
     MetricsRepository legacyRepository = new MetricsRepository();
     try {
-      ClientConfig config = getClientConfigWithMinimumRequiredInputs().setMetricsRepository(repository)
-          .setInstanceHealthMonitor(mock(InstanceHealthMonitor.class))
-          .build();
+      ClientConfig config = getClientConfigWithMinimumRequiredInputs().setMetricsRepository(repository).build();
       assertFalse(config.isDualReadEnabled());
       assertFalse(config.isStoreLoadControllerEnabled());
 
@@ -154,7 +153,6 @@ public class ClientConfigTest {
                 .setOtelAdditionalMetricsReader(reader)
                 .build())) {
       ClientConfig config = getClientConfigWithMinimumRequiredInputs().setMetricsRepository(repository)
-          .setInstanceHealthMonitor(mock(InstanceHealthMonitor.class))
           .setDualReadEnabled(dualReadEnabled)
           .setGenericThinClient(dualReadEnabled ? mock(AvroGenericStoreClient.class) : null)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
@@ -529,5 +527,72 @@ public class ClientConfigTest {
     assertTrue(clonedConfig.getValueDeserializerFactory().isPresent());
     assertEquals(clonedConfig.getKeySerializerFactory().get(), mockSerializerFactory);
     assertEquals(clonedConfig.getValueDeserializerFactory().get(), mockDeserializerFactory);
+  }
+
+  /**
+   * Monitor settings without an R2 client get the Fast Client's R2 client (also through clone()); an explicitly set
+   * client is kept.
+   */
+  @Test
+  public void testInstanceHealthMonitorConfigUsesClientR2ClientUnlessSet() {
+    Client r2Client = mock(Client.class);
+    ClientConfig.ClientConfigBuilder builder = getClientConfigWithMinimumRequiredInputs().setR2Client(r2Client);
+    InstanceHealthMonitorConfig defaults = builder.build().getInstanceHealthMonitorConfig();
+    assertSame(defaults.getClient(), r2Client);
+    assertEquals(
+        defaults.getRoutingRequestDefaultTimeoutMS(),
+        InstanceHealthMonitorConfig.builder().build().getRoutingRequestDefaultTimeoutMS());
+
+    builder.setInstanceHealthMonitorConfig(
+        InstanceHealthMonitorConfig.builder()
+            .setRoutingRequestDefaultTimeoutMS(1234)
+            .setLoadControllerEnabled(true)
+            .build());
+    for (ClientConfig config: new ClientConfig[] { builder.build(), builder.clone().build() }) {
+      InstanceHealthMonitorConfig monitorConfig = config.getInstanceHealthMonitorConfig();
+      assertSame(monitorConfig.getClient(), r2Client);
+      assertEquals(monitorConfig.getRoutingRequestDefaultTimeoutMS(), 1234);
+      assertTrue(monitorConfig.isLoadControllerEnabled());
+    }
+
+    Client monitorClient = mock(Client.class);
+    builder.setInstanceHealthMonitorConfig(InstanceHealthMonitorConfig.builder().setClient(monitorClient).build());
+    assertSame(builder.build().getInstanceHealthMonitorConfig().getClient(), monitorClient);
+
+    Client grpcR2Client = mock(Client.class);
+    builder.setUseGrpc(true)
+        .setGrpcClientConfig(
+            new GrpcClientConfig.Builder().setR2Client(grpcR2Client)
+                .setNettyServerToGrpcAddress(Collections.singletonMap("server:1", "server:2"))
+                .build());
+    assertSame(builder.build().getInstanceHealthMonitorConfig().getClient(), monitorClient);
+    builder.setInstanceHealthMonitorConfig(null);
+    assertSame(builder.build().getInstanceHealthMonitorConfig().getClient(), r2Client);
+    builder.setR2Client(null);
+    for (boolean explicitSettings: new boolean[] { false, true }) {
+      if (explicitSettings) {
+        builder.setInstanceHealthMonitorConfig(
+            InstanceHealthMonitorConfig.builder().setRoutingRequestDefaultTimeoutMS(1234).build());
+      }
+      for (ClientConfig config: new ClientConfig[] { builder.build(), builder.clone().build() }) {
+        assertSame(config.getInstanceHealthMonitorConfig().getClient(), grpcR2Client);
+        if (explicitSettings) {
+          assertEquals(config.getInstanceHealthMonitorConfig().getRoutingRequestDefaultTimeoutMS(), 1234);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testClientCloseTimeoutDefaultValidationAndClone() {
+    ClientConfig.ClientConfigBuilder builder = getClientConfigWithMinimumRequiredInputs();
+    assertEquals(builder.build().getClientCloseTimeoutMs(), 1000);
+    for (long timeout: new long[] { 0, 42, Long.MAX_VALUE }) {
+      builder.setClientCloseTimeoutMs(timeout);
+      assertEquals(builder.build().getClientCloseTimeoutMs(), timeout);
+      assertEquals(builder.clone().build().getClientCloseTimeoutMs(), timeout);
+    }
+    builder.setClientCloseTimeoutMs(-1);
+    assertThrows(VeniceClientException.class, builder::build);
   }
 }

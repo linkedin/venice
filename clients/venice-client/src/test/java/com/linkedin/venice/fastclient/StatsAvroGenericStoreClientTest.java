@@ -87,8 +87,7 @@ public class StatsAvroGenericStoreClientTest {
               .setR2Client(mock(Client.class))
               .setD2Client(mock(D2Client.class))
               .setClusterDiscoveryD2Service("test_discovery")
-              .setMetricsRepository(repository)
-              .setInstanceHealthMonitor(monitor);
+              .setMetricsRepository(repository);
       if (disableRouteMetrics != null) {
         builder.setDisableRouteMetrics(disableRouteMetrics);
       }
