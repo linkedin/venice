@@ -147,6 +147,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final ExecutorService seekExecutorService;
 
   protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
+  // Reporting timestamps can be seeded at subscription time; only consumed heartbeats are safe seek checkpoints.
+  protected final Map<Integer, Long> currentVersionLastConsumedHeartbeat = new VeniceConcurrentHashMap<>();
 
   protected final ChangelogClientConfig changelogClientConfig;
 
@@ -777,6 +779,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   private void recordSubscriptionForHeartbeatReporting(PubSubTopicPartition topicPartition) {
+    currentVersionLastConsumedHeartbeat.remove(topicPartition.getPartitionNumber());
     currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
   }
 
@@ -827,6 +830,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         if (partitions.contains(topicPartition.getPartitionNumber())) {
           topicPartitionsToUnsub.add(topicPartition);
           currentVersionLastHeartbeat.remove(topicPartition.getPartitionNumber());
+          currentVersionLastConsumedHeartbeat.remove(topicPartition.getPartitionNumber());
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
@@ -1132,6 +1136,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
         && Arrays.equals(key, KafkaKey.HEART_BEAT.getKey())) {
       currentVersionLastHeartbeat.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
+      currentVersionLastConsumedHeartbeat.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
     }
     return false;
   }

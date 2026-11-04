@@ -49,7 +49,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
    */
   private final AtomicReference<Exception> versionSwapThreadException = new AtomicReference<>();
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
-  // Guarded by versionSwapListener.
+  private final Object versionSwapListenerRegistrationLock = new Object();
+  // Guarded by versionSwapListenerRegistrationLock.
   private boolean versionSwapListenerRegistered;
 
   public VeniceAfterImageConsumerImpl(
@@ -154,7 +155,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     } catch (InterruptedException e) {
       throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
     }
-    synchronized (versionSwapListener) {
+    synchronized (versionSwapListenerRegistrationLock) {
       if (!versionSwapListenerRegistered) {
         storeRepository.registerStoreDataChangedListener(versionSwapListener);
         versionSwapListenerRegistered = true;
@@ -405,7 +406,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             // first, check and see if all partitions are already after EOP
             adjustSeekCheckPointsBasedOnHeartbeats(
                 checkpoints,
-                getLastHeartbeatPerPartition(),
+                new HashMap<>(currentVersionLastConsumedHeartbeat),
                 consumerAdapter,
                 topicPartitionList);
           }
