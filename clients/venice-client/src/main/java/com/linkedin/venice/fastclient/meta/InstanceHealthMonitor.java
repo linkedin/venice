@@ -381,25 +381,20 @@ public class InstanceHealthMonitor implements Closeable {
     if (!closed.compareAndSet(false, true)) {
       return;
     }
-    // Preserve an existing interrupt while still attempting cleanup of both executors.
-    boolean interrupted = Thread.interrupted();
+    // Stop the heartbeat first because it schedules work on the timer.
     heartBeatScheduler.shutdownNow();
     try {
       try {
         heartBeatScheduler.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
-        interrupted = true;
+        Thread.currentThread().interrupt();
       }
     } finally {
       timeoutProcessor.shutdownNow();
       try {
         timeoutProcessor.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
-        interrupted = true;
-      } finally {
-        if (interrupted) {
-          Thread.currentThread().interrupt();
-        }
+        Thread.currentThread().interrupt();
       }
     }
   }
