@@ -27,6 +27,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -73,8 +74,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -207,6 +211,100 @@ public class RequestBasedMetadataTest {
     } finally {
       first.close();
       second.close();
+    }
+  }
+
+  /**
+   * A refresh scheduler from the config can be shared by many clients. Closing one client stops only its own refresh
+   * and leaves the shared scheduler running; a scheduler the metadata created itself is shut down on close.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCloseStopsOnlyItsOwnRefreshOnSharedScheduler() throws Exception {
+    ScheduledThreadPoolExecutor shared = new ScheduledThreadPoolExecutor(1);
+    shared.setRemoveOnCancelPolicy(true);
+    RequestBasedMetadata first = null;
+    RequestBasedMetadata second = null;
+    RequestBasedMetadata owner = null;
+    try {
+      first = getMockMetaData(
+          RequestBasedMetadataTestUtils.getMockClientConfig("storeA", false, false, shared),
+          "storeA",
+          false,
+          true,
+          false);
+      second = getMockMetaData(
+          RequestBasedMetadataTestUtils.getMockClientConfig("storeB", false, false, shared),
+          "storeB",
+          false,
+          true,
+          false);
+      first.start();
+      second.start();
+      assertEquals(shared.getQueue().size(), 2, "Each store should have its next refresh queued");
+
+      first.close();
+      Assert.assertFalse(shared.isShutdown(), "Closing one client must not stop the shared scheduler");
+      assertEquals(shared.getQueue().size(), 1, "Only the closed store's refresh should be removed");
+      CompletableFuture<Void> stillRuns = new CompletableFuture<>();
+      shared.execute(() -> stillRuns.complete(null));
+      stillRuns.get(10, TimeUnit.SECONDS);
+
+      owner =
+          getMockMetaData(RequestBasedMetadataTestUtils.getMockClientConfig("storeC"), "storeC", false, true, false);
+      ScheduledExecutorService ownScheduler = owner.getScheduler();
+      owner.close();
+      assertTrue(ownScheduler.isShutdown(), "A scheduler the metadata created should be shut down on close");
+    } finally {
+      for (RequestBasedMetadata metadata: new RequestBasedMetadata[] { first, second, owner }) {
+        if (metadata != null) {
+          metadata.close();
+        }
+      }
+      shared.shutdownNow();
+    }
+  }
+
+  /**
+   * close() can run on another thread while refresh() is scheduling its next run. The hook below calls close() inside
+   * schedule(), so close() only sees the old future; refresh() must still cancel the new one.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRefreshScheduledDuringCloseIsCancelled() throws Exception {
+    AtomicReference<RequestBasedMetadata> metadataRef = new AtomicReference<>();
+    AtomicReference<ScheduledFuture<?>> scheduledDuringClose = new AtomicReference<>();
+    ScheduledThreadPoolExecutor shared = new ScheduledThreadPoolExecutor(1) {
+      @Override
+      public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+        RequestBasedMetadata metadata = metadataRef.get();
+        if (metadata != null && scheduledDuringClose.get() == null) {
+          try {
+            metadata.close();
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+          ScheduledFuture<?> future = super.schedule(command, delay, unit);
+          scheduledDuringClose.set(future);
+          return future;
+        }
+        return super.schedule(command, delay, unit);
+      }
+    };
+    shared.setRemoveOnCancelPolicy(true);
+    try {
+      RequestBasedMetadata metadata = getMockMetaData(
+          RequestBasedMetadataTestUtils.getMockClientConfig("storeA", false, false, shared),
+          "storeA",
+          false,
+          true,
+          false);
+      metadataRef.set(metadata);
+      metadata.start();
+
+      assertNotNull(scheduledDuringClose.get(), "The hook should have closed the metadata during schedule()");
+      assertTrue(scheduledDuringClose.get().isCancelled(), "A refresh scheduled during close() must be cancelled");
+      assertEquals(shared.getQueue().size(), 0, "No refresh should stay queued after close");
+    } finally {
+      shared.shutdownNow();
     }
   }
 

@@ -19,6 +19,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -79,7 +80,8 @@ public class InstanceHealthMonitor implements Closeable {
   private final AtomicBoolean closed = new AtomicBoolean();
 
   public InstanceHealthMonitor(InstanceHealthMonitorConfig config) {
-    this.config = config;
+    // Validate before starting the timer: a throw after that would leave a thread nobody can stop.
+    this.config = Objects.requireNonNull(config, "config");
     // Not registered with ResourceRegistry: a JVM shutdown hook must not stop the timer while requests are in flight.
     // close() is the only way to stop it.
     this.timeoutProcessor = TimeoutProcessor.createManaged(true, 1);

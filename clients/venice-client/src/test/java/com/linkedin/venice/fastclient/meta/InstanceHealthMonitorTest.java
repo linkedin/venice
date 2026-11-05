@@ -56,6 +56,11 @@ import org.testng.annotations.Test;
 public class InstanceHealthMonitorTest {
   private final static String instance = "https://test.host:1234";
 
+  @Test
+  public void testNullConfigIsRejected() {
+    expectThrows(NullPointerException.class, () -> new InstanceHealthMonitor(null));
+  }
+
   /**
    * ResourceRegistry.globalShutdown() runs from a JVM shutdown hook and is process wide, so it runs in a child JVM.
    */
