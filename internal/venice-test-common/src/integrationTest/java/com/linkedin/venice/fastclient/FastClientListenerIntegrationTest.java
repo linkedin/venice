@@ -9,8 +9,6 @@ import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
@@ -37,9 +35,7 @@ public class FastClientListenerIntegrationTest extends AbstractClientEndToEndSet
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setMetadataRefreshIntervalInSeconds(1L)
-            .setInstanceHealthMonitor(
-                new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().setClient(r2Client).build()));
+            .setMetadataRefreshIntervalInSeconds(1L);
 
     try (AvroGenericStoreClient<String, GenericRecord> client = getGenericFastClientWithoutStart(
         clientConfigBuilder,
@@ -73,9 +69,7 @@ public class FastClientListenerIntegrationTest extends AbstractClientEndToEndSet
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setMetadataRefreshIntervalInSeconds(1L)
-            .setInstanceHealthMonitor(
-                new InstanceHealthMonitor(InstanceHealthMonitorConfig.builder().setClient(r2Client).build()));
+            .setMetadataRefreshIntervalInSeconds(1L);
 
     try (AvroGenericStoreClient<String, GenericRecord> client = getGenericFastClientWithoutStart(
         clientConfigBuilder,

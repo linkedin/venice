@@ -8,6 +8,7 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.VALUE_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockD2ServiceDiscovery;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockMetaData;
+import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.newRequestBasedMetadata;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -26,10 +27,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.common.callback.Callback;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.r2.transport.common.Client;
@@ -39,11 +43,13 @@ import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.listeners.StoreConfigSnapshot;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
@@ -66,9 +72,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -148,10 +158,10 @@ public class RequestBasedMetadataTest {
   public void testUpdateCacheReconcilesHealthMonitorWithServingSet() throws IOException, InterruptedException {
     String storeName = "testStore";
     ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig(storeName, false, false);
-    InstanceHealthMonitor healthMonitor = clientConfig.getInstanceHealthMonitor();
     RequestBasedMetadata requestBasedMetadata = null;
     try {
       requestBasedMetadata = getMockMetaData(clientConfig, storeName, true /* metadataChange */);
+      InstanceHealthMonitor healthMonitor = requestBasedMetadata.getInstanceHealthMonitor();
       requestBasedMetadata.start();
 
       // First refresh serves REPLICA1_NAME (partition 0) and REPLICA2_NAME (partition 1). start() runs the first
@@ -169,6 +179,153 @@ public class RequestBasedMetadataTest {
         requestBasedMetadata.close();
       }
     }
+  }
+
+  /**
+   * Each client builds its own monitor, even from a cloned config, and closing the client closes only that monitor.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testEachClientOwnsAndClosesItsHealthMonitor() throws Exception {
+    ClientConfig.ClientConfigBuilder builder = new ClientConfig.ClientConfigBuilder<>().setStoreName("testStore")
+        .setR2Client(mock(Client.class))
+        .setD2Client(mock(D2Client.class))
+        .setClusterDiscoveryD2Service("test-discovery");
+    D2TransportClient d2TransportClient = mock(D2TransportClient.class);
+    doReturn("test-discovery").when(d2TransportClient).getServiceName();
+    doReturn(mock(D2Client.class)).when(d2TransportClient).getD2Client();
+    ClientConfig config = builder.build();
+    RequestBasedMetadata first = new RequestBasedMetadata(config, d2TransportClient);
+    RequestBasedMetadata second = new RequestBasedMetadata(builder.clone().build(), d2TransportClient);
+    try {
+      InstanceHealthMonitor firstMonitor = first.getInstanceHealthMonitor();
+      InstanceHealthMonitor secondMonitor = second.getInstanceHealthMonitor();
+      Assert.assertNotSame(firstMonitor, secondMonitor);
+
+      new DispatchingAvroGenericStoreClient<>(first, config, mock(TransportClient.class)).close();
+      assertThrows(RejectedExecutionException.class, () -> firstMonitor.getTimeoutProcessor().execute(() -> {}));
+      assertThrows(IllegalStateException.class, () -> firstMonitor.trackHealthBasedOnRequestToInstance(REPLICA1_NAME));
+
+      CompletableFuture<Void> secondTimerAlive = new CompletableFuture<>();
+      secondMonitor.getTimeoutProcessor().execute(() -> secondTimerAlive.complete(null));
+      secondTimerAlive.get(10, TimeUnit.SECONDS);
+    } finally {
+      first.close();
+      second.close();
+    }
+  }
+
+  /**
+   * A refresh scheduler from the config can be shared by many clients. Closing one client stops only its own refresh
+   * and leaves the shared scheduler running; a scheduler the metadata created itself is shut down on close.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCloseStopsOnlyItsOwnRefreshOnSharedScheduler() throws Exception {
+    ScheduledThreadPoolExecutor shared = new ScheduledThreadPoolExecutor(1);
+    shared.setRemoveOnCancelPolicy(true);
+    RequestBasedMetadata first = null;
+    RequestBasedMetadata second = null;
+    RequestBasedMetadata owner = null;
+    try {
+      first = getMockMetaData(
+          RequestBasedMetadataTestUtils.getMockClientConfig("storeA", false, false, shared),
+          "storeA",
+          false,
+          true,
+          false);
+      second = getMockMetaData(
+          RequestBasedMetadataTestUtils.getMockClientConfig("storeB", false, false, shared),
+          "storeB",
+          false,
+          true,
+          false);
+      first.start();
+      second.start();
+      assertEquals(shared.getQueue().size(), 2, "Each store should have its next refresh queued");
+
+      first.close();
+      Assert.assertFalse(shared.isShutdown(), "Closing one client must not stop the shared scheduler");
+      assertEquals(shared.getQueue().size(), 1, "Only the closed store's refresh should be removed");
+      CompletableFuture<Void> stillRuns = new CompletableFuture<>();
+      shared.execute(() -> stillRuns.complete(null));
+      stillRuns.get(10, TimeUnit.SECONDS);
+
+      owner =
+          getMockMetaData(RequestBasedMetadataTestUtils.getMockClientConfig("storeC"), "storeC", false, true, false);
+      ScheduledExecutorService ownScheduler = owner.getScheduler();
+      owner.close();
+      assertTrue(ownScheduler.isShutdown(), "A scheduler the metadata created should be shut down on close");
+    } finally {
+      for (RequestBasedMetadata metadata: new RequestBasedMetadata[] { first, second, owner }) {
+        if (metadata != null) {
+          metadata.close();
+        }
+      }
+      shared.shutdownNow();
+    }
+  }
+
+  /**
+   * close() can run on another thread while refresh() is scheduling its next run. The hook below calls close() inside
+   * schedule(), so close() only sees the old future; refresh() must still cancel the new one.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRefreshScheduledDuringCloseIsCancelled() throws Exception {
+    AtomicReference<RequestBasedMetadata> metadataRef = new AtomicReference<>();
+    AtomicReference<ScheduledFuture<?>> scheduledDuringClose = new AtomicReference<>();
+    ScheduledThreadPoolExecutor shared = new ScheduledThreadPoolExecutor(1) {
+      @Override
+      public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+        RequestBasedMetadata metadata = metadataRef.get();
+        if (metadata != null && scheduledDuringClose.get() == null) {
+          try {
+            metadata.close();
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+          ScheduledFuture<?> future = super.schedule(command, delay, unit);
+          scheduledDuringClose.set(future);
+          return future;
+        }
+        return super.schedule(command, delay, unit);
+      }
+    };
+    shared.setRemoveOnCancelPolicy(true);
+    try {
+      RequestBasedMetadata metadata = getMockMetaData(
+          RequestBasedMetadataTestUtils.getMockClientConfig("storeA", false, false, shared),
+          "storeA",
+          false,
+          true,
+          false);
+      metadataRef.set(metadata);
+      metadata.start();
+
+      assertNotNull(scheduledDuringClose.get(), "The hook should have closed the metadata during schedule()");
+      assertTrue(scheduledDuringClose.get().isCancelled(), "A refresh scheduled during close() must be cancelled");
+      assertEquals(shared.getQueue().size(), 0, "No refresh should stay queued after close");
+    } finally {
+      shared.shutdownNow();
+    }
+  }
+
+  /**
+   * A constructor failure in either the base class or {@link RequestBasedMetadata} closes the monitor it was given and
+   * keeps the original error.
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testConstructorFailureClosesHealthMonitor(boolean failInBaseConstructor) throws IOException {
+    InstanceHealthMonitor monitor = mock(InstanceHealthMonitor.class);
+    IOException closeFailure = new IOException("close failed");
+    doThrow(closeFailure).when(monitor).close();
+    ClientConfig clientConfig = RequestBasedMetadataTestUtils.getMockClientConfig("testStore");
+    if (failInBaseConstructor) {
+      doReturn(null).when(clientConfig).getClientRoutingStrategyType();
+    }
+    // A null transport fails in the RequestBasedMetadata constructor body.
+    NullPointerException failure =
+        Assert.expectThrows(NullPointerException.class, () -> new RequestBasedMetadata(clientConfig, null, monitor));
+    verify(monitor, times(1)).close();
+    assertEquals(Arrays.asList(failure.getSuppressed()), Collections.singletonList(closeFailure));
   }
 
   /**
@@ -194,12 +351,11 @@ public class RequestBasedMetadataTest {
             .setRoutingTimedOutRequestCounterResetDelayMS(2000)
             .setClient(mock(Client.class))
             .build());
-    doReturn(realMonitor).when(clientConfig).getInstanceHealthMonitor();
 
     RequestBasedMetadata requestBasedMetadata = null;
     try {
       D2TransportClient d2TransportClient = RequestBasedMetadataTestUtils.getMockD2TransportClientCycling(storeName);
-      requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
+      requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient, realMonitor);
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(getMockD2ServiceDiscovery(d2TransportClient, storeName));
@@ -493,7 +649,7 @@ public class RequestBasedMetadataTest {
         .when(d2TransportClient)
         .get(eq(metadataPath));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -540,7 +696,7 @@ public class RequestBasedMetadataTest {
         .when(d2TransportClient)
         .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -569,7 +725,7 @@ public class RequestBasedMetadataTest {
         .when(d2TransportClient)
         .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -609,7 +765,7 @@ public class RequestBasedMetadataTest {
         .when(d2TransportClient)
         .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -649,7 +805,7 @@ public class RequestBasedMetadataTest {
                 replica2))).when(d2TransportClient)
                     .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -702,7 +858,7 @@ public class RequestBasedMetadataTest {
         .when(d2TransportClient)
         .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -761,7 +917,7 @@ public class RequestBasedMetadataTest {
         .when(d2TransportClient)
         .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -805,7 +961,7 @@ public class RequestBasedMetadataTest {
                 .when(d2TransportClient)
                 .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -843,7 +999,7 @@ public class RequestBasedMetadataTest {
                 .when(d2TransportClient)
                 .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -903,7 +1059,7 @@ public class RequestBasedMetadataTest {
         .when(d2TransportClient)
         .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -959,7 +1115,7 @@ public class RequestBasedMetadataTest {
     VeniceClientException veniceClientException =
         new VeniceClientException(new VeniceClientHttpException(HttpStatus.SC_FORBIDDEN));
     doThrow(veniceClientException).when(d2TransportClient).get(anyString());
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
       Assert.assertThrows(ConfigurationException.class, requestBasedMetadata::start);
     }
@@ -977,7 +1133,7 @@ public class RequestBasedMetadataTest {
     D2ServiceDiscoveryResponse d2Response = new D2ServiceDiscoveryResponse();
     d2Response.setServerD2Service("test-service");
     doReturn(d2Response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       RequestBasedMetadata spy = spy(requestBasedMetadata);
       spy.setD2ServiceDiscovery(d2ServiceDiscovery);
       // let child thread handling the start logic otherwise the main thread cannot verify the invocation times.
@@ -1103,7 +1259,7 @@ public class RequestBasedMetadataTest {
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respV1, respV2).when(d2TransportClient).get(eq(metadataPath));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -1154,7 +1310,7 @@ public class RequestBasedMetadataTest {
     // exactly one updateCache() and inspect the deferred callback list. Production refresh() also sets isReady=true,
     // which we are NOT testing here. Listeners in this test do not call getCurrentStoreVersion() — adding such a
     // call would surface as an "!isReady" failure that would not reproduce against the production refresh() path.
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -1193,7 +1349,7 @@ public class RequestBasedMetadataTest {
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respVeniceOnly, respDualEarlyReturn).when(d2TransportClient).get(eq(metadataPath));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -1236,7 +1392,7 @@ public class RequestBasedMetadataTest {
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respUnknown).when(d2TransportClient).get(eq(metadataPath));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -1275,7 +1431,7 @@ public class RequestBasedMetadataTest {
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respInternal, respDualWrite).when(d2TransportClient).get(eq(metadataPath));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -1320,7 +1476,7 @@ public class RequestBasedMetadataTest {
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respUnknown).when(d2TransportClient).get(eq(metadataPath));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -1366,7 +1522,7 @@ public class RequestBasedMetadataTest {
     String metadataPath = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     doReturn(respInitial, respDeferred, respAdopted).when(d2TransportClient).get(eq(metadataPath));
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata
           .setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
@@ -1509,7 +1665,7 @@ public class RequestBasedMetadataTest {
     response.setCluster(clusterName);
     doReturn(response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
       requestBasedMetadata.discoverD2Service();
 
@@ -1536,7 +1692,7 @@ public class RequestBasedMetadataTest {
     response.setCluster(clusterA);
     doReturn(response).when(d2ServiceDiscovery).find(any(), any(), anyBoolean());
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
       requestBasedMetadata.discoverD2Service();
       requestBasedMetadata.discoverD2Service(); // re-entry; gated by isServiceDiscovered
@@ -1571,7 +1727,7 @@ public class RequestBasedMetadataTest {
     responseB.setServerD2Service(serverD2B);
     responseB.setCluster(clusterB);
 
-    try (RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient)) {
+    try (RequestBasedMetadata requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient)) {
       requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
 
       // Initial discovery — cluster A

@@ -39,7 +39,6 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
@@ -209,12 +208,11 @@ public class DispatchingAvroGenericStoreClientTest {
         .setD2Client(mock(D2Client.class))
         .setClusterDiscoveryD2Service("test_server_discovery")
         .setMetadataRefreshIntervalInSeconds(1L)
-        .setInstanceHealthMonitor(
-            new InstanceHealthMonitor(
-                InstanceHealthMonitorConfig.builder()
-                    .setRoutingRequestDefaultTimeoutMS(routingRequestDefaultTimeOutMS)
-                    .setRoutingPendingRequestCounterInstanceBlockThreshold(1)
-                    .build()));
+        .setInstanceHealthMonitorConfig(
+            InstanceHealthMonitorConfig.builder()
+                .setRoutingRequestDefaultTimeoutMS(routingRequestDefaultTimeOutMS)
+                .setRoutingPendingRequestCounterInstanceBlockThreshold(1)
+                .build());
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true);
     metrics = metricsRepository.metrics();
 

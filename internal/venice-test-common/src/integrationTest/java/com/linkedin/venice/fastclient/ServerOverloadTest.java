@@ -5,7 +5,6 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
@@ -39,12 +38,11 @@ public class ServerOverloadTest extends AbstractClientEndToEndSetup {
             .setLoadControllerMaxRejectionRatio(0.9)
             .setLoadControllerRejectionRatioUpdateIntervalInSec(1)
             .build();
-    InstanceHealthMonitor healthMonitor = new InstanceHealthMonitor(healthMonitorConfig);
 
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setInstanceHealthMonitor(healthMonitor);
+            .setInstanceHealthMonitorConfig(healthMonitorConfig);
 
     MetricsRepository clientMetricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = getGenericFastClient(
@@ -68,9 +66,9 @@ public class ServerOverloadTest extends AbstractClientEndToEndSetup {
       }
     }
     assertTrue(receivedOverloadException);
-    assertEquals(healthMonitor.getOverloadedInstanceCount(), 2);
 
-    // Verify some metrics
+    // The client's own health monitor reports both servers as overloaded.
+    assertEquals(clientMetricsRepository.getMetric("." + storeName + "--overloaded_instance_count.Max").value(), 2.0);
     String overloadInstanceCountMetricName = "." + storeName + "--overloaded_instance_count.Avg";
     assertTrue(clientMetricsRepository.getMetric(overloadInstanceCountMetricName).value() > 0);
 
