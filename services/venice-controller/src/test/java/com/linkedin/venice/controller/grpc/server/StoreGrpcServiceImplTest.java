@@ -57,6 +57,7 @@ import io.grpc.StatusRuntimeException;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.annotations.AfterMethod;
@@ -656,6 +657,7 @@ public class StoreGrpcServiceImplTest {
     StoreInfo mockStoreInfo = new StoreInfo();
     mockStoreInfo.setName(TEST_STORE);
     mockStoreInfo.setOwner(OWNER);
+    mockStoreInfo.setColoToCurrentVersions(Collections.singletonMap("region", -1));
     when(storeRequestHandler.getStore(TEST_CLUSTER, TEST_STORE)).thenReturn(mockStoreInfo);
 
     GetStoreGrpcResponse actualResponse = blockingStub.getStore(request);
@@ -664,6 +666,8 @@ public class StoreGrpcServiceImplTest {
     assertEquals(actualResponse.getStoreInfo().getClusterName(), TEST_CLUSTER, "Cluster name should match");
     assertEquals(actualResponse.getStoreInfo().getStoreName(), TEST_STORE, "Store name should match");
     assertTrue(actualResponse.getStoreInfoJson().contains(TEST_STORE), "Store info JSON should contain store name");
+    assertTrue(actualResponse.getStoreInfoJson().contains("\"region\":-1"));
+    verify(storeRequestHandler).getStore(TEST_CLUSTER, TEST_STORE);
   }
 
   @Test

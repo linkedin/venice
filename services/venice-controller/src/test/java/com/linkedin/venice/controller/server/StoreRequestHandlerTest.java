@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ControllerRequestHandlerDependencies;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -491,14 +493,28 @@ public class StoreRequestHandlerTest {
     when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
     when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(2000L);
     when(admin.getDefaultMaxRecordSizeBytes("testCluster")).thenReturn(2048);
-    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    Map<String, Integer> currentVersions = Collections.singletonMap("region", -1);
+    when(admin.getCurrentVersionsForStoreResponse("testCluster", "testStore")).thenReturn(currentVersions);
     when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(false);
     when(admin.getKafkaBootstrapServers(false)).thenReturn("localhost:9092");
 
     StoreInfo response = storeRequestHandler.getStore("testCluster", "testStore");
 
     verify(admin, times(1)).getStore("testCluster", "testStore");
+    verify(admin).getCurrentVersionsForStoreResponse("testCluster", "testStore");
+    verify(admin, never()).getCurrentVersionsForMultiColos("testCluster", "testStore");
+    assertEquals(response.getColoToCurrentVersions(), currentVersions);
     assertEquals(response.getName(), "testStore");
+  }
+
+  @Test
+  public void testChildStoreResponsePreservesNullRegionalVersions() {
+    VeniceHelixAdmin child = mock(VeniceHelixAdmin.class);
+    when(child.getCurrentVersionsForStoreResponse("testCluster", "testStore")).thenCallRealMethod();
+    when(child.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenCallRealMethod();
+
+    assertTrue(child.getCurrentVersionsForStoreResponse("testCluster", "testStore") == null);
+    verify(child).getCurrentVersionsForMultiColos("testCluster", "testStore");
   }
 
   @Test
@@ -522,7 +538,7 @@ public class StoreRequestHandlerTest {
     when(admin.getStore("testCluster", "testStore")).thenReturn(mockStore);
     when(admin.getBackupVersionDefaultRetentionMs()).thenReturn(86400000L);
     when(admin.getDefaultMaxRecordSizeBytes("testCluster")).thenReturn(1048576);
-    when(admin.getCurrentVersionsForMultiColos("testCluster", "testStore")).thenReturn(Collections.emptyMap());
+    when(admin.getCurrentVersionsForStoreResponse("testCluster", "testStore")).thenReturn(Collections.emptyMap());
     when(admin.isSSLEnabledForPush("testCluster", "testStore")).thenReturn(true);
     when(admin.getKafkaBootstrapServers(true)).thenReturn("localhost:9093");
 

@@ -142,6 +142,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -3895,6 +3896,78 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
     for (int i = 0; i < regionCount; i++) {
       assertEquals(result.get("region" + i).intValue(), i);
+      verify(controllerClientMap.get("region" + i)).getStore("test");
+    }
+  }
+
+  @Test
+  public void testInternalCurrentVersionsRemainSerialWhileStoreResponseUsesConcurrentQuery() {
+    Map<String, ControllerClient> clients = prepareForCurrentVersionTest(2);
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    Thread caller = Thread.currentThread();
+    clients.forEach((region, client) -> doAnswer(invocation -> {
+      assertSame(Thread.currentThread(), caller, "Internal queries must run serially on the caller");
+      StoreResponse response = new StoreResponse();
+      StoreInfo store = new StoreInfo();
+      store.setCurrentVersion(3);
+      response.setStore(store);
+      return response;
+    }).when(client).getStore("test"));
+
+    Map<String, Integer> internal = parentAdmin.getCurrentVersionsForMultiColos(clusterName, "test");
+    Map<String, Integer> expected = new HashMap<>();
+    expected.put("region0", 3);
+    expected.put("region1", 3);
+    assertEquals(internal, expected);
+    FabricControllerClientProvider provider = internalAdmin.getFabricControllerClientProvider();
+    verify(provider, never()).queryCurrentVersions(any(), anyString(), anyString());
+
+    Map<String, Integer> partial = new HashMap<>(expected);
+    partial.put("region1", IGNORED_CURRENT_VERSION);
+    doReturn(partial).when(provider).queryCurrentVersions(clients, clusterName, "test");
+    assertSame(parentAdmin.getCurrentVersionsForStoreResponse(clusterName, "test"), partial);
+    verify(provider).queryCurrentVersions(clients, clusterName, "test");
+    clients.values().forEach(client -> {
+      verify(client).getStore("test");
+    });
+  }
+
+  @Test(timeOut = 15_000)
+  public void testReadOnlyOverloadCannotStarveInternalCurrentVersionQueries() throws Exception {
+    Map<String, ControllerClient> clients = prepareForCurrentVersionTest(1);
+    doReturn(clients).when(internalAdmin).getControllerClientMap(clusterName);
+    StoreResponse response = clients.get("region0").getStore("test");
+    Thread caller = Thread.currentThread();
+    doAnswer(invocation -> {
+      assertSame(Thread.currentThread(), caller, "Internal queries must run serially on the caller");
+      return response;
+    }).when(clients.get("region0")).getStore("internal");
+    CountDownLatch sixRunning = new CountDownLatch(6);
+    CountDownLatch release = new CountDownLatch(1);
+    try (FabricControllerClientProvider provider =
+        new FabricControllerClientProvider(mock(VeniceControllerMultiClusterConfig.class), Optional.empty(), null)) {
+      doReturn(provider).when(internalAdmin).getFabricControllerClientProvider();
+      ThreadPoolExecutor executor = provider.getCurrentVersionQueryExecutor("region0");
+      for (int i = 0; i < 6; i++) {
+        executor.submit(() -> {
+          sixRunning.countDown();
+          release.await();
+          return null;
+        });
+      }
+      assertTrue(sixRunning.await(5, TimeUnit.SECONDS));
+      for (int i = 0; i < 256; i++) {
+        executor.submit(() -> {});
+      }
+
+      Map<String, Integer> readOnly = parentAdmin.getCurrentVersionsForStoreResponse(clusterName, "internal");
+      Map<String, Integer> internal = parentAdmin.getCurrentVersionsForMultiColos(clusterName, "internal");
+
+      assertEquals(readOnly.get("region0").intValue(), IGNORED_CURRENT_VERSION);
+      assertEquals(internal.get("region0").intValue(), 0);
+      verify(clients.get("region0")).getStore("internal");
+    } finally {
+      release.countDown();
     }
   }
 

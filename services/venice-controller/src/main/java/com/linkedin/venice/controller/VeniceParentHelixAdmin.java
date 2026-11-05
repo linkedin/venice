@@ -2374,6 +2374,12 @@ public class VeniceParentHelixAdmin implements Admin {
     return parentVersionOrchestrator.getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
+  @Override
+  public Map<String, Integer> getCurrentVersionsForStoreResponse(String clusterName, String storeName) {
+    return veniceHelixAdmin.getFabricControllerClientProvider()
+        .queryCurrentVersions(veniceHelixAdmin.getControllerClientMap(clusterName), clusterName, storeName);
+  }
+
   /**
    * @return a RepushInfo object with store information retrieved from the specified cluster and fabric.
    */

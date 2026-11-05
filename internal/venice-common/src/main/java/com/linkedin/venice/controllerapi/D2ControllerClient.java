@@ -11,11 +11,13 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -32,6 +34,7 @@ public class D2ControllerClient extends ControllerClient {
 
   private final String d2ServiceName;
   private final List<D2Client> d2Clients;
+  private final AtomicInteger discoveryStartIndex = new AtomicInteger();
   private final boolean externalD2Client;
   private final List<String> d2ZkHosts;
   private final Optional<SSLFactory> sslFactory;
@@ -110,18 +113,24 @@ public class D2ControllerClient extends ControllerClient {
    */
   @Override
   protected String discoverLeaderController() {
-    LeaderControllerResponse controllerResponse = null;
-    for (D2Client d2Client: d2Clients) {
-      try {
-        controllerResponse = d2ClientGet(
-            d2Client,
-            d2ServiceName,
-            ControllerRoute.LEADER_CONTROLLER.getPath(),
-            newParams(),
-            LeaderControllerResponse.class);
-        // we get a successful response, so we break out of loop
+    long deadlineNs = requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_TIMEOUT_MS);
+    List<D2Client> candidates = new ArrayList<>(d2Clients);
+    if (!candidates.isEmpty()) {
+      // Rotate a private snapshot so repeated bounded discovery does not always exhaust the same prefix.
+      // floorMod keeps the index valid even when the atomic counter overflows.
+      Collections.rotate(candidates, -Math.floorMod(discoveryStartIndex.getAndIncrement(), candidates.size()));
+    }
+    Exception lastException = null;
+    for (D2Client d2Client: candidates) {
+      if (deadlineNs - requestTimeNs() <= 0 || Thread.currentThread().isInterrupted()) {
         break;
-      } catch (VeniceException e) {
+      }
+      try {
+        long candidateDeadlineNs = Math
+            .min(deadlineNs, requestTimeNs() + TimeUnit.MILLISECONDS.toNanos(LEADER_DISCOVERY_CANDIDATE_TIMEOUT_MS));
+        return discoverLeaderController(d2Client, candidateDeadlineNs);
+      } catch (Exception e) {
+        lastException = e;
         LOGGER.warn("Failed to discover leader controller with D2 client: " + d2Client, e);
         if (Thread.currentThread().isInterrupted()) {
           // The caller is cancelling this thread; trying the next D2 client would absorb the signal.
@@ -131,18 +140,22 @@ public class D2ControllerClient extends ControllerClient {
         }
       }
     }
-    if (controllerResponse == null) {
-      throw new VeniceException("Failed to discover leader controller with D2 client");
-    }
-    return getLeaderUrl(controllerResponse);
+    throw new VeniceException(
+        "Failed to discover leader controller with D2 client"
+            + (Thread.currentThread().isInterrupted() ? INTERRUPTED_MESSAGE_SUFFIX : ""),
+        lastException);
   }
 
   @Override
   protected String discoverLeaderController(ControllerTransport transport, long deadlineNs) throws Exception {
+    return discoverLeaderController(d2Clients.get(0), deadlineNs);
+  }
+
+  private String discoverLeaderController(D2Client d2Client, long deadlineNs) throws Exception {
     String requestPath =
         D2_SCHEME + d2ServiceName + ControllerRoute.LEADER_CONTROLLER.getPath() + "?" + encodeQueryParams(newParams());
     remainingRequestTimeMs(deadlineNs);
-    Future<RestResponse> response = d2Clients.get(0).restRequest(D2ClientUtils.createD2GetRequest(requestPath));
+    Future<RestResponse> response = d2Client.restRequest(D2ClientUtils.createD2GetRequest(requestPath));
     try {
       RestResponse result = response.get(remainingRequestTimeMs(deadlineNs), TimeUnit.MILLISECONDS);
       return getLeaderUrl(

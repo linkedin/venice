@@ -416,7 +416,7 @@ public class ControllerInterruptHandlingTest {
 
       Assert.assertTrue(response.isError());
       Assert.assertTrue(response.getError().contains("interrupted"), response.getError());
-      Assert.assertEquals(d2Calls.get(), 1, "Leader discovery must not be retried after the interrupt");
+      Assert.assertEquals(d2Calls.get(), 0, "Already-interrupted discovery must not issue a D2 request");
       Assert.assertTrue(Thread.currentThread().isInterrupted(), "The interrupt flag must still be set for the caller");
       Thread.interrupted();
     }

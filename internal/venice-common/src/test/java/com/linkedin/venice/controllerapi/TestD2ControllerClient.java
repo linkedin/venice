@@ -14,18 +14,30 @@ import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import java.lang.reflect.Field;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -40,6 +52,216 @@ public class TestD2ControllerClient {
   private static final String TEST_CONTROLLER_D2_SERVICE = "ChildController";
   private static final String TEST_ROUTER_D2_SERVICE = "VeniceRouter";
   private static final String TEST_SERVER_D2_SERVICE = "VeniceServer";
+
+  @DataProvider
+  public Object[][] discoveryDurations() {
+    return new Object[][] { { new int[] { 5000, 5000, 5000 } }, { new int[] { 2000, 5000, 5000, 3000 } } };
+  }
+
+  @Test(dataProvider = "discoveryDurations")
+  public void testD2DiscoverySharesDeadlineAndCancelsReads(int[] durationsMs) throws Exception {
+    D2Client d2Client = mock(D2Client.class);
+    D2ControllerClient client = Mockito.spy(
+        new D2ControllerClient(
+            "service",
+            "cluster",
+            Arrays.asList(d2Client, d2Client, d2Client, d2Client, d2Client),
+            Optional.empty()));
+    AtomicLong clock = new AtomicLong();
+    doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    Future<RestResponse> response = mock(Future.class);
+    doReturn(response).when(d2Client).restRequest(any());
+    AtomicInteger attempts = new AtomicInteger();
+    doAnswer(invocation -> {
+      long remainingMs = 15_000 - TimeUnit.NANOSECONDS.toMillis(clock.get());
+      Assert.assertEquals(invocation.<Long>getArgument(0).longValue(), Math.min(5000, remainingMs));
+      clock.addAndGet(TimeUnit.MILLISECONDS.toNanos(durationsMs[attempts.getAndIncrement()]));
+      throw new TimeoutException("candidate timed out");
+    }).when(response).get(Mockito.anyLong(), Mockito.eq(TimeUnit.MILLISECONDS));
+    try {
+      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      Assert.assertEquals(attempts.get(), durationsMs.length);
+      Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(15));
+      Mockito.verify(d2Client, Mockito.times(durationsMs.length)).restRequest(any());
+      Mockito.verify(response, Mockito.times(durationsMs.length)).cancel(true);
+    } finally {
+      client.close();
+    }
+  }
+
+  @Test
+  public void testD2DiscoveryRotatesPastStalledPrefixWithoutChangingSingleCandidateDiscovery() throws Exception {
+    List<D2Client> candidates =
+        Arrays.asList(mock(D2Client.class), mock(D2Client.class), mock(D2Client.class), mock(D2Client.class));
+    List<D2Client> originalOrder = new ArrayList<>(candidates);
+    List<Integer> attempts = new ArrayList<>();
+    List<Future<RestResponse>> responses = new ArrayList<>();
+    AtomicLong clock = new AtomicLong();
+    RestResponse leader = mock(RestResponse.class);
+    doReturn(ByteString.copyString("{\"url\":\"http://leader\"}", StandardCharsets.UTF_8)).when(leader).getEntity();
+    for (int i = 0; i < candidates.size(); i++) {
+      int candidate = i;
+      Future<RestResponse> response = mock(Future.class);
+      responses.add(response);
+      doAnswer(invocation -> {
+        attempts.add(candidate);
+        return response;
+      }).when(candidates.get(i)).restRequest(any());
+      doAnswer(invocation -> {
+        Assert.assertEquals(invocation.<Long>getArgument(0).longValue(), 5000);
+        if (candidate == 3) {
+          return leader;
+        }
+        clock.addAndGet(TimeUnit.SECONDS.toNanos(5));
+        throw new TimeoutException("stalled candidate " + candidate);
+      }).when(response).get(Mockito.anyLong(), Mockito.eq(TimeUnit.MILLISECONDS));
+    }
+    D2ControllerClient client = Mockito.spy(new D2ControllerClient("service", "cluster", candidates, Optional.empty()));
+    doAnswer(invocation -> clock.get()).when(client).requestTimeNs();
+    try {
+      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2));
+      Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(15));
+
+      Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2, 1, 2, 3));
+      Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(25));
+
+      // The legacy bounded helper still tries only the original first client, without advancing rotation.
+      Assert.assertTrue(client.getStoreWithTimeout("store", 5000).isError());
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2, 1, 2, 3, 0));
+      Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+      Assert.assertEquals(attempts, Arrays.asList(0, 1, 2, 1, 2, 3, 0, 2, 3));
+      Assert.assertEquals(clock.get(), TimeUnit.SECONDS.toNanos(35));
+      Assert.assertEquals(candidates, originalOrder, "Rotation must not mutate the caller-owned candidate list");
+      for (int i = 0; i < responses.size(); i++) {
+        Mockito.verify(responses.get(i), Mockito.times(Collections.frequency(attempts, i))).cancel(true);
+      }
+    } finally {
+      client.close();
+    }
+  }
+
+  @Test
+  public void testD2DiscoveryWithNoCandidatesFailsSafely() throws Exception {
+    D2ControllerClient client =
+        Mockito.spy(new D2ControllerClient("service", "cluster", Collections.emptyList(), Optional.empty()));
+    try {
+      VeniceException failure = Assert.expectThrows(VeniceException.class, client::discoverLeaderController);
+      Assert.assertTrue(failure.getMessage().contains("Failed to discover leader controller"));
+    } finally {
+      client.close();
+    }
+  }
+
+  @Test
+  public void testD2DiscoveryRotationSurvivesCounterOverflow() throws Exception {
+    List<D2Client> candidates =
+        Arrays.asList(mock(D2Client.class), mock(D2Client.class), mock(D2Client.class), mock(D2Client.class));
+    List<Integer> attempts = new ArrayList<>();
+    RestResponse leader = mock(RestResponse.class);
+    doReturn(ByteString.copyString("{\"url\":\"http://leader\"}", StandardCharsets.UTF_8)).when(leader).getEntity();
+    for (int i = 0; i < candidates.size(); i++) {
+      int candidate = i;
+      doAnswer(invocation -> {
+        attempts.add(candidate);
+        return CompletableFuture.completedFuture(leader);
+      }).when(candidates.get(i)).restRequest(any());
+    }
+    try (D2ControllerClient client = new D2ControllerClient("service", "cluster", candidates, Optional.empty())) {
+      Field counter = D2ControllerClient.class.getDeclaredField("discoveryStartIndex");
+      counter.setAccessible(true);
+      ((AtomicInteger) counter.get(client)).set(Integer.MAX_VALUE);
+      for (int i = 0; i < 3; i++) {
+        Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+      }
+      Assert.assertEquals(attempts, Arrays.asList(3, 0, 1));
+    }
+  }
+
+  @Test(timeOut = 10_000)
+  public void testConcurrentD2DiscoveryInvocationsRotateStartingCandidates() throws Exception {
+    List<D2Client> candidates =
+        Arrays.asList(mock(D2Client.class), mock(D2Client.class), mock(D2Client.class), mock(D2Client.class));
+    CountDownLatch started = new CountDownLatch(4);
+    CountDownLatch release = new CountDownLatch(1);
+    for (int i = 0; i < candidates.size(); i++) {
+      RestResponse leader = mock(RestResponse.class);
+      doReturn(ByteString.copyString("{\"url\":\"http://leader-" + i + "\"}", StandardCharsets.UTF_8)).when(leader)
+          .getEntity();
+      doAnswer(invocation -> {
+        started.countDown();
+        release.await();
+        return CompletableFuture.completedFuture(leader);
+      }).when(candidates.get(i)).restRequest(any());
+    }
+    List<FutureTask<String>> queries = new ArrayList<>();
+    List<Thread> callers = new ArrayList<>();
+    try (D2ControllerClient client = new D2ControllerClient("service", "cluster", candidates, Optional.empty())) {
+      for (int i = 0; i < 4; i++) {
+        FutureTask<String> query = new FutureTask<>(client::discoverLeaderController);
+        Thread caller = new Thread(query);
+        queries.add(query);
+        callers.add(caller);
+        caller.start();
+      }
+      Assert.assertTrue(started.await(5, TimeUnit.SECONDS));
+      release.countDown();
+      HashSet<String> leaders = new HashSet<>();
+      for (FutureTask<String> query: queries) {
+        leaders.add(query.get(5, TimeUnit.SECONDS));
+      }
+      Assert.assertEquals(
+          leaders,
+          new HashSet<>(Arrays.asList("http://leader-0", "http://leader-1", "http://leader-2", "http://leader-3")));
+    } finally {
+      release.countDown();
+      callers.forEach(Thread::interrupt);
+      for (Thread caller: callers) {
+        caller.join(5000);
+      }
+    }
+  }
+
+  @Test
+  public void testD2DiscoveryFallsBackAfterTimeout() throws Exception {
+    D2Client first = mock(D2Client.class);
+    D2Client second = mock(D2Client.class);
+    Future<RestResponse> response = mock(Future.class);
+    doReturn(response).when(first).restRequest(any());
+    doAnswer(invocation -> {
+      throw new TimeoutException();
+    }).when(response).get(Mockito.anyLong(), Mockito.eq(TimeUnit.MILLISECONDS));
+    RestResponse success = mock(RestResponse.class);
+    doReturn(ByteString.copyString("{\"url\":\"http://leader\"}", StandardCharsets.UTF_8)).when(success).getEntity();
+    doReturn(CompletableFuture.completedFuture(success)).when(second).restRequest(any());
+    try (D2ControllerClient client =
+        new D2ControllerClient("service", "cluster", Arrays.asList(first, second), Optional.empty())) {
+      Assert.assertEquals(client.discoverLeaderController(), "http://leader");
+      Mockito.verify(response).cancel(true);
+      Mockito.verify(second).restRequest(any());
+    }
+  }
+
+  @Test
+  public void testD2DiscoveryStopsAndCancelsOnInterruption() throws Exception {
+    D2Client first = mock(D2Client.class);
+    D2Client second = mock(D2Client.class);
+    Future<RestResponse> response = mock(Future.class);
+    doReturn(response).when(first).restRequest(any());
+    doAnswer(invocation -> {
+      throw new InterruptedException();
+    }).when(response).get(Mockito.anyLong(), Mockito.eq(TimeUnit.MILLISECONDS));
+    try (D2ControllerClient client =
+        new D2ControllerClient("service", "cluster", Arrays.asList(first, second), Optional.empty())) {
+      Assert.assertThrows(VeniceException.class, client::discoverLeaderController);
+      Assert.assertTrue(Thread.currentThread().isInterrupted());
+      Mockito.verify(response).cancel(true);
+      Mockito.verify(second, Mockito.never()).restRequest(any());
+    } finally {
+      Thread.interrupted();
+    }
+  }
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
