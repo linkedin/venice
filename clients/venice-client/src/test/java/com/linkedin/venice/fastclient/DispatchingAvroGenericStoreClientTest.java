@@ -17,6 +17,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.testng.Assert.assertEquals;
@@ -201,13 +202,29 @@ public class DispatchingAvroGenericStoreClientTest {
       boolean transportClientPartialIncomplete,
       boolean mockTransportClient,
       long routingRequestDefaultTimeOutMS) throws InterruptedException {
+    setUpClient(
+        transportClientThrowsException,
+        transportClientThrowsPartialException,
+        transportClientPartialIncomplete,
+        mockTransportClient,
+        routingRequestDefaultTimeOutMS,
+        0);
+  }
 
+  private void setUpClient(
+      boolean transportClientThrowsException,
+      boolean transportClientThrowsPartialException,
+      boolean transportClientPartialIncomplete,
+      boolean mockTransportClient,
+      long routingRequestDefaultTimeOutMS,
+      long maxCacheSizeInBytes) throws InterruptedException {
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setDisableRouteMetrics(false)
         .setR2Client(getMockR2Client(false))
         .setD2Client(mock(D2Client.class))
         .setClusterDiscoveryD2Service("test_server_discovery")
-        .setMetadataRefreshIntervalInSeconds(1L)
+        .setMetadataRefreshIntervalInSeconds(maxCacheSizeInBytes > 0 ? TimeUnit.HOURS.toSeconds(1) : 1L)
+        .setMaxCacheSizeInBytes(maxCacheSizeInBytes)
         .setInstanceHealthMonitorConfig(
             InstanceHealthMonitorConfig.builder()
                 .setRoutingRequestDefaultTimeoutMS(routingRequestDefaultTimeOutMS)
@@ -645,6 +662,46 @@ public class DispatchingAvroGenericStoreClientTest {
       GenericRecord value = (GenericRecord) statsAvroGenericStoreClient.get(getRequestContext, "test_key").get();
       assertEquals(value, SINGLE_GET_VALUE_RESPONSE);
       validateSingleGetMetrics(getRequestContext, true);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testRecordCacheUsesVersionCompressionStrategy(boolean batchGet) throws Exception {
+    try {
+      setUpClient(false, false, false, true, TimeUnit.SECONDS.toMillis(30), 1024 * 1024);
+      byte[] compressed = storeMetadata.getCompressor(CompressionStrategy.ZSTD_WITH_DICT, 1)
+          .compress(VALUE_SERIALIZER.serialize(SINGLE_GET_VALUE_RESPONSE));
+      String key = "test_key";
+      if (batchGet) {
+        MultiGetResponseRecordV1 record = new MultiGetResponseRecordV1();
+        record.setKeyIndex(0);
+        record.setSchemaId(1);
+        record.setValue(ByteBuffer.wrap(compressed));
+        TransportClientResponseForRoute response = new TransportClientResponseForRoute(
+            "0",
+            1,
+            CompressionStrategy.ZSTD_WITH_DICT,
+            MULTI_GET_RESPONSE_SERIALIZER.serializeObjects(Collections.singletonList(record)),
+            CompletableFuture.completedFuture(null));
+        doReturn(CompletableFuture.completedFuture(response)).when(mockedTransportClient).post(any(), any(), any());
+        Map<?, ?> values = (Map<?, ?>) statsAvroGenericStoreClient.batchGet(Collections.singleton(key)).get();
+        assertEquals(values.get(key), SINGLE_GET_VALUE_RESPONSE);
+      } else {
+        doReturn(
+            CompletableFuture
+                .completedFuture(new TransportClientResponse(1, CompressionStrategy.ZSTD_WITH_DICT, compressed)))
+                    .when(mockedTransportClient)
+                    .get(any());
+        assertEquals(statsAvroGenericStoreClient.get(key).get(), SINGLE_GET_VALUE_RESPONSE);
+      }
+
+      assertEquals(statsAvroGenericStoreClient.get(key).get(), SINGLE_GET_VALUE_RESPONSE);
+      Map<?, ?> cachedValues = (Map<?, ?>) statsAvroGenericStoreClient.batchGet(Collections.singleton(key)).get();
+      assertEquals(cachedValues.get(key), SINGLE_GET_VALUE_RESPONSE);
+      verify(mockedTransportClient, times(batchGet ? 0 : 1)).get(any());
+      verify(mockedTransportClient, times(batchGet ? 1 : 0)).post(any(), any(), any());
     } finally {
       tearDown();
     }

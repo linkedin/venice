@@ -286,7 +286,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                   ByteBuffer.wrap(requestContext.getSerializedKey()),
                   response.getBody(),
                   response.getSchemaId(),
-                  compressionStrategy,
                   requestContext.currentVersion);
             }
             long nanoTsBeforeDecompression = System.nanoTime();
@@ -432,11 +431,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
    * response so compression handling stays in one place.
    */
   private V deserializeCachedValue(FastClientRecordCache.CachedValue cached, K key) {
+    CompressionStrategy compressionStrategy = metadata.getCompressionStrategy(cached.getVersion());
     ByteBuffer data = decompressRecord(
-        cached.getCompressionStrategy(),
+        compressionStrategy,
         cached.getValue(),
         cached.getVersion(),
-        metadata.getCompressor(cached.getCompressionStrategy(), cached.getVersion()));
+        metadata.getCompressor(compressionStrategy, cached.getVersion()));
     return tryToDeserialize(getDataRecordDeserializer(cached.getSchemaId()), data, cached.getSchemaId(), key);
   }
 
@@ -662,7 +662,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             ByteBuffer.wrap(k.getSerializedKey()),
             copyRemaining(r.value),
             r.getSchemaId(),
-            transportClientResponse.getCompressionStrategy(),
             requestContext.currentVersion);
       }
       long nanoTsBeforeDecompression = System.nanoTime();

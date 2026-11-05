@@ -5,7 +5,6 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.compression.CompressionStrategy;
 import java.nio.ByteBuffer;
 import org.testng.annotations.Test;
 
@@ -20,7 +19,7 @@ public class FastClientRecordCacheTest {
   @Test
   public void testPutAndGet() {
     FastClientRecordCache cache = new FastClientRecordCache(1024 * 1024);
-    cache.put(key(1), new byte[] { 1, 2, 3 }, 7, CompressionStrategy.NO_OP, 1);
+    cache.put(key(1), new byte[] { 1, 2, 3 }, 7, 1);
 
     FastClientRecordCache.CachedValue cached = cache.get(key(1));
     assertEquals(cached.getSchemaId(), 7);
@@ -46,14 +45,14 @@ public class FastClientRecordCacheTest {
   @Test
   public void testNullValueNotCached() {
     FastClientRecordCache cache = new FastClientRecordCache(1024);
-    cache.put(key(1), null, 1, CompressionStrategy.NO_OP, 1);
+    cache.put(key(1), null, 1, 1);
     assertNull(cache.get(key(1)));
   }
 
   @Test
   public void testEmptyValueCached() {
     FastClientRecordCache cache = new FastClientRecordCache(1024);
-    cache.put(key(1), new byte[0], 3, CompressionStrategy.NO_OP, 1);
+    cache.put(key(1), new byte[0], 3, 1);
 
     FastClientRecordCache.CachedValue cached = cache.get(key(1));
     assertEquals(cached.getSchemaId(), 3);
@@ -66,7 +65,7 @@ public class FastClientRecordCacheTest {
   @Test
   public void testRepeatedReadsAreIndependent() {
     FastClientRecordCache cache = new FastClientRecordCache(1024);
-    cache.put(key(1), new byte[] { 9, 8 }, 1, CompressionStrategy.NO_OP, 1);
+    cache.put(key(1), new byte[] { 9, 8 }, 1, 1);
 
     ByteBuffer first = cache.get(key(1)).getValue();
     first.get();
@@ -85,7 +84,7 @@ public class FastClientRecordCacheTest {
     FastClientRecordCache cache = new FastClientRecordCache(budget);
 
     for (int i = 0; i < entries; i++) {
-      cache.put(key(i), new byte[valueSize], 1, CompressionStrategy.NO_OP, 1);
+      cache.put(key(i), new byte[valueSize], 1, 1);
     }
     cache.cleanUp();
 
@@ -98,7 +97,7 @@ public class FastClientRecordCacheTest {
   @Test
   public void testOversizedEntryEvicted() {
     FastClientRecordCache cache = new FastClientRecordCache(128);
-    cache.put(key(1), new byte[4096], 1, CompressionStrategy.NO_OP, 1);
+    cache.put(key(1), new byte[4096], 1, 1);
     cache.cleanUp();
 
     assertEquals(cache.getEntryCount(), 0);
@@ -107,8 +106,8 @@ public class FastClientRecordCacheTest {
   @Test
   public void testClear() {
     FastClientRecordCache cache = new FastClientRecordCache(1024 * 1024);
-    cache.put(key(1), new byte[] { 1 }, 1, CompressionStrategy.NO_OP, 1);
-    cache.put(key(2), new byte[] { 2 }, 1, CompressionStrategy.NO_OP, 1);
+    cache.put(key(1), new byte[] { 1 }, 1, 1);
+    cache.put(key(2), new byte[] { 2 }, 1, 1);
 
     cache.clear();
 
@@ -127,8 +126,8 @@ public class FastClientRecordCacheTest {
   @Test
   public void testPutOverwritesExistingKey() {
     FastClientRecordCache cache = new FastClientRecordCache(1024);
-    cache.put(key(1), new byte[] { 1 }, 1, CompressionStrategy.NO_OP, 1);
-    cache.put(key(1), new byte[] { 2 }, 5, CompressionStrategy.NO_OP, 1);
+    cache.put(key(1), new byte[] { 1 }, 1, 1);
+    cache.put(key(1), new byte[] { 2 }, 5, 1);
 
     FastClientRecordCache.CachedValue cached = cache.get(key(1));
     assertEquals(cached.getSchemaId(), 5);
@@ -137,14 +136,26 @@ public class FastClientRecordCacheTest {
   }
 
   @Test
-  public void testCompressionStrategyAndVersionAreRetained() {
+  public void testSchemaIdAndVersionAreRetained() {
     FastClientRecordCache cache = new FastClientRecordCache(1024);
-    cache.put(key(1), new byte[] { 1, 2 }, 7, CompressionStrategy.ZSTD_WITH_DICT, 42);
+    cache.put(key(1), new byte[] { 1, 2 }, 7, 42);
 
     FastClientRecordCache.CachedValue cached = cache.get(key(1));
-    assertEquals(cached.getCompressionStrategy(), CompressionStrategy.ZSTD_WITH_DICT);
     assertEquals(cached.getVersion(), 42);
     assertEquals(cached.getSchemaId(), 7);
+  }
+
+  @Test
+  public void testEmptyValueReplacesSchemaIdAndVersion() {
+    FastClientRecordCache cache = new FastClientRecordCache(1024);
+    cache.put(key(1), new byte[] { 1, 2 }, 7, 42);
+    cache.put(key(1), new byte[0], 8, 43);
+
+    FastClientRecordCache.CachedValue cached = cache.get(key(1));
+    assertEquals(cached.getValue().remaining(), 0);
+    assertEquals(cached.getSchemaId(), 8);
+    assertEquals(cached.getVersion(), 43);
+    assertEquals(cache.getEntryCount(), 1);
   }
 
   @Test
@@ -153,7 +164,7 @@ public class FastClientRecordCacheTest {
     // decompression: more keys fit in the same budget.
     FastClientRecordCache cache = new FastClientRecordCache(600);
     for (int i = 0; i < 10; i++) {
-      cache.put(key(i), new byte[64], 1, CompressionStrategy.GZIP, 1);
+      cache.put(key(i), new byte[64], 1, 1);
     }
     cache.cleanUp();
     assertTrue(cache.getEntryCount() <= 5, "entries: " + cache.getEntryCount());
