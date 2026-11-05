@@ -394,7 +394,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                     + targetTopic.getName());
           };
           if (isUserSeek) {
-            return executeSubscriptionTask(seekTask);
+            return executeSeekTask(seekTask);
           }
           seekTask.run();
         }

@@ -390,26 +390,36 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       startHeartbeatReporterIfNeeded();
       isSubscribed.set(true);
-    }));
+    }, false, 0));
   }
 
   /**
-   * User-initiated assignment changes wait for a pending control-message swap without occupying a seek worker.
-   * Polling must continue to complete the pending swap. Internal seeks that complete it must bypass this barrier.
+   * User seeks fail fast while a control-message swap is pending because only {@link #poll} can complete the swap,
+   * and a seek resolved against the pre-swap topic must not run after it. Internal seeks that complete the swap must
+   * bypass this barrier.
    */
-  protected CompletableFuture<Void> executeSubscriptionTask(Runnable task) {
-    return executeSubscriptionTask(task, 0);
+  protected CompletableFuture<Void> executeSeekTask(Runnable task) {
+    return executeSubscriptionTask(task, true, 0);
   }
 
-  private CompletableFuture<Void> executeSubscriptionTask(Runnable task, int attempt) {
+  /**
+   * Subscriptions wait for a pending control-message swap without occupying a seek worker. Polling must continue to
+   * complete the pending swap.
+   */
+  private CompletableFuture<Void> executeSubscriptionTask(Runnable task, boolean failFast, int attempt) {
     return CompletableFuture.supplyAsync(() -> {
       subscriptionLock.writeLock().lock();
       try {
         if (versionSwapByControlMessage && versionSwapMessageState != null) {
+          if (failFast) {
+            throw new VeniceException(
+                "Unable to seek while a version swap is in progress. Continue polling to complete it, then retry.");
+          }
           if (attempt == MAX_SUBSCRIBE_RETRIES) {
             throw new VeniceException("Unable to change subscriptions due to conflicting version swaps");
           }
-          return onGoingVersionSwapSignal.get().thenCompose(ignored -> executeSubscriptionTask(task, attempt + 1));
+          return onGoingVersionSwapSignal.get()
+              .thenCompose(ignored -> executeSubscriptionTask(task, false, attempt + 1));
         }
         task.run();
         return CompletableFuture.<Void>completedFuture(null);
@@ -577,7 +587,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       return CompletableFuture.completedFuture(null);
     }
     prepareForConsumption();
-    return executeSubscriptionTask(() -> synchronousSeekToCheckpoint(checkpoints, true));
+    return executeSeekTask(() -> synchronousSeekToCheckpoint(checkpoints, true));
   }
 
   protected void synchronousSeekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
@@ -696,7 +706,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopic targetTopic,
       SeekPositionResolver positionResolver,
       boolean isInclusive) {
-    return executeSubscriptionTask(() -> synchronousSeek(partitions, targetTopic, positionResolver, isInclusive, true));
+    return executeSeekTask(() -> synchronousSeek(partitions, targetTopic, positionResolver, isInclusive, true));
   }
 
   /**

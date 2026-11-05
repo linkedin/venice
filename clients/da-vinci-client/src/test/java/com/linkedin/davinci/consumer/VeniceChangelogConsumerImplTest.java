@@ -1835,22 +1835,15 @@ public class VeniceChangelogConsumerImplTest {
     Assert.assertThrows(
         TimeoutException.class,
         () -> subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS));
-    List<CompletableFuture<Void>> seeksDuringVersionSwap = new ArrayList<>();
+    // Seeks fail fast instead of waiting for poll to complete the swap
     Set<VeniceChangeCoordinate> checkpoints = Collections
         .singleton(new VeniceChangeCoordinate(newVersionTopic.getName(), ApacheKafkaOffsetPosition.of(31L), 0));
-    for (int i = 0; i < 11; i++) {
-      seeksDuringVersionSwap.add(veniceChangeLogConsumer.seekToCheckpoint(checkpoints));
-    }
-    when(mockPubSubConsumer.endPosition(newTopicPartition0)).thenReturn(ApacheKafkaOffsetPosition.of(41L));
-    when(mockPubSubConsumer.getPositionByTimestamp(eq(newTopicPartition0), anyLong()))
-        .thenReturn(ApacheKafkaOffsetPosition.of(51L));
-    seeksDuringVersionSwap.add(veniceChangeLogConsumer.seekToBeginningOfPush(Collections.singleton(0)));
-    seeksDuringVersionSwap.add(veniceChangeLogConsumer.seekToTail(Collections.singleton(0)));
-    seeksDuringVersionSwap.add(veniceChangeLogConsumer.internalSeekToTimestamps(Collections.singletonMap(0, 123L)));
-    seeksDuringVersionSwap.add(veniceChangeLogConsumer.seekToEndOfPush(Collections.singleton(0)));
-    veniceChangeLogConsumer.seekExecutorService.submit(() -> {}).get(10, TimeUnit.SECONDS);
-    for (CompletableFuture<Void> seek: seeksDuringVersionSwap) {
-      assertFalse(seek.isDone());
+    for (CompletableFuture<Void> seek: Arrays.asList(
+        veniceChangeLogConsumer.seekToCheckpoint(checkpoints),
+        veniceChangeLogConsumer.seekToBeginningOfPush(Collections.singleton(0)),
+        veniceChangeLogConsumer.seekToEndOfPush(Collections.singleton(0)))) {
+      ExecutionException e = Assert.expectThrows(ExecutionException.class, () -> seek.get(10, TimeUnit.SECONDS));
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
     }
     verify(mockPubSubConsumer, never()).subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
     // We should still be able to unsubscribe
@@ -1889,11 +1882,6 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer).subscribe(eq(newTopicPartition1), any(PubSubPosition.class), eq(true));
     // The subscribe future during version swap should also complete now
     subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS);
-    CompletableFuture.allOf(seeksDuringVersionSwap.toArray(new CompletableFuture<?>[0])).get(10, TimeUnit.SECONDS);
-    verify(mockPubSubConsumer, times(11)).subscribe(newTopicPartition0, ApacheKafkaOffsetPosition.of(31L), true);
-    verify(mockPubSubConsumer).subscribe(newTopicPartition0, ApacheKafkaOffsetPosition.of(41L), true);
-    verify(mockPubSubConsumer).subscribe(newTopicPartition0, ApacheKafkaOffsetPosition.of(51L), true);
-    verify(mockPubSubConsumer).subscribe(newTopicPartition0, ApacheKafkaOffsetPosition.of(21L), true);
     Assert.assertNull(veniceChangeLogConsumer.getVersionSwapMessageState());
   }
 
