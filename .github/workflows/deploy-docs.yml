@@ -38,6 +38,12 @@ jobs:
             mkdocs-material-
       - run: pip install -r docs/doc-requirements.txt
 
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
 
