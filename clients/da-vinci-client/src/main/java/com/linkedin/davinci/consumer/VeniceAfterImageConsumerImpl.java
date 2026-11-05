@@ -1,7 +1,6 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
-import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
@@ -14,8 +13,6 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collection;
 import java.util.Collections;
@@ -25,8 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,10 +34,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
   // swap is produced to VT, then we should remove this as it's no longer needed.
   private final Lazy<PubSubConsumerAdapter> internalSeekConsumer;
-  private final ExecutorService versionSwapExecutor = Executors.newSingleThreadExecutor(
-      new DaemonThreadFactory(
-          getClass().getSimpleName() + "-version-swap",
-          LogContext.newBuilder().setComponentName(VeniceComponent.STATELESS_CDC.name()).build()));
   /*
    * Used to track if the version swap thread encountered an exception. If so, the exception will be reflected
    * in the next call to poll to prevent silent thread termination and fail the process.
@@ -99,15 +90,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return internalPoll(timeoutInMs);
   }
 
-  @Override
-  public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
-      throws VeniceCoordinateOutOfRangeException {
-    if (checkpoints.isEmpty()) {
-      return super.seekToCheckpoint(checkpoints);
-    }
-    return checkForVersionSwapAfterSeek(super.seekToCheckpoint(checkpoints));
-  }
-
   /**
    * Consumers can start consuming through {@link #subscribe} or any of the seek methods, and the version swap listener
    * is the only version swap mechanism when version swap by control message is disabled. The shared startup hook
@@ -122,11 +104,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         versionSwapListenerRegistered = true;
       }
     }
-  }
-
-  private CompletableFuture<Void> checkForVersionSwapAfterSeek(CompletableFuture<Void> seekFuture) {
-    // The listener waits for work on the seek executor, so it must run outside that executor.
-    return seekFuture.thenRunAsync(() -> versionSwapListener.maybeSwapVersion(false), versionSwapExecutor);
   }
 
   protected static void adjustSeekCheckPointsBasedOnHeartbeats(
@@ -422,8 +399,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       return CompletableFuture.completedFuture(null);
     }
     prepareForConsumption();
-    return checkForVersionSwapAfterSeek(
-        internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false, true));
+    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false, true);
   }
 
   public boolean subscribed() {
@@ -436,11 +412,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       PubSubTopic targetTopic,
       SeekPositionResolver positionResolver,
       boolean isInclusive) {
-    CompletableFuture<Void> seekFuture = super.internalSeek(partitions, targetTopic, positionResolver, isInclusive);
-    if (partitions.isEmpty()) {
-      return seekFuture;
-    }
-    return checkForVersionSwapAfterSeek(seekFuture);
+    return super.internalSeek(partitions, targetTopic, positionResolver, isInclusive);
   }
 
   @Override
@@ -451,7 +423,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
   @Override
   public void close() {
-    versionSwapExecutor.shutdown();
     super.close();
     if (internalSeekConsumer.isPresent()) {
       internalSeekConsumer.get().close();

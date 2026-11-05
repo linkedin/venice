@@ -48,16 +48,13 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
 
   @Override
   public void handleStoreChanged(Store store) {
-    maybeSwapVersion(true);
-  }
-
-  void maybeSwapVersion(boolean trackHeartbeats) {
     if (versionSwapByControlMessage) {
       // No op, changelog consumer is configured to perform version swap by version swap messages.
       return;
     }
     synchronized (this) {
       for (int attempt = 1; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
+        // store may be null as this is called by other repair tasks
         if (!consumer.subscribed()) {
           // skip this for now as the consumer hasn't even been set up yet
           return;
@@ -111,7 +108,7 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
               .internalSeekToEndOfPush(
                   partitions,
                   pubSubTopicRepository.getTopic(currentVersionObj.kafkaTopicName()),
-                  trackHeartbeats)
+                  true)
               .get();
 
           if (changeCaptureStats != null) {
