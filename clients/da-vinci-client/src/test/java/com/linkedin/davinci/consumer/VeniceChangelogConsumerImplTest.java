@@ -585,7 +585,6 @@ public class VeniceChangelogConsumerImplTest {
         .unSubscribe(any(PubSubTopicPartition.class));
     PubSubConsumerAdapter mockInternalSeekConsumer = mock(PubSubConsumerAdapter.class);
     PubSubPosition heartbeatPosition = ApacheKafkaOffsetPosition.of(21L);
-    when(mockInternalSeekConsumer.getPositionByTimestamp(eq(newPartition), anyLong())).thenReturn(heartbeatPosition);
     when(mockInternalSeekConsumer.comparePositions(newPartition, heartbeatPosition, ApacheKafkaOffsetPosition.of(11L)))
         .thenReturn(1L);
     doReturn(
@@ -600,6 +599,10 @@ public class VeniceChangelogConsumerImplTest {
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
     originalConsumer.setStoreRepository(mockRepository);
+    when(mockInternalSeekConsumer.getPositionByTimestamp(eq(newPartition), anyLong())).thenAnswer(invocation -> {
+      assertTrue(((ReentrantReadWriteLock) originalConsumer.subscriptionLock).isWriteLockedByCurrentThread());
+      return heartbeatPosition;
+    });
     VeniceAfterImageConsumerImpl<String, Utf8> consumer = spy(originalConsumer);
     AtomicReference<StoreDataChangedListener> registeredListener = new AtomicReference<>();
     AtomicBoolean notifyStoreDuringRestore = new AtomicBoolean();
@@ -1536,6 +1539,8 @@ public class VeniceChangelogConsumerImplTest {
     assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(1));
     assertFalse(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(0));
     assertEquals(veniceChangelogConsumer.getPartitionToBootstrapState(), Collections.singletonMap(1, false));
+    veniceChangelogConsumer.unsubscribe(Collections.singleton(1));
+    assertTrue(veniceChangelogConsumer.isCaughtUp());
   }
 
   @Test

@@ -869,6 +869,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
+      if (!isForVersionSwap) {
+        partitions.forEach(getPartitionToBootstrapState()::remove);
+      }
       if (versionSwapMessageState != null && !isForVersionSwap) {
         versionSwapMessageState.handleUnsubscribe(partitions);
       }

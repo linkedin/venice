@@ -366,6 +366,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               break;
             }
           }
+          if (!isUserSeek) {
+            // Hold the lock while reading heartbeat progress so a concurrent rewind cannot make it stale.
+            subscriptionLock.writeLock().lock();
+            lockAcquired = true;
+          }
           if (trackHeartbeats) {
             // One last step. We track heartbeats for each partition and check their positions. The time recorded in
             // the
@@ -391,8 +396,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           if (isUserSeek) {
             return executeSubscriptionTask(seekTask);
           }
-          subscriptionLock.writeLock().lock();
-          lockAcquired = true;
           seekTask.run();
         }
       } finally {
