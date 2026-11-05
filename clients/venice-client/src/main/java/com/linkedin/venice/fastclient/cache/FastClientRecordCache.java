@@ -2,7 +2,6 @@ package com.linkedin.venice.fastclient.cache;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.linkedin.venice.compression.CompressionStrategy;
 import java.nio.ByteBuffer;
 
 
@@ -21,10 +20,9 @@ import java.nio.ByteBuffer;
  * stores that enable compression, at the cost of decompressing on each hit. Keeping them serialized means the memory
  * bound is measured in real bytes, and that concurrent callers never share a mutable record instance.
  *
- * <p>Compressed bytes are only decodable by the compressor of the version they were read from, since
- * {@link CompressionStrategy#ZSTD_WITH_DICT} dictionaries are per version. Each entry therefore records its source
- * version so the caller can reject an entry left behind by a superseded version and resolve its compression
- * strategy from metadata.
+ * <p>Each entry retains its source store version because an in-flight response from the previous version may
+ * populate the cache after a version swap clears it. Callers reject entries whose version does not match the
+ * current store version.
  */
 public class FastClientRecordCache {
   /**
