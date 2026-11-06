@@ -108,6 +108,7 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
               .internalSeekToEndOfPush(
                   partitions,
                   pubSubTopicRepository.getTopic(currentVersionObj.kafkaTopicName()),
+                  true,
                   true)
               .get();
 
