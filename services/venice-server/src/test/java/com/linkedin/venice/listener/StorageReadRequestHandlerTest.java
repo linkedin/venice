@@ -220,6 +220,7 @@ public class StorageReadRequestHandlerTest {
                 ModuleMetricEntityInterface
                     .getUniqueMetricEntities(Collections.singletonList(ThreadPoolOtelMetricEntity.class)))
             .setEmitOtelMetrics(true)
+            .setUseOtelExponentialHistogram(false)
             .setOtelAdditionalMetricsReader(metricReader)
             .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
