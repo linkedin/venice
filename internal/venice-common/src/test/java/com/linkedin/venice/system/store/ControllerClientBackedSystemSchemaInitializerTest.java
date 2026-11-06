@@ -72,23 +72,25 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
     try {
       String leaderUrl = (https ? "https" : "http") + "://localhost:" + server.getAddress().getPort();
       RestResponse response = mock(RestResponse.class);
-      doReturn(ByteString.copyString(
-          "{\"cluster\":\"testCluster\",\"url\":\"" + leaderUrl + "\",\"secureUrl\":\"https://localhost:1\"}",
-          StandardCharsets.UTF_8)).when(response).getEntity();
+      doReturn(
+          ByteString.copyString(
+              "{\"cluster\":\"testCluster\",\"url\":\"" + leaderUrl + "\",\"secureUrl\":\"https://localhost:1\"}",
+              StandardCharsets.UTF_8)).when(response).getEntity();
       D2Client d2Client = mock(D2Client.class);
       doReturn(CompletableFuture.completedFuture(response)).when(d2Client).restRequest(any());
-      try (ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
-          AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
-          "testCluster",
-          schema,
-          null,
-          false,
-          supplySslFactory ? Optional.of(sslFactory) : Optional.empty(),
-          "",
-          "controller",
-          Optional.of(d2Client),
-          "",
-          false)) {
+      try (
+          ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+              "testCluster",
+              schema,
+              null,
+              false,
+              supplySslFactory ? Optional.of(sslFactory) : Optional.empty(),
+              "",
+              "controller",
+              Optional.of(d2Client),
+              "",
+              false)) {
         initializer.execute(Collections.singletonMap(1, schema));
       }
     } finally {
