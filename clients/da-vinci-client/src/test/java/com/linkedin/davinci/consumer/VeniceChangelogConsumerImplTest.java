@@ -615,8 +615,11 @@ public class VeniceChangelogConsumerImplTest {
       Mockito.verifyNoInteractions(mockInternalSeekConsumer);
 
       // Hybrid swaps without consumed heartbeats fail rather than replay nearline data from EOP.
+      Version hybridOldVersion = new VersionImpl(storeName, 1, "foo");
+      hybridOldVersion.setHybridStoreConfig(new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP));
       Version hybridVersion = new VersionImpl(storeName, 2, "bar");
       hybridVersion.setHybridStoreConfig(new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP));
+      when(store.getVersion(1)).thenReturn(hybridOldVersion);
       when(store.getVersion(2)).thenReturn(hybridVersion);
       ExecutionException swapError = expectThrows(
           ExecutionException.class,
@@ -625,8 +628,8 @@ public class VeniceChangelogConsumerImplTest {
       assertTrue(swapError.getCause() instanceof VeniceException);
       assertEquals(assignments, Collections.singleton(oldPartition));
 
-      // Batch-only versions have no heartbeats or nearline data, so EOP is safe.
-      when(store.getVersion(2)).thenReturn(newVersion);
+      // Batch-only sources never emit heartbeats and have no nearline data, so swapping from them uses EOP.
+      when(store.getVersion(1)).thenReturn(new VersionImpl(storeName, 1, "foo"));
       registeredListener.get().handleStoreChanged(store);
       verify(mockPubSubConsumer).subscribe(newPartition, ApacheKafkaOffsetPosition.of(11L), true);
       verify(mockInternalSeekConsumer, never()).getPositionByTimestamp(any(), anyLong());
