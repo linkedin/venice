@@ -3215,6 +3215,33 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testDeletedStoreExecutionStatus(boolean isTargetRegionPushWithDeferredSwap) {
+    String deletedStoreName = "deleted-store";
+    String kafkaTopic = Version.composeKafkaTopic(deletedStoreName, 1);
+    Map<String, ControllerClient> clientMap =
+        Collections.singletonMap(regionName, getMockJobStatusQueryClient().get(ExecutionStatus.NOT_CREATED));
+    doReturn(clientMap).when(internalAdmin).getControllerClientMap(clusterName);
+    ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+    doReturn(null).when(repository).getStore(deletedStoreName);
+
+    VeniceNoStoreException exception = expectThrows(
+        VeniceNoStoreException.class,
+        () -> parentAdmin.getOffLinePushStatus(
+            clusterName,
+            kafkaTopic,
+            Optional.empty(),
+            null,
+            regionName,
+            isTargetRegionPushWithDeferredSwap));
+
+    assertEquals(exception.getStoreName(), deletedStoreName);
+    assertEquals(exception.getClusterName(), clusterName);
+    assertEquals(exception.getErrorType(), ErrorType.STORE_NOT_FOUND);
+    assertEquals(exception.getHttpStatusCode(), HttpStatus.SC_NOT_FOUND);
+    verify(internalAdmin, never()).truncateKafkaTopic(anyString());
+  }
+
   @Test
   public void testDeletedVersionExecutionStatus() {
     // A client can keep polling job status for a version after it was deleted (e.g. a killed system push whose
