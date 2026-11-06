@@ -3748,7 +3748,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         LOGGER.error(handlingErrorMsg, e1);
         errorMessage += "\n" + handlingErrorMsg + ". Error message: " + e1.getMessage();
       }
-      throw new VeniceException(errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(e), e);
+      throw versionCreationFailure(errorMessage, e);
     } finally {
       // If topic creation succeeds and version info is persisted to Zk, we should remove the creation time for a topic
       // If topic creation fails or if version persistence fails, we should remove the creation time for a topic
@@ -3756,6 +3756,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         topicToCreationTime.remove(version.kafkaTopicName());
       }
     }
+  }
+
+  /**
+   * Wraps a version creation failure and keeps the {@link ErrorType} of the cause, so a client error such as a disabled
+   * store is returned with its own HTTP status instead of 500.
+   */
+  static VeniceException versionCreationFailure(String errorMessage, Throwable cause) {
+    ErrorType errorType =
+        cause instanceof VeniceException ? ((VeniceException) cause).getErrorType() : ErrorType.GENERAL_ERROR;
+    return new VeniceException(
+        errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(cause),
+        cause,
+        errorType);
   }
 
   /**
