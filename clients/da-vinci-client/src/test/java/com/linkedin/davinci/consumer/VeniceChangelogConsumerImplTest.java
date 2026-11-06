@@ -59,6 +59,8 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
@@ -612,7 +614,19 @@ public class VeniceChangelogConsumerImplTest {
       assertEquals(assignments, Collections.singleton(oldPartition));
       Mockito.verifyNoInteractions(mockInternalSeekConsumer);
 
-      // Subscription-time heartbeat baselines are not consumed progress.
+      // Hybrid swaps without consumed heartbeats fail rather than replay nearline data from EOP.
+      Version hybridVersion = new VersionImpl(storeName, 2, "bar");
+      hybridVersion.setHybridStoreConfig(new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP));
+      when(store.getVersion(2)).thenReturn(hybridVersion);
+      ExecutionException swapError = expectThrows(
+          ExecutionException.class,
+          () -> consumer.internalSeekToEndOfPush(Collections.singleton(0), newVersionTopic, true)
+              .get(10, TimeUnit.SECONDS));
+      assertTrue(swapError.getCause() instanceof VeniceException);
+      assertEquals(assignments, Collections.singleton(oldPartition));
+
+      // Batch-only versions have no heartbeats or nearline data, so EOP is safe.
+      when(store.getVersion(2)).thenReturn(newVersion);
       registeredListener.get().handleStoreChanged(store);
       verify(mockPubSubConsumer).subscribe(newPartition, ApacheKafkaOffsetPosition.of(11L), true);
       verify(mockInternalSeekConsumer, never()).getPositionByTimestamp(any(), anyLong());

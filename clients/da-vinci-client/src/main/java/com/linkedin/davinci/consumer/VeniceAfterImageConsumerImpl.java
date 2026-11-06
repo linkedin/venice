@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -355,6 +356,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             // on a server. If the message nearest that heartbeat in the new version is at on offset higher then the
             // EOP message, then we swap it out in order to play less events back to the user.
             // first, check and see if all partitions are already after EOP
+            failIfHybridSwapLacksConsumedHeartbeat(targetTopic, topicPartitionList);
             adjustSeekCheckPointsBasedOnHeartbeats(
                 checkpoints,
                 new HashMap<>(consumedHeartbeatTimestampsForSeek),
@@ -382,6 +384,29 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       }
       return CompletableFuture.<Void>completedFuture(null);
     }, seekExecutorService).thenCompose(seekFuture -> seekFuture);
+  }
+
+  /**
+   * Without a consumed heartbeat, a hybrid version swap could only resume from EOP and replay all nearline data, so
+   * the swap fails instead. Batch-only versions have no version topic heartbeats or nearline data, so EOP is safe.
+   */
+  private void failIfHybridSwapLacksConsumedHeartbeat(
+      PubSubTopic targetTopic,
+      List<PubSubTopicPartition> topicPartitionList) {
+    Version targetVersion =
+        storeRepository.getStore(storeName).getVersion(Version.parseVersionFromKafkaTopicName(targetTopic.getName()));
+    if (targetVersion == null || !targetVersion.isHybrid()) {
+      return;
+    }
+    for (PubSubTopicPartition topicPartition: topicPartitionList) {
+      if (!consumedHeartbeatTimestampsForSeek.containsKey(topicPartition.getPartitionNumber())) {
+        throw new VeniceException(
+            "Refusing version swap to: " + targetTopic.getName() + " for partition: "
+                + topicPartition.getPartitionNumber()
+                + " because no heartbeat has been consumed from the previous version; swapping would replay nearline"
+                + " data from end of push");
+      }
+    }
   }
 
   private boolean areAllTrue(Collection<Boolean> booleanCollections) {
