@@ -3712,6 +3712,9 @@ public class VeniceParentHelixAdmin implements Admin {
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Store parentStore = repository.getStore(storeName);
+    if (parentStore == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
     // The version can be null when it was deleted while a client is still polling job status for it (e.g. a system
     // push that was killed and had its stranded version removed), or when a client polls before the push has created
     // it. Its status is read where it is used, through getParentVersionStatus, because
