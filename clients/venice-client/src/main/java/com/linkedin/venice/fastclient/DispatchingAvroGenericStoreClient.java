@@ -41,6 +41,7 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.VeniceSerializationException;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -74,6 +75,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       RedundantExceptionFilter.getRedundantExceptionFilter();
   private final String BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
   private final String COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
+  private final String CACHE_READ_EXCEPTION_FILTER_MESSAGE;
 
   protected final StoreMetadata metadata;
 
@@ -124,6 +126,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     String storeName = metadata.getStoreName();
     BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
     COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
+    CACHE_READ_EXCEPTION_FILTER_MESSAGE = "Record cache read exception for " + storeName;
 
     // Use custom value deserializer factory if provided, otherwise use default Avro deserializer
     Optional<DeserializerFactory<V>> valueDeserializerFactoryOptional = config.getValueDeserializerFactory();
@@ -209,15 +212,14 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     // Serve from the cache before any routing failure check, so cached keys stay available during a routing outage.
     if (recordCache != null) {
-      FastClientRecordCache.CachedValue cached =
-          lookUpInCache(requestContext.getSerializedKey(), requestContext.getCurrentVersion());
+      V cachedValue = getFromCache(requestContext.getSerializedKey(), requestContext.getCurrentVersion());
       FastClientStats stats = config.getStats(RequestType.SINGLE_GET);
-      if (cached != null) {
+      if (cachedValue != null) {
         if (stats != null) {
           stats.recordCacheHitKeyCount(1);
         }
         requestContext.successRequestKeyCount.incrementAndGet();
-        valueFuture.complete(deserializeCachedValue(cached, key));
+        valueFuture.complete(cachedValue);
         return valueFuture;
       }
       if (stats != null) {
@@ -396,13 +398,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     Set<K> missedKeys = new HashSet<>(keys.size());
     int hitCount = 0;
     for (K key: keys) {
-      FastClientRecordCache.CachedValue cached = lookUpInCache(keySerializer.serialize(key), currentVersion);
-      if (cached == null) {
+      V cachedValue = getFromCache(keySerializer.serialize(key), currentVersion);
+      if (cachedValue == null) {
         missedKeys.add(key);
         continue;
       }
       hitCount++;
-      callback.onRecordReceived(key, deserializeCachedValue(cached, key));
+      callback.onRecordReceived(key, cachedValue);
     }
     FastClientStats stats = config.getStats(RequestType.MULTI_GET_STREAMING);
     if (stats != null) {
@@ -417,27 +419,34 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   /**
-   * Look up {@code serializedKey}, treating an entry from any other store version as a miss. Compressed bytes are
-   * only decodable by the compressor of the version they were read from, because
-   * {@link CompressionStrategy#ZSTD_WITH_DICT} dictionaries are per version.
+   * Treat stale entries and cache read/decode failures as misses. Metadata may retire a version's compression
+   * strategy or dictionary after the version check. Only count a hit or deliver a callback after decoding succeeds.
+   * Callbacks stay outside this guard so application failures are not treated as cache failures.
    */
-  private FastClientRecordCache.CachedValue lookUpInCache(byte[] serializedKey, int currentVersion) {
-    FastClientRecordCache.CachedValue cached = recordCache.get(ByteBuffer.wrap(serializedKey));
-    return cached != null && cached.getVersion() == currentVersion ? cached : null;
-  }
-
-  /**
-   * Decompress and deserialize a cache hit, reusing the same decompression and deserialization path as a server
-   * response so compression handling stays in one place.
-   */
-  private V deserializeCachedValue(FastClientRecordCache.CachedValue cached, K key) {
-    CompressionStrategy compressionStrategy = metadata.getCompressionStrategy(cached.getVersion());
-    ByteBuffer data = decompressRecord(
-        compressionStrategy,
-        cached.getValue(),
-        cached.getVersion(),
-        metadata.getCompressor(compressionStrategy, cached.getVersion()));
-    return tryToDeserialize(getDataRecordDeserializer(cached.getSchemaId()), data, cached.getSchemaId(), key);
+  private V getFromCache(byte[] serializedKey, int currentVersion) {
+    try {
+      FastClientRecordCache.CachedValue cached = recordCache.get(ByteBuffer.wrap(serializedKey));
+      if (cached == null || cached.getVersion() != currentVersion) {
+        return null;
+      }
+      CompressionStrategy compressionStrategy = metadata.getCompressionStrategy(cached.getVersion());
+      ByteBuffer data = decompressRecord(
+          compressionStrategy,
+          cached.getValue(),
+          cached.getVersion(),
+          metadata.getCompressor(compressionStrategy, cached.getVersion()));
+      // Use the same deserializer as transport, but rate-limit cache fallback logs instead of verbose decode logs.
+      return getDataRecordDeserializer(cached.getSchemaId()).deserialize(data);
+    } catch (VeniceClientException | VeniceSerializationException e) {
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(CACHE_READ_EXCEPTION_FILTER_MESSAGE)) {
+        LOGGER.warn(
+            "Record cache read failed for store {} version {}; fetching from server",
+            getStoreName(),
+            currentVersion,
+            e);
+      }
+      return null;
+    }
   }
 
   /**
