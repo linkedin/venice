@@ -628,6 +628,15 @@ public class VeniceChangelogConsumerImplTest {
       assertTrue(swapError.getCause() instanceof VeniceException);
       assertEquals(assignments, Collections.singleton(oldPartition));
 
+      // A source version missing from metadata may have been hybrid, so the swap still fails.
+      when(store.getVersion(1)).thenReturn(null);
+      swapError = expectThrows(
+          ExecutionException.class,
+          () -> consumer.internalSeekToEndOfPush(Collections.singleton(0), newVersionTopic, true)
+              .get(10, TimeUnit.SECONDS));
+      assertTrue(swapError.getCause() instanceof VeniceException);
+      assertEquals(assignments, Collections.singleton(oldPartition));
+
       // Batch-only sources never emit heartbeats and have no nearline data, so swapping from them uses EOP.
       when(store.getVersion(1)).thenReturn(new VersionImpl(storeName, 1, "foo"));
       registeredListener.get().handleStoreChanged(store);

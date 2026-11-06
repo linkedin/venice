@@ -390,16 +390,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   /**
    * Without a consumed heartbeat, a swap between hybrid version topics could only resume from EOP and replay all
    * nearline data, so the swap fails instead. Sources that never emit heartbeats (batch-only versions and view topics)
-   * and batch-only targets keep the EOP fallback.
+   * and batch-only targets keep the EOP fallback. A source version missing from store metadata may have been hybrid,
+   * so it is treated as hybrid.
    */
   private void failIfHybridSwapLacksConsumedHeartbeat(PubSubTopic targetTopic, Set<Integer> partitions) {
     Store store = storeRepository.getStore(storeName);
-    if (!isHybridVersionTopic(store, targetTopic)) {
+    if (!isHybridVersionTopic(store, targetTopic, false)) {
       return;
     }
     for (PubSubTopicPartition source: getTopicAssignment()) {
       int partition = source.getPartitionNumber();
-      if (partitions.contains(partition) && isHybridVersionTopic(store, source.getPubSubTopic())
+      if (partitions.contains(partition) && isHybridVersionTopic(store, source.getPubSubTopic(), true)
           && !consumedHeartbeatTimestampsForSeek.containsKey(partition)) {
         throw new VeniceException(
             "Refusing version swap to: " + targetTopic.getName() + " for partition: " + partition
@@ -409,12 +410,12 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     }
   }
 
-  private static boolean isHybridVersionTopic(Store store, PubSubTopic topic) {
+  private static boolean isHybridVersionTopic(Store store, PubSubTopic topic, boolean hybridIfMissing) {
     if (topic.isViewTopic()) {
       return false;
     }
     Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic.getName()));
-    return version != null && version.isHybrid();
+    return version == null ? hybridIfMissing : version.isHybrid();
   }
 
   private boolean areAllTrue(Collection<Boolean> booleanCollections) {
