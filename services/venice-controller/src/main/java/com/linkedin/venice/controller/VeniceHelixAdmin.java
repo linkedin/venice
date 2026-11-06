@@ -3733,6 +3733,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String errorMessage =
           "Failed to add version: " + failedVersionNumber + " to store: " + storeName + " in cluster: " + clusterName;
       LOGGER.error(errorMessage, e);
+      boolean cleanupFailed = false;
       try {
         if (version != null) {
           failedVersionNumber = version.getNumber();
@@ -3743,12 +3744,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               .recordVersionCreationFailureLatency(LatencyUtils.getElapsedTimeFromMsToMs(createVersionStartTime));
         }
       } catch (Throwable e1) {
+        cleanupFailed = true;
         String handlingErrorMsg = "Exception occurred while handling version " + versionNumber
             + " creation failure for store " + storeName + " in cluster " + clusterName;
         LOGGER.error(handlingErrorMsg, e1);
         errorMessage += "\n" + handlingErrorMsg + ". Error message: " + e1.getMessage();
       }
-      throw versionCreationFailure(errorMessage, e);
+      throw versionCreationFailure(errorMessage, e, cleanupFailed);
     } finally {
       // If topic creation succeeds and version info is persisted to Zk, we should remove the creation time for a topic
       // If topic creation fails or if version persistence fails, we should remove the creation time for a topic
@@ -3760,11 +3762,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Wraps a version creation failure and keeps the {@link ErrorType} of the cause, so a client error such as a disabled
-   * store is returned with its own HTTP status instead of 500.
+   * store is returned with its own HTTP status instead of 500. If cleaning up the failed version also failed, the
+   * failure is reported as {@link ErrorType#GENERAL_ERROR}, because the cleanup error is a server-side error.
    */
-  static VeniceException versionCreationFailure(String errorMessage, Throwable cause) {
-    ErrorType errorType =
-        cause instanceof VeniceException ? ((VeniceException) cause).getErrorType() : ErrorType.GENERAL_ERROR;
+  static VeniceException versionCreationFailure(String errorMessage, Throwable cause, boolean cleanupFailed) {
+    ErrorType errorType = !cleanupFailed && cause instanceof VeniceException
+        ? ((VeniceException) cause).getErrorType()
+        : ErrorType.GENERAL_ERROR;
     return new VeniceException(
         errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(cause),
         cause,

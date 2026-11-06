@@ -287,17 +287,23 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testVersionCreationFailureKeepsErrorTypeOfCause() {
     String errorMessage = "Failed to add version: 1 to store: " + storeName + " in cluster: " + clusterName;
-    VeniceException storeDisabled =
-        VeniceHelixAdmin.versionCreationFailure(errorMessage, new StoreDisabledException(storeName, "increase", 1));
+    VeniceException storeDisabled = VeniceHelixAdmin
+        .versionCreationFailure(errorMessage, new StoreDisabledException(storeName, "increase", 1), false);
     assertEquals(storeDisabled.getErrorType(), ErrorType.STORE_DISABLED);
     assertEquals(storeDisabled.getHttpStatusCode(), HttpStatus.SC_FORBIDDEN);
 
+    VeniceException storeDisabledAndCleanupFailed =
+        VeniceHelixAdmin.versionCreationFailure(errorMessage, new StoreDisabledException(storeName, "add", 1), true);
+    assertEquals(storeDisabledAndCleanupFailed.getErrorType(), ErrorType.GENERAL_ERROR);
+    assertEquals(storeDisabledAndCleanupFailed.getHttpStatusCode(), HttpStatus.SC_INTERNAL_SERVER_ERROR);
+
     VeniceException topicTimeout = VeniceHelixAdmin
-        .versionCreationFailure(errorMessage, new VeniceException("Timeout while creating topic: " + storeName));
+        .versionCreationFailure(errorMessage, new VeniceException("Timeout while creating topic: " + storeName), false);
     assertEquals(topicTimeout.getErrorType(), ErrorType.GENERAL_ERROR);
     assertEquals(topicTimeout.getHttpStatusCode(), HttpStatus.SC_INTERNAL_SERVER_ERROR);
 
-    VeniceException unexpected = VeniceHelixAdmin.versionCreationFailure(errorMessage, new IllegalStateException());
+    VeniceException unexpected =
+        VeniceHelixAdmin.versionCreationFailure(errorMessage, new IllegalStateException(), false);
     assertEquals(unexpected.getHttpStatusCode(), HttpStatus.SC_INTERNAL_SERVER_ERROR);
   }
 
