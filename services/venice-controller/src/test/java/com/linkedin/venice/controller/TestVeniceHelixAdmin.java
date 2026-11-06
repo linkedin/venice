@@ -46,6 +46,8 @@ import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionController
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
+import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -109,6 +111,7 @@ import org.apache.helix.PropertyKey;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.InstanceConfig;
+import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -279,6 +282,29 @@ public class TestVeniceHelixAdmin {
     testStore.addVersion(new VersionImpl(storeName, 1, "push-id"));
     addVersion.get();
     verify(repository, never()).updateStore(testStore);
+  }
+
+  @Test
+  public void testVersionCreationFailureKeepsErrorTypeOfCause() {
+    String errorMessage = "Failed to add version: 1 to store: " + storeName + " in cluster: " + clusterName;
+    VeniceException storeDisabled = VeniceHelixAdmin
+        .versionCreationFailure(errorMessage, new StoreDisabledException(storeName, "increase", 1), false);
+    assertEquals(storeDisabled.getErrorType(), ErrorType.STORE_DISABLED);
+    assertEquals(storeDisabled.getHttpStatusCode(), HttpStatus.SC_FORBIDDEN);
+
+    VeniceException storeDisabledAndCleanupFailed =
+        VeniceHelixAdmin.versionCreationFailure(errorMessage, new StoreDisabledException(storeName, "add", 1), true);
+    assertEquals(storeDisabledAndCleanupFailed.getErrorType(), ErrorType.GENERAL_ERROR);
+    assertEquals(storeDisabledAndCleanupFailed.getHttpStatusCode(), HttpStatus.SC_INTERNAL_SERVER_ERROR);
+
+    VeniceException topicTimeout = VeniceHelixAdmin
+        .versionCreationFailure(errorMessage, new VeniceException("Timeout while creating topic: " + storeName), false);
+    assertEquals(topicTimeout.getErrorType(), ErrorType.GENERAL_ERROR);
+    assertEquals(topicTimeout.getHttpStatusCode(), HttpStatus.SC_INTERNAL_SERVER_ERROR);
+
+    VeniceException unexpected =
+        VeniceHelixAdmin.versionCreationFailure(errorMessage, new IllegalStateException(), false);
+    assertEquals(unexpected.getHttpStatusCode(), HttpStatus.SC_INTERNAL_SERVER_ERROR);
   }
 
   @Test
