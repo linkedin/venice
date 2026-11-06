@@ -46,6 +46,8 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.StoreDisabledException;
+import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
@@ -57,7 +59,10 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -90,6 +95,7 @@ import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -119,8 +125,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -403,6 +412,268 @@ public class VeniceChangelogConsumerImplTest {
           () -> assertTrue(veniceChangelogConsumer.getHeartbeatReporterThread().isAlive()));
     } finally {
       veniceChangelogConsumer.close();
+    }
+  }
+
+  @Test(timeOut = 30_000)
+  public void testConsumptionStartupParity() throws Exception {
+    Store store = mockRepository.getStore(storeName);
+    AtomicBoolean metadataSubscribed = new AtomicBoolean();
+    when(mockRepository.getStore(anyString())).thenAnswer(invocation -> metadataSubscribed.get() ? store : null);
+    doAnswer(invocation -> {
+      metadataSubscribed.set(true);
+      return null;
+    }).when(mockRepository).subscribe(storeName);
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    Set<PubSubTopicPartition> assignments = Collections.synchronizedSet(new HashSet<>());
+    when(mockPubSubConsumer.getAssignment()).thenReturn(assignments);
+    doAnswer(invocation -> assignments.add(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class));
+    doAnswer(invocation -> assignments.add(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
+    doAnswer(invocation -> assignments.remove(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .unSubscribe(any(PubSubTopicPartition.class));
+    when(mockPubSubConsumer.endPosition(partition)).thenReturn(ApacheKafkaOffsetPosition.of(3L));
+    when(mockPubSubConsumer.getPositionByTimestamp(eq(partition), anyLong()))
+        .thenReturn(ApacheKafkaOffsetPosition.of(3L));
+    PubSubConsumerAdapter internalConsumer = mock(PubSubConsumerAdapter.class);
+    when(internalConsumer.poll(anyLong())).thenReturn(
+        Collections
+            .singletonMap(partition, Collections.singletonList(constructEndOfPushMessage(oldVersionTopic, 0, 11L))));
+    VeniceAfterImageConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        Lazy.of(() -> internalConsumer),
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    Time clock = mock(Time.class);
+    AtomicLong timestamp = new AtomicLong(1_000_000L);
+    when(clock.getMilliseconds()).thenAnswer(invocation -> timestamp.get());
+    consumer.time = clock;
+    Set<Integer> partitions = Collections.singleton(0);
+    Set<VeniceChangeCoordinate> checkpoints = Collections
+        .singleton(new VeniceChangeCoordinate(oldVersionTopic.getName(), ApacheKafkaOffsetPosition.of(3L), 0));
+    Map<Integer, Long> timestamps = Collections.singletonMap(0, 123L);
+    List<Supplier<CompletableFuture<Void>>> starts = Arrays.asList(
+        () -> consumer.internalSeekToTimestamps(timestamps),
+        () -> consumer.internalSeekToTimestamps(timestamps, mock(Logger.class)),
+        () -> consumer.subscribe(partitions),
+        () -> consumer.seekToCheckpoint(checkpoints),
+        () -> consumer.seekToBeginningOfPush(partitions),
+        () -> consumer.seekToTail(partitions),
+        () -> consumer.seekToTimestamps(timestamps),
+        () -> consumer.seekToEndOfPush(partitions));
+    try {
+      consumer.subscribe(Collections.emptySet()).get(10, TimeUnit.SECONDS);
+      consumer.internalSeekToTimestamps(Collections.emptyMap()).get(10, TimeUnit.SECONDS);
+      verify(mockRepository, never()).subscribe(storeName);
+      verify(mockRepository, never()).registerStoreDataChangedListener(any());
+      for (Supplier<CompletableFuture<Void>> start: starts) {
+        timestamp.incrementAndGet();
+        start.get().get(10, TimeUnit.SECONDS);
+        assertEquals(assignments, Collections.singleton(partition));
+        assertEquals(consumer.getSubscribeTime().longValue(), timestamp.get());
+        assertFalse(consumer.isCaughtUp());
+        DefaultPubSubMessage message = constructEndOfPushMessage(oldVersionTopic, 0, 1L);
+        message.getValue().getProducerMetadata().setMessageTimestamp(timestamp.get() - 30_000L);
+        consumer.maybeUpdatePartitionToBootstrapMap(message, partition);
+        assertTrue(consumer.isCaughtUp());
+      }
+      verify(mockRepository).registerStoreDataChangedListener(any(VersionSwapDataChangeListener.class));
+
+      when(store.isEnableReads()).thenReturn(false);
+      Mockito.clearInvocations(mockPubSubConsumer, internalConsumer);
+      for (Supplier<CompletableFuture<Void>> start: starts) {
+        expectThrows(StoreDisabledException.class, start::get);
+      }
+      expectThrows(StoreDisabledException.class, () -> consumer.poll(0));
+      Mockito.verifyNoInteractions(mockPubSubConsumer, internalConsumer);
+      assertTrue(consumer.isCaughtUp());
+      assertEquals(consumer.getSubscribeTime().longValue(), timestamp.get());
+    } finally {
+      consumer.close();
+    }
+  }
+
+  @Test(timeOut = 30_000)
+  public void testVersionSwapListenerRegisteredWhenConsumptionStartsWithSeek() throws Exception {
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CountDownLatch registrationStarted = new CountDownLatch(1);
+    CountDownLatch completeRegistration = new CountDownLatch(1);
+    CountDownLatch secondStoreSubscription = new CountDownLatch(1);
+    AtomicInteger storeSubscriptions = new AtomicInteger();
+    AtomicReference<StoreDataChangedListener> registeredListener = new AtomicReference<>();
+    doAnswer(invocation -> {
+      if (storeSubscriptions.incrementAndGet() == 2) {
+        secondStoreSubscription.countDown();
+      }
+      return null;
+    }).when(mockRepository).subscribe(storeName);
+    doAnswer(invocation -> {
+      registeredListener.set(invocation.getArgument(0));
+      registrationStarted.countDown();
+      assertTrue(completeRegistration.await(10, TimeUnit.SECONDS));
+      return null;
+    }).when(mockRepository).registerStoreDataChangedListener(any());
+
+    try {
+      veniceChangelogConsumer.seekToCheckpoint(Collections.emptySet()).get(10, TimeUnit.SECONDS);
+      veniceChangelogConsumer.seekToBeginningOfPush(Collections.emptySet()).get(10, TimeUnit.SECONDS);
+      veniceChangelogConsumer.seekToTail(Collections.emptySet()).get(10, TimeUnit.SECONDS);
+      verify(mockRepository, never()).registerStoreDataChangedListener(any());
+
+      VeniceChangeCoordinate checkpoint =
+          new VeniceChangeCoordinate(oldVersionTopic.getName(), ApacheKafkaOffsetPosition.of(3L), 0);
+      Future<?> firstStart = executor.submit(
+          () -> veniceChangelogConsumer.seekToCheckpoint(Collections.singleton(checkpoint)).get(10, TimeUnit.SECONDS));
+      assertTrue(registrationStarted.await(10, TimeUnit.SECONDS));
+      Future<?> secondStart =
+          executor.submit(() -> veniceChangelogConsumer.subscribe(Collections.singleton(1)).get(10, TimeUnit.SECONDS));
+      assertTrue(secondStoreSubscription.await(10, TimeUnit.SECONDS));
+      expectThrows(TimeoutException.class, () -> secondStart.get(100, TimeUnit.MILLISECONDS));
+      completeRegistration.countDown();
+      firstStart.get(10, TimeUnit.SECONDS);
+      secondStart.get(10, TimeUnit.SECONDS);
+      veniceChangelogConsumer.seekToBeginningOfPush(Collections.singleton(1)).get(10, TimeUnit.SECONDS);
+
+      verify(mockRepository, times(4)).subscribe(storeName);
+      CompletableFuture<Void> subscribeFuture;
+      CompletableFuture<Void> seekFuture;
+      synchronized (registeredListener.get()) {
+        subscribeFuture = executor.submit(() -> veniceChangelogConsumer.subscribe(Collections.singleton(1)))
+            .get(10, TimeUnit.SECONDS);
+        seekFuture = executor.submit(() -> veniceChangelogConsumer.seekToTail(Collections.singleton(1)))
+            .get(10, TimeUnit.SECONDS);
+      }
+      CompletableFuture.allOf(subscribeFuture, seekFuture).get(10, TimeUnit.SECONDS);
+      verify(mockRepository).registerStoreDataChangedListener(any(VersionSwapDataChangeListener.class));
+    } finally {
+      completeRegistration.countDown();
+      executor.shutdownNow();
+      veniceChangelogConsumer.close();
+    }
+  }
+
+  @Test(timeOut = 30_000)
+  public void testCheckpointRestoreOnRetainedVersionSwapsOnlyOnStoreChange() throws Exception {
+    PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    PubSubTopicPartition oldPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+    PubSubTopicPartition newPartition = new PubSubTopicPartitionImpl(newVersionTopic, 0);
+    Version newVersion = new VersionImpl(storeName, 2, "bar");
+    newVersion.setPartitionCount(partitionCount);
+    Store store = mockRepository.getStore(storeName);
+    when(store.getCurrentVersion()).thenReturn(2);
+    when(store.getVersion(2)).thenReturn(newVersion);
+    when(store.getVersionOrThrow(2)).thenReturn(newVersion);
+
+    Set<PubSubTopicPartition> assignments = new HashSet<>();
+    when(mockPubSubConsumer.getAssignment()).thenReturn(assignments);
+    doAnswer(invocation -> assignments.add(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
+    doAnswer(invocation -> assignments.remove(invocation.getArgument(0))).when(mockPubSubConsumer)
+        .unSubscribe(any(PubSubTopicPartition.class));
+    PubSubConsumerAdapter mockInternalSeekConsumer = mock(PubSubConsumerAdapter.class);
+    PubSubPosition heartbeatPosition = ApacheKafkaOffsetPosition.of(21L);
+    when(mockInternalSeekConsumer.comparePositions(newPartition, heartbeatPosition, ApacheKafkaOffsetPosition.of(11L)))
+        .thenReturn(1L);
+    doReturn(
+        Collections
+            .singletonMap(newPartition, Collections.singletonList(constructEndOfPushMessage(newVersionTopic, 0, 11L))))
+                .when(mockInternalSeekConsumer)
+                .poll(anyLong());
+    VeniceAfterImageConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        Lazy.of(() -> mockInternalSeekConsumer),
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    when(mockInternalSeekConsumer.getPositionByTimestamp(eq(newPartition), anyLong())).thenAnswer(invocation -> {
+      assertTrue(((ReentrantReadWriteLock) consumer.subscriptionLock).isWriteLockedByCurrentThread());
+      return heartbeatPosition;
+    });
+    AtomicReference<StoreDataChangedListener> registeredListener = new AtomicReference<>();
+    doAnswer(invocation -> {
+      registeredListener.set(invocation.getArgument(0));
+      return null;
+    }).when(mockRepository).registerStoreDataChangedListener(any());
+    Set<VeniceChangeCoordinate> checkpoints = Collections
+        .singleton(new VeniceChangeCoordinate(oldVersionTopic.getName(), ApacheKafkaOffsetPosition.of(3L), 0));
+
+    try {
+      // Restoring onto a retained older version does not swap until the store changes.
+      consumer.seekToCheckpoint(checkpoints).get(10, TimeUnit.SECONDS);
+      verify(mockPubSubConsumer).subscribe(oldPartition, ApacheKafkaOffsetPosition.of(3L), true);
+      assertEquals(assignments, Collections.singleton(oldPartition));
+      Mockito.verifyNoInteractions(mockInternalSeekConsumer);
+
+      // Hybrid swaps without consumed heartbeats fail rather than replay nearline data from EOP.
+      Version hybridOldVersion = new VersionImpl(storeName, 1, "foo");
+      hybridOldVersion.setHybridStoreConfig(new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP));
+      Version hybridVersion = new VersionImpl(storeName, 2, "bar");
+      hybridVersion.setHybridStoreConfig(new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP));
+      when(store.getVersion(1)).thenReturn(hybridOldVersion);
+      when(store.getVersion(2)).thenReturn(hybridVersion);
+      ExecutionException swapError = expectThrows(
+          ExecutionException.class,
+          () -> consumer.internalSeekToEndOfPush(Collections.singleton(0), newVersionTopic, true)
+              .get(10, TimeUnit.SECONDS));
+      assertTrue(swapError.getCause() instanceof VeniceException);
+      assertEquals(assignments, Collections.singleton(oldPartition));
+
+      // A source version missing from metadata may have been hybrid, so the swap still fails.
+      when(store.getVersion(1)).thenReturn(null);
+      swapError = expectThrows(
+          ExecutionException.class,
+          () -> consumer.internalSeekToEndOfPush(Collections.singleton(0), newVersionTopic, true)
+              .get(10, TimeUnit.SECONDS));
+      assertTrue(swapError.getCause() instanceof VeniceException);
+      assertEquals(assignments, Collections.singleton(oldPartition));
+
+      // Batch-only sources never emit heartbeats and have no nearline data, so swapping from them uses EOP.
+      when(store.getVersion(1)).thenReturn(new VersionImpl(storeName, 1, "foo"));
+      registeredListener.get().handleStoreChanged(store);
+      verify(mockPubSubConsumer).subscribe(newPartition, ApacheKafkaOffsetPosition.of(11L), true);
+      verify(mockInternalSeekConsumer, never()).getPositionByTimestamp(any(), anyLong());
+      assertEquals(assignments, Collections.singleton(newPartition));
+
+      consumer.getPartitionToBootstrapState().put(0, true);
+      long bootstrapTime = consumer.getSubscribeTime();
+      consumer.synchronousSeekToCheckpoint(checkpoints);
+      ControlMessage heartbeat = new ControlMessage();
+      heartbeat.controlMessageType = START_OF_SEGMENT.getValue();
+      consumer.handleControlMessage(
+          heartbeat,
+          oldPartition,
+          KafkaKey.HEART_BEAT.getKey(),
+          123L,
+          ApacheKafkaOffsetPosition.of(4L));
+      registeredListener.get().handleStoreChanged(store);
+      verify(mockInternalSeekConsumer).getPositionByTimestamp(newPartition, 123L);
+      verify(mockPubSubConsumer).subscribe(newPartition, heartbeatPosition, true);
+      assertTrue(consumer.isCaughtUp());
+      assertEquals(consumer.getSubscribeTime().longValue(), bootstrapTime);
+
+      when(store.getVersionOrThrow(1)).thenThrow(new StoreVersionNotFoundException(storeName, 1));
+      Mockito.clearInvocations(mockInternalSeekConsumer);
+      ExecutionException error = expectThrows(
+          ExecutionException.class,
+          () -> consumer.seekToCheckpoint(checkpoints).get(10, TimeUnit.SECONDS));
+      assertTrue(error.getCause() instanceof VeniceCoordinateOutOfRangeException);
+      assertTrue(error.getCause().getMessage().contains("Checkpoint is off retention"));
+      Mockito.verifyNoInteractions(mockInternalSeekConsumer);
+      assertEquals(assignments, Collections.singleton(newPartition));
+      assertTrue(consumer.isCaughtUp());
+      assertEquals(consumer.getSubscribeTime().longValue(), bootstrapTime);
+    } finally {
+      consumer.close();
     }
   }
 
@@ -1190,6 +1461,8 @@ public class VeniceChangelogConsumerImplTest {
     veniceChangelogConsumer.setStoreRepository(mockRepository);
     veniceChangelogConsumer.setSeekPositionResolutionRetryDelays(Duration.ofMillis(1), Duration.ofMillis(2));
 
+    veniceChangelogConsumer.getPartitionToBootstrapState().put(0, true);
+    veniceChangelogConsumer.subscribeTime = 1_000_000L;
     ExecutionException e = expectThrows(
         ExecutionException.class,
         () -> veniceChangelogConsumer.seekToTimestamps(Collections.singletonMap(0, 1000L)).get(30, TimeUnit.SECONDS));
@@ -1201,6 +1474,8 @@ public class VeniceChangelogConsumerImplTest {
     assertTrue(
         assignments.contains(partition0),
         "Partition must keep consuming when the seek target can't be resolved");
+    assertTrue(veniceChangelogConsumer.isCaughtUp());
+    assertEquals(veniceChangelogConsumer.getSubscribeTime().longValue(), 1_000_000L);
   }
 
   @Test
@@ -1257,6 +1532,9 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer).subscribe(eq(partition1), eq(tailPosition), eq(true));
     assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(1));
     assertFalse(veniceChangelogConsumer.getLastHeartbeatPerPartition().containsKey(0));
+    assertEquals(veniceChangelogConsumer.getPartitionToBootstrapState(), Collections.singletonMap(1, false));
+    veniceChangelogConsumer.unsubscribe(Collections.singleton(1));
+    assertTrue(veniceChangelogConsumer.isCaughtUp());
   }
 
   @Test
@@ -1447,6 +1725,9 @@ public class VeniceChangelogConsumerImplTest {
     versionSwapConfig.setClientRegionName(clientRegion).setTotalRegionCount(2);
     PubSubConsumerAdapter mockInternalSeekConsumer = Mockito.mock(PubSubConsumerAdapter.class);
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> newVersionPubSubMessagesMap = new HashMap<>();
+    PubSubTopicPartition newTopicPartition0 = new PubSubTopicPartitionImpl(newVersionTopic, 0);
+    newVersionPubSubMessagesMap
+        .put(newTopicPartition0, Collections.singletonList(constructEndOfPushMessage(newVersionTopic, 0, 21L)));
     PubSubTopicPartition newTopicPartition1 = new PubSubTopicPartitionImpl(newVersionTopic, 1);
     newVersionPubSubMessagesMap.put(
         newTopicPartition1,
@@ -1548,6 +1829,17 @@ public class VeniceChangelogConsumerImplTest {
     Assert.assertThrows(
         TimeoutException.class,
         () -> subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS));
+    // Seeks fail fast instead of waiting for poll to complete the swap
+    Set<VeniceChangeCoordinate> checkpoints = Collections
+        .singleton(new VeniceChangeCoordinate(newVersionTopic.getName(), ApacheKafkaOffsetPosition.of(31L), 0));
+    for (CompletableFuture<Void> seek: Arrays.asList(
+        veniceChangeLogConsumer.seekToCheckpoint(checkpoints),
+        veniceChangeLogConsumer.seekToBeginningOfPush(Collections.singleton(0)),
+        veniceChangeLogConsumer.seekToEndOfPush(Collections.singleton(0)))) {
+      ExecutionException e = Assert.expectThrows(ExecutionException.class, () -> seek.get(10, TimeUnit.SECONDS));
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+    }
+    verify(mockPubSubConsumer, never()).subscribe(any(PubSubTopicPartition.class), any(PubSubPosition.class), eq(true));
     // We should still be able to unsubscribe
     veniceChangeLogConsumer.unsubscribe(Collections.singleton(0));
     Assert.assertEquals(versionSwapMessageState.getAssignedPartitions().size(), 1);
@@ -1581,11 +1873,10 @@ public class VeniceChangelogConsumerImplTest {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertFalse(veniceChangeLogConsumer.poll(pollTimeoutMs).isEmpty()));
-    ArgumentCaptor<PubSubTopicPartition> pubSubTopicCaptor = ArgumentCaptor.forClass(PubSubTopicPartition.class);
-    verify(mockPubSubConsumer, times(1)).subscribe(pubSubTopicCaptor.capture(), any(PubSubPosition.class), eq(true));
-    Assert.assertEquals(pubSubTopicCaptor.getValue().getTopicName(), newVersionTopic.getName());
+    verify(mockPubSubConsumer).subscribe(eq(newTopicPartition1), any(PubSubPosition.class), eq(true));
     // The subscribe future during version swap should also complete now
     subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS);
+    Assert.assertNull(veniceChangeLogConsumer.getVersionSwapMessageState());
   }
 
   private void prepareVersionTopicRecordsToBePolled(
