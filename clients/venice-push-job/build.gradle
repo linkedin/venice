@@ -115,6 +115,18 @@ jar {
   }
 }
 
+shadowJar {
+  // Scala is part of the Spark runtime provided by the execution platform (e.g. Spark-on-K8s / KJP),
+  // which ships its own scala-library (Spark 3.1 -> 2.12.10). Bundling Scala into the fat jar overrides
+  // the platform's version and prevents executor pods from starting. The push-job sources reference
+  // scala.* directly, so Scala must remain on the compile/runtime classpath; exclude it only from the
+  // shaded artifact so the platform-provided Scala is used at runtime.
+  dependencies {
+    exclude(dependency('org.scala-lang:.*:.*'))
+    exclude(dependency('org.scala-lang.modules:.*:.*'))
+  }
+}
+
 ext {
   jacocoCoverageThreshold = 0.39
 }
