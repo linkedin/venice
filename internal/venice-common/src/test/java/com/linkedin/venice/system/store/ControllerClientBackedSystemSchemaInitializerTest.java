@@ -12,6 +12,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.data.ByteString;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -34,7 +35,9 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -47,7 +50,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
     return new Object[][] { { true, true }, { false, true }, { false, false } };
   }
 
-  @Test(dataProvider = "discoveredControllerTls")
+  @Test(dataProvider = "discoveredControllerTls", timeOut = 30_000)
   public void testD2DiscoveryPreservesTlsFactoryAndRouting(boolean https, boolean supplySslFactory) throws IOException {
     SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
     HttpServer server;
@@ -59,7 +62,9 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
       server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
     }
     Schema schema = Schema.create(Schema.Type.INT);
+    Set<String> requestedPaths = ConcurrentHashMap.newKeySet();
     server.createContext("/", exchange -> {
+      requestedPaths.add(exchange.getRequestURI().getPath());
       byte[] body = "{\"schemaStr\":\"\\\"int\\\"\",\"schemas\":[{\"id\":1,\"schemaStr\":\"\\\"int\\\"\"}]}"
           .getBytes(StandardCharsets.UTF_8);
       exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -92,6 +97,8 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
               "",
               false)) {
         initializer.execute(Collections.singletonMap(1, schema));
+        Assert.assertTrue(requestedPaths.contains(ControllerRoute.GET_KEY_SCHEMA.getPath()));
+        Assert.assertTrue(requestedPaths.contains(ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath()));
       }
     } finally {
       server.stop(0);

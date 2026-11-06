@@ -122,7 +122,10 @@ public class FabricControllerClientProvider implements Closeable {
               String d2ServiceName = controllerConfig.getD2ServiceName();
               if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
                 if (d2Clients != null) {
-                  return new D2ControllerClient(d2ServiceName, clusterName, d2Clients.get(fabric), sslFactory);
+                  D2ControllerClient client =
+                      new D2ControllerClient(d2ServiceName, clusterName, d2Clients.get(fabric), sslFactory);
+                  client.setEnforceSslOnly(false);
+                  return client;
                 }
                 return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
               }
