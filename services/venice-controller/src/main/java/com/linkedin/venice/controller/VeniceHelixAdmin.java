@@ -6058,6 +6058,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       childControllerAdminTopicConsumptionEnabled
           .ifPresent(clonedClusterConfig::setChildControllerAdminTopicConsumptionEnabled);
       params.getDegradedModeEnabled().ifPresent(clonedClusterConfig::setDegradedModeEnabled);
+      params.getStalledDrainerDiagnosticsEnabled().ifPresent(clonedClusterConfig::setStalledDrainerDiagnosticsEnabled);
+      params.getStalledDrainerDiagnosticsHostAllowlist()
+          .ifPresent(clonedClusterConfig::setStalledDrainerDiagnosticsHostAllowlist);
       clusterConfigRepository.updateConfigs(clonedClusterConfig);
     }
   }
