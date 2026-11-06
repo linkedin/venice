@@ -473,7 +473,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           true,
           serverConfig.getClusterName(),
           serverConfig.getBlockedDrainerThresholdMs(),
-          serverConfig.getWritePathThreadPriority());
+          serverConfig.getWritePathThreadPriority(),
+          serverConfig.isStalledDrainerQueueFailureEnabled());
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
 

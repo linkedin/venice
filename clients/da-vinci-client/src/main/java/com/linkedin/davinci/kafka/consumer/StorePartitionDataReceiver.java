@@ -114,7 +114,7 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
       throw e;
     }
     LOGGER.error(
-        "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will propagate via setLastConsumerException(e).",
+        "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will delegate exception classification to StoreIngestionTask.",
         e.getClass().getSimpleName(),
         topicPartition);
     storeIngestionTask.setLastConsumerException(e);

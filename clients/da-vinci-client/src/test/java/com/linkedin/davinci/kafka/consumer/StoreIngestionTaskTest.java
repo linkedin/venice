@@ -32,6 +32,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFI
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter.getPosition;
@@ -82,6 +83,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -225,6 +227,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -8141,6 +8144,168 @@ public abstract class StoreIngestionTaskTest {
     // The gate returns before any checkpoint work, so the errored partition's OffsetRecord write and put() never run.
     verify(vtDivSnapshot, never()).updateOffsetRecord(any(), any());
     verify(mockStorageMetadataService, never()).put(eq(topic), eq(PARTITION_FOO), any());
+  }
+
+  private void createRecoveryTestTask() {
+    createRecoveryTestTask(true);
+  }
+
+  private void createRecoveryTestTask(boolean featureEnabled) {
+    StoreIngestionTaskFactory factory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        Collections.singletonMap(SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED, featureEnabled),
+        false,
+        null,
+        null,
+        this.mockStorageService).build();
+    MockStoreVersionConfigs configs = setupStoreAndVersionMocks(
+        PARTITION_COUNT,
+        new PartitionerConfigImpl(),
+        Optional.empty(),
+        false,
+        false,
+        AAConfig.AA_OFF);
+    doReturn(true).when(configs.storeVersionConfig).isResetErrorReplicaEnabled();
+    Properties kafkaProps = new Properties();
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+    storeIngestionTaskUnderTest = spy(
+        factory.getNewIngestionTask(
+            this.mockStorageService,
+            configs.store,
+            configs.version,
+            kafkaProps,
+            isCurrentVersion,
+            configs.storeVersionConfig,
+            PARTITION_FOO,
+            Optional.empty(),
+            null,
+            Lazy.of(() -> zkHelixAdmin)));
+  }
+
+  @Test
+  public void testStalledDrainerFailureRegisteredOncePerAffectedSubscription() {
+    createRecoveryTestTask();
+    StoreBufferService.StalledDrainerException failure = new StoreBufferService.StalledDrainerException("stalled");
+    for (int partition = 0; partition < 2; partition++) {
+      storeIngestionTaskUnderTest.setIngestionException(partition, failure);
+      assertEquals(
+          storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(partition).getException(),
+          failure);
+      storeIngestionTaskUnderTest.setLastConsumerException(failure);
+      storeIngestionTaskUnderTest.setLastConsumerException(new VeniceException(failure));
+      assertNull(storeIngestionTaskUnderTest.getLastConsumerException());
+      // Simulate the ingestion loop clearing a reported error while more rejected nodes are still arriving.
+      storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().set(partition, null);
+      storeIngestionTaskUnderTest.setIngestionException(partition, failure);
+      assertNull(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(partition));
+      assertTrue(storeIngestionTaskUnderTest.getFailedPartitions().contains(partition));
+    }
+    assertEquals(storeIngestionTaskUnderTest.getFailedPartitions().size(), 2);
+    VeniceException ordinaryFailure = new VeniceException("ordinary error");
+    storeIngestionTaskUnderTest.setLastConsumerException(ordinaryFailure);
+    storeIngestionTaskUnderTest.setLastConsumerException(failure);
+    assertSame(storeIngestionTaskUnderTest.getLastConsumerException(), ordinaryFailure);
+    storeIngestionTaskUnderTest.setIngestionException(0, ordinaryFailure);
+    assertEquals(
+        storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(0).getException(),
+        ordinaryFailure);
+  }
+
+  @Test
+  public void testDisabledDrainerRecoveryPreservesTaskFailureAndPartitionRegistration() {
+    createRecoveryTestTask(false);
+    StoreBufferService.StalledDrainerException failure = new StoreBufferService.StalledDrainerException("stalled");
+    storeIngestionTaskUnderTest.setIngestionException(0, failure);
+    storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().set(0, null);
+    storeIngestionTaskUnderTest.setIngestionException(0, failure);
+    assertSame(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(0).getException(), failure);
+    VeniceException wrappedFailure = new VeniceException(failure);
+    storeIngestionTaskUnderTest.setLastConsumerException(wrappedFailure);
+    assertSame(storeIngestionTaskUnderTest.getLastConsumerException(), wrappedFailure);
+
+    VeniceException thrown = Assert.expectThrows(
+        VeniceException.class,
+        () -> storeIngestionTaskUnderTest.checkIngestionProgress(mock(Store.class)));
+
+    assertSame(thrown.getCause(), wrappedFailure);
+    assertSame(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(0).getException(), failure);
+    verify(zkHelixAdmin, never()).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+  }
+
+  @DataProvider
+  public Object[][] recoveryBooleanValues() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  @Test(dataProvider = "recoveryBooleanValues")
+  public void testDrainerPartitionRecoveryPrecedesTaskFailure(boolean storeFailure) {
+    isCurrentVersion = () -> true;
+    createRecoveryTestTask();
+    for (int partition = 0; partition < 2; partition++) {
+      PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+      doReturn(true).when(pcs).isSubscribed();
+      doReturn(true).when(pcs).isCompletionReported();
+      storeIngestionTaskUnderTest.setPartitionConsumptionState(partition, pcs);
+    }
+    StoreBufferService.StalledDrainerException drainerFailure =
+        new StoreBufferService.StalledDrainerException("stalled");
+    storeIngestionTaskUnderTest.setIngestionException(0, drainerFailure);
+    VeniceException partitionFailure = new VeniceException("ordinary partition failure");
+    storeIngestionTaskUnderTest.setIngestionException(1, partitionFailure);
+    VeniceException taskFailure = new VeniceException("fatal task failure");
+    if (storeFailure) {
+      storeIngestionTaskUnderTest.setLastStoreIngestionException(taskFailure);
+    } else {
+      storeIngestionTaskUnderTest.setLastConsumerException(taskFailure);
+    }
+    storeIngestionTaskUnderTest.setLastConsumerException(new VeniceException(drainerFailure));
+
+    VeniceException thrown = Assert.expectThrows(
+        VeniceException.class,
+        () -> storeIngestionTaskUnderTest.checkIngestionProgress(mock(Store.class)));
+
+    assertSame(thrown.getCause(), taskFailure);
+    verify(zkHelixAdmin).setPartitionsToError(
+        anyString(),
+        anyString(),
+        eq(topic),
+        eq(Collections.singletonList(HelixUtils.getPartitionName(topic, 0))));
+    assertNull(storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(0));
+    assertSame(
+        storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(1).getException(),
+        partitionFailure);
+  }
+
+  @Test(dataProvider = "recoveryBooleanValues")
+  public void testCompletedBatchAcceptsLeadershipLoopbackButNotUserData(boolean featureEnabled) {
+    createRecoveryTestTask(featureEnabled);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    doReturn(true).when(pcs).isBatchOnly();
+    doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
+    doReturn(PubSubSymbolicPosition.EARLIEST).when(pcs).getLatestProcessedVtPosition();
+    storeIngestionTaskUnderTest.setPartitionConsumptionState(PARTITION_FOO, pcs);
+    doReturn(true).when(storeIngestionTaskUnderTest).shouldUseDolMechanism();
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    doReturn(PARTITION_FOO).when(record).getPartition();
+    doReturn(fooTopicPartition).when(record).getTopicPartition();
+    doReturn(PubSubSymbolicPosition.LATEST).when(record).getPosition();
+    doReturn(KafkaKey.DOL_STAMP).when(record).getKey();
+    KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+    ControlMessage control = new ControlMessage();
+    control.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+    envelope.payloadUnion = control;
+    doReturn(envelope).when(record).getValue();
+    assertTrue(storeIngestionTaskUnderTest.shouldProcessRecord(record));
+    doReturn(false).when(storeIngestionTaskUnderTest).shouldUseDolMechanism();
+    assertFalse(storeIngestionTaskUnderTest.shouldProcessRecord(record));
+    control.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
+    assertTrue(storeIngestionTaskUnderTest.shouldProcessRecord(record));
+    doReturn(true).when(storeIngestionTaskUnderTest).shouldUseDolMechanism();
+    doReturn(new KafkaKey(MessageType.PUT, KafkaKey.DOL_STAMP.getKey())).when(record).getKey();
+    assertFalse(storeIngestionTaskUnderTest.shouldProcessRecord(record));
   }
 
   @Test
