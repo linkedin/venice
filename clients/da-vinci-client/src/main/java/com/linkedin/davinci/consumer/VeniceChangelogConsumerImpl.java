@@ -393,7 +393,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
       for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
         pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
-        resetTrackingForSubscription(topicPartition, false);
+        resetTrackingForSubscription(topicPartition, true);
         pendingVersionSwapNotifications.record(topicPartition, null);
       }
       startHeartbeatReporterIfNeeded();

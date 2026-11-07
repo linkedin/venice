@@ -1835,6 +1835,8 @@ public class VeniceChangelogConsumerImplTest {
     Assert.assertThrows(
         TimeoutException.class,
         () -> subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS));
+    // An unsubscribe while the subscription waits clears its bootstrap state
+    veniceChangeLogConsumer.getPartitionToBootstrapState().remove(0);
     // Seeks fail fast instead of waiting for poll to complete the swap
     Set<VeniceChangeCoordinate> checkpoints = Collections
         .singleton(new VeniceChangeCoordinate(newVersionTopic.getName(), ApacheKafkaOffsetPosition.of(31L), 0));
@@ -1887,6 +1889,7 @@ public class VeniceChangelogConsumerImplTest {
     swapOrder.verify(mockPubSubConsumer).poll(pollTimeoutMs);
     // The subscribe future during version swap should also complete now
     subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS);
+    Assert.assertFalse(veniceChangeLogConsumer.getPartitionToBootstrapState().get(0));
     Assert.assertNull(veniceChangeLogConsumer.getVersionSwapMessageState());
   }
 
