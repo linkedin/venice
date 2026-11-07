@@ -4458,7 +4458,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               Version.parseVersionFromVersionTopicName(versionSwap.getOldServingVersionTopic().toString());
           int futureVersion =
               Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
-          recordTransformer.onVersionSwap(currentVersion, futureVersion, partition);
+          recordTransformer.onVersionSwap(currentVersion, futureVersion, partition, offset);
           recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
         break;

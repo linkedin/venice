@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 
 /**
@@ -44,6 +46,28 @@ class PendingVersionSwapNotifications {
 
   void remove(Collection<Integer> partitions) {
     pendingByPartition.keySet().removeAll(partitions);
+  }
+
+  void clear() {
+    pendingByPartition.clear();
+  }
+
+  /**
+   * Delivers all pending notifications to {@code listener}. If it throws, the failed and remaining notifications are
+   * requeued and a {@link VeniceException} is thrown.
+   */
+  void deliver(Consumer<ChangelogVersionSwapNotification> listener, String storeName) {
+    List<ChangelogVersionSwapNotification> notifications = drain();
+    for (int i = 0; i < notifications.size(); i++) {
+      try {
+        listener.accept(notifications.get(i));
+      } catch (Exception e) {
+        requeue(notifications.subList(i, notifications.size()));
+        throw new VeniceException(
+            "Version swap listener failed for store: " + storeName + " on notification: " + notifications.get(i),
+            e);
+      }
+    }
   }
 
   /**

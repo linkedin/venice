@@ -1086,19 +1086,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
    */
   private void deliverVersionSwapNotifications() {
     Consumer<ChangelogVersionSwapNotification> listener = versionSwapListener;
-    if (listener == null) {
-      return;
-    }
-    List<ChangelogVersionSwapNotification> notifications = pendingVersionSwapNotifications.drain();
-    for (int i = 0; i < notifications.size(); i++) {
-      try {
-        listener.accept(notifications.get(i));
-      } catch (Exception e) {
-        pendingVersionSwapNotifications.requeue(notifications.subList(i, notifications.size()));
-        throw new VeniceException(
-            "Version swap listener failed for store: " + storeName + " on notification: " + notifications.get(i),
-            e);
-      }
+    if (listener != null) {
+      pendingVersionSwapNotifications.deliver(listener, storeName);
     }
   }
 

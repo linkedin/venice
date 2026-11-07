@@ -230,17 +230,18 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
    *
    * <p>A notification is produced whenever partitions are (re)subscribed: by {@link #subscribe}, by any seek, or by an
    * internal version swap (including a rollback to a lower version). It carries the exact position each partition was
-   * moved to, except for partitions subscribed at a symbolic position (e.g. by {@link #subscribe}). Only the latest
-   * topic of each partition is reported, and explicitly unsubscribed partitions are dropped.
+   * moved to by a version swap; positions of (re)subscriptions are included only when the consumer knows them exactly
+   * (e.g. not for {@link #subscribe}). Only the latest topic of each partition is reported, and explicitly unsubscribed
+   * partitions are dropped.
    *
-   * <p>The listener is invoked synchronously on the thread calling {@link #poll}, inside {@link #poll}, after the old
-   * topic of the reported partitions has been unassigned and before {@link #poll} returns any record from the new
-   * topic. Notifications produced before registration are delivered by the first poll after it. If the listener
-   * throws, {@link #poll} throws a {@link VeniceException} without fetching any records, and the failed and remaining
-   * notifications are delivered again by the next {@link #poll}.
+   * <p>The listener is invoked synchronously on the thread calling {@link #poll}, inside {@link #poll}, before
+   * {@link #poll} returns any record from the new topic. Records from the old topic that were already fetched or
+   * buffered may still be returned afterwards. Notifications produced before registration are delivered by the first
+   * poll after it. If the listener throws, {@link #poll} throws a {@link VeniceException} without fetching any
+   * records, and the failed and remaining notifications are delivered again by the next {@link #poll}.
    *
-   * <p>The listener runs while the consumer blocks subscription changes, so it should return quickly and must not wait
-   * on other threads that use this consumer.
+   * <p>The listener runs while the consumer blocks subscription changes and buffering, so it should return quickly and
+   * must not wait on other threads that use this consumer.
    *
    * @param listener the listener to invoke, must not be null
    * @throws UnsupportedOperationException if this consumer cannot report version swaps

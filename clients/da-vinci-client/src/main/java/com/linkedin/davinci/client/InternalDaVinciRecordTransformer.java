@@ -91,13 +91,14 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   }
 
   /**
-   * Lifecycle event triggered when a version swap is detected for partitionId
+   * Lifecycle event triggered when a version swap is detected for partitionId, at {@code position} in the topic being
+   * ingested.
    * It is used for DVRT CDC.
    */
-  public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
+  public void onVersionSwap(int currentVersion, int futureVersion, int partitionId, PubSubPosition position) {
     if (isCDCRecordTransformer()) {
       ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
-          .onVersionSwap(currentVersion, futureVersion, partitionId);
+          .onVersionSwap(currentVersion, futureVersion, partitionId, position);
     }
   }
 
