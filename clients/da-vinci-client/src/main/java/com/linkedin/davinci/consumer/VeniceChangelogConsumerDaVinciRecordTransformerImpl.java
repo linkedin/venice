@@ -47,6 +47,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -61,6 +62,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -94,8 +96,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
   private final Set<Integer> eopReceivedPartitions = VeniceConcurrentHashMap.newKeySet();
+  // Positions given to seekToCheckpoint, reported when the partition starts being served
+  private final Map<Integer, PubSubPosition> seekPositions = new VeniceConcurrentHashMap<>();
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
+  // Guarded by bufferLock
+  private final PendingVersionSwapNotifications pendingVersionSwapNotifications = new PendingVersionSwapNotifications();
+  private volatile Consumer<ChangelogVersionSwapNotification> versionSwapListener = null;
   private volatile BackgroundReporterThread backgroundReporterThread;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
@@ -454,8 +461,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
     }
 
-    CompletableFuture<Void> future =
-        initializeAndSubscribe(partitions, ignore -> daVinciClient.seekToCheckpoint(checkpoints));
+    CompletableFuture<Void> future = initializeAndSubscribe(partitions, ignore -> {
+      checkpoints.forEach(coordinate -> seekPositions.put(coordinate.getPartition(), coordinate.getPosition()));
+      return daVinciClient.seekToCheckpoint(checkpoints);
+    });
     maybeEnableSyntheticHeartbeats();
     return future;
   }
@@ -517,6 +526,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         if (isClosed.get()) {
           return Collections.emptyList();
         }
+        /*
+         * Delivered under the buffer lock, which swaps are recorded under before their records can be buffered, so
+         * every record drained below comes from a topic already reported. A listener failure drains no records.
+         */
+        Consumer<ChangelogVersionSwapNotification> listener = versionSwapListener;
+        if (listener != null) {
+          pendingVersionSwapNotifications.deliver(listener, storeName);
+        }
         pubSubMessages.drainTo(drainedPubSubMessages);
         // Tracked under the buffer lock so concurrent polls record positions in drain order.
         trackPolledPositions(drainedPubSubMessages);
@@ -558,6 +575,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   @Override
   public boolean isCaughtUp() {
     return isCaughtUp.get();
+  }
+
+  @Override
+  public void setVersionSwapListener(Consumer<ChangelogVersionSwapNotification> listener) {
+    this.versionSwapListener = Objects.requireNonNull(listener, "Version swap listener cannot be null");
   }
 
   /**
@@ -811,6 +833,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       if (syntheticHeartbeatRecordTransformer == null) {
         syntheticHeartbeatRecordTransformer = this;
       }
+      // Caching these objects, so we don't need to recreate them on every single message received
+      pubSubTopicPartitionMap
+          .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+
       if (isCurrentVersion || isVersionSpecificClient) {
         /*
          * This condition can occur when the application is starting up (due to a restart/deployment) or when the
@@ -825,12 +851,16 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
          * This can also occur when it is running in version specific mode, and no version swap will happen.
          * In this case, just serve the currently subscribed version.
          */
-        partitionToVersionToServe.computeIfAbsent(partitionId, v -> getStoreVersion());
+        PubSubPosition seekPosition = seekPositions.remove(partitionId);
+        bufferLock.lock();
+        try {
+          if (partitionToVersionToServe.putIfAbsent(partitionId, getStoreVersion()) == null) {
+            recordVersionSwapNotification(partitionId, seekPosition);
+          }
+        } finally {
+          bufferLock.unlock();
+        }
       }
-
-      // Caching these objects, so we don't need to recreate them on every single message received
-      pubSubTopicPartitionMap
-          .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
 
       // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
       currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
@@ -853,6 +883,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     private boolean isServedByThisVersion(int partitionId) {
       Integer versionToServe = partitionToVersionToServe.get(partitionId);
       return versionToServe != null && versionToServe == getStoreVersion();
+    }
+
+    /**
+     * Must be called with bufferLock held, together with the partitionToVersionToServe update, and before this version
+     * buffers any record for the partition, so {@link #poll} reports the served topic before returning its records.
+     */
+    private void recordVersionSwapNotification(int partitionId, PubSubPosition position) {
+      pendingVersionSwapNotifications.record(pubSubTopicPartitionMap.get(partitionId), position);
     }
 
     /**
@@ -1015,7 +1053,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       addControlMessageToBuffer(partitionId, offset, controlMessage, pubSubMessageTimestamp, producerTimestamp);
     }
 
-    public void onVersionSwap(int currentVersion, int futureVersion, int partitionId) {
+    public void onVersionSwap(int currentVersion, int futureVersion, int partitionId, PubSubPosition position) {
       /*
        * ToDo: In the event of a version rollback, VSMs will be added to the VT again to the backup version.
        *  This means that when we first encounter a VSM we will swap to the next version too early as we read
@@ -1047,7 +1085,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       String replicaId = Utils.getReplicaId(storeName, futureVersion, partitionId);
       try {
         if (futureVersion == getStoreVersion()) {
-          partitionToVersionToServe.put(partitionId, futureVersion);
+          bufferLock.lock();
+          try {
+            Integer previousVersion = partitionToVersionToServe.put(partitionId, futureVersion);
+            if (previousVersion == null || previousVersion != futureVersion) {
+              recordVersionSwapNotification(partitionId, position);
+            }
+          } finally {
+            bufferLock.unlock();
+          }
           LOGGER.info("Swapped versions from: {} to: {} for replica: {}", currentVersion, futureVersion, replicaId);
 
           if (changeCaptureStats != null) {
@@ -1086,9 +1132,20 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   @VisibleForTesting
   public void clearPartitionState(Set<Integer> partitions) {
+    bufferLock.lock();
+    try {
+      if (partitions.isEmpty()) {
+        pendingVersionSwapNotifications.clear();
+      } else {
+        pendingVersionSwapNotifications.remove(partitions);
+      }
+    } finally {
+      bufferLock.unlock();
+    }
     if (partitions.isEmpty()) {
       subscribedPartitions.clear();
       partitionToVersionToServe.clear();
+      seekPositions.clear();
       currentVersionLastHeartbeat.clear();
       eopReceivedPartitions.clear();
       lastPolledPositions.clear();
@@ -1097,6 +1154,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       for (int partition: partitions) {
         subscribedPartitions.remove(partition);
         partitionToVersionToServe.remove(partition);
+        seekPositions.remove(partition);
         currentVersionLastHeartbeat.remove(partition);
         eopReceivedPartitions.remove(partition);
         lastPolledPositions.keySet().removeIf(topicPartition -> topicPartition.getPartitionNumber() == partition);
