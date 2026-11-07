@@ -215,6 +215,13 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
   }
 
   @Test
+  public void testSetVersionSwapListenerIsUnsupported() {
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> veniceChangelogConsumer.setVersionSwapListener(notification -> {}));
+  }
+
+  @Test
   public void testStartSpecificPartitions() {
     Set<Integer> partitionSet = Collections.singleton(1);
     veniceChangelogConsumer.start(partitionSet);
