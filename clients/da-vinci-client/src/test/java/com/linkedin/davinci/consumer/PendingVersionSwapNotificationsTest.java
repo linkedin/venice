@@ -36,18 +36,18 @@ public class PendingVersionSwapNotificationsTest {
         drained,
         Arrays.asList(
             new ChangelogVersionSwapNotification(
-                v1.getName(),
-                new HashSet<>(Arrays.asList(1, 2)),
-                Collections.singletonMap(2, coordinate(v1, 2, 7L))),
-            new ChangelogVersionSwapNotification(
                 v2.getName(),
                 Collections.singleton(0),
-                Collections.singletonMap(0, coordinate(v2, 0, 3L)))));
+                Collections.singletonMap(0, coordinate(v2, 0, 3L))),
+            new ChangelogVersionSwapNotification(
+                v1.getName(),
+                new HashSet<>(Arrays.asList(1, 2)),
+                Collections.singletonMap(2, coordinate(v1, 2, 7L)))));
     assertTrue(pending.drain().isEmpty());
   }
 
   @Test
-  public void testRemoveAndClear() {
+  public void testRemove() {
     PendingVersionSwapNotifications pending = new PendingVersionSwapNotifications();
     pending.record(partition(v1, 0), null);
     pending.record(partition(v1, 1), null);
@@ -56,10 +56,6 @@ public class PendingVersionSwapNotificationsTest {
         pending.drain(),
         Collections.singletonList(
             new ChangelogVersionSwapNotification(v1.getName(), Collections.singleton(0), Collections.emptyMap())));
-
-    pending.record(partition(v1, 0), null);
-    pending.clear();
-    assertTrue(pending.drain().isEmpty());
   }
 
   @Test
@@ -78,11 +74,11 @@ public class PendingVersionSwapNotificationsTest {
     assertEquals(
         pending.drain(),
         Arrays.asList(
-            new ChangelogVersionSwapNotification(v1.getName(), Collections.singleton(0), v1Positions),
             new ChangelogVersionSwapNotification(
                 v2.getName(),
                 Collections.singleton(1),
-                Collections.singletonMap(1, coordinate(v2, 1, 5L)))));
+                Collections.singletonMap(1, coordinate(v2, 1, 5L))),
+            new ChangelogVersionSwapNotification(v1.getName(), Collections.singleton(0), v1Positions)));
   }
 
   private static PubSubTopicPartition partition(PubSubTopic topic, int partition) {

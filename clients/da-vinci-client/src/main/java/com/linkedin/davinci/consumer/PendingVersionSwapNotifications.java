@@ -28,7 +28,7 @@ class PendingVersionSwapNotifications {
     }
   }
 
-  private Map<Integer, Entry> pendingByPartition = new LinkedHashMap<>();
+  private final Map<Integer, Entry> pendingByPartition = new LinkedHashMap<>();
 
   /**
    * Records that {@code topicPartition} is now consumed from {@code position}, replacing any earlier entry for the
@@ -39,7 +39,6 @@ class PendingVersionSwapNotifications {
     String topic = topicPartition.getPubSubTopic().getName();
     VeniceChangeCoordinate coordinate =
         position == null || position.isSymbolic() ? null : new VeniceChangeCoordinate(topic, position, partition);
-    pendingByPartition.remove(partition);
     pendingByPartition.put(partition, new Entry(topic, coordinate));
   }
 
@@ -47,12 +46,8 @@ class PendingVersionSwapNotifications {
     pendingByPartition.keySet().removeAll(partitions);
   }
 
-  void clear() {
-    pendingByPartition.clear();
-  }
-
   /**
-   * Removes and returns all pending entries, grouped into one notification per topic in recording order.
+   * Removes and returns all pending entries, grouped into one notification per topic.
    */
   List<ChangelogVersionSwapNotification> drain() {
     if (pendingByPartition.isEmpty()) {
@@ -80,22 +75,16 @@ class PendingVersionSwapNotifications {
   }
 
   /**
-   * Puts undelivered notifications back ahead of the current entries. A partition recorded since the notifications
-   * were drained keeps its newer entry.
+   * Puts undelivered notifications back. A partition recorded since the notifications were drained keeps its newer
+   * entry.
    */
   void requeue(List<ChangelogVersionSwapNotification> undelivered) {
-    Map<Integer, Entry> requeued = new LinkedHashMap<>();
     for (ChangelogVersionSwapNotification notification: undelivered) {
       for (int partition: notification.getPartitions()) {
-        requeued.remove(partition);
-        requeued
-            .put(partition, new Entry(notification.getNewTopic(), notification.getNewTopicPositions().get(partition)));
+        pendingByPartition.putIfAbsent(
+            partition,
+            new Entry(notification.getNewTopic(), notification.getNewTopicPositions().get(partition)));
       }
     }
-    for (Map.Entry<Integer, Entry> pending: pendingByPartition.entrySet()) {
-      requeued.remove(pending.getKey());
-      requeued.put(pending.getKey(), pending.getValue());
-    }
-    pendingByPartition = requeued;
   }
 }

@@ -1372,7 +1372,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     subscriptionLock.writeLock().lock();
     try {
       this.unsubscribeAll();
-      pendingVersionSwapNotifications.clear();
       pubSubConsumer.close();
       heartbeatReporterThread.interrupt();
       seekExecutorService.shutdown();
