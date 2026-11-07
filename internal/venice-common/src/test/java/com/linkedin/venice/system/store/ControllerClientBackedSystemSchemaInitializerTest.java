@@ -9,7 +9,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.data.ByteString;
+import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -19,16 +22,89 @@ import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class ControllerClientBackedSystemSchemaInitializerTest {
+  @DataProvider(name = "discoveredControllerTls")
+  public Object[][] discoveredControllerTls() {
+    return new Object[][] { { true, true }, { false, true }, { false, false } };
+  }
+
+  @Test(dataProvider = "discoveredControllerTls", timeOut = 30_000)
+  public void testD2DiscoveryPreservesTlsFactoryAndRouting(boolean https, boolean supplySslFactory) throws IOException {
+    SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
+    HttpServer server;
+    if (https) {
+      HttpsServer httpsServer = HttpsServer.create(new InetSocketAddress("localhost", 0), 0);
+      httpsServer.setHttpsConfigurator(new HttpsConfigurator(sslFactory.getSSLContext()));
+      server = httpsServer;
+    } else {
+      server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+    }
+    Schema schema = Schema.create(Schema.Type.INT);
+    Set<String> requestedPaths = ConcurrentHashMap.newKeySet();
+    server.createContext("/", exchange -> {
+      requestedPaths.add(exchange.getRequestURI().getPath());
+      byte[] body = "{\"schemaStr\":\"\\\"int\\\"\",\"schemas\":[{\"id\":1,\"schemaStr\":\"\\\"int\\\"\"}]}"
+          .getBytes(StandardCharsets.UTF_8);
+      exchange.getResponseHeaders().set("Content-Type", "application/json");
+      exchange.sendResponseHeaders(200, body.length);
+      try (OutputStream output = exchange.getResponseBody()) {
+        output.write(body);
+      }
+    });
+    server.start();
+    try {
+      String leaderUrl = (https ? "https" : "http") + "://localhost:" + server.getAddress().getPort();
+      RestResponse response = mock(RestResponse.class);
+      doReturn(
+          ByteString.copyString(
+              "{\"cluster\":\"testCluster\",\"url\":\"" + leaderUrl + "\",\"secureUrl\":\"https://localhost:1\"}",
+              StandardCharsets.UTF_8)).when(response).getEntity();
+      D2Client d2Client = mock(D2Client.class);
+      doReturn(CompletableFuture.completedFuture(response)).when(d2Client).restRequest(any());
+      try (
+          ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
+              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+              "testCluster",
+              schema,
+              null,
+              false,
+              supplySslFactory ? Optional.of(sslFactory) : Optional.empty(),
+              "",
+              "controller",
+              Optional.of(d2Client),
+              "",
+              false)) {
+        initializer.execute(Collections.singletonMap(1, schema));
+        Assert.assertTrue(requestedPaths.contains(ControllerRoute.GET_KEY_SCHEMA.getPath()));
+        Assert.assertTrue(requestedPaths.contains(ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath()));
+      }
+    } finally {
+      server.stop(0);
+    }
+  }
+
   @Test
   public void testCreateSystemStoreAndRegisterSchema() throws IOException {
     Optional<D2Client> d2Client = Optional.of(mock(D2Client.class));

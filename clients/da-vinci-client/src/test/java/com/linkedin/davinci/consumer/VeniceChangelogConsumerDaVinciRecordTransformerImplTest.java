@@ -74,6 +74,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
@@ -212,6 +213,57 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     verify(mockDaVinciClient).start();
     assertEquals(veniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+  }
+
+  @Test
+  public void testVersionSwapListener() {
+    veniceChangelogConsumer.start();
+    onStartVersionIngestionHelper(true, true);
+    onStartVersionIngestionHelper(false, false);
+    List<ChangelogVersionSwapNotification> notifications = new ArrayList<>();
+    AtomicBoolean failListener = new AtomicBoolean(true);
+    veniceChangelogConsumer.setVersionSwapListener(notification -> {
+      if (failListener.getAndSet(false)) {
+        throw new IllegalStateException("listener failed");
+      }
+      notifications.add(notification);
+    });
+
+    // A failed delivery drains no records; the swap is redelivered before the new version's record.
+    futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0, offset(10));
+    futureRecordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+    assertThrows(VeniceException.class, () -> veniceChangelogConsumer.poll(POLL_TIMEOUT));
+    assertEquals(veniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 1);
+    assertTrue(
+        notifications.contains(
+            new ChangelogVersionSwapNotification(
+                "test_store_v2",
+                Collections.singleton(0),
+                Collections.singletonMap(0, new VeniceChangeCoordinate("test_store_v2", offset(10), 0)))));
+
+    // A repeated swap to the served version is not reported again.
+    int notificationCount = notifications.size();
+    futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0, offset(20));
+    veniceChangelogConsumer.poll(POLL_TIMEOUT);
+    assertEquals(notifications.size(), notificationCount);
+  }
+
+  @Test
+  public void testVersionSwapListenerReportsSeekPosition() {
+    when(mockDaVinciClient.seekToCheckpoint(any())).thenReturn(daVinciClientSubscribeFuture);
+    VeniceChangeCoordinate checkpoint = new VeniceChangeCoordinate("test_store_v1", offset(5), 0);
+    veniceChangelogConsumer.seekToCheckpoint(Collections.singleton(checkpoint));
+    recordTransformer.onStartVersionIngestion(0, true);
+    List<ChangelogVersionSwapNotification> notifications = new ArrayList<>();
+    veniceChangelogConsumer.setVersionSwapListener(notifications::add);
+    veniceChangelogConsumer.poll(POLL_TIMEOUT);
+    assertEquals(
+        notifications,
+        Collections.singletonList(
+            new ChangelogVersionSwapNotification(
+                "test_store_v1",
+                Collections.singleton(0),
+                Collections.singletonMap(0, checkpoint))));
   }
 
   @Test
@@ -503,7 +555,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Verify only the future version is allowed to perform the version swap
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      recordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
+      recordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId, null);
       recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
       futureRecordTransformer
           .processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId, recordMetadata);
@@ -512,7 +564,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Perform a version swap from the future version and verify the buffer only contains FUTURE_STORE_VERSION's values
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
-      futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId);
+      futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, partitionId, null);
       recordTransformer.processPut(keys.get(partitionId), lazyCurrentVersionValueValue, partitionId, recordMetadata);
       futureRecordTransformer
           .processPut(keys.get(partitionId), lazyFutureVersionValueValue, partitionId, recordMetadata);
@@ -535,7 +587,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     assertThrows(
         Exception.class,
-        () -> futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0));
+        () -> futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0, null));
     verify(changeCaptureStats).emitVersionSwapCountMetrics(FAIL);
   }
 
@@ -610,9 +662,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     // Commit failures are swallowed, and an idle partition's old version topic is retired after a version swap.
     doThrow(new RuntimeException("commit failed")).when(commitConsumer).commitSync(any(), any());
-    consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema,
-        valueSchema, valueSchema, mockDaVinciRecordTransformerConfig)
-            .onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer futureTransformer =
+        consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema,
+            valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
+    futureTransformer.onStartVersionIngestion(0, false);
+    futureTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0, null);
     consumer.commitOffsets();
     verify(commitConsumer)
         .commitSync(eq(Collections.singletonMap(new PubSubTopicPartitionImpl(topic, 2), offset(3))), any());
@@ -825,7 +879,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertTrue(veniceChangelogConsumer.getLastHeartbeatPerPartition().get(partitionId) < System.currentTimeMillis());
 
     // Perform version swap on one partition
-    futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
+    futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0, null);
     clearInvocations(changeCaptureStats);
     futureRecordTransformer.onHeartbeat(partitionId, 2L);
 

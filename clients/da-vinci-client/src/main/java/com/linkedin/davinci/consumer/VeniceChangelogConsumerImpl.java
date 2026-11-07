@@ -98,6 +98,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
@@ -169,6 +170,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
    * Interaction of this field should acquire the subscriptionLock.writeLock()
    */
   protected volatile VersionSwapMessageState versionSwapMessageState = null;
+  /**
+   * Interaction of this field should acquire the subscriptionLock.writeLock()
+   */
+  private final PendingVersionSwapNotifications pendingVersionSwapNotifications = new PendingVersionSwapNotifications();
+  private volatile Consumer<ChangelogVersionSwapNotification> versionSwapListener = null;
   protected Time time;
 
   /**
@@ -381,12 +387,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           pubSubConsumer.unSubscribe(topicPartition);
         }
       }
+      pendingVersionSwapNotifications.remove(partitions);
 
       List<PubSubTopicPartition> topicPartitionListToSeek =
           getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
       for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
         pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
         resetTrackingForSubscription(topicPartition, false);
+        pendingVersionSwapNotifications.record(topicPartition, null);
       }
       startHeartbeatReporterIfNeeded();
       isSubscribed.set(true);
@@ -760,12 +768,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               .getOrDefault(topicPartition.getPartitionNumber(), Collections.emptyList())) {
             pubSubConsumer.unSubscribe(currentAssignment);
           }
+          pendingVersionSwapNotifications.remove(Collections.singleton(topicPartition.getPartitionNumber()));
           if (isInclusive) {
             pubSubConsumerSeek(topicPartition, target.getValue());
           } else {
             pubSubConsumer.subscribe(topicPartition, target.getValue());
           }
           resetTrackingForSubscription(topicPartition, resetBootstrapState);
+          pendingVersionSwapNotifications.record(topicPartition, target.getValue());
           anySubscribed = true;
         } catch (RuntimeException e) {
           LOGGER.error(
@@ -881,9 +891,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
       if (!isForVersionSwap) {
         partitions.forEach(getPartitionToBootstrapState()::remove);
-      }
-      if (versionSwapMessageState != null && !isForVersionSwap) {
-        versionSwapMessageState.handleUnsubscribe(partitions);
+        pendingVersionSwapNotifications.remove(partitions);
+        if (versionSwapMessageState != null) {
+          versionSwapMessageState.handleUnsubscribe(partitions);
+        }
       }
     } finally {
       subscriptionLock.writeLock().unlock();
@@ -1025,6 +1036,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
         }
 
+        deliverVersionSwapNotifications();
         messagesMap = pubSubConsumer.poll(timeoutInMs);
         for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
           PubSubTopicPartition pubSubTopicPartition = entry.getKey();
@@ -1111,6 +1123,23 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
       LOGGER.error("Encountered an exception when polling records for store: {}", storeName, exception);
       throw exception;
+    }
+  }
+
+  @Override
+  public void setVersionSwapListener(Consumer<ChangelogVersionSwapNotification> listener) {
+    this.versionSwapListener = Objects.requireNonNull(listener, "Version swap listener cannot be null");
+  }
+
+  /**
+   * Must be called with the subscriptionLock.writeLock() held, before fetching records: the assignment cannot change
+   * in between, so every record returned afterwards comes from a topic already reported, and a listener failure loses
+   * no fetched records.
+   */
+  private void deliverVersionSwapNotifications() {
+    Consumer<ChangelogVersionSwapNotification> listener = versionSwapListener;
+    if (listener != null) {
+      pendingVersionSwapNotifications.deliver(listener, storeName);
     }
   }
 

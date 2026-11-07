@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -8,15 +10,22 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.r2.message.rest.RestRequest;
+import com.linkedin.r2.message.rest.RestResponseBuilder;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.security.SSLFactory;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import javax.net.ssl.SSLContext;
 import org.testng.annotations.Test;
 
 
@@ -157,7 +166,7 @@ public class FabricControllerClientProviderTest {
   }
 
   @Test
-  public void testGetFabricBuildoutBuildsD2ClientForNonAllowlistedFabric() {
+  public void testGetFabricBuildoutBuildsD2ClientForNonAllowlistedFabric() throws Exception {
     VeniceControllerMultiClusterConfig configs = mock(VeniceControllerMultiClusterConfig.class);
     VeniceControllerClusterConfig clusterConfig = clusterConfig(configs);
     when(clusterConfig.getChildDataCenterControllerUrlMap()).thenReturn(Collections.emptyMap());
@@ -173,6 +182,22 @@ public class FabricControllerClientProviderTest {
     assertNotNull(client);
     // Cached in the non-allowlist fabric map on subsequent lookups.
     assertSame(provider.getFabricBuildoutControllerClient(CLUSTER, "dc-x"), client);
+
+    SSLFactory sslFactory = mock(SSLFactory.class);
+    when(sslFactory.getSSLContext()).thenReturn(SSLContext.getDefault());
+    String leaderUrl = "http://localhost:1576";
+    when(d2Clients.get("dc-x").restRequest(any(RestRequest.class))).thenReturn(
+        CompletableFuture.completedFuture(
+            new RestResponseBuilder().setEntity(("{\"url\":\"" + leaderUrl + "\"}").getBytes(StandardCharsets.UTF_8))
+                .build()));
+    try (
+        FabricControllerClientProvider sslProvider =
+            new FabricControllerClientProvider(configs, Optional.of(sslFactory), d2Clients);
+        ControllerTransport transport =
+            sslProvider.getFabricBuildoutControllerClient(CLUSTER, "dc-x").getNewControllerTransport()) {
+      verify(sslFactory).getSSLContext();
+      assertEquals(sslProvider.getFabricBuildoutControllerClient(CLUSTER, "dc-x").getLeaderControllerUrl(), leaderUrl);
+    }
   }
 
   @Test

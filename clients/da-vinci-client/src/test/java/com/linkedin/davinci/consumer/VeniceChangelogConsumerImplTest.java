@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
@@ -20,6 +21,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -129,6 +131,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -140,6 +143,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LogEvent;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -1749,6 +1753,8 @@ public class VeniceChangelogConsumerImplTest {
         Lazy.of(() -> mockInternalSeekConsumer),
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
+    Consumer<ChangelogVersionSwapNotification> versionSwapListener = mock(Consumer.class);
+    veniceChangeLogConsumer.setVersionSwapListener(versionSwapListener);
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockOldVersion = new VersionImpl(storeName, 1, "foo");
@@ -1873,7 +1879,12 @@ public class VeniceChangelogConsumerImplTest {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertFalse(veniceChangeLogConsumer.poll(pollTimeoutMs).isEmpty()));
-    verify(mockPubSubConsumer).subscribe(eq(newTopicPartition1), any(PubSubPosition.class), eq(true));
+    // The swap is reported after the new topic is subscribed and before its records are fetched in the same poll.
+    InOrder swapOrder = inOrder(mockPubSubConsumer, versionSwapListener);
+    swapOrder.verify(mockPubSubConsumer).subscribe(eq(newTopicPartition1), any(PubSubPosition.class), eq(true));
+    swapOrder.verify(versionSwapListener)
+        .accept(argThat(notification -> notification.getNewTopicPositions().containsKey(1)));
+    swapOrder.verify(mockPubSubConsumer).poll(pollTimeoutMs);
     // The subscribe future during version swap should also complete now
     subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS);
     Assert.assertNull(veniceChangeLogConsumer.getVersionSwapMessageState());
@@ -2022,6 +2033,45 @@ public class VeniceChangelogConsumerImplTest {
     // switchToNewTopic with a different topic on the same partition should return true
     PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
     assertTrue(veniceChangelogConsumer.switchToNewTopic(new PubSubTopicPartitionImpl(newVersionTopic, 0)));
+  }
+
+  @Test
+  public void testVersionSwapListenerFailureIsRedeliveredWithoutLosingRecords() throws Exception {
+    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, false);
+    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    List<ChangelogVersionSwapNotification> notifications = new ArrayList<>();
+    AtomicBoolean failNext = new AtomicBoolean(true);
+    veniceChangelogConsumer.setVersionSwapListener(notification -> {
+      if (failNext.getAndSet(false)) {
+        throw new IllegalStateException("listener failure");
+      }
+      notifications.add(notification);
+    });
+    try {
+      veniceChangelogConsumer.subscribe(Collections.singleton(0)).get();
+
+      VeniceException exception =
+          expectThrows(VeniceException.class, () -> veniceChangelogConsumer.poll(pollTimeoutMs));
+      assertTrue(exception.getCause() instanceof IllegalStateException);
+      // The listener runs before records are fetched, so a failure loses none.
+      verify(mockPubSubConsumer, never()).poll(anyLong());
+
+      assertEquals(veniceChangelogConsumer.poll(pollTimeoutMs).size(), 5);
+      assertEquals(
+          notifications,
+          Collections.singletonList(
+              new ChangelogVersionSwapNotification(
+                  oldVersionTopic.getName(),
+                  Collections.singleton(0),
+                  Collections.emptyMap())));
+    } finally {
+      veniceChangelogConsumer.close();
+    }
   }
 
   /**

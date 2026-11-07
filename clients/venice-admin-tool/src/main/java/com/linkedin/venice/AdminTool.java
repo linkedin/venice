@@ -1439,6 +1439,14 @@ public class AdminTool {
         s -> UpdateStoreQueryParams.normalizeRegions(Arrays.asList(s.split(","))),
         p -> params.setEtlActiveFabrics(p),
         argSet);
+    nullableParam(cmd, Arg.ETL_INITIAL_SLA_TIER, s -> s, params::setEtlInitialSlaTier, argSet);
+    nullableParam(
+        cmd,
+        Arg.ETL_INITIAL_GRANT_ACL_USERS,
+        s -> Arrays.asList(s.split(",")),
+        params::setEtlInitialGrantAclUsers,
+        argSet);
+    nullableParam(cmd, Arg.ETL_INITIAL_WORKLOAD_TYPE, s -> s, params::setEtlInitialWorkloadType, argSet);
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
     stringMapParam(cmd, Arg.STORE_VIEW_CONFIGS, p -> params.setStoreViews(p), argSet);

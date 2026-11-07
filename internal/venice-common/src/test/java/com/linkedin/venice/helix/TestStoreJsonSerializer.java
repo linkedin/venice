@@ -199,6 +199,26 @@ public class TestStoreJsonSerializer {
   }
 
   @Test
+  public void testSerializeAndDeserializeEtlInitialOnboardingValues() throws IOException {
+    StoreJSONSerializer serializer = new StoreJSONSerializer();
+    Store store = TestUtils.createTestStore("s1", "owner", 1L);
+    store.setEtlStoreConfig(TestUtils.createTestETLStoreConfig());
+    Store roundTripped = serializer.deserialize(serializer.serialize(store, ""), "");
+    Assert.assertEquals(roundTripped.getEtlStoreConfig().getInitialSlaTier(), "initial_sla_tier");
+    Assert.assertEquals(roundTripped, store);
+
+    // Znodes written before these fields existed still deserialize, with the values unset.
+    Store legacy = serializer.deserialize(
+        ("{\"name\":\"s1\",\"etlStoreConfig\":{\"etledUserProxyAccount\":\"proxy\","
+            + "\"regularVersionETLEnabled\":true,\"futureVersionETLEnabled\":false}}").getBytes(),
+        "");
+    Assert.assertEquals(legacy.getEtlStoreConfig().getEtledUserProxyAccount(), "proxy");
+    Assert.assertNull(legacy.getEtlStoreConfig().getInitialSlaTier());
+    Assert.assertNull(legacy.getEtlStoreConfig().getInitialGrantAclUsers());
+    Assert.assertNull(legacy.getEtlStoreConfig().getInitialWorkloadType());
+  }
+
+  @Test
   public void testSerializeAndDeserializeStoreMissingSomeFields() throws IOException {
     String jsonStr = "{\"name\":\"s1\"}";
     StoreJSONSerializer serializer = new StoreJSONSerializer();

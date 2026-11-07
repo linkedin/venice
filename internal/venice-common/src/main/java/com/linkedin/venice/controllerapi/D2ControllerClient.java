@@ -35,6 +35,7 @@ public class D2ControllerClient extends ControllerClient {
   private final boolean externalD2Client;
   private final List<String> d2ZkHosts;
   private final Optional<SSLFactory> sslFactory;
+  private volatile boolean enforceSslOnly = true;
 
   @VisibleForTesting
   public D2ControllerClient(
@@ -105,6 +106,13 @@ public class D2ControllerClient extends ControllerClient {
   }
 
   /**
+   * Controls secure leader URL preference without changing the SSL context used for HTTPS requests.
+   */
+  public void setEnforceSslOnly(boolean enforceSslOnly) {
+    this.enforceSslOnly = enforceSslOnly;
+  }
+
+  /**
    * Discover leader controller from a list of D2 Clients.
    * @return leader controller url
    */
@@ -169,7 +177,7 @@ public class D2ControllerClient extends ControllerClient {
      *
      * TODO: Remove the code below after controller ACL migration is completed.
      */
-    if (sslFactory.isPresent()) {
+    if (enforceSslOnly && sslFactory.isPresent()) {
       try {
         if (controllerResponse.getSecureUrl() != null) {
           return controllerResponse.getSecureUrl();

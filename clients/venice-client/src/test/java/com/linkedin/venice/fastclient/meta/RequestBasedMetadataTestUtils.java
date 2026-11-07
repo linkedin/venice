@@ -99,7 +99,6 @@ public class RequestBasedMetadataTestUtils {
     doReturn(clusterStats).when(clientConfig).getClusterStats();
     doReturn(ClientRoutingStrategyType.LEAST_LOADED).when(clientConfig).getClientRoutingStrategyType();
     doReturn(mock(FastClientStats.class)).when(clientConfig).getStats(RequestType.SINGLE_GET);
-    doReturn(mock(InstanceHealthMonitor.class)).when(clientConfig).getInstanceHealthMonitor();
     return clientConfig;
   }
 
@@ -599,6 +598,19 @@ public class RequestBasedMetadataTestUtils {
     return metadataResponseSchemaReader;
   }
 
+  /**
+   * A mocked config from {@link #getMockClientConfig} has no monitor settings, so it gets a mock monitor. A real config
+   * gets a real monitor built from its settings, as in production. Either way the metadata owns and closes it.
+   */
+  static InstanceHealthMonitor newInstanceHealthMonitor(ClientConfig clientConfig) {
+    InstanceHealthMonitorConfig monitorConfig = clientConfig.getInstanceHealthMonitorConfig();
+    return monitorConfig == null ? mock(InstanceHealthMonitor.class) : new InstanceHealthMonitor(monitorConfig);
+  }
+
+  static RequestBasedMetadata newRequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
+    return new RequestBasedMetadata(clientConfig, d2TransportClient, newInstanceHealthMonitor(clientConfig));
+  }
+
   public static RequestBasedMetadata getMockMetaData(ClientConfig clientConfig, String storeName)
       throws InterruptedException {
     return getMockMetaData(clientConfig, storeName, getMockRouterBackedSchemaReader(), false, false, false);
@@ -666,29 +678,30 @@ public class RequestBasedMetadataTestUtils {
     D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
     RequestBasedMetadata requestBasedMetadata;
     if (mockMetadataUpdateFailure) {
-      requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient) {
-        private boolean firstUpdate = true;
+      requestBasedMetadata =
+          new RequestBasedMetadata(clientConfig, d2TransportClient, newInstanceHealthMonitor(clientConfig)) {
+            private boolean firstUpdate = true;
 
-        @Override
-        void discoverD2Service() {
-          // no-op
-        }
+            @Override
+            void discoverD2Service() {
+              // no-op
+            }
 
-        @Override
-        synchronized List<Runnable> updateCache(boolean onDemandRefresh) {
-          if (firstUpdateFails && firstUpdate) {
-            firstUpdate = false;
-            throw new VeniceClientException("update cache exception");
-          }
-          // otherwise no-op; nothing to fire on the deferred-callback list
-          return Collections.emptyList();
-        }
-      };
+            @Override
+            synchronized List<Runnable> updateCache(boolean onDemandRefresh) {
+              if (firstUpdateFails && firstUpdate) {
+                firstUpdate = false;
+                throw new VeniceClientException("update cache exception");
+              }
+              // otherwise no-op; nothing to fire on the deferred-callback list
+              return Collections.emptyList();
+            }
+          };
 
       requestBasedMetadata.setIsReadyLatch(new CountDownLatch(1));
       requestBasedMetadata.setRefreshIntervalInSeconds(RequestBasedMetadata.DEFAULT_REFRESH_INTERVAL_IN_SECONDS);
     } else {
-      requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
+      requestBasedMetadata = newRequestBasedMetadata(clientConfig, d2TransportClient);
     }
     requestBasedMetadata.setMetadataResponseSchemaReader(routerBackedSchemaReader);
     requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);

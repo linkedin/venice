@@ -58,18 +58,18 @@ public class LoggingTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V
   public CompletableFuture<V> get(K key) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<V> innerFuture = super.get(key, Optional.empty(), startTimeInNS);
-    return innerFuture.handle(
-        (BiFunction<? super V, Throwable, ? extends V>) getLoggingCallback(super.getStoreName(), startTimeInNS));
+    return handlePreservingException(
+        innerFuture,
+        LoggingTrackingStoreClient.<V>getLoggingCallback(super.getStoreName(), startTimeInNS));
   }
 
   @Override
   public CompletableFuture<byte[]> getRaw(String requestPath) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath, Optional.empty(), startTimeInNS);
-    return innerFuture.handle(
-        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getLoggingCallback(
-            super.getStoreName(),
-            startTimeInNS));
+    return handlePreservingException(
+        innerFuture,
+        LoggingTrackingStoreClient.<byte[]>getLoggingCallback(super.getStoreName(), startTimeInNS));
   }
 
   @Override
