@@ -31,6 +31,8 @@ class PendingVersionSwapNotifications {
   }
 
   private final Map<Integer, Entry> pendingByPartition = new LinkedHashMap<>();
+  /** Partitions of the batch being delivered that have not been removed since it was drained. */
+  private final Set<Integer> inFlight = new HashSet<>();
 
   /**
    * Records that {@code topicPartition} is now consumed from {@code position}, replacing any earlier entry for the
@@ -46,28 +48,51 @@ class PendingVersionSwapNotifications {
 
   void remove(Collection<Integer> partitions) {
     pendingByPartition.keySet().removeAll(partitions);
+    inFlight.removeAll(partitions);
   }
 
   void clear() {
     pendingByPartition.clear();
+    inFlight.clear();
   }
 
   /**
    * Delivers all pending notifications to {@code listener}. If it throws, the failed and remaining notifications are
-   * requeued and a {@link VeniceException} is thrown.
+   * requeued and a {@link VeniceException} is thrown. Partitions removed while the listener runs, for example by the
+   * listener itself, are neither delivered nor requeued.
    */
   void deliver(Consumer<ChangelogVersionSwapNotification> listener, String storeName) {
     List<ChangelogVersionSwapNotification> notifications = drain();
-    for (int i = 0; i < notifications.size(); i++) {
-      try {
-        listener.accept(notifications.get(i));
-      } catch (Exception e) {
-        requeue(notifications.subList(i, notifications.size()));
-        throw new VeniceException(
-            "Version swap listener failed for store: " + storeName + " on notification: " + notifications.get(i),
-            e);
+    notifications.forEach(notification -> inFlight.addAll(notification.getPartitions()));
+    try {
+      for (int i = 0; i < notifications.size(); i++) {
+        ChangelogVersionSwapNotification notification = retainInFlight(notifications.get(i));
+        if (notification == null) {
+          continue;
+        }
+        try {
+          listener.accept(notification);
+        } catch (Exception e) {
+          requeue(notifications.subList(i, notifications.size()));
+          throw new VeniceException(
+              "Version swap listener failed for store: " + storeName + " on notification: " + notification,
+              e);
+        }
       }
+    } finally {
+      inFlight.clear();
     }
+  }
+
+  private ChangelogVersionSwapNotification retainInFlight(ChangelogVersionSwapNotification notification) {
+    Set<Integer> partitions = new HashSet<>(notification.getPartitions());
+    partitions.retainAll(inFlight);
+    if (partitions.isEmpty()) {
+      return null;
+    }
+    Map<Integer, VeniceChangeCoordinate> positions = new HashMap<>(notification.getNewTopicPositions());
+    positions.keySet().retainAll(partitions);
+    return new ChangelogVersionSwapNotification(notification.getNewTopic(), partitions, positions);
   }
 
   /**
@@ -99,12 +124,15 @@ class PendingVersionSwapNotifications {
   }
 
   /**
-   * Puts undelivered notifications back. A partition recorded since the notifications were drained keeps its newer
-   * entry.
+   * Puts undelivered notifications back, except for partitions removed since they were drained. A partition recorded
+   * since the notifications were drained keeps its newer entry.
    */
-  void requeue(List<ChangelogVersionSwapNotification> undelivered) {
+  private void requeue(List<ChangelogVersionSwapNotification> undelivered) {
     for (ChangelogVersionSwapNotification notification: undelivered) {
       for (int partition: notification.getPartitions()) {
+        if (!inFlight.contains(partition)) {
+          continue;
+        }
         pendingByPartition.putIfAbsent(
             partition,
             new Entry(notification.getNewTopic(), notification.getNewTopicPositions().get(partition)));

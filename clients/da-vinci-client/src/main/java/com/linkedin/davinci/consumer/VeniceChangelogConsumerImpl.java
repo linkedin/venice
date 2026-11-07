@@ -412,6 +412,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             pubSubConsumer.unSubscribe(topicPartition);
           }
         }
+        pendingVersionSwapNotifications.remove(partitions);
 
         List<PubSubTopicPartition> topicPartitionListToSeek =
             getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
@@ -728,6 +729,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               .getOrDefault(topicPartition.getPartitionNumber(), Collections.emptyList())) {
             pubSubConsumer.unSubscribe(currentAssignment);
           }
+          pendingVersionSwapNotifications.remove(Collections.singleton(topicPartition.getPartitionNumber()));
           if (isInclusive) {
             pubSubConsumerSeek(topicPartition, target.getValue());
           } else {

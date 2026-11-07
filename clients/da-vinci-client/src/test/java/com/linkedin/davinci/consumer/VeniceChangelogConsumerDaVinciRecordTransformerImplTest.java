@@ -240,6 +240,30 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
                 "test_store_v2",
                 Collections.singleton(0),
                 Collections.singletonMap(0, new VeniceChangeCoordinate("test_store_v2", offset(10), 0)))));
+
+    // A repeated swap to the served version is not reported again.
+    int notificationCount = notifications.size();
+    futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0, offset(20));
+    veniceChangelogConsumer.poll(POLL_TIMEOUT);
+    assertEquals(notifications.size(), notificationCount);
+  }
+
+  @Test
+  public void testVersionSwapListenerReportsSeekPosition() {
+    when(mockDaVinciClient.seekToCheckpoint(any())).thenReturn(daVinciClientSubscribeFuture);
+    VeniceChangeCoordinate checkpoint = new VeniceChangeCoordinate("test_store_v1", offset(5), 0);
+    veniceChangelogConsumer.seekToCheckpoint(Collections.singleton(checkpoint));
+    recordTransformer.onStartVersionIngestion(0, true);
+    List<ChangelogVersionSwapNotification> notifications = new ArrayList<>();
+    veniceChangelogConsumer.setVersionSwapListener(notifications::add);
+    veniceChangelogConsumer.poll(POLL_TIMEOUT);
+    assertEquals(
+        notifications,
+        Collections.singletonList(
+            new ChangelogVersionSwapNotification(
+                "test_store_v1",
+                Collections.singleton(0),
+                Collections.singletonMap(0, checkpoint))));
   }
 
   @Test
