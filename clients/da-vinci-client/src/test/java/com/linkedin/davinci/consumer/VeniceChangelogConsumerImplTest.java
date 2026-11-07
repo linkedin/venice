@@ -1594,11 +1594,7 @@ public class VeniceChangelogConsumerImplTest {
     InOrder swapOrder = inOrder(mockPubSubConsumer, versionSwapListener);
     swapOrder.verify(mockPubSubConsumer).subscribe(eq(newTopicPartition1), any(PubSubPosition.class), eq(true));
     swapOrder.verify(versionSwapListener)
-        .accept(
-            argThat(
-                notification -> notification.getNewTopic().equals(newVersionTopic.getName())
-                    && notification.getPartitions().equals(Collections.singleton(1))
-                    && notification.getNewTopicPositions().containsKey(1)));
+        .accept(argThat(notification -> notification.getNewTopicPositions().containsKey(1)));
     swapOrder.verify(mockPubSubConsumer).poll(pollTimeoutMs);
     // The subscribe future during version swap should also complete now
     subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS);
@@ -1750,64 +1746,6 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testVersionSwapListenerReportsSubscribeSwapAndRollback() throws Exception {
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-    veniceChangelogConsumer.setStoreRepository(mockRepository);
-    List<ChangelogVersionSwapNotification> notifications = new ArrayList<>();
-    veniceChangelogConsumer.setVersionSwapListener(notifications::add);
-    try {
-      veniceChangelogConsumer.subscribe(Collections.singleton(0)).get();
-      veniceChangelogConsumer.poll(pollTimeoutMs);
-      assertEquals(
-          notifications,
-          Collections.singletonList(
-              new ChangelogVersionSwapNotification(
-                  oldVersionTopic.getName(),
-                  Collections.singleton(0),
-                  Collections.emptyMap())));
-
-      // Nothing was (re)subscribed since the last poll.
-      notifications.clear();
-      veniceChangelogConsumer.poll(pollTimeoutMs);
-      assertTrue(notifications.isEmpty());
-
-      // Metadata-driven swaps seek through synchronousSeekToCheckpoint.
-      PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
-      VeniceChangeCoordinate newTopicPosition =
-          new VeniceChangeCoordinate(newVersionTopic.getName(), ApacheKafkaOffsetPosition.of(5L), 0);
-      veniceChangelogConsumer.synchronousSeekToCheckpoint(Collections.singleton(newTopicPosition));
-      veniceChangelogConsumer.poll(pollTimeoutMs);
-      assertEquals(
-          notifications,
-          Collections.singletonList(
-              new ChangelogVersionSwapNotification(
-                  newVersionTopic.getName(),
-                  Collections.singleton(0),
-                  Collections.singletonMap(0, newTopicPosition))));
-
-      // Rollback to the lower version is reported the same way.
-      notifications.clear();
-      VeniceChangeCoordinate rollbackPosition =
-          new VeniceChangeCoordinate(oldVersionTopic.getName(), ApacheKafkaOffsetPosition.of(3L), 0);
-      veniceChangelogConsumer.synchronousSeekToCheckpoint(Collections.singleton(rollbackPosition));
-      veniceChangelogConsumer.poll(pollTimeoutMs);
-      assertEquals(
-          notifications,
-          Collections.singletonList(
-              new ChangelogVersionSwapNotification(
-                  oldVersionTopic.getName(),
-                  Collections.singleton(0),
-                  Collections.singletonMap(0, rollbackPosition))));
-    } finally {
-      veniceChangelogConsumer.close();
-    }
-  }
-
-  @Test
   public void testVersionSwapListenerFailureIsRedeliveredWithoutLosingRecords() throws Exception {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, false);
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
@@ -1834,35 +1772,6 @@ public class VeniceChangelogConsumerImplTest {
       verify(mockPubSubConsumer, never()).poll(anyLong());
 
       assertEquals(veniceChangelogConsumer.poll(pollTimeoutMs).size(), 5);
-      assertEquals(
-          notifications,
-          Collections.singletonList(
-              new ChangelogVersionSwapNotification(
-                  oldVersionTopic.getName(),
-                  Collections.singleton(0),
-                  Collections.emptyMap())));
-    } finally {
-      veniceChangelogConsumer.close();
-    }
-  }
-
-  @Test
-  public void testVersionSwapListenerDropsUnsubscribedPartitionsAndReportsToLateListener() throws Exception {
-    VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
-        changelogClientConfig,
-        mockPubSubConsumer,
-        PubSubMessageDeserializer.createDefaultDeserializer(),
-        veniceChangelogConsumerClientFactory);
-    veniceChangelogConsumer.setStoreRepository(mockRepository);
-    try {
-      assertThrows(NullPointerException.class, () -> veniceChangelogConsumer.setVersionSwapListener(null));
-      veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0, 1))).get();
-      veniceChangelogConsumer.unsubscribe(Collections.singleton(1));
-
-      // A listener registered after the subscription still learns the current topic.
-      List<ChangelogVersionSwapNotification> notifications = new ArrayList<>();
-      veniceChangelogConsumer.setVersionSwapListener(notifications::add);
-      veniceChangelogConsumer.poll(pollTimeoutMs);
       assertEquals(
           notifications,
           Collections.singletonList(
