@@ -76,6 +76,7 @@ import com.linkedin.venice.protocols.controller.PubSubPositionGrpcWireFormat;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -2136,5 +2137,73 @@ public class TestVeniceHelixAdmin {
         expectThrows(VeniceException.class, () -> admin.checkStoreGraveyardForRecreation(clusterName, storeName));
 
     assertTrue(customException.getMessage().contains("Required waiting period: 3600 seconds"));
+  }
+
+  private VeniceHelixAdmin mockAdminForSourceFabricTruncation() {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    when(admin.getPubSubTopicRepository()).thenReturn(PUB_SUB_TOPIC_REPOSITORY);
+    doCallRealMethod().when(admin)
+        .truncateSourceFabricBatchTopicsAfterVersionCreationFailure(
+            any(TopicManager.class),
+            any(Version.class),
+            any(PushType.class),
+            anyLong());
+    return admin;
+  }
+
+  @Test
+  public void testTruncateSourceFabricBatchTopicsAfterVersionCreationFailureTruncatesVersionTopic() {
+    VeniceHelixAdmin admin = mockAdminForSourceFabricTruncation();
+    TopicManager sourceTopicManager = mock(TopicManager.class);
+    when(sourceTopicManager.updateTopicRetention(any(PubSubTopic.class), anyLong())).thenReturn(true);
+    Version version = new VersionImpl(storeName, 5, "pushJobId");
+
+    admin
+        .truncateSourceFabricBatchTopicsAfterVersionCreationFailure(sourceTopicManager, version, PushType.BATCH, 1000L);
+
+    verify(sourceTopicManager).updateTopicRetention(PUB_SUB_TOPIC_REPOSITORY.getTopic(storeName + "_v5"), 1000L);
+    verify(sourceTopicManager, times(1)).updateTopicRetention(any(PubSubTopic.class), anyLong());
+  }
+
+  @Test
+  public void testTruncateSourceFabricBatchTopicsAfterVersionCreationFailureTruncatesStreamReprocessingTopic() {
+    VeniceHelixAdmin admin = mockAdminForSourceFabricTruncation();
+    TopicManager sourceTopicManager = mock(TopicManager.class);
+    Version version = new VersionImpl(storeName, 5, "pushJobId");
+
+    admin.truncateSourceFabricBatchTopicsAfterVersionCreationFailure(
+        sourceTopicManager,
+        version,
+        PushType.STREAM_REPROCESSING,
+        1000L);
+
+    verify(sourceTopicManager).updateTopicRetention(PUB_SUB_TOPIC_REPOSITORY.getTopic(storeName + "_v5"), 1000L);
+    verify(sourceTopicManager).updateTopicRetention(
+        PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeStreamReprocessingTopic(storeName, 5)),
+        1000L);
+  }
+
+  @Test
+  public void testTruncateSourceFabricBatchTopicsAfterVersionCreationFailureSwallowsErrors() {
+    VeniceHelixAdmin admin = mockAdminForSourceFabricTruncation();
+    TopicManager sourceTopicManager = mock(TopicManager.class);
+    PubSubTopic versionTopic = PUB_SUB_TOPIC_REPOSITORY.getTopic(storeName + "_v5");
+    PubSubTopic streamReprocessingTopic =
+        PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeStreamReprocessingTopic(storeName, 5));
+    doThrow(new PubSubTopicDoesNotExistException(versionTopic)).when(sourceTopicManager)
+        .updateTopicRetention(versionTopic, 1000L);
+    doThrow(new VeniceException("timeout")).when(sourceTopicManager)
+        .updateTopicRetention(streamReprocessingTopic, 1000L);
+    Version version = new VersionImpl(storeName, 5, "pushJobId");
+
+    // Must not throw so the original version creation failure is surfaced to the caller.
+    admin.truncateSourceFabricBatchTopicsAfterVersionCreationFailure(
+        sourceTopicManager,
+        version,
+        PushType.STREAM_REPROCESSING,
+        1000L);
+
+    verify(sourceTopicManager).updateTopicRetention(versionTopic, 1000L);
+    verify(sourceTopicManager).updateTopicRetention(streamReprocessingTopic, 1000L);
   }
 }
