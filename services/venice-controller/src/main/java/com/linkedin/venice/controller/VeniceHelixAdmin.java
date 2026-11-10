@@ -3366,6 +3366,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean isRepush = Version.isPushIdRePush(pushJobId);
     VeniceControllerClusterConfig clusterConfig = resources.getConfig();
     BackupStrategy backupStrategy;
+    // Set once the parent controller attempts to create batch topics directly in the NR source fabric.
+    String parentSourceFabricPubSubAddress = null;
 
     try {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
@@ -3574,6 +3576,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         + " and version: " + version.getNumber() + " in cluster: " + clusterName);
               }
               long createBatchTopicInParentTimestamp = System.currentTimeMillis();
+              parentSourceFabricPubSubAddress = sourceKafkaBootstrapServers;
               createBatchTopics(
                   version,
                   pushType,
@@ -3750,6 +3753,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         LOGGER.error(handlingErrorMsg, e1);
         errorMessage += "\n" + handlingErrorMsg + ". Error message: " + e1.getMessage();
       }
+      if (version != null && parentSourceFabricPubSubAddress != null) {
+        /**
+         * The parent created the batch topics in the NR source fabric with infinite retention, but the AddVersion
+         * admin message was never sent, so no child controller knows about this version and none will truncate them.
+         * {@link #deleteOneStoreVersion} skips truncation in the parent, and the TopicCleanupService only deletes
+         * already-truncated topics, so truncate them here or they leak forever.
+         */
+        try {
+          truncateSourceFabricBatchTopicsAfterVersionCreationFailure(
+              getTopicManager(parentSourceFabricPubSubAddress),
+              version,
+              pushType,
+              deprecatedJobTopicRetentionMs);
+        } catch (Throwable e2) {
+          LOGGER.error(
+              "Failed to truncate batch topics in source fabric {} for failed version {} of store {} in cluster {}",
+              parentSourceFabricPubSubAddress,
+              version.getNumber(),
+              storeName,
+              clusterName,
+              e2);
+        }
+      }
       throw versionCreationFailure(errorMessage, e, cleanupFailed);
     } finally {
       // If topic creation succeeds and version info is persisted to Zk, we should remove the creation time for a topic
@@ -3773,6 +3799,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(cause),
         cause,
         errorType);
+  }
+
+  /**
+   * Truncates the batch topics (version topic and, for stream reprocessing, the stream reprocessing topic) that the
+   * parent controller created in the NR source fabric for a version whose creation failed. Missing topics are skipped,
+   * since the creation may have failed before the topic was created.
+   */
+  void truncateSourceFabricBatchTopicsAfterVersionCreationFailure(
+      TopicManager sourceTopicManager,
+      Version version,
+      PushType pushType,
+      long retentionMs) {
+    List<String> topicNames = new ArrayList<>(2);
+    topicNames.add(Version.composeKafkaTopic(version.getStoreName(), version.getNumber()));
+    if (pushType.isStreamReprocessing()) {
+      topicNames.add(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
+    }
+    for (String topicName: topicNames) {
+      try {
+        if (sourceTopicManager.updateTopicRetention(getPubSubTopicRepository().getTopic(topicName), retentionMs)) {
+          LOGGER.info(
+              "Truncated topic {} in {} after version creation failure",
+              topicName,
+              sourceTopicManager.getPubSubClusterAddress());
+        }
+      } catch (PubSubTopicDoesNotExistException e) {
+        LOGGER.info(
+            "Topic {} does not exist in {}, skipping truncation after version creation failure",
+            topicName,
+            sourceTopicManager.getPubSubClusterAddress());
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to truncate topic {} in {} after version creation failure",
+            topicName,
+            sourceTopicManager.getPubSubClusterAddress(),
+            e);
+      }
+    }
   }
 
   /**
