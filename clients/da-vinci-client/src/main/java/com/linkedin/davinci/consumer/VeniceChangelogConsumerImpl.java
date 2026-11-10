@@ -88,7 +88,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -119,7 +118,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Collections.singletonList(Exception.class);
   private final RedundantExceptionFilter redundantExceptionFilter =
       RedundantExceptionFilter.getRedundantExceptionFilter();
-  protected long subscribeTime = Long.MAX_VALUE;
+  protected final Map<Integer, Long> partitionToSubscribeTime = new VeniceConcurrentHashMap<>();
   private Duration seekPositionResolutionInitialRetryDelay = Duration.ofMillis(100);
   private Duration seekPositionResolutionMaxRetryDelay = Duration.ofSeconds(5);
 
@@ -147,7 +146,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final PubSubMessageDeserializer pubSubMessageDeserializer;
   protected final ExecutorService seekExecutorService;
 
-  protected final Map<Integer, Long> currentVersionLastHeartbeat = new VeniceConcurrentHashMap<>();
+  // Includes subscription-time baselines so lag reporting starts before the first heartbeat.
+  protected final Map<Integer, Long> heartbeatTimestampsForLagMonitoring = new VeniceConcurrentHashMap<>();
+  // Only consumed heartbeats are safe progress for advancing seeks.
+  protected final Map<Integer, Long> consumedHeartbeatTimestampsForSeek = new VeniceConcurrentHashMap<>();
 
   protected final ChangelogClientConfig changelogClientConfig;
 
@@ -163,7 +165,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String clientRegionName;
   protected final int totalRegionCount;
   protected final long versionSwapTimeoutInMs;
-  protected final AtomicReference<CountDownLatch> onGoingVersionSwapSignal = new AtomicReference<>();
+  protected final AtomicReference<CompletableFuture<Void>> onGoingVersionSwapSignal = new AtomicReference<>();
   /**
    * Interaction of this field should acquire the subscriptionLock.writeLock()
    */
@@ -216,7 +218,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.consumerOffsetCommitIntervalMs = changelogClientConfig.getConsumerOffsetCommitIntervalMs();
     this.consumerOffsetCommitTimeout = Duration.ofMillis(changelogClientConfig.getConsumerOffsetCommitTimeoutMs());
     this.time = new SystemTime();
-    this.onGoingVersionSwapSignal.set(new CountDownLatch(0));
+    this.onGoingVersionSwapSignal.set(CompletableFuture.completedFuture(null));
     if (versionSwapByControlMessage) {
       // Version swap related configs should all be resolved or explicitly set at this point.
       if (this.clientRegionName.isEmpty()) {
@@ -344,16 +346,22 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
-    for (int partition: partitions) {
-      getPartitionToBootstrapState().put(partition, false);
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
     }
-    subscribeTime = time.getMilliseconds();
     return internalSubscribe(partitions, null);
   }
 
-  protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
+  protected void prepareForConsumption() {
     throwIfReadsDisabled();
-    return CompletableFuture.supplyAsync(() -> {
+  }
+
+  protected CompletableFuture<Void> internalSubscribe(Set<Integer> partitions, PubSubTopic topic) {
+    prepareForConsumption();
+    for (int partition: partitions) {
+      resetBootstrapState(partition);
+    }
+    return CompletableFuture.runAsync(() -> {
       try {
         for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
           try {
@@ -371,63 +379,62 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
       }
-
-      if (versionSwapByControlMessage) {
-        boolean lockAcquiredAndNoOngoingVersionSwap = false;
-        for (int i = 0; i <= MAX_SUBSCRIBE_RETRIES; i++) {
-          // If version swap is in progress, wait for it to finish
-          try {
-            onGoingVersionSwapSignal.get().await();
-          } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-          }
-          subscriptionLock.writeLock().lock();
-          if (versionSwapMessageState != null) {
-            // A new version swap is in progress, wait for it to finish again
-            subscriptionLock.writeLock().unlock();
-          } else {
-            // No version swap is in progress, proceed with subscription
-            lockAcquiredAndNoOngoingVersionSwap = true;
-            break;
-          }
+    }, seekExecutorService).thenCompose(ignored -> executeSubscriptionTask(() -> {
+      PubSubTopic topicToSubscribe = topic == null ? getCurrentServingVersionTopic() : topic;
+      Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
+      for (PubSubTopicPartition topicPartition: topicPartitionSet) {
+        if (partitions.contains(topicPartition.getPartitionNumber())) {
+          pubSubConsumer.unSubscribe(topicPartition);
         }
-        if (!lockAcquiredAndNoOngoingVersionSwap) {
-          // This should be extremely rare where the subscribe request is constantly conflicting with new version swaps
-          throw new VeniceException("Unable to subscribe to new partitions due to conflicting version swaps");
-        }
-      } else {
-        subscriptionLock.writeLock().lock();
       }
+      pendingVersionSwapNotifications.remove(partitions);
 
-      try {
-        PubSubTopic topicToSubscribe;
-        if (topic == null) {
-          topicToSubscribe = getCurrentServingVersionTopic();
-        } else {
-          topicToSubscribe = topic;
-        }
-        Set<PubSubTopicPartition> topicPartitionSet = getTopicAssignment();
-        for (PubSubTopicPartition topicPartition: topicPartitionSet) {
-          if (partitions.contains(topicPartition.getPartitionNumber())) {
-            pubSubConsumer.unSubscribe(topicPartition);
-          }
-        }
-        pendingVersionSwapNotifications.remove(partitions);
-
-        List<PubSubTopicPartition> topicPartitionListToSeek =
-            getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
-        for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
-          pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
-          recordSubscriptionForHeartbeatReporting(topicPartition);
-          pendingVersionSwapNotifications.record(topicPartition, null);
-        }
-      } finally {
-        subscriptionLock.writeLock().unlock();
+      List<PubSubTopicPartition> topicPartitionListToSeek =
+          getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, topicToSubscribe);
+      for (PubSubTopicPartition topicPartition: topicPartitionListToSeek) {
+        pubSubConsumer.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
+        resetTrackingForSubscription(topicPartition, true);
+        pendingVersionSwapNotifications.record(topicPartition, null);
       }
       startHeartbeatReporterIfNeeded();
       isSubscribed.set(true);
-      return null;
-    }, seekExecutorService);
+    }, false, 0));
+  }
+
+  /**
+   * User seeks fail fast while a control-message swap is pending because only {@link #poll} can complete the swap,
+   * and a seek resolved against the pre-swap topic must not run after it. Internal seeks that complete the swap must
+   * bypass this barrier.
+   */
+  protected CompletableFuture<Void> executeSeekTask(Runnable task) {
+    return executeSubscriptionTask(task, true, 0);
+  }
+
+  /**
+   * Subscriptions wait for a pending control-message swap without occupying a seek worker. Polling must continue to
+   * complete the pending swap.
+   */
+  private CompletableFuture<Void> executeSubscriptionTask(Runnable task, boolean failFast, int attempt) {
+    return CompletableFuture.supplyAsync(() -> {
+      subscriptionLock.writeLock().lock();
+      try {
+        if (versionSwapByControlMessage && versionSwapMessageState != null) {
+          if (failFast) {
+            throw new VeniceException(
+                "Unable to seek while a version swap is in progress. Continue polling to complete it, then retry.");
+          }
+          if (attempt == MAX_SUBSCRIBE_RETRIES) {
+            throw new VeniceException("Unable to change subscriptions due to conflicting version swaps");
+          }
+          return onGoingVersionSwapSignal.get()
+              .thenCompose(ignored -> executeSubscriptionTask(task, false, attempt + 1));
+        }
+        task.run();
+        return CompletableFuture.<Void>completedFuture(null);
+      } finally {
+        subscriptionLock.writeLock().unlock();
+      }
+    }, seekExecutorService).thenCompose(future -> future);
   }
 
   protected VeniceCompressor getVersionCompressor(PubSubTopic pubSubTopic) {
@@ -461,6 +468,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToBeginningOfPush(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    prepareForConsumption();
     // Get latest version topic
     PubSubTopic topic = getCurrentServingVersionTopic();
     return internalSeek(partitions, topic, p -> PubSubSymbolicPosition.EARLIEST, false);
@@ -477,6 +488,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToEndOfPush(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    prepareForConsumption();
     PubSubTopic topic = getCurrentServingVersionTopic();
     return internalSeek(partitions, topic, p -> PubSubSymbolicPosition.EARLIEST, false);
   }
@@ -543,6 +558,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public CompletableFuture<Void> seekToTail(Set<Integer> partitions) {
+    if (partitions.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    prepareForConsumption();
     PubSubTopic topic = getCurrentServingVersionTopic();
     return internalSeek(
         partitions,
@@ -572,17 +591,27 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints)
       throws VeniceCoordinateOutOfRangeException {
-    return CompletableFuture.supplyAsync(() -> {
-      synchronousSeekToCheckpoint(checkpoints);
-      return null;
-    }, seekExecutorService);
+    if (checkpoints.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    prepareForConsumption();
+    return executeSeekTask(() -> synchronousSeekToCheckpoint(checkpoints, true));
   }
 
   protected void synchronousSeekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
+    synchronousSeekToCheckpoint(checkpoints, false);
+  }
+
+  protected void synchronousSeekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints, boolean resetBootstrapState) {
     for (VeniceChangeCoordinate coordinate: checkpoints) {
       checkLiveVersion(coordinate.getTopic());
       PubSubTopic topic = pubSubTopicRepository.getTopic(coordinate.getTopic());
-      synchronousSeek(Collections.singleton(coordinate.getPartition()), topic, p -> coordinate.getPosition(), true);
+      synchronousSeek(
+          Collections.singleton(coordinate.getPartition()),
+          topic,
+          p -> coordinate.getPosition(),
+          true,
+          resetBootstrapState);
       pubSubTopicNameToCompressorMap.remove(topic.getName());
     }
   }
@@ -629,6 +658,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   public CompletableFuture<Void> internalSeekToTimestamps(Map<Integer, Long> timestamps, Logger logger) {
+    if (timestamps.isEmpty()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    prepareForConsumption();
     PubSubTopic topic = getCurrentServingVersionTopic();
     Map<PubSubTopicPartition, Long> topicPartitionLongMap = new HashMap<>();
     for (Map.Entry<Integer, Long> timestampPair: timestamps.entrySet()) {
@@ -681,10 +714,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopic targetTopic,
       SeekPositionResolver positionResolver,
       boolean isInclusive) {
-    return CompletableFuture.supplyAsync(() -> {
-      synchronousSeek(partitions, targetTopic, positionResolver, isInclusive);
-      return null;
-    }, seekExecutorService);
+    return executeSeekTask(() -> synchronousSeek(partitions, targetTopic, positionResolver, isInclusive, true));
   }
 
   /**
@@ -702,6 +732,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopic targetTopic,
       SeekPositionResolver positionResolver,
       boolean isInclusive) {
+    synchronousSeek(partitions, targetTopic, positionResolver, isInclusive, false);
+  }
+
+  private void synchronousSeek(
+      Set<Integer> partitions,
+      PubSubTopic targetTopic,
+      SeekPositionResolver positionResolver,
+      boolean isInclusive,
+      boolean resetBootstrapState) {
     boolean anySubscribed = false;
     RuntimeException seekFailure = null;
     subscriptionLock.writeLock().lock();
@@ -735,7 +774,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           } else {
             pubSubConsumer.subscribe(topicPartition, target.getValue());
           }
-          recordSubscriptionForHeartbeatReporting(topicPartition);
+          resetTrackingForSubscription(topicPartition, resetBootstrapState);
           pendingVersionSwapNotifications.record(topicPartition, target.getValue());
           anySubscribed = true;
         } catch (RuntimeException e) {
@@ -786,8 +825,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.seekPositionResolutionMaxRetryDelay = maxRetryDelay;
   }
 
-  private void recordSubscriptionForHeartbeatReporting(PubSubTopicPartition topicPartition) {
-    currentVersionLastHeartbeat.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
+  private void resetTrackingForSubscription(PubSubTopicPartition topicPartition, boolean resetBootstrapState) {
+    consumedHeartbeatTimestampsForSeek.remove(topicPartition.getPartitionNumber());
+    heartbeatTimestampsForLagMonitoring.put(topicPartition.getPartitionNumber(), System.currentTimeMillis());
+    if (resetBootstrapState) {
+      resetBootstrapState(topicPartition.getPartitionNumber());
+    }
+  }
+
+  private void resetBootstrapState(int partition) {
+    partitionToSubscribeTime.put(partition, time.getMilliseconds());
+    getPartitionToBootstrapState().put(partition, false);
   }
 
   private synchronized void startHeartbeatReporterIfNeeded() {
@@ -836,11 +884,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       for (PubSubTopicPartition topicPartition: topicPartitionSet) {
         if (partitions.contains(topicPartition.getPartitionNumber())) {
           topicPartitionsToUnsub.add(topicPartition);
-          currentVersionLastHeartbeat.remove(topicPartition.getPartitionNumber());
+          heartbeatTimestampsForLagMonitoring.remove(topicPartition.getPartitionNumber());
+          consumedHeartbeatTimestampsForSeek.remove(topicPartition.getPartitionNumber());
         }
       }
       pubSubConsumer.batchUnsubscribe(topicPartitionsToUnsub);
       if (!isForVersionSwap) {
+        partitions.forEach(getPartitionToBootstrapState()::remove);
         pendingVersionSwapNotifications.remove(partitions);
         if (versionSwapMessageState != null) {
           versionSwapMessageState.handleUnsubscribe(partitions);
@@ -955,7 +1005,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                   versionSwapMessageState.getVersionSwapGenerationId());
               changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
               versionSwapMessageState = null;
-              onGoingVersionSwapSignal.get().countDown();
+              onGoingVersionSwapSignal.get().complete(null);
             } else {
               return Collections.emptyList();
             }
@@ -974,7 +1024,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                   versionSwapMessageState.getIncompletePartitions());
               changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
               versionSwapMessageState = null;
-              onGoingVersionSwapSignal.get().countDown();
+              onGoingVersionSwapSignal.get().complete(null);
             } else {
               LOGGER.warn(
                   "Version swap from topic: {} to topic: {}, generation id: {} already timed out but still unable to find new topic checkpoints to go to.",
@@ -1122,8 +1172,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {
-    if (getSubscribeTime() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
-      getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
+    int partition = pubSubTopicPartition.getPartitionNumber();
+    if (getSubscribeTime(partition) - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES
+        .toMillis(1)) {
+      getPartitionToBootstrapState().put(partition, true);
     }
   }
 
@@ -1162,7 +1214,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
     if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
         && Arrays.equals(key, KafkaKey.HEART_BEAT.getKey())) {
-      currentVersionLastHeartbeat.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
+      heartbeatTimestampsForLagMonitoring.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
+      consumedHeartbeatTimestampsForSeek.put(pubSubTopicPartition.getPartitionNumber(), timestamp);
     }
     return false;
   }
@@ -1297,7 +1350,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         Set<PubSubTopicPartition> currentAssignment = getTopicAssignment();
         versionSwapMessageState =
             new VersionSwapMessageState(versionSwap, totalRegionCount, currentAssignment, time.getMilliseconds());
-        onGoingVersionSwapSignal.set(new CountDownLatch(1));
+        onGoingVersionSwapSignal.set(new CompletableFuture<>());
         LOGGER.info(
             "New version detected for store: {} through version swap messages. Performing version swap from topic: {} to topic: {}, generation id: {}",
             storeName,
@@ -1391,8 +1444,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
   }
 
-  protected Long getSubscribeTime() {
-    return this.subscribeTime;
+  protected Long getSubscribeTime(int partition) {
+    return partitionToSubscribeTime.getOrDefault(partition, Long.MAX_VALUE);
   }
 
   protected HeartbeatReporterThread getHeartbeatReporterThread() {
@@ -1447,13 +1500,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
 
     protected void recordStats(
-        Map<Integer, Long> currentVersionLastHeartbeat,
+        Map<Integer, Long> heartbeatTimestampsForLagMonitoring,
         BasicConsumerStats changeCaptureStats,
         Set<PubSubTopicPartition> assignment) {
 
       long now = System.currentTimeMillis();
       long maxLag = Long.MIN_VALUE;
-      for (Long heartBeatTimestamp: currentVersionLastHeartbeat.values()) {
+      for (Long heartBeatTimestamp: heartbeatTimestampsForLagMonitoring.values()) {
         if (heartBeatTimestamp != null) {
           maxLag = Math.max(maxLag, now - heartBeatTimestamp);
         }
@@ -1483,7 +1536,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   @Override
   public Map<Integer, Long> getLastHeartbeatPerPartition() {
-    // Snapshot the heartbeat map to avoid iterating while it is being updated concurrently
-    return new HashMap<>(currentVersionLastHeartbeat);
+    // This reporting snapshot includes subscription-time baselines, not just consumed progress.
+    return new HashMap<>(heartbeatTimestampsForLagMonitoring);
   }
 }
