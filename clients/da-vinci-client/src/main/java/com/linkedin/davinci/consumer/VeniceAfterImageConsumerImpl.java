@@ -110,17 +110,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
 
   protected static void adjustSeekCheckPointsBasedOnHeartbeats(
       Map<Integer, VeniceChangeCoordinate> checkpoints,
-      Map<Integer, Long> consumedHeartbeatTimestampsForSeek,
+      Map<Integer, Long> heartbeatTimestamps,
       PubSubConsumerAdapter consumerAdapter,
       List<PubSubTopicPartition> topicPartitionList) {
     for (PubSubTopicPartition topicPartition: topicPartitionList) {
-      Long consumedHeartbeatTimestamp = consumedHeartbeatTimestampsForSeek.get(topicPartition.getPartitionNumber());
-      if (consumedHeartbeatTimestamp == null) {
+      Long heartbeatTimestamp = heartbeatTimestamps.get(topicPartition.getPartitionNumber());
+      if (heartbeatTimestamp == null) {
         LOGGER.warn("No heartbeat checkpoint found for partition: {}", topicPartition.getPartitionNumber());
         continue;
       }
       PubSubPosition heartbeatTimestampPosition =
-          consumerAdapter.getPositionByTimestamp(topicPartition, consumedHeartbeatTimestamp);
+          consumerAdapter.getPositionByTimestamp(topicPartition, heartbeatTimestamp);
       if (checkpoints.get(topicPartition.getPartitionNumber()) == null && heartbeatTimestampPosition == null) {
         LOGGER.warn(
             "No EOP checkpoint OR heartbeat position found for partition: {} seeking to tail",
@@ -143,7 +143,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         LOGGER.warn(
             "Null heartbeat position for partition: {} timestamp: {} starting from EOP!",
             topicPartition.getPartitionNumber(),
-            consumedHeartbeatTimestamp);
+            heartbeatTimestamp);
         // No need to do anything here, we already have the EOP checkpoint, so we'll default to that
       } else {
         PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
@@ -357,10 +357,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             // on a server. If the message nearest that heartbeat in the new version is at on offset higher then the
             // EOP message, then we swap it out in order to play less events back to the user.
             // first, check and see if all partitions are already after EOP
-            failIfHybridSwapLacksConsumedHeartbeat(targetTopic, partitions);
             adjustSeekCheckPointsBasedOnHeartbeats(
                 checkpoints,
-                new HashMap<>(consumedHeartbeatTimestampsForSeek),
+                getHeartbeatTimestampsForSwap(targetTopic, partitions),
                 consumerAdapter,
                 topicPartitionList);
           }
@@ -388,26 +387,33 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   }
 
   /**
-   * Without a consumed heartbeat, a swap between hybrid version topics could only resume from EOP and replay all
-   * nearline data, so the swap fails instead. Sources that never emit heartbeats (batch-only versions and view topics)
-   * and batch-only targets keep the EOP fallback. A source version missing from store metadata may have been hybrid,
-   * so it is treated as hybrid.
+   * Swaps from hybrid version topics resume from the last consumed heartbeat. Without one, a swap between hybrid
+   * version topics could only resume from EOP and replay all nearline data, so the swap fails instead. Sources that
+   * never emit heartbeats (batch-only versions and view topics) resume from the time they were subscribed or sought.
+   * A source version missing from store metadata may have been hybrid, so it is treated as hybrid.
    */
-  private void failIfHybridSwapLacksConsumedHeartbeat(PubSubTopic targetTopic, Set<Integer> partitions) {
+  private Map<Integer, Long> getHeartbeatTimestampsForSwap(PubSubTopic targetTopic, Set<Integer> partitions) {
     Store store = storeRepository.getStore(storeName);
-    if (!isHybridVersionTopic(store, targetTopic, false)) {
-      return;
-    }
+    boolean hybridTarget = isHybridVersionTopic(store, targetTopic, false);
+    Map<Integer, Long> heartbeatTimestamps = new HashMap<>(consumedHeartbeatTimestampsForSeek);
     for (PubSubTopicPartition source: getTopicAssignment()) {
       int partition = source.getPartitionNumber();
-      if (partitions.contains(partition) && isHybridVersionTopic(store, source.getPubSubTopic(), true)
-          && !consumedHeartbeatTimestampsForSeek.containsKey(partition)) {
+      if (!partitions.contains(partition) || heartbeatTimestamps.containsKey(partition)) {
+        continue;
+      }
+      if (!isHybridVersionTopic(store, source.getPubSubTopic(), true)) {
+        Long subscriptionTimestamp = heartbeatTimestampsForLagMonitoring.get(partition);
+        if (subscriptionTimestamp != null) {
+          heartbeatTimestamps.put(partition, subscriptionTimestamp);
+        }
+      } else if (hybridTarget) {
         throw new VeniceException(
             "Refusing version swap to: " + targetTopic.getName() + " for partition: " + partition
                 + " because no heartbeat has been consumed from: " + source.getPubSubTopic().getName()
                 + "; swapping would replay nearline data from end of push");
       }
     }
+    return heartbeatTimestamps;
   }
 
   private static boolean isHybridVersionTopic(Store store, PubSubTopic topic, boolean hybridIfMissing) {

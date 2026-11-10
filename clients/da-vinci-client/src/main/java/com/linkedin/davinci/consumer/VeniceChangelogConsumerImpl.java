@@ -118,7 +118,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Collections.singletonList(Exception.class);
   private final RedundantExceptionFilter redundantExceptionFilter =
       RedundantExceptionFilter.getRedundantExceptionFilter();
-  protected volatile long subscribeTime = Long.MAX_VALUE;
+  protected final Map<Integer, Long> partitionToSubscribeTime = new VeniceConcurrentHashMap<>();
   private Duration seekPositionResolutionInitialRetryDelay = Duration.ofMillis(100);
   private Duration seekPositionResolutionMaxRetryDelay = Duration.ofSeconds(5);
 
@@ -834,7 +834,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   private void resetBootstrapState(int partition) {
-    subscribeTime = time.getMilliseconds();
+    partitionToSubscribeTime.put(partition, time.getMilliseconds());
     getPartitionToBootstrapState().put(partition, false);
   }
 
@@ -1172,8 +1172,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {
-    if (getSubscribeTime() - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES.toMillis(1)) {
-      getPartitionToBootstrapState().put(pubSubTopicPartition.getPartitionNumber(), true);
+    int partition = pubSubTopicPartition.getPartitionNumber();
+    if (getSubscribeTime(partition) - message.getValue().producerMetadata.messageTimestamp <= TimeUnit.MINUTES
+        .toMillis(1)) {
+      getPartitionToBootstrapState().put(partition, true);
     }
   }
 
@@ -1442,8 +1444,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
   }
 
-  protected Long getSubscribeTime() {
-    return this.subscribeTime;
+  protected Long getSubscribeTime(int partition) {
+    return partitionToSubscribeTime.getOrDefault(partition, Long.MAX_VALUE);
   }
 
   protected HeartbeatReporterThread getHeartbeatReporterThread() {
