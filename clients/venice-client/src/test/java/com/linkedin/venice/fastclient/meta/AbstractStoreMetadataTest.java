@@ -263,11 +263,11 @@ public class AbstractStoreMetadataTest {
    */
   private static final class TestStoreMetadata extends AbstractStoreMetadata {
     TestStoreMetadata(String storeName) {
-      super(buildClientConfig(storeName));
+      super(buildClientConfig(storeName), mock(InstanceHealthMonitor.class));
     }
 
     TestStoreMetadata(ClientConfig clientConfig) {
-      super(clientConfig);
+      super(clientConfig, mock(InstanceHealthMonitor.class));
     }
 
     private static ClientConfig buildClientConfig(String storeName) {

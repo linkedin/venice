@@ -37,6 +37,7 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,6 +52,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -62,15 +64,19 @@ import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.hooks.StoreLifecycleHooks;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.IngestionPauseMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VeniceETLStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -235,6 +241,95 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
         Collections.singleton(OWNER));
   }
 
+  @Test
+  public void testApplyOnParent_BatchToHybridConversionEnablesWriteQuota() {
+    String storeName = Utils.getUniqueString("write-quota-batch-to-hybrid");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertTrue(message.writeQuotaEnabled);
+    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
+  @Test
+  public void testApplyOnParent_BatchToHybridConversionPreservesEnabledWriteQuota() {
+    String storeName = Utils.getUniqueString("write-quota-already-enabled");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(true);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertTrue(message.writeQuotaEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
+  @Test
+  public void testApplyOnParent_NonConversionPreservesDisabledWriteQuota() {
+    String storeName = Utils.getUniqueString("write-quota-non-conversion");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertFalse(message.writeQuotaEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
+  @Test
+  public void testApplyOnParent_BatchToHybridConversionHonorsExplicitWriteQuotaDisable() {
+    String storeName = Utils.getUniqueString("write-quota-explicit-disable");
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L)
+            .setHybridOffsetLagThreshold(1000L)
+            .setWriteQuotaEnabled(false));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertFalse(message.writeQuotaEnabled);
+    assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
+  @Test
+  public void testApplyOnParent_SystemStoreBatchToHybridConversionPreservesDisabledWriteQuota() {
+    String storeName = VeniceSystemStoreType.META_STORE.getSystemStoreName(Utils.getUniqueString("write-quota"));
+    Store store = TestUtils.createTestStore(storeName, "owner", 1L);
+    store.setWriteQuotaEnabled(false);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    parentAdmin.initStorageCluster(clusterName);
+
+    parentAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L));
+
+    UpdateStore message = captureLastUpdateStore();
+    assertFalse(message.writeQuotaEnabled);
+    assertFalse(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+  }
+
   @Test(dataProvider = "writeQuotaEnabledValues")
   public void testApplyOnChild_WriteQuotaEnabledPersistsAndSurvivesUnrelatedUpdate(boolean enabled) {
     String storeName = Utils.getUniqueString("write-quota-child");
@@ -252,6 +347,213 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertEquals(store.isWriteQuotaEnabled(), enabled);
     StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
     assertEquals(store.isWriteQuotaEnabled(), enabled);
+  }
+
+  @Test
+  public void testApplyOnChild_BatchToHybridConversionEnablesWriteQuotaUnlessExplicitlyDisabled() {
+    String storeName = Utils.getUniqueString("write-quota-child-conversion");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(false);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doCallRealMethod().when(admin)
+        .enableHybridModeOrUpdateSettings(eq(clusterName), eq(storeName), any(), any(), any());
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater
+        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    assertTrue(store.isWriteQuotaEnabled());
+
+    store.setHybridStoreConfig(null);
+    store.setWriteQuotaEnabled(false);
+    StoreConfigUpdater.applyOnChild(
+        admin,
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridRewindSeconds(86400L)
+            .setHybridOffsetLagThreshold(1000L)
+            .setWriteQuotaEnabled(false));
+    assertFalse(store.isWriteQuotaEnabled());
+  }
+
+  @DataProvider(name = "childHybridConversionQuotaUpdates")
+  public Object[][] childHybridConversionQuotaUpdates() {
+    return new Object[][] { { false, false, null, null }, { false, false, 101L, null }, { false, true, null, 202L },
+        { false, true, 101L, 202L }, { true, false, null, null }, { true, false, null, 202L },
+        { true, true, 101L, null }, { true, true, 101L, 202L } };
+  }
+
+  @Test(dataProvider = "childHybridConversionQuotaUpdates")
+  public void testApplyOnChild_HybridConversionEnablesWriteQuotaAfterApplyingRequestedLimits(
+      boolean incrementalPushConversion,
+      boolean parentPropagatedWriteQuota,
+      Long throughputQuotaInBytes,
+      Long throughputQuotaInRecords) {
+    String storeName = Utils.getUniqueString("write-quota-child-snapshot");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(false);
+    store.setThroughputQuotaInBytes(11L);
+    store.setThroughputQuotaInRecords(22L);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    if (incrementalPushConversion) {
+      doCallRealMethod().when(admin)
+          .enableHybridModeOrUpdateSettings(eq(clusterName), eq(storeName), any(), any(), any());
+    }
+    AtomicReference<long[]> firstHybridSnapshot = new AtomicReference<>();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      if (store.isHybrid() && firstHybridSnapshot.get() == null) {
+        firstHybridSnapshot.set(
+            new long[] { store.isWriteQuotaEnabled() ? 1L : 0L, store.getThroughputQuotaInBytes(),
+                store.getThroughputQuotaInRecords() });
+      }
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    UpdateStoreQueryParams params = incrementalPushConversion
+        ? new UpdateStoreQueryParams().setIncrementalPushEnabled(true)
+        : new UpdateStoreQueryParams().setHybridRewindSeconds(86400L).setHybridOffsetLagThreshold(1000L);
+    if (throughputQuotaInBytes != null) {
+      params.setThroughputQuotaInBytes(throughputQuotaInBytes);
+    }
+    if (throughputQuotaInRecords != null) {
+      params.setThroughputQuotaInRecords(throughputQuotaInRecords);
+    }
+    if (parentPropagatedWriteQuota) {
+      Store parentStore = TestUtils.createTestStore(storeName, "owner", 1L);
+      parentStore.setWriteQuotaEnabled(false);
+      doReturn(parentStore).when(internalAdmin).getStore(clusterName, storeName);
+      parentAdmin.initStorageCluster(clusterName);
+      if (incrementalPushConversion) {
+        params.setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
+      }
+      parentAdmin.updateStore(clusterName, storeName, params);
+      UpdateStore message = captureLastUpdateStore();
+      assertTrue(message.writeQuotaEnabled);
+      assertTrue(message.updatedConfigsList.stream().map(CharSequence::toString).anyMatch(WRITE_QUOTA_ENABLED::equals));
+      params.setWriteQuotaEnabled(message.writeQuotaEnabled);
+    }
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    assertNotNull(firstHybridSnapshot.get());
+    assertEquals(
+        firstHybridSnapshot.get(),
+        new long[] { 1L, throughputQuotaInBytes == null ? 11L : throughputQuotaInBytes,
+            throughputQuotaInRecords == null ? 22L : throughputQuotaInRecords });
+  }
+
+  @DataProvider(name = "etlOnboardingOutcomes")
+  public Object[][] etlOnboardingOutcomes() {
+    return new Object[][] { { false, null, null }, { false, 100L, null }, { false, null, 200L }, { false, 100L, 200L },
+        { true, null, null }, { true, 100L, null }, { true, null, 200L }, { true, 100L, 200L } };
+  }
+
+  @Test(dataProvider = "etlOnboardingOutcomes")
+  public void testApplyOnChild_ExplicitDisableAppliesThroughputLimitsAfterETLOnboarding(
+      boolean onboardingFails,
+      Long throughputQuotaInBytes,
+      Long throughputQuotaInRecords) {
+    String storeName = Utils.getUniqueString("write-quota-child-explicit-disable");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(86400L, 1000L, -1L, null));
+    store.setWriteQuotaEnabled(true);
+    store.setThroughputQuotaInBytes(1000L);
+    store.setThroughputQuotaInRecords(2000L);
+    store.setEtlStoreConfig(
+        new ETLStoreConfigImpl(
+            "etl-user",
+            false,
+            false,
+            VeniceETLStrategy.EXTERNAL_SERVICE.getValue(),
+            Collections.singletonList("dc-current")));
+    AtomicReference<Store> persistedStore = new AtomicReference<>(store.cloneStore());
+
+    doReturn(Optional.of(mock(ExternalETLService.class))).when(admin).getExternalETLService();
+    VeniceControllerMultiClusterConfig multiClusterConfig = admin.getMultiClusterConfigs();
+    doReturn("dc-current").when(multiClusterConfig).getRegionName();
+    VeniceControllerClusterConfig controllerConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(controllerConfig).when(multiClusterConfig).getControllerConfig(clusterName);
+    doReturn(true).when(controllerConfig).isSkipHybridStoreRTTopicCompactionPolicyUpdateEnabled();
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      Store updatedStore = operation.update(persistedStore.get().cloneStore(), null);
+      persistedStore.set(updatedStore);
+      if (updatedStore.getThroughputQuotaInBytes() == 100L || updatedStore.getThroughputQuotaInRecords() == 200L) {
+        assertFalse(
+            updatedStore.isWriteQuotaEnabled(),
+            "New limits must not be published before enforcement is disabled");
+      }
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    doAnswer(invocation -> {
+      assertTrue(persistedStore.get().isWriteQuotaEnabled());
+      assertEquals(persistedStore.get().getThroughputQuotaInBytes(), 1000L);
+      assertEquals(persistedStore.get().getThroughputQuotaInRecords(), 2000L);
+      if (onboardingFails) {
+        throw new VeniceException("ETL onboarding failed");
+      }
+      return null;
+    }).when(admin).onboardETLForExistingStoreVersion(any());
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setWriteQuotaEnabled(false)
+        .setRegularVersionETLEnabled(true)
+        .setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+        .setEtlActiveFabrics(Collections.singletonList("dc-current"));
+    if (throughputQuotaInBytes != null) {
+      params.setThroughputQuotaInBytes(throughputQuotaInBytes);
+    }
+    if (throughputQuotaInRecords != null) {
+      params.setThroughputQuotaInRecords(throughputQuotaInRecords);
+    }
+
+    if (onboardingFails) {
+      expectThrows(VeniceException.class, () -> StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params));
+      assertTrue(persistedStore.get().isWriteQuotaEnabled());
+      assertEquals(persistedStore.get().getThroughputQuotaInBytes(), 1000L);
+      assertEquals(persistedStore.get().getThroughputQuotaInRecords(), 2000L);
+    } else {
+      StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+      assertFalse(persistedStore.get().isWriteQuotaEnabled());
+      assertEquals(
+          persistedStore.get().getThroughputQuotaInBytes(),
+          throughputQuotaInBytes == null ? 1000L : throughputQuotaInBytes.longValue());
+      assertEquals(
+          persistedStore.get().getThroughputQuotaInRecords(),
+          throughputQuotaInRecords == null ? 2000L : throughputQuotaInRecords.longValue());
+    }
+  }
+
+  @Test
+  public void testApplyOnChild_SystemStoreBatchToHybridConversionPreservesDisabledWriteQuota() {
+    String storeName = VeniceSystemStoreType.META_STORE.getSystemStoreName(Utils.getUniqueString("write-quota"));
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    Store store = admin.getStore(clusterName, storeName);
+    store.setWriteQuotaEnabled(false);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doCallRealMethod().when(admin)
+        .enableHybridModeOrUpdateSettings(eq(clusterName), eq(storeName), any(), any(), any());
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater
+        .applyOnChild(admin, clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+
+    assertTrue(store.isHybrid());
+    assertFalse(store.isWriteQuotaEnabled());
   }
 
   private static final String NEW_OWNER = "new-owner-for-trivial-test";
@@ -1142,6 +1444,51 @@ public class StoreConfigUpdaterTest extends AbstractTestVeniceParentHelixAdmin {
     assertTrue(
         updatedConfigKeys(cleared).containsAll(Arrays.asList(VENICE_UNITS, WORKLOAD_TYPE)),
         "An explicit clear must be replicated to child controllers");
+  }
+
+  @DataProvider(name = "etlOnboardTransitions")
+  public Object[][] etlOnboardTransitions() {
+    return new Object[][] { { true }, { false } };
+  }
+
+  /**
+   * Both onboard paths, turning on EXTERNAL_WITH_VENICE_TRIGGER and adding the local fabric to etlActiveFabrics, must
+   * hand the external ETL service the ETL config written by the same update, not the one read before it.
+   */
+  @Test(dataProvider = "etlOnboardTransitions")
+  public void testApplyOnChild_OnboardingSeesEtlConfigFromSameUpdate(boolean firstTimeVeniceTrigger) {
+    String storeName = Utils.getUniqueString("child-etl-onboard");
+    VeniceHelixAdmin admin = newChildAdminMock(storeName);
+    VeniceControllerMultiClusterConfig multiClusterConfigs = admin.getMultiClusterConfigs();
+    doReturn("dc-local").when(multiClusterConfigs).getRegionName();
+    doReturn(Optional.of(mock(ExternalETLService.class))).when(admin).getExternalETLService();
+    Store store = admin.getStore(clusterName, storeName);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setEtlInitialSlaTier("TIER_A")
+        .setEtlInitialGrantAclUsers(Arrays.asList("user-a", "user-b"))
+        .setEtlInitialWorkloadType("BATCH");
+    if (firstTimeVeniceTrigger) {
+      params.setETLStrategy(VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER)
+          .setRegularVersionETLEnabled(true)
+          .setEtledProxyUserAccount("proxy");
+    } else {
+      int strategy = VeniceETLStrategy.EXTERNAL_WITH_VENICE_TRIGGER.getValue();
+      store.setEtlStoreConfig(new ETLStoreConfigImpl("proxy", true, false, strategy, Arrays.asList("dc-other")));
+      params.setEtlActiveFabrics(Arrays.asList("dc-other", "dc-local"));
+    }
+    // Like the real store repository, hand out a copy taken before the update is applied.
+    doAnswer(invocation -> store.cloneStore()).when(admin).getStore(clusterName, storeName);
+    doAnswer(invocation -> {
+      VeniceHelixAdmin.StoreMetadataOperation operation = invocation.getArgument(2);
+      operation.update(store, null);
+      return null;
+    }).when(admin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+
+    StoreConfigUpdater.applyOnChild(admin, clusterName, storeName, params);
+
+    ArgumentCaptor<Store> onboarded = ArgumentCaptor.forClass(Store.class);
+    verify(admin).onboardETLForExistingStoreVersion(onboarded.capture());
+    assertEquals(store.getEtlStoreConfig().getInitialSlaTier(), "TIER_A");
+    assertEquals(onboarded.getValue().getEtlStoreConfig().clone(), store.getEtlStoreConfig());
   }
 
   private static Set<String> updatedConfigKeys(UpdateStore msg) {

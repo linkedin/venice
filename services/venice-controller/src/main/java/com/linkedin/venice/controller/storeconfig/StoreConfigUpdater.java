@@ -24,6 +24,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WR
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_ACTIVE_FABRICS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_GRANT_ACL_USERS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_SLA_TIER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_INITIAL_WORKLOAD_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETL_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXTERNAL_STORAGE_READ_MODE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FLINK_VENICE_VIEWS_ENABLED;
@@ -250,6 +253,17 @@ public final class StoreConfigUpdater {
   }
 
   /**
+   * Returns a read-only copy of {@code store} that carries {@code etlStoreConfig}. Onboarding hands the store to the
+   * external ETL service, which reads the store's ETL config, so it has to see the config written by this update
+   * rather than the one the store had before it.
+   */
+  private static Store withEtlStoreConfig(Store store, ETLStoreConfig etlStoreConfig) {
+    Store copy = store.cloneStore();
+    copy.setEtlStoreConfig(etlStoreConfig.clone());
+    return new ReadOnlyStore(copy);
+  }
+
+  /**
    * Child-side update-store: mutates the store metadata in this region. Lifted from the body of
    * {@code VeniceHelixAdmin.updateStore}; the public wrapper there still performs the
    * {@code checkControllerLeadershipFor} call and acquires the per-store write lock.
@@ -351,6 +365,11 @@ public final class StoreConfigUpdater {
     Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
     Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
     Optional<List<String>> etlActiveFabrics = params.getEtlActiveFabrics();
+    // Nullable like veniceUnits and workloadType above: an absent param leaves the value unchanged, while a present
+    // param with a null value clears it.
+    boolean etlInitialSlaTierSpecified = params.isEtlInitialSlaTierSpecified();
+    boolean etlInitialGrantAclUsersSpecified = params.isEtlInitialGrantAclUsersSpecified();
+    boolean etlInitialWorkloadTypeSpecified = params.isEtlInitialWorkloadTypeSpecified();
     Optional<Boolean> nativeReplicationEnabled = params.getNativeReplicationEnabled();
     Optional<String> pushStreamSourceAddress = params.getPushStreamSourceAddress();
     Optional<Long> backupVersionRetentionMs = params.getBackupVersionRetentionMs();
@@ -371,6 +390,7 @@ public final class StoreConfigUpdater {
     Optional<Integer> maxNearlineRecordSizeBytes = params.getMaxNearlineRecordSizeBytes();
     Optional<Long> throughputQuotaInBytes = params.getThroughputQuotaInBytes();
     Optional<Long> throughputQuotaInRecords = params.getThroughputQuotaInRecords();
+    Optional<Boolean> writeQuotaEnabled = params.getWriteQuotaEnabled();
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_BYTES, throughputQuotaInBytes);
     validateThroughputQuota(THROUGHPUT_QUOTA_IN_RECORDS, throughputQuotaInRecords);
     validatePubSubEncryptionKeyUrn(
@@ -409,6 +429,13 @@ public final class StoreConfigUpdater {
     } else {
       newHybridStoreConfig = Optional.empty();
     }
+    boolean storeBeingConvertedToHybrid = !originalStore.isHybrid()
+        && ((newHybridStoreConfig.isPresent() && HybridStoreConfigPolicy.isHybrid(newHybridStoreConfig.get()))
+            || incrementalPushEnabled.orElse(false));
+    boolean shouldImplicitlyEnableWriteQuota = storeBeingConvertedToHybrid && !originalStore.isSystemStore()
+        && !originalStore.isWriteQuotaEnabled() && !writeQuotaEnabled.isPresent();
+    Optional<Boolean> hybridConversionWriteQuotaEnabled =
+        shouldImplicitlyEnableWriteQuota ? Optional.of(true) : writeQuotaEnabled;
 
     try {
       if (owner.isPresent()) {
@@ -496,6 +523,9 @@ public final class StoreConfigUpdater {
           } else {
             // Batch-only store is being converted to hybrid store.
             if (!store.isHybrid()) {
+              throughputQuotaInBytes.ifPresent(store::setThroughputQuotaInBytes);
+              throughputQuotaInRecords.ifPresent(store::setThroughputQuotaInRecords);
+              hybridConversionWriteQuotaEnabled.ifPresent(store::setWriteQuotaEnabled);
               /*
                * Enable/disable native replication for hybrid stores if the cluster level config
                * for new hybrid stores is on
@@ -553,7 +583,12 @@ public final class StoreConfigUpdater {
 
       if (incrementalPushEnabled.isPresent()) {
         if (incrementalPushEnabled.get()) {
-          admin.enableHybridModeOrUpdateSettings(clusterName, storeName);
+          admin.enableHybridModeOrUpdateSettings(
+              clusterName,
+              storeName,
+              storeBeingConvertedToHybrid ? hybridConversionWriteQuotaEnabled : Optional.empty(),
+              storeBeingConvertedToHybrid ? throughputQuotaInBytes : Optional.empty(),
+              storeBeingConvertedToHybrid ? throughputQuotaInRecords : Optional.empty());
         }
         admin.setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
       }
@@ -662,13 +697,26 @@ public final class StoreConfigUpdater {
       hybridStoreDiskQuotaEnabled
           .ifPresent(value -> admin.setHybridStoreDiskQuotaEnabled(clusterName, storeName, value));
       if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent()
-          || etledUserProxyAccount.isPresent() || etlStrategy.isPresent() || etlActiveFabrics.isPresent()) {
+          || etledUserProxyAccount.isPresent() || etlStrategy.isPresent() || etlActiveFabrics.isPresent()
+          || etlInitialSlaTierSpecified || etlInitialGrantAclUsersSpecified || etlInitialWorkloadTypeSpecified) {
         ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl(
             etledUserProxyAccount.orElseGet(() -> originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
             regularVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isRegularVersionETLEnabled()),
             futureVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()),
             etlStrategy.orElseGet(() -> originalStore.getEtlStoreConfig().getETLStrategy()).getValue(),
             etlActiveFabrics.orElseGet(() -> originalStore.getEtlStoreConfig().getEtlActiveFabrics()));
+        etlStoreConfig.setInitialSlaTier(
+            etlInitialSlaTierSpecified
+                ? params.getEtlInitialSlaTier()
+                : originalStore.getEtlStoreConfig().getInitialSlaTier());
+        etlStoreConfig.setInitialGrantAclUsers(
+            etlInitialGrantAclUsersSpecified
+                ? params.getEtlInitialGrantAclUsers()
+                : originalStore.getEtlStoreConfig().getInitialGrantAclUsers());
+        etlStoreConfig.setInitialWorkloadType(
+            etlInitialWorkloadTypeSpecified
+                ? params.getEtlInitialWorkloadType()
+                : originalStore.getEtlStoreConfig().getInitialWorkloadType());
         admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
           store.setEtlStoreConfig(etlStoreConfig);
           return store;
@@ -692,7 +740,7 @@ public final class StoreConfigUpdater {
               // This is first time setting ETL strategy to EXTERNAL_WITH_VENICE_TRIGGER, so trigger ETL for all
               // relevant
               // store versions (current and future).
-              admin.onboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+              admin.onboardETLForExistingStoreVersion(withEtlStoreConfig(originalStore, etlStoreConfig));
             }
           }
           if (isSourceCluster) {
@@ -721,7 +769,7 @@ public final class StoreConfigUpdater {
             // offboard if just removed.
             if (oldStrategyIsVeniceTrigger && newStrategyIsVeniceTrigger && oldETLEnabled && !newETLDisabled) {
               if (!isActiveInOldConfig && isActiveInNewConfig) {
-                admin.onboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
+                admin.onboardETLForExistingStoreVersion(withEtlStoreConfig(originalStore, etlStoreConfig));
               } else if (isActiveInOldConfig && !isActiveInNewConfig) {
                 try {
                   admin.offboardETLForExistingStoreVersion(new ReadOnlyStore(originalStore));
@@ -823,18 +871,6 @@ public final class StoreConfigUpdater {
         });
       }
 
-      throughputQuotaInBytes
-          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setThroughputQuotaInBytes(aLong);
-            return store;
-          }));
-
-      throughputQuotaInRecords
-          .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setThroughputQuotaInRecords(aLong);
-            return store;
-          }));
-
       unusedSchemaDeletionEnabled
           .ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
             store.setUnusedSchemaDeletionEnabled(aBoolean);
@@ -844,11 +880,28 @@ public final class StoreConfigUpdater {
       storageNodeReadQuotaEnabled
           .ifPresent(aBoolean -> admin.setStorageNodeReadQuotaEnabled(clusterName, storeName, aBoolean));
 
-      params.getWriteQuotaEnabled()
-          .ifPresent(enabled -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
-            store.setWriteQuotaEnabled(enabled);
+      if (!storeBeingConvertedToHybrid) {
+        if (writeQuotaEnabled.isPresent()) {
+          admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+            throughputQuotaInBytes.ifPresent(store::setThroughputQuotaInBytes);
+            throughputQuotaInRecords.ifPresent(store::setThroughputQuotaInRecords);
+            store.setWriteQuotaEnabled(writeQuotaEnabled.get());
             return store;
-          }));
+          });
+        } else {
+          throughputQuotaInBytes
+              .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+                store.setThroughputQuotaInBytes(aLong);
+                return store;
+              }));
+
+          throughputQuotaInRecords
+              .ifPresent(aLong -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
+                store.setThroughputQuotaInRecords(aLong);
+                return store;
+              }));
+        }
+      }
 
       blobTransferEnabled
           .ifPresent(aBoolean -> admin.storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
@@ -1319,13 +1372,17 @@ public final class StoreConfigUpdater {
     etledUserProxyAccount.map(admin.addToUpdatedConfigList(updatedConfigsList, ETLED_PROXY_USER_ACCOUNT));
     etlStrategy.map(admin.addToUpdatedConfigList(updatedConfigsList, ETL_STRATEGY));
     etlActiveFabrics.map(admin.addToUpdatedConfigList(updatedConfigsList, ETL_ACTIVE_FABRICS));
-    setStore.ETLStoreConfig = admin.mergeNewSettingIntoOldETLStoreConfig(
-        currStore,
-        regularVersionETLEnabled,
-        futureVersionETLEnabled,
-        etledUserProxyAccount,
-        etlStrategy,
-        etlActiveFabrics);
+    // Nullable configs: a specified config is marked updated even when it is an explicit clear.
+    if (params.isEtlInitialSlaTierSpecified()) {
+      updatedConfigsList.add(ETL_INITIAL_SLA_TIER);
+    }
+    if (params.isEtlInitialGrantAclUsersSpecified()) {
+      updatedConfigsList.add(ETL_INITIAL_GRANT_ACL_USERS);
+    }
+    if (params.isEtlInitialWorkloadTypeSpecified()) {
+      updatedConfigsList.add(ETL_INITIAL_WORKLOAD_TYPE);
+    }
+    setStore.ETLStoreConfig = admin.mergeNewSettingIntoOldETLStoreConfig(currStore, params);
 
     setStore.largestUsedVersionNumber =
         largestUsedVersionNumber.map(admin.addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_VERSION_NUMBER))
@@ -1441,7 +1498,13 @@ public final class StoreConfigUpdater {
         .orElseGet(currStore::isStorageNodeReadQuotaEnabled);
     setStore.writeQuotaEnabled = params.getWriteQuotaEnabled()
         .map(admin.addToUpdatedConfigList(updatedConfigsList, WRITE_QUOTA_ENABLED))
-        .orElseGet(currStore::isWriteQuotaEnabled);
+        .orElseGet(() -> {
+          if (storeBeingConvertedToHybrid && !currStore.isSystemStore() && !currStore.isWriteQuotaEnabled()) {
+            updatedConfigsList.add(WRITE_QUOTA_ENABLED);
+            return true;
+          }
+          return currStore.isWriteQuotaEnabled();
+        });
     setStore.unusedSchemaDeletionEnabled = unusedSchemaDeletionEnabled
         .map(admin.addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
         .orElseGet(currStore::isUnusedSchemaDeletionEnabled);

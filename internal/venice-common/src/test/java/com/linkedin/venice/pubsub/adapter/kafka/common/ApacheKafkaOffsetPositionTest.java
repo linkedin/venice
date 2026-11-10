@@ -3,12 +3,14 @@ package com.linkedin.venice.pubsub.adapter.kafka.common;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import java.io.IOException;
 import org.testng.annotations.Test;
 
@@ -70,6 +72,17 @@ public class ApacheKafkaOffsetPositionTest {
     ApacheKafkaOffsetPosition kafkaPosition2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
     assertEquals(kafkaPosition2.getInternalOffset(), kafkaPosition.getInternalOffset());
     assertEquals(kafkaPosition2, kafkaPosition);
+  }
+
+  @Test
+  public void testComparePositionOffline() {
+    assertTrue(ApacheKafkaOffsetPosition.of(1).comparePositionOffline(ApacheKafkaOffsetPosition.of(2)) < 0);
+    assertTrue(ApacheKafkaOffsetPosition.of(2).comparePositionOffline(ApacheKafkaOffsetPosition.of(1)) > 0);
+    assertEquals(ApacheKafkaOffsetPosition.of(5).comparePositionOffline(ApacheKafkaOffsetPosition.of(5)), 0);
+    // The default implementation cannot order positions without a numeric offset (getNumericOffset() < 0)
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> ApacheKafkaOffsetPosition.of(5).comparePositionOffline(PubSubSymbolicPosition.EARLIEST));
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)

@@ -3,7 +3,11 @@ package com.linkedin.venice.spark.datawriter.jobs;
 import static com.linkedin.venice.spark.SparkConstants.*;
 import static org.testng.Assert.*;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
+import com.linkedin.venice.spark.utils.OfflineOrderedTestPosition;
+import com.linkedin.venice.spark.utils.PubSubPositionRowComparator;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -11,6 +15,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -119,6 +124,36 @@ public class SparkCompactionTest {
         accumulators.duplicateKeyWithIdenticalValueCounter.value().longValue(),
         0L,
         "Should have 0 duplicates with identical values");
+
+    // Same key with tied (-1) numeric offsets, as reported by pub-sub positions without dense offsets: the
+    // newest record must be chosen by the serialized position, independently of the input order.
+    byte[] emptyValue = new byte[0];
+    Row olderPut = createRowWithPosition(MessageType.PUT, key1, value1, 10);
+    Row newerPut = createRowWithPosition(MessageType.PUT, key1, value2, 20);
+    Row newestDelete = createRowWithPosition(MessageType.DELETE, key1, emptyValue, 30);
+    assertCompactsTo(Arrays.asList(olderPut, newerPut), MessageType.PUT, value2);
+    assertCompactsTo(Arrays.asList(newerPut, olderPut), MessageType.PUT, value2);
+    assertCompactsTo(Arrays.asList(newerPut, newestDelete), MessageType.DELETE, emptyValue);
+    assertCompactsTo(Arrays.asList(newestDelete, newerPut), MessageType.DELETE, emptyValue);
+  }
+
+  /**
+   * When numeric offsets are not meaningful and the positions cannot be ordered offline (or are missing), compaction
+   * must fail loudly instead of silently keeping an arbitrary record.
+   */
+  @Test
+  public void testCompactionFailsWhenPositionsCannotBeOrdered() {
+    byte[] key1 = "key1".getBytes();
+    byte[] rmd = "rmd".getBytes();
+    Row inRange0 = createRowWithPosition(MessageType.PUT, key1, "v1".getBytes(), 10);
+    Row inRange1 = new GenericRowWithSchema(
+        new Object[] { "region1", 0, -1L, MessageType.PUT.getValue(), 1, key1, "v2".getBytes(), 1, rmd, null,
+            OfflineOrderedTestPosition.positionBytes(1, 20) },
+        RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    Row withoutPosition = createRow("region1", 0, -1L, MessageType.PUT.getValue(), 1, key1, "v3".getBytes(), 1, rmd);
+
+    assertCompactionFails(Arrays.asList(inRange0, inRange1), "cannot be compared offline");
+    assertCompactionFails(Arrays.asList(inRange0, withoutPosition), "no serialized position is available");
   }
 
   /**
@@ -314,6 +349,7 @@ public class SparkCompactionTest {
    * Helper to apply compaction (simulates the logic in AbstractDataWriterSparkJob).
    */
   private Dataset<Row> applyCompactionHelper(Dataset<Row> dataFrame, DataWriterAccumulators accumulators) {
+    PubSubPositionRowComparator positionComparator = OfflineOrderedTestPosition.newRowComparator();
     return dataFrame
         .groupByKey(
             (org.apache.spark.api.java.function.MapFunction<Row, byte[]>) row -> row.getAs(KEY_COLUMN_NAME),
@@ -349,10 +385,8 @@ public class SparkCompactionTest {
                 }
               }
 
-              // Sort by offset DESC and keep the first (latest) record
-              Row latestRecord = rowsList.stream()
-                  .max(java.util.Comparator.comparingLong(r -> (long) r.getAs(OFFSET_COLUMN_NAME)))
-                  .orElse(null);
+              // Keep the latest record by source position, as AbstractDataWriterSparkJob#applyCompaction does
+              Row latestRecord = positionComparator.selectLatest(rowsList);
 
               if (latestRecord == null) {
                 return java.util.Collections.emptyIterator();
@@ -377,8 +411,44 @@ public class SparkCompactionTest {
       int rmdVersionId,
       byte[] rmd) {
     return new GenericRowWithSchema(
-        new Object[] { region, partition, offset, messageType, schemaId, key, value, rmdVersionId, rmd, null },
+        new Object[] { region, partition, offset, messageType, schemaId, key, value, rmdVersionId, rmd, null, null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  /**
+   * Helper to create a Row whose numeric offset is -1 and whose order is carried only by its serialized position.
+   */
+  private Row createRowWithPosition(MessageType messageType, byte[] key, byte[] value, long positionSequence) {
+    return new GenericRowWithSchema(
+        new Object[] { "region1", 0, -1L, messageType.getValue(), 1, key, value, 1, "rmd".getBytes(), null,
+            OfflineOrderedTestPosition.positionBytes(0, positionSequence) },
+        RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+  }
+
+  private void assertCompactsTo(List<Row> rows, MessageType expectedType, byte[] expectedValue) {
+    Dataset<Row> inputDF = sparkSession.createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    List<Row> results = applyCompactionHelper(inputDF, new DataWriterAccumulators(sparkSession)).collectAsList();
+    assertEquals(results.size(), 1, "Should have exactly 1 record after compaction");
+    assertEquals((int) results.get(0).getAs(MESSAGE_TYPE), expectedType.getValue(), "Wrong message type kept");
+    assertArrayEquals((byte[]) results.get(0).getAs(VALUE_COLUMN_NAME), expectedValue, "Wrong record kept");
+  }
+
+  private void assertCompactionFails(List<Row> rows, String expectedMessage) {
+    Dataset<Row> inputDF = sparkSession.createDataFrame(rows, RAW_PUBSUB_INPUT_TABLE_SCHEMA);
+    try {
+      applyCompactionHelper(inputDF, new DataWriterAccumulators(sparkSession)).collectAsList();
+      Assert.fail("Expected compaction to fail for positions that cannot be ordered");
+    } catch (Exception e) {
+      Throwable cause = e;
+      while (cause != null && !(cause instanceof VeniceException)) {
+        cause = cause.getCause();
+      }
+      assertNotNull(cause, "Expected a VeniceException in the cause chain of " + e);
+      assertTrue(
+          cause.getMessage().toLowerCase().contains("unable to order records of key 0x6b657931"),
+          cause.getMessage());
+      assertTrue(cause.getMessage().contains(expectedMessage), cause.getMessage());
+    }
   }
 
   /**
@@ -397,7 +467,7 @@ public class SparkCompactionTest {
       byte[] chunkedKeySuffix) {
     return new GenericRowWithSchema(
         new Object[] { region, partition, offset, messageType, schemaId, key, value, rmdVersionId, rmd,
-            chunkedKeySuffix },
+            chunkedKeySuffix, null },
         RAW_PUBSUB_INPUT_TABLE_SCHEMA);
   }
 

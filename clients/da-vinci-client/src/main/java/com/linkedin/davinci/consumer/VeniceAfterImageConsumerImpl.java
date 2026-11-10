@@ -5,6 +5,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -22,7 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,13 +36,15 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
   // swap is produced to VT, then we should remove this as it's no longer needed.
   private final Lazy<PubSubConsumerAdapter> internalSeekConsumer;
-  private final AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
   /*
    * Used to track if the version swap thread encountered an exception. If so, the exception will be reflected
    * in the next call to poll to prevent silent thread termination and fail the process.
    */
   private final AtomicReference<Exception> versionSwapThreadException = new AtomicReference<>();
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
+  private final Object versionSwapListenerRegistrationLock = new Object();
+  // Guarded by versionSwapListenerRegistrationLock.
+  private boolean versionSwapListenerRegistered;
 
   public VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -89,45 +92,35 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return internalPoll(timeoutInMs);
   }
 
+  /**
+   * Consumers can start consuming through {@link #subscribe} or any of the seek methods, and the version swap listener
+   * is the only version swap mechanism when version swap by control message is disabled. The shared startup hook
+   * validates reads and subscribes the store before registering this listener at most once per consumer.
+   */
   @Override
-  public CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
-    if (timestamps.isEmpty()) {
-      return CompletableFuture.completedFuture(null);
+  protected void prepareForConsumption() {
+    super.prepareForConsumption();
+    synchronized (versionSwapListenerRegistrationLock) {
+      if (!versionSwapListenerRegistered) {
+        storeRepository.registerStoreDataChangedListener(versionSwapListener);
+        versionSwapListenerRegistered = true;
+      }
     }
-    return internalSeekToTimestamps(timestamps);
-  }
-
-  @Override
-  public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
-    if (partitions.isEmpty()) {
-      return CompletableFuture.completedFuture(null);
-    }
-    try {
-      storeRepository.subscribe(storeName);
-    } catch (InterruptedException e) {
-      throw new VeniceException("Failed to start bootstrapping changelog consumer with error:", e);
-    }
-    if (!versionSwapThreadScheduled.get()) {
-      // schedule the version swap thread and set up the callback listener
-      this.storeRepository.registerStoreDataChangedListener(versionSwapListener);
-      versionSwapThreadScheduled.set(true);
-    }
-    return super.subscribe(partitions);
   }
 
   protected static void adjustSeekCheckPointsBasedOnHeartbeats(
       Map<Integer, VeniceChangeCoordinate> checkpoints,
-      Map<Integer, Long> currentVersionLastHeartbeat,
+      Map<Integer, Long> heartbeatTimestamps,
       PubSubConsumerAdapter consumerAdapter,
       List<PubSubTopicPartition> topicPartitionList) {
     for (PubSubTopicPartition topicPartition: topicPartitionList) {
-      Long currentVersionTimestamp = currentVersionLastHeartbeat.get(topicPartition.getPartitionNumber());
-      if (currentVersionTimestamp == null) {
+      Long heartbeatTimestamp = heartbeatTimestamps.get(topicPartition.getPartitionNumber());
+      if (heartbeatTimestamp == null) {
         LOGGER.warn("No heartbeat checkpoint found for partition: {}", topicPartition.getPartitionNumber());
         continue;
       }
       PubSubPosition heartbeatTimestampPosition =
-          consumerAdapter.getPositionByTimestamp(topicPartition, currentVersionTimestamp);
+          consumerAdapter.getPositionByTimestamp(topicPartition, heartbeatTimestamp);
       if (checkpoints.get(topicPartition.getPartitionNumber()) == null && heartbeatTimestampPosition == null) {
         LOGGER.warn(
             "No EOP checkpoint OR heartbeat position found for partition: {} seeking to tail",
@@ -150,7 +143,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         LOGGER.warn(
             "Null heartbeat position for partition: {} timestamp: {} starting from EOP!",
             topicPartition.getPartitionNumber(),
-            currentVersionTimestamp);
+            heartbeatTimestamp);
         // No need to do anything here, we already have the EOP checkpoint, so we'll default to that
       } else {
         PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
@@ -279,6 +272,14 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       Set<Integer> partitions,
       PubSubTopic targetTopic,
       boolean trackHeartbeats) {
+    return internalSeekToEndOfPush(partitions, targetTopic, trackHeartbeats, false);
+  }
+
+  private CompletableFuture<Void> internalSeekToEndOfPush(
+      Set<Integer> partitions,
+      PubSubTopic targetTopic,
+      boolean trackHeartbeats,
+      boolean isUserSeek) {
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
@@ -344,6 +345,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               break;
             }
           }
+          if (!isUserSeek) {
+            // Hold the lock while reading heartbeat progress so a concurrent rewind cannot make it stale.
+            subscriptionLock.writeLock().lock();
+            lockAcquired = true;
+          }
           if (trackHeartbeats) {
             // One last step. We track heartbeats for each partition and check their positions. The time recorded in
             // the
@@ -353,27 +359,69 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             // first, check and see if all partitions are already after EOP
             adjustSeekCheckPointsBasedOnHeartbeats(
                 checkpoints,
-                getLastHeartbeatPerPartition(),
+                getHeartbeatTimestampsForSwap(targetTopic, partitions),
                 consumerAdapter,
                 topicPartitionList);
           }
           LOGGER.info(
               "Seeking to EOP for partitions: " + partitions.toString() + " for version topic: "
                   + targetTopic.getName());
-          subscriptionLock.writeLock().lock();
-          lockAcquired = true;
-          this.synchronousSeekToCheckpoint(new HashSet<>(checkpoints.values()));
-          LOGGER.info(
-              "Seeked to EOP for partitions: " + partitions.toString() + " for version topic: "
-                  + targetTopic.getName());
+          Runnable seekTask = () -> {
+            synchronousSeekToCheckpoint(new HashSet<>(checkpoints.values()), isUserSeek);
+            LOGGER.info(
+                "Seeked to EOP for partitions: " + partitions.toString() + " for version topic: "
+                    + targetTopic.getName());
+          };
+          if (isUserSeek) {
+            return executeSeekTask(seekTask);
+          }
+          seekTask.run();
         }
       } finally {
         if (lockAcquired) {
           subscriptionLock.writeLock().unlock();
         }
       }
-      return null;
-    }, seekExecutorService);
+      return CompletableFuture.<Void>completedFuture(null);
+    }, seekExecutorService).thenCompose(seekFuture -> seekFuture);
+  }
+
+  /**
+   * Swaps from hybrid version topics resume from the last consumed heartbeat. Without one, a swap between hybrid
+   * version topics could only resume from EOP and replay all nearline data, so the swap fails instead. Sources that
+   * never emit heartbeats (batch-only versions and view topics) resume from the time they were subscribed or sought.
+   * A source version missing from store metadata may have been hybrid, so it is treated as hybrid.
+   */
+  private Map<Integer, Long> getHeartbeatTimestampsForSwap(PubSubTopic targetTopic, Set<Integer> partitions) {
+    Store store = storeRepository.getStore(storeName);
+    boolean hybridTarget = isHybridVersionTopic(store, targetTopic, false);
+    Map<Integer, Long> heartbeatTimestamps = new HashMap<>(consumedHeartbeatTimestampsForSeek);
+    for (PubSubTopicPartition source: getTopicAssignment()) {
+      int partition = source.getPartitionNumber();
+      if (!partitions.contains(partition) || heartbeatTimestamps.containsKey(partition)) {
+        continue;
+      }
+      if (!isHybridVersionTopic(store, source.getPubSubTopic(), true)) {
+        Long subscriptionTimestamp = heartbeatTimestampsForLagMonitoring.get(partition);
+        if (subscriptionTimestamp != null) {
+          heartbeatTimestamps.put(partition, subscriptionTimestamp);
+        }
+      } else if (hybridTarget) {
+        throw new VeniceException(
+            "Refusing version swap to: " + targetTopic.getName() + " for partition: " + partition
+                + " because no heartbeat has been consumed from: " + source.getPubSubTopic().getName()
+                + "; swapping would replay nearline data from end of push");
+      }
+    }
+    return heartbeatTimestamps;
+  }
+
+  private static boolean isHybridVersionTopic(Store store, PubSubTopic topic, boolean hybridIfMissing) {
+    if (topic.isViewTopic()) {
+      return false;
+    }
+    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic.getName()));
+    return version == null ? hybridIfMissing : version.isHybrid();
   }
 
   private boolean areAllTrue(Collection<Boolean> booleanCollections) {
@@ -390,7 +438,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
-    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false);
+    prepareForConsumption();
+    return internalSeekToEndOfPush(partitions, getCurrentServingVersionTopic(), false, true);
   }
 
   public boolean subscribed() {

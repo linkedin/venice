@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 
 /**
@@ -207,6 +208,47 @@ public interface VeniceChangelogConsumer<K, V> extends AutoCloseable {
    * @throws VeniceException if polling operation fails
    */
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
+
+  /**
+   * Commits the consumer's current positions back to the underlying pub-sub broker so external
+   * monitoring tools (e.g. Kafka consumer-group lag dashboards) can observe progress. This
+   * is intended for <b>monitoring purposes only</b> — the caller's checkpoint state (e.g. Flink's
+   * {@link VeniceChangeCoordinate} state) remains the source of truth for offsets. A failed commit
+   * must not affect correctness; impls are expected to log and swallow transient broker failures.
+   *
+   * <p>No-op unless {@link ChangelogClientConfig#setConsumerOffsetCommitEnabled(boolean)} is set and a consumer group
+   * id is configured on {@link ChangelogClientConfig#getConsumerProperties()} (for Kafka, {@code kafka.group.id}).
+   *
+   * <p>Default is no-op; impls that wrap a Kafka pub-sub consumer override.
+   */
+  default void commitOffsets() {
+    // no-op
+  }
+
+  /**
+   * Registers a listener told which topic each partition is consumed from, replacing any previous listener.
+   *
+   * <p>A notification is produced whenever partitions are (re)subscribed: by {@link #subscribe}, by any seek, or by an
+   * internal version swap (including a rollback to a lower version). It carries the exact position each partition was
+   * moved to by a version swap; positions of (re)subscriptions are included only when the consumer knows them exactly
+   * (e.g. not for {@link #subscribe}). Only the latest topic of each partition is reported, and explicitly unsubscribed
+   * partitions are dropped.
+   *
+   * <p>The listener is invoked synchronously on the thread calling {@link #poll}, inside {@link #poll}, before
+   * {@link #poll} returns any record from the new topic. Records from the old topic that were already fetched or
+   * buffered may still be returned afterwards. Notifications produced before registration are delivered by the first
+   * poll after it. If the listener throws, {@link #poll} throws a {@link VeniceException} without fetching any
+   * records, and the failed and remaining notifications are delivered again by the next {@link #poll}.
+   *
+   * <p>The listener runs while the consumer blocks subscription changes and buffering, so it should return quickly and
+   * must not wait on other threads that use this consumer.
+   *
+   * @param listener the listener to invoke, must not be null
+   * @throws UnsupportedOperationException if this consumer cannot report version swaps
+   */
+  default void setVersionSwapListener(Consumer<ChangelogVersionSwapNotification> listener) {
+    throw new UnsupportedOperationException(getClass().getName() + " does not support version swap listeners");
+  }
 
   /**
    * Checks whether all subscribed partitions are caught up during bootstrap. If a partition's (currentTimestamp - latestMessageTimestamp)

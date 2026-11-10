@@ -29,6 +29,12 @@ public class SparkConstants {
   public static final String OFFSET_COLUMN_NAME = "__offset__";
   public static final String MESSAGE_TYPE_COLUMN_NAME = "__message_type__";
   public static final String CHUNKED_KEY_SUFFIX_COLUMN_NAME = "__chunked_key_suffix__";
+  /**
+   * Serialized {@link com.linkedin.venice.pubsub.api.PubSubPositionWireFormat} of the source record. Used to order
+   * records of the same key when {@link #OFFSET_COLUMN_NAME} is not meaningful (e.g. negative for pub-sub systems
+   * without dense numeric offsets).
+   */
+  public static final String POSITION_COLUMN_NAME = "__position__";
 
   public static final StructType DEFAULT_SCHEMA = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
@@ -80,7 +86,8 @@ public class SparkConstants {
           new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
           new StructField(OFFSET_COLUMN_NAME, LongType, false, Metadata.empty()),
           new StructField(MESSAGE_TYPE_COLUMN_NAME, IntegerType, false, Metadata.empty()),
-          new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
+          new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          new StructField(POSITION_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 
   /**
    * Configs with this prefix will be set when building the spark session. These will get applied to all Spark jobs that
@@ -117,5 +124,7 @@ public class SparkConstants {
           new StructField(RMD_VERSION_ID_COLUMN_NAME, IntegerType, false, Metadata.empty()),
           new StructField(REPLICATION_METADATA_PAYLOAD, BinaryType, false, Metadata.empty()),
           // chunked key suffix (null if not chunked)
-          new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
+          new StructField(CHUNKED_KEY_SUFFIX_COLUMN_NAME, BinaryType, true, Metadata.empty()),
+          // serialized PubSubPositionWireFormat of the record; tie-breaker when the offset is not meaningful
+          new StructField(POSITION_COLUMN_NAME, BinaryType, true, Metadata.empty()) });
 }

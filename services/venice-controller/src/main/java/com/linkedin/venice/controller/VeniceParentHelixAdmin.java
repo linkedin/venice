@@ -3712,6 +3712,9 @@ public class VeniceParentHelixAdmin implements Admin {
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Store parentStore = repository.getStore(storeName);
+    if (parentStore == null) {
+      throw new VeniceNoStoreException(storeName, clusterName);
+    }
     // The version can be null when it was deleted while a client is still polling job status for it (e.g. a system
     // push that was killed and had its stranded version removed), or when a client polls before the push has created
     // it. Its status is read where it is used, through getParentVersionStatus, because
@@ -4848,13 +4851,12 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceException("Not implemented in parent");
   }
 
-  public ETLStoreConfigRecord mergeNewSettingIntoOldETLStoreConfig(
-      Store store,
-      Optional<Boolean> regularVersionETLEnabled,
-      Optional<Boolean> futureVersionETLEnabled,
-      Optional<String> etledUserProxyAccount,
-      Optional<VeniceETLStrategy> etlStrategy,
-      Optional<List<String>> etlActiveFabrics) {
+  public ETLStoreConfigRecord mergeNewSettingIntoOldETLStoreConfig(Store store, UpdateStoreQueryParams params) {
+    Optional<Boolean> regularVersionETLEnabled = params.getRegularVersionETLEnabled();
+    Optional<Boolean> futureVersionETLEnabled = params.getFutureVersionETLEnabled();
+    Optional<String> etledUserProxyAccount = params.getETLedProxyUserAccount();
+    Optional<VeniceETLStrategy> etlStrategy = params.getETLStrategy();
+    Optional<List<String>> etlActiveFabrics = params.getEtlActiveFabrics();
     ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
     /**
      * If etl enabled is true (either current version or future version), then account name must be specified in the command
@@ -4883,6 +4885,17 @@ public class VeniceParentHelixAdmin implements Admin {
     etlStoreConfigRecord.etlStrategy = etlStrategy.orElseGet(etlStoreConfig::getETLStrategy).getValue();
     List<String> resolvedFabrics = etlActiveFabrics.orElseGet(etlStoreConfig::getEtlActiveFabrics);
     etlStoreConfigRecord.etlActiveFabrics = resolvedFabrics != null ? new ArrayList<>(resolvedFabrics) : null;
+    // The initial onboarding values are nullable, so an explicit clear (null) has to replace the current value.
+    etlStoreConfigRecord.initialSlaTier =
+        params.isEtlInitialSlaTierSpecified() ? params.getEtlInitialSlaTier() : etlStoreConfig.getInitialSlaTier();
+    List<String> initialGrantAclUsers = params.isEtlInitialGrantAclUsersSpecified()
+        ? params.getEtlInitialGrantAclUsers()
+        : etlStoreConfig.getInitialGrantAclUsers();
+    etlStoreConfigRecord.initialGrantAclUsers =
+        initialGrantAclUsers != null ? new ArrayList<>(initialGrantAclUsers) : null;
+    etlStoreConfigRecord.initialWorkloadType = params.isEtlInitialWorkloadTypeSpecified()
+        ? params.getEtlInitialWorkloadType()
+        : etlStoreConfig.getInitialWorkloadType();
     return etlStoreConfigRecord;
   }
 

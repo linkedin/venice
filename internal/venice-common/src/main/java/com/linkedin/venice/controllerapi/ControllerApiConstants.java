@@ -156,6 +156,13 @@ public class ControllerApiConstants {
 
   public static final String ETL_ACTIVE_FABRICS = "etl_active_fabrics";
 
+  /** Optional SLA tier for the external ETL service's first onboarding of a store; absent means not provided. */
+  public static final String ETL_INITIAL_SLA_TIER = "etl_initial_sla_tier";
+  /** Optional users the external ETL service grants access to on its first onboarding of a store. */
+  public static final String ETL_INITIAL_GRANT_ACL_USERS = "etl_initial_grant_acl_users";
+  /** Optional ETL workload type for the external ETL service's first onboarding of a store. */
+  public static final String ETL_INITIAL_WORKLOAD_TYPE = "etl_initial_workload_type";
+
   public static final String SKIP_DIV = "skip_div";
 
   public static final String STORE_TYPE = "store_type";

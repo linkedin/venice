@@ -1,6 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -104,6 +105,29 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * The config is only applicable to the version specific stateless changelog consumer.
    */
   private boolean includeControlMessages = false;
+
+  /**
+   * Whether the changelog consumer periodically commits its current positions back to the broker for monitoring
+   * (consumer-group lag). Disabled by default. Supported by the consumers returned by
+   * {@link VeniceChangelogConsumerClientFactory}, both the after-image and the DaVinci-based ones.
+   *
+   * <p>Commits actually happen only when a Kafka {@code group.id} ({@code kafka.group.id}) is also set on the consumer
+   * properties. That group id is used only for these commits: it reaches every PubSub consumer built from the consumer
+   * properties (including DaVinci's ingestion consumers), but those assign partitions with auto-commit disabled, so
+   * nothing else commits to or joins the group and no rebalancing happens. The broker creates the group on the first
+   * commit. Use a group id unique to the job, since a group with active members rejects these commits.
+   *
+   * <p>This commit is monitoring-only: the caller's checkpoint state remains the source of truth for offsets, and the
+   * consumer does not read back the committed offset on restart.
+   */
+  private boolean consumerOffsetCommitEnabled = false;
+
+  private long consumerOffsetCommitIntervalMs = MINUTES.toMillis(1);
+
+  /**
+   * Upper bound on how long a single commit may block {@link VeniceChangelogConsumer#poll(long)}.
+   */
+  private long consumerOffsetCommitTimeoutMs = SECONDS.toMillis(5);
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -396,6 +420,36 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public boolean isConsumerOffsetCommitEnabled() {
+    return this.consumerOffsetCommitEnabled;
+  }
+
+  public ChangelogClientConfig setConsumerOffsetCommitEnabled(boolean consumerOffsetCommitEnabled) {
+    this.consumerOffsetCommitEnabled = consumerOffsetCommitEnabled;
+    return this;
+  }
+
+  public long getConsumerOffsetCommitIntervalMs() {
+    return this.consumerOffsetCommitIntervalMs;
+  }
+
+  public ChangelogClientConfig setConsumerOffsetCommitIntervalMs(long consumerOffsetCommitIntervalMs) {
+    this.consumerOffsetCommitIntervalMs = consumerOffsetCommitIntervalMs;
+    return this;
+  }
+
+  public long getConsumerOffsetCommitTimeoutMs() {
+    return this.consumerOffsetCommitTimeoutMs;
+  }
+
+  public ChangelogClientConfig setConsumerOffsetCommitTimeoutMs(long consumerOffsetCommitTimeoutMs) {
+    if (consumerOffsetCommitTimeoutMs <= 0) {
+      throw new IllegalArgumentException("consumerOffsetCommitTimeoutMs must be positive");
+    }
+    this.consumerOffsetCommitTimeoutMs = consumerOffsetCommitTimeoutMs;
+    return this;
+  }
+
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
         .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
@@ -427,6 +481,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setConsumerOffsetCommitEnabled(config.isConsumerOffsetCommitEnabled())
+        .setConsumerOffsetCommitIntervalMs(config.getConsumerOffsetCommitIntervalMs())
+        .setConsumerOffsetCommitTimeoutMs(config.getConsumerOffsetCommitTimeoutMs())
         .setBackgroundReporterThreadSleepIntervalInSeconds(config.getBackgroundReporterThreadSleepIntervalInSeconds());
     return newConfig;
   }

@@ -4,6 +4,7 @@ import static com.linkedin.venice.client.store.ClientConfig.defaultGenericClient
 import static com.linkedin.venice.schema.SchemaData.INVALID_VALUE_SCHEMA_ID;
 
 import com.linkedin.alpini.base.concurrency.NamedThreadFactory;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
@@ -94,6 +95,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final long connWarmupTimeoutInSeconds;
   /** scheduler to run {@link #refresh()} to periodically update metadata */
   private ScheduledExecutorService scheduler;
+  /** False when the scheduler is the app's {@link ClientConfig#getMetadataRefreshExecutor()}, which may be shared. */
+  private boolean ownsScheduler;
+  /** Stops this store's refresh from scheduling itself again, even when the scheduler is shared and stays running. */
+  private volatile boolean closed;
   /** The pending scheduled refresh task; stored so it can be cancelled during {@link #close()} */
   private volatile ScheduledFuture<?> scheduledRefreshFuture;
   /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
@@ -154,38 +159,56 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private Set<String> harClusters;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
-    super(clientConfig);
-    this.clientConfig = clientConfig;
-    this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
-    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
-        ? clientConfig.getMetadataRefreshIntervalInSeconds()
-        : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    this.connWarmupTimeoutInSeconds = clientConfig.getMetadataConnWarmupTimeoutInSeconds() > 0
-        ? clientConfig.getMetadataConnWarmupTimeoutInSeconds()
-        : DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT;
-    this.d2TransportClient = d2TransportClient;
-    this.d2ServiceDiscovery = new D2ServiceDiscovery();
-    this.clusterDiscoveryD2ServiceName = d2TransportClient.getServiceName();
-    this.compressorFactory = new CompressorFactory();
-    this.clusterStats = clientConfig.getClusterStats();
-    this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
-    InternalAvroStoreClient metadataSchemaResponseStoreClient = new AvroGenericStoreClientImpl(
-        // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster discovery
-        new D2TransportClient(clusterDiscoveryD2ServiceName, d2TransportClient.getD2Client()),
-        false,
-        defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
-    this.metadataResponseSchemaReader =
-        new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
-    /**
-     * When gRPC is enabled the top-level {@code r2Client} is allowed to be null: the R2 client used for non-storage
-     * requests lives in {@link GrpcClientConfig} instead. Both the connection warmup and the dictionary fetch below
-     * go over R2, so resolve the transport against whichever client is actually populated.
-     */
-    this.r2TransportClient = new R2TransportClient(
-        clientConfig.useGrpc() ? clientConfig.getGrpcClientConfig().getR2Client() : clientConfig.getR2Client());
-    this.harClusters = clientConfig.getHarClusters();
-    this.scheduler = Optional.ofNullable(clientConfig.getMetadataRefreshExecutor())
-        .orElseGet(() -> Executors.newScheduledThreadPool(1));
+    this(clientConfig, d2TransportClient, new InstanceHealthMonitor(clientConfig.getInstanceHealthMonitorConfig()));
+  }
+
+  /**
+   * Takes ownership of {@code instanceHealthMonitor}: it is closed if construction fails, and by {@link #close()}.
+   */
+  @VisibleForTesting
+  RequestBasedMetadata(
+      ClientConfig clientConfig,
+      D2TransportClient d2TransportClient,
+      InstanceHealthMonitor instanceHealthMonitor) {
+    super(clientConfig, instanceHealthMonitor);
+    try {
+      this.clientConfig = clientConfig;
+      this.isMetadataConnWarmupEnabled = clientConfig.isMetadataConnWarmupEnabled();
+      this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
+          ? clientConfig.getMetadataRefreshIntervalInSeconds()
+          : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
+      this.connWarmupTimeoutInSeconds = clientConfig.getMetadataConnWarmupTimeoutInSeconds() > 0
+          ? clientConfig.getMetadataConnWarmupTimeoutInSeconds()
+          : DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT;
+      this.d2TransportClient = d2TransportClient;
+      this.d2ServiceDiscovery = new D2ServiceDiscovery();
+      this.clusterDiscoveryD2ServiceName = d2TransportClient.getServiceName();
+      this.compressorFactory = new CompressorFactory();
+      this.clusterStats = clientConfig.getClusterStats();
+      this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
+      InternalAvroStoreClient metadataSchemaResponseStoreClient = new AvroGenericStoreClientImpl(
+          // Create a new D2TransportClient since the other one will be set to point to server d2 after cluster
+          // discovery
+          new D2TransportClient(clusterDiscoveryD2ServiceName, d2TransportClient.getD2Client()),
+          false,
+          defaultGenericClientConfig(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getSystemStoreName()));
+      this.metadataResponseSchemaReader =
+          new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
+      /**
+       * When gRPC is enabled the top-level {@code r2Client} is allowed to be null: the R2 client used for non-storage
+       * requests lives in {@link GrpcClientConfig} instead. Both the connection warmup and the dictionary fetch below
+       * go over R2, so resolve the transport against whichever client is actually populated.
+       */
+      this.r2TransportClient = new R2TransportClient(
+          clientConfig.useGrpc() ? clientConfig.getGrpcClientConfig().getR2Client() : clientConfig.getR2Client());
+      this.harClusters = clientConfig.getHarClusters();
+      ScheduledExecutorService metadataRefreshExecutor = clientConfig.getMetadataRefreshExecutor();
+      this.ownsScheduler = metadataRefreshExecutor == null;
+      this.scheduler = ownsScheduler ? Executors.newScheduledThreadPool(1) : metadataRefreshExecutor;
+    } catch (RuntimeException | Error e) {
+      closeInstanceHealthMonitorAfterFailure(e);
+      throw e;
+    }
   }
 
   // For unit tests only
@@ -786,6 +809,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   }
 
   private void refresh() {
+    if (closed) {
+      return;
+    }
     try {
       List<Runnable> pendingCallbacks = updateCache(false);
       if (!isReady) {
@@ -819,11 +845,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       logRefreshException(e);
     } finally {
       try {
-        if (!scheduler.isShutdown()) {
+        if (!closed && !scheduler.isShutdown()) {
           scheduledRefreshFuture = scheduler.schedule(
               this::refresh,
               isReady ? refreshIntervalInSeconds : INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
               TimeUnit.SECONDS);
+          // close() sets closed and then cancels scheduledRefreshFuture, so if it ran while we were scheduling,
+          // the future it cancelled may be the old one. Re-checking here catches that case.
+          if (closed) {
+            scheduledRefreshFuture.cancel(false);
+          }
         }
       } catch (RejectedExecutionException e) {
         // Scheduler was shut down between the isShutdown() check and the schedule() call;
@@ -844,15 +875,21 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   public void close() throws IOException {
     // Cancel the pending metadata refresh task — interrupt even if mid-execution since the client
     // is shutting down and the refresh result would be discarded anyway.
+    closed = true;
     ScheduledFuture<?> pendingRefresh = scheduledRefreshFuture;
     if (pendingRefresh != null) {
       pendingRefresh.cancel(true);
     }
-    scheduler.shutdownNow();
+    // A scheduler from the config may be shared with other clients; only its owner shuts it down.
+    if (ownsScheduler) {
+      scheduler.shutdownNow();
+    }
     h2ConnWarmupExecutorService.shutdownNow();
     try {
       // Brief wait for interrupted threads to complete their catch/finally blocks.
-      scheduler.awaitTermination(1, TimeUnit.SECONDS);
+      if (ownsScheduler) {
+        scheduler.awaitTermination(1, TimeUnit.SECONDS);
+      }
       h2ConnWarmupExecutorService.awaitTermination(1, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -861,6 +898,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     versionPartitionerMap.clear();
     Utils.closeQuietlyWithErrorLogged(metadataResponseSchemaReader);
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
+    // Close the health monitor last: the refresh above calls updateLiveInstanceSet on it.
+    super.close();
   }
 
   private CompletableFuture<TransportClientResponse> fetchMetadata() {

@@ -3366,6 +3366,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean isRepush = Version.isPushIdRePush(pushJobId);
     VeniceControllerClusterConfig clusterConfig = resources.getConfig();
     BackupStrategy backupStrategy;
+    // Set once the parent controller attempts to create batch topics directly in the NR source fabric.
+    String parentSourceFabricPubSubAddress = null;
 
     try {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createClusterReadLock()) {
@@ -3574,6 +3576,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         + " and version: " + version.getNumber() + " in cluster: " + clusterName);
               }
               long createBatchTopicInParentTimestamp = System.currentTimeMillis();
+              parentSourceFabricPubSubAddress = sourceKafkaBootstrapServers;
               createBatchTopics(
                   version,
                   pushType,
@@ -3733,6 +3736,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String errorMessage =
           "Failed to add version: " + failedVersionNumber + " to store: " + storeName + " in cluster: " + clusterName;
       LOGGER.error(errorMessage, e);
+      boolean cleanupFailed = false;
       try {
         if (version != null) {
           failedVersionNumber = version.getNumber();
@@ -3743,17 +3747,94 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               .recordVersionCreationFailureLatency(LatencyUtils.getElapsedTimeFromMsToMs(createVersionStartTime));
         }
       } catch (Throwable e1) {
+        cleanupFailed = true;
         String handlingErrorMsg = "Exception occurred while handling version " + versionNumber
             + " creation failure for store " + storeName + " in cluster " + clusterName;
         LOGGER.error(handlingErrorMsg, e1);
         errorMessage += "\n" + handlingErrorMsg + ". Error message: " + e1.getMessage();
       }
-      throw new VeniceException(errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(e), e);
+      if (version != null && parentSourceFabricPubSubAddress != null) {
+        /**
+         * The parent created the batch topics in the NR source fabric with infinite retention, but the AddVersion
+         * admin message was never sent, so no child controller knows about this version and none will truncate them.
+         * {@link #deleteOneStoreVersion} skips truncation in the parent, and the TopicCleanupService only deletes
+         * already-truncated topics, so truncate them here or they leak forever.
+         */
+        try {
+          truncateSourceFabricBatchTopicsAfterVersionCreationFailure(
+              getTopicManager(parentSourceFabricPubSubAddress),
+              version,
+              pushType,
+              deprecatedJobTopicRetentionMs);
+        } catch (Throwable e2) {
+          LOGGER.error(
+              "Failed to truncate batch topics in source fabric {} for failed version {} of store {} in cluster {}",
+              parentSourceFabricPubSubAddress,
+              version.getNumber(),
+              storeName,
+              clusterName,
+              e2);
+        }
+      }
+      throw versionCreationFailure(errorMessage, e, cleanupFailed);
     } finally {
       // If topic creation succeeds and version info is persisted to Zk, we should remove the creation time for a topic
       // If topic creation fails or if version persistence fails, we should remove the creation time for a topic
       if (version != null) {
         topicToCreationTime.remove(version.kafkaTopicName());
+      }
+    }
+  }
+
+  /**
+   * Wraps a version creation failure and keeps the {@link ErrorType} of the cause, so a client error such as a disabled
+   * store is returned with its own HTTP status instead of 500. If cleaning up the failed version also failed, the
+   * failure is reported as {@link ErrorType#GENERAL_ERROR}, because the cleanup error is a server-side error.
+   */
+  static VeniceException versionCreationFailure(String errorMessage, Throwable cause, boolean cleanupFailed) {
+    ErrorType errorType = !cleanupFailed && cause instanceof VeniceException
+        ? ((VeniceException) cause).getErrorType()
+        : ErrorType.GENERAL_ERROR;
+    return new VeniceException(
+        errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(cause),
+        cause,
+        errorType);
+  }
+
+  /**
+   * Truncates the batch topics (version topic and, for stream reprocessing, the stream reprocessing topic) that the
+   * parent controller created in the NR source fabric for a version whose creation failed. Missing topics are skipped,
+   * since the creation may have failed before the topic was created.
+   */
+  void truncateSourceFabricBatchTopicsAfterVersionCreationFailure(
+      TopicManager sourceTopicManager,
+      Version version,
+      PushType pushType,
+      long retentionMs) {
+    List<String> topicNames = new ArrayList<>(2);
+    topicNames.add(Version.composeKafkaTopic(version.getStoreName(), version.getNumber()));
+    if (pushType.isStreamReprocessing()) {
+      topicNames.add(Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()));
+    }
+    for (String topicName: topicNames) {
+      try {
+        if (sourceTopicManager.updateTopicRetention(getPubSubTopicRepository().getTopic(topicName), retentionMs)) {
+          LOGGER.info(
+              "Truncated topic {} in {} after version creation failure",
+              topicName,
+              sourceTopicManager.getPubSubClusterAddress());
+        }
+      } catch (PubSubTopicDoesNotExistException e) {
+        LOGGER.info(
+            "Topic {} does not exist in {}, skipping truncation after version creation failure",
+            topicName,
+            sourceTopicManager.getPubSubClusterAddress());
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to truncate topic {} in {} after version creation failure",
+            topicName,
+            sourceTopicManager.getPubSubClusterAddress(),
+            e);
       }
     }
   }
@@ -6354,7 +6435,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * {@link VeniceParentHelixAdmin#updateStore(String, String, UpdateStoreQueryParams)}
    * TODO: Remove the method and its usage after the deployment of parent controller updateStore change.
    */
-  public void enableHybridModeOrUpdateSettings(String clusterName, String storeName) {
+  public void enableHybridModeOrUpdateSettings(
+      String clusterName,
+      String storeName,
+      Optional<Boolean> writeQuotaEnabled,
+      Optional<Long> throughputQuotaInBytes,
+      Optional<Long> throughputQuotaInRecords) {
     storeMetadataUpdate(clusterName, storeName, (store, resources) -> {
       HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
       if (hybridStoreConfig == null) {
@@ -6364,6 +6450,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
                 DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
                 null));
+        throughputQuotaInBytes.ifPresent(store::setThroughputQuotaInBytes);
+        throughputQuotaInRecords.ifPresent(store::setThroughputQuotaInRecords);
+        writeQuotaEnabled.ifPresent(store::setWriteQuotaEnabled);
       }
       return store;
     });
@@ -6996,9 +7085,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int liveStorageNodeCount = 0;
     for (InstanceConfig instanceConfig: instanceConfigs) {
       String instanceName = instanceConfig.getInstanceName();
-      if (routingDataRepository.isLiveInstance(instanceName) && instanceConfig.getInstanceEnabled()
-          && !clusterConfig.getDisabledInstances().containsKey(instanceName)
-          && !clusterConfig.getDisabledInstancesWithInfo().containsKey(instanceName)) {
+      if (routingDataRepository.isLiveInstance(instanceName) && instanceConfig.getInstanceEnabled()) {
         liveStorageNodeCount++;
       }
     }

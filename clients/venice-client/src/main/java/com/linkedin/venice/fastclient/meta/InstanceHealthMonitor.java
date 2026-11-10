@@ -19,10 +19,13 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -70,14 +73,19 @@ public class InstanceHealthMonitor implements Closeable {
   private final Consumer<String> counterResetConsumer;
 
   private final InstanceLoadController loadController;
+  /**
+   * No lock guards the timer: a producer can pass the {@link #closed} check just before {@link #close()} stops the
+   * timer, so every schedule call handles {@link RejectedExecutionException} instead.
+   */
+  private final AtomicBoolean closed = new AtomicBoolean();
 
   public InstanceHealthMonitor(InstanceHealthMonitorConfig config) {
-    this.config = config;
-    this.timeoutProcessor = new TimeoutProcessor(null, true, 1);
+    // Validate before starting the timer: a throw after that would leave a thread nobody can stop.
+    this.config = Objects.requireNonNull(config, "config");
+    // Not registered with ResourceRegistry: a JVM shutdown hook must not stop the timer while requests are in flight.
+    // close() is the only way to stop it.
+    this.timeoutProcessor = TimeoutProcessor.createManaged(true, 1);
     this.heartBeatClient = new R2TransportClient(config.getClient());
-    this.heartBeatScheduler
-        .scheduleAtFixedRate(this::heartBeat, 0, config.getHeartBeatIntervalSeconds(), TimeUnit.SECONDS);
-
     this.counterResetConsumer = (instance) -> {
       pendingRequestCounterMap.compute(instance, (k, v) -> {
         if (v == null) {
@@ -95,9 +103,21 @@ public class InstanceHealthMonitor implements Closeable {
       });
     };
     this.loadController = new InstanceLoadController(config);
+    try {
+      this.heartBeatScheduler
+          .scheduleAtFixedRate(this::heartBeat, 0, config.getHeartBeatIntervalSeconds(), TimeUnit.SECONDS);
+    } catch (RuntimeException | Error failure) {
+      // A failed construction has no owner to close either executor.
+      heartBeatScheduler.shutdownNow();
+      timeoutProcessor.shutdownNow();
+      throw failure;
+    }
   }
 
   private void heartBeat() {
+    if (closed.get()) {
+      return;
+    }
     Set<String> heartBeatInstances = new HashSet<>(suspiciousInstanceSet);
     heartBeatInstances.addAll(unhealthyInstanceSet);
     if (heartBeatInstances.isEmpty()) {
@@ -108,18 +128,29 @@ public class InstanceHealthMonitor implements Closeable {
       CompletableFuture<TransportClientResponse> heartBeatFuture = heartBeatClient.get(heartBeatUrl);
       TimeoutProcessor.TimeoutFuture timeoutFuture = null;
       if (heartBeatFuture != null) {
-        timeoutFuture = timeoutProcessor.schedule(
-            /** Using a special http status to indicate the timed-out request */
-            () -> {
-              heartBeatFuture
-                  .completeExceptionally(new VeniceClientHttpException("Heartbeat request timed out", SC_GONE));
-              LOGGER.warn(
-                  "Heartbeat request to instance: {} timed out after {} ms",
-                  instance,
-                  config.getHeartBeatRequestTimeoutMS());
-            },
-            config.getHeartBeatRequestTimeoutMS(),
-            TimeUnit.MILLISECONDS);
+        try {
+          timeoutFuture = timeoutProcessor.schedule(
+              /** Using a special http status to indicate the timed-out request */
+              () -> {
+                heartBeatFuture
+                    .completeExceptionally(new VeniceClientHttpException("Heartbeat request timed out", SC_GONE));
+                LOGGER.warn(
+                    "Heartbeat request to instance: {} timed out after {} ms",
+                    instance,
+                    config.getHeartBeatRequestTimeoutMS());
+              },
+              config.getHeartBeatRequestTimeoutMS(),
+              TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException e) {
+          String logMessage = String.format(
+              "Stopping heartbeats: timeout processor rejected the heartbeat timeout for instance: %s, monitor closed: %s",
+              instance,
+              closed.get());
+          if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+            LOGGER.info(logMessage);
+          }
+          return;
+        }
 
         TimeoutProcessor.TimeoutFuture finalTimeoutFuture = timeoutFuture;
         heartBeatFuture.whenComplete((response, throwable) -> {
@@ -167,6 +198,9 @@ public class InstanceHealthMonitor implements Closeable {
   public ChainedCompletableFuture<Integer, Integer> trackHealthBasedOnRequestToInstance(
       String instance,
       CompletableFuture<TransportClientResponse> transportFuture) {
+    if (closed.get()) {
+      throw new IllegalStateException("Instance health monitor is closed");
+    }
     CompletableFuture<Integer> requestFuture = new CompletableFuture<>();
     pendingRequestCounterMap.compute(instance, (k, v) -> {
       // currently tracking the number of requests as 1 for single get
@@ -179,24 +213,28 @@ public class InstanceHealthMonitor implements Closeable {
 
     TimeoutProcessor.TimeoutFuture timeoutFuture = null;
     if (transportFuture != null) {
-      timeoutFuture = timeoutProcessor.schedule(
-          /** Using a special http status to indicate the timed out request */
-          () -> {
-            transportFuture.completeExceptionally(new VeniceClientHttpException("Request timed out", SC_GONE));
-            // Only track a host still in the fleet, so a timeout to a removed host does not resurrect heartbeats.
-            if (isInstanceLive(instance)) {
-              String logMessage = String.format(
-                  "Request to instance: %s timed out after %d ms, will start sending heart-beat to this instance to check whether it is healthy or not",
-                  instance,
-                  config.getRoutingRequestDefaultTimeoutMS());
-              if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
-                LOGGER.warn(logMessage);
+      try {
+        timeoutFuture = timeoutProcessor.schedule(
+            /** Using a special http status to indicate the timed out request */
+            () -> {
+              transportFuture.completeExceptionally(new VeniceClientHttpException("Request timed out", SC_GONE));
+              // Only track a host still in the fleet, so a timeout to a removed host does not resurrect heartbeats.
+              if (isInstanceLive(instance)) {
+                String logMessage = String.format(
+                    "Request to instance: %s timed out after %d ms, will start sending heart-beat to this instance to check whether it is healthy or not",
+                    instance,
+                    config.getRoutingRequestDefaultTimeoutMS());
+                if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+                  LOGGER.warn(logMessage);
+                }
+                suspiciousInstanceSet.add(instance);
               }
-              suspiciousInstanceSet.add(instance);
-            }
-          },
-          config.getRoutingRequestDefaultTimeoutMS(),
-          TimeUnit.MILLISECONDS);
+            },
+            config.getRoutingRequestDefaultTimeoutMS(),
+            TimeUnit.MILLISECONDS);
+      } catch (RejectedExecutionException e) {
+        throw new IllegalStateException("Instance health monitor is closed", e);
+      }
     }
 
     TimeoutProcessor.TimeoutFuture finalTimeoutFuture = timeoutFuture;
@@ -217,10 +255,7 @@ public class InstanceHealthMonitor implements Closeable {
          * to this suspicious instance before heartbeat makes a decision about whether this instance is indeed
          * unhealthy or not.
          */
-        timeoutProcessor.schedule(
-            () -> counterResetConsumer.accept(instance),
-            config.getRoutingTimedOutRequestCounterResetDelayMS(),
-            TimeUnit.MILLISECONDS);
+        scheduleCounterReset(instance);
       } else {
         counterResetConsumer.accept(instance);
       }
@@ -229,6 +264,26 @@ public class InstanceHealthMonitor implements Closeable {
     });
 
     return new ChainedCompletableFuture<>(requestFuture, resultFuture);
+  }
+
+  /** After close, the timer is stopped, so the counter is reset immediately. */
+  private void scheduleCounterReset(String instance) {
+    if (!closed.get()) {
+      try {
+        timeoutProcessor.schedule(
+            () -> counterResetConsumer.accept(instance),
+            config.getRoutingTimedOutRequestCounterResetDelayMS(),
+            TimeUnit.MILLISECONDS);
+        return;
+      } catch (RejectedExecutionException e) {
+        String logMessage = String
+            .format("Timeout processor rejected the delayed counter reset for instance: %s, resetting now", instance);
+        if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(logMessage)) {
+          LOGGER.info(logMessage);
+        }
+      }
+    }
+    counterResetConsumer.accept(instance);
   }
 
   /**
@@ -325,19 +380,21 @@ public class InstanceHealthMonitor implements Closeable {
 
   @Override
   public void close() throws IOException {
-    if (timeoutProcessor != null) {
-      timeoutProcessor.shutdownNow();
+    if (!closed.compareAndSet(false, true)) {
+      return;
+    }
+    // Stop the heartbeat first because it schedules work on the timer.
+    heartBeatScheduler.shutdownNow();
+    try {
       try {
-        timeoutProcessor.awaitTermination(30, TimeUnit.SECONDS);
+        heartBeatScheduler.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }
-    }
-
-    if (heartBeatScheduler != null) {
-      heartBeatScheduler.shutdownNow();
+    } finally {
+      timeoutProcessor.shutdownNow();
       try {
-        heartBeatScheduler.awaitTermination(30, TimeUnit.SECONDS);
+        timeoutProcessor.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }

@@ -10,7 +10,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -26,6 +28,26 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   // for testing
   public InternalAvroStoreClient<K, V> getInnerStoreClient() {
     return innerStoreClient;
+  }
+
+  protected static <T> CompletableFuture<T> handlePreservingException(
+      CompletableFuture<T> future,
+      BiFunction<? super T, Throwable, ? extends T> callback) {
+    CompletableFuture<T> result = new CompletableFuture<>();
+    future.handle((value, throwable) -> {
+      try {
+        result.complete(callback.apply(value, throwable));
+      } catch (VeniceClientException | CompletionException exception) {
+        // Preserve decorator exception types before dependent stages wrap them.
+        result.completeExceptionally(exception);
+      }
+      return null;
+    }).whenComplete((ignored, throwable) -> {
+      if (throwable != null) {
+        result.completeExceptionally(throwable);
+      }
+    });
+    return result;
   }
 
   @Override
@@ -99,10 +121,29 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
     return innerStoreClient.getLatestValueSchema();
   }
 
+  /**
+   * Forwards to the inner client's {@code get(K)} rather than inheriting
+   * {@link InternalAvroStoreClient#get(Object)}, so that inner decorators such as
+   * {@link StatTrackingStoreClient} still record their single-get metrics.
+   */
+  @Override
+  public CompletableFuture<V> get(K key) throws VeniceClientException {
+    return innerStoreClient.get(key);
+  }
+
   @Override
   public CompletableFuture<V> get(K key, Optional<ClientStats> stats, long preRequestTimeInNS)
       throws VeniceClientException {
     return innerStoreClient.get(key, stats, preRequestTimeInNS);
+  }
+
+  /**
+   * Forwards to the inner client's {@code getRaw(String)} so that inner decorators such as
+   * {@link StatTrackingStoreClient} still record their schema-reader metrics.
+   */
+  @Override
+  public CompletableFuture<byte[]> getRaw(String requestPath) {
+    return innerStoreClient.getRaw(requestPath);
   }
 
   @Override

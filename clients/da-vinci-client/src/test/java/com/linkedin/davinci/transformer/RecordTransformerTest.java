@@ -35,6 +35,8 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -435,8 +437,9 @@ public class RecordTransformerTest {
             valueSchema,
             internalRecordTransformerConfig);
 
-    internalRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
-    verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
+    PubSubPosition position = ApacheKafkaOffsetPosition.of(10L);
+    internalRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId, position);
+    verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId, position);
   }
 
   @Test
