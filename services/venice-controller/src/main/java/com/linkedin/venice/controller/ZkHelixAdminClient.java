@@ -13,7 +13,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.constants.InstanceConstants;
@@ -30,6 +32,7 @@ import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.RESTConfig;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.helix.zookeeper.api.client.HelixZkClient;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -57,6 +60,14 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   public ZkHelixAdminClient(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository) {
+    this(multiClusterConfigs, metricsRepository, ZKHelixAdmin::new);
+  }
+
+  public ZkHelixAdminClient(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository,
+      Function<HelixZkClient, HelixAdmin> helixAdminFactory) {
+    Objects.requireNonNull(helixAdminFactory, "helixAdminFactory");
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
@@ -67,7 +78,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     if (!helixAdminZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
       throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
     }
-    helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
+    try {
+      helixAdmin =
+          Objects.requireNonNull(helixAdminFactory.apply(helixAdminZkClient), "helixAdminFactory returned null");
+    } catch (RuntimeException e) {
+      try {
+        helixAdminZkClient.close();
+      } catch (RuntimeException closeException) {
+        e.addSuppressed(closeException);
+      }
+      throw e;
+    }
     helixConfigAccessor = new ConfigAccessor(helixAdminZkClient);
   }
 
