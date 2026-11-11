@@ -164,7 +164,8 @@ public class VeniceControllerContext {
     /**
      * Supplies the Helix admin used for cluster management. The factory receives the connected,
      * serializer-configured client shared with the config accessor and must return a non-null admin
-     * using that client. The returned admin is closed when the controller's admin client closes.
+     * using that client. Venice closes the returned admin and the supplied client on shutdown;
+     * the implementation must not assume ownership of the supplied client.
      */
     public Builder setHelixAdminFactory(Function<HelixZkClient, HelixAdmin> helixAdminFactory) {
       this.helixAdminFactory = Objects.requireNonNull(helixAdminFactory, "helixAdminFactory");

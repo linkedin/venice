@@ -52,6 +52,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   static final String HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG = "PARTICIPANT_DEREGISTRATION_TIMEOUT";
 
   private final HelixAdmin helixAdmin;
+  private final ZkClient helixAdminZkClient;
   private final ConfigAccessor helixConfigAccessor;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
@@ -71,7 +72,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
-    ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+    helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     helixAdminZkClient
         .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
     helixAdminZkClient.setZkSerializer(new ZNRecordSerializer());
@@ -463,7 +464,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void close() {
-    helixAdmin.close();
+    try {
+      helixAdmin.close();
+    } finally {
+      helixAdminZkClient.close();
+    }
   }
 
   /**

@@ -126,6 +126,7 @@ public class TestZkHelixAdminClient {
       assertSame(client.getHelixAdmin(), admins.constructed().get(0));
       client.close();
       verify(admins.constructed().get(0)).close();
+      verify(zkClient).close();
     }
   }
 
@@ -147,6 +148,7 @@ public class TestZkHelixAdminClient {
       assertSame(client.getHelixAdmin(), mockHelixAdmin);
       client.close();
       verify(mockHelixAdmin).close();
+      verify(zkClient).close();
     }
   }
 
