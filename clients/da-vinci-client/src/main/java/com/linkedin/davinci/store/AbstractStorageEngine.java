@@ -5,6 +5,8 @@ import static com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger.CHECK
 import static com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
+import com.linkedin.davinci.utils.IngestionOperationContext;
+import com.linkedin.davinci.utils.IngestionOperationContext.Phase;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -414,13 +416,17 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   @Override
-  public synchronized Map<String, String> sync(int partitionId) {
-    AbstractStoragePartition partition = partitionList.get(partitionId);
-    if (partition == null) {
-      LOGGER.warn("Partition {} doesn't exist, no sync operation will be executed", partitionId);
-      return Collections.emptyMap();
-    }
-    return partition.sync();
+  public Map<String, String> sync(int partitionId) {
+    return IngestionOperationContext.track(Phase.STORAGE_SYNC, storeVersionName, partitionId, () -> {
+      synchronized (this) {
+        AbstractStoragePartition partition = partitionList.get(partitionId);
+        if (partition == null) {
+          LOGGER.warn("Partition {} doesn't exist, no sync operation will be executed", partitionId);
+          return Collections.emptyMap();
+        }
+        return partition.sync();
+      }
+    });
   }
 
   @Override
@@ -536,7 +542,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   @Override
   public void put(int partitionId, byte[] key, byte[] value) throws VeniceException {
-    executeWithSafeGuard(partitionId, () -> {
+    executeWriteWithDiagnostics(Phase.STORAGE_PUT, partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       partition.put(key, value);
     });
@@ -544,7 +550,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   @Override
   public void put(int partitionId, byte[] key, ByteBuffer value) throws VeniceException {
-    executeWithSafeGuard(partitionId, () -> {
+    executeWriteWithDiagnostics(Phase.STORAGE_PUT, partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       partition.put(key, value);
     });
@@ -553,7 +559,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   @Override
   public void putWithReplicationMetadata(int partitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata)
       throws VeniceException {
-    executeWithSafeGuard(partitionId, () -> {
+    executeWriteWithDiagnostics(Phase.STORAGE_PUT_WITH_RMD, partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       partition.putWithReplicationMetadata(key, value, replicationMetadata);
     });
@@ -561,7 +567,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   @Override
   public void putReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException {
-    executeWithSafeGuard(partitionId, () -> {
+    executeWriteWithDiagnostics(Phase.STORAGE_PUT_RMD, partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       partition.putReplicationMetadata(key, replicationMetadata);
     });
@@ -609,7 +615,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   @Override
   public void delete(int partitionId, byte[] key) throws VeniceException {
-    executeWithSafeGuard(partitionId, () -> {
+    executeWriteWithDiagnostics(Phase.STORAGE_DELETE, partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       partition.delete(key);
     });
@@ -618,9 +624,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   @Override
   public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata)
       throws VeniceException {
-    executeWithSafeGuard(partitionId, () -> {
+    executeWriteWithDiagnostics(Phase.STORAGE_DELETE_WITH_RMD, partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       partition.deleteWithReplicationMetadata(key, replicationMetadata);
+    });
+  }
+
+  private void executeWriteWithDiagnostics(Phase phase, int partitionId, Runnable action) {
+    IngestionOperationContext.track(phase, storeVersionName, partitionId, () -> {
+      executeWithSafeGuard(partitionId, action);
+      return null;
     });
   }
 

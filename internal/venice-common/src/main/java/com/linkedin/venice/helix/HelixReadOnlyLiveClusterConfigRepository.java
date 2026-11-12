@@ -29,7 +29,7 @@ public class HelixReadOnlyLiveClusterConfigRepository implements ReadOnlyLiveClu
 
   protected final ZkBaseDataAccessor<LiveClusterConfig> zkDataAccessor;
   protected final String clusterConfigZkPath;
-  protected LiveClusterConfig liveClusterConfig = DEFAULT_LIVE_CLUSTER_CONFIG;
+  protected volatile LiveClusterConfig liveClusterConfig = DEFAULT_LIVE_CLUSTER_CONFIG;
 
   // Listener to handle modifications to cluster config
   private final IZkDataListener clusterConfigListener = new ClusterConfigZkListener();

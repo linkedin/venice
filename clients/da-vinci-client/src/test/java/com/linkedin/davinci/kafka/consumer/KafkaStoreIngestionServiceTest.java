@@ -41,6 +41,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
+import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
@@ -89,6 +90,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -102,6 +104,7 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.mockito.ArgumentCaptor;
@@ -110,6 +113,7 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -948,8 +952,14 @@ public abstract class KafkaStoreIngestionServiceTest {
     assertNotNull(internalDaVinciRecordTransformerConfig.getRecordTransformerStats());
   }
 
-  @Test
-  public void testAAWCThreadPoolStatsAreRegistered() {
+  @DataProvider
+  public Object[][] diagnosticsListenerHostnames() {
+    return new Object[][] { { false, "server-a.example.com" }, { true, "server-a.example.com" }, { false, null },
+        { true, null }, { false, "" }, { true, "" } };
+  }
+
+  @Test(dataProvider = "diagnosticsListenerHostnames")
+  public void testAAWCThreadPoolStatsAreRegistered(boolean dedicatedDrainerQueues, String listenerHostname) {
     // Close the existing service first
     kafkaStoreIngestionService.close();
 
@@ -981,6 +991,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(serverConfig)
         .getConsumerPoolStrategyType();
     doReturn(1).when(serverConfig).getStoreWriterNumber();
+    doReturn(listenerHostname).when(serverConfig).getListenerHostname();
+    doReturn(dedicatedDrainerQueues).when(serverConfig).isDedicatedDrainerQueueEnabled();
     doReturn(writePathThreadPriority).when(serverConfig).getWritePathThreadPriority();
     doReturn(0).when(serverConfig).getIdleIngestionTaskCleanupIntervalInSeconds();
     doReturn(1).when(serverConfig).getStoreChangeNotifierThreadPoolSize();
@@ -1022,9 +1034,15 @@ public abstract class KafkaStoreIngestionServiceTest {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
     List<List<?>> daemonThreadFactoryArgs = new ArrayList<>();
-    try (MockedConstruction<DaemonThreadFactory> ignored = mockConstruction(
-        DaemonThreadFactory.class,
-        (mock, context) -> daemonThreadFactoryArgs.add(new ArrayList<>(context.arguments())))) {
+    List<BooleanSupplier> diagnosticsSettings = new ArrayList<>();
+    try (
+        MockedConstruction<DaemonThreadFactory> ignored = mockConstruction(
+            DaemonThreadFactory.class,
+            (mock, context) -> daemonThreadFactoryArgs.add(new ArrayList<>(context.arguments())));
+        MockedConstruction<StoreBufferService> buffers = mockConstruction(StoreBufferService.class, (mock, context) -> {
+          assertEquals(context.arguments().size(), 11);
+          diagnosticsSettings.add(BooleanSupplier.class.cast(context.arguments().get(10)));
+        })) {
       // Create the ingestion service
       KafkaStoreIngestionService service = new KafkaStoreIngestionService(
           mockStorageService,
@@ -1052,6 +1070,25 @@ public abstract class KafkaStoreIngestionServiceTest {
           Optional.empty());
 
       try {
+        assertEquals(buffers.constructed().size(), dedicatedDrainerQueues ? 2 : 1);
+        doReturn("server-b.example.com").when(serverConfig).getListenerHostname();
+        assertLiveDiagnosticsSetting(diagnosticsSettings, false, Collections.singleton("server-a.example.com"), false);
+        assertLiveDiagnosticsSetting(diagnosticsSettings, true, Collections.emptySet(), false);
+        assertLiveDiagnosticsSetting(diagnosticsSettings, true, Collections.singleton("server-b.example.com"), false);
+        assertLiveDiagnosticsSetting(diagnosticsSettings, true, Collections.singleton("server-a"), false);
+        assertLiveDiagnosticsSetting(
+            diagnosticsSettings,
+            true,
+            Collections.singleton("server-a.example.com"),
+            listenerHostname != null && !listenerHostname.isEmpty());
+        assertLiveDiagnosticsSetting(diagnosticsSettings, true, Collections.emptySet(), false);
+        assertLiveDiagnosticsSetting(
+            diagnosticsSettings,
+            true,
+            Collections.singleton("server-a.example.com"),
+            listenerHostname != null && !listenerHostname.isEmpty());
+        assertLiveDiagnosticsSetting(diagnosticsSettings, false, Collections.singleton("server-a.example.com"), false);
+        verify(serverConfig, Mockito.times(1)).getListenerHostname();
         assertTrue(
             hasDaemonThreadFactoryArgs(daemonThreadFactoryArgs, "AA_WC_PARALLEL_PROCESSING", writePathThreadPriority),
             "AA/WC workload processing pool should use the configured write-path thread priority");
@@ -1105,6 +1142,22 @@ public abstract class KafkaStoreIngestionServiceTest {
         }
       }
     }
+  }
+
+  private void assertLiveDiagnosticsSetting(
+      List<BooleanSupplier> settings,
+      boolean enabled,
+      Set<String> hosts,
+      boolean expected) {
+    LiveClusterConfig config = new LiveClusterConfig();
+    config.setStalledDrainerDiagnosticsEnabled(enabled);
+    config.setStalledDrainerDiagnosticsHostAllowlist(hosts);
+    doReturn(config).when(mockLiveClusterConfigRepo).getConfigs();
+    Mockito.clearInvocations(mockLiveClusterConfigRepo);
+    for (BooleanSupplier setting: settings) {
+      assertEquals(setting.getAsBoolean(), expected);
+    }
+    verify(mockLiveClusterConfigRepo, Mockito.times(settings.size())).getConfigs();
   }
 
   private static boolean hasDaemonThreadFactoryArgs(
