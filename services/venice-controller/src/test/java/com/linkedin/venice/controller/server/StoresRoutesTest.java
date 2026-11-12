@@ -5,6 +5,7 @@ import static com.linkedin.venice.exceptions.ErrorType.INCORRECT_CONTROLLER;
 import static com.linkedin.venice.exceptions.ErrorType.INVALID_CONFIG;
 import static com.linkedin.venice.exceptions.ErrorType.STORE_NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -24,6 +25,7 @@ import com.linkedin.venice.controllerapi.MultiRegionStorageModeResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -34,6 +36,7 @@ import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -47,6 +50,8 @@ import com.linkedin.venice.protocols.controller.ListStoresGrpcResponse;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcRequest;
 import com.linkedin.venice.protocols.controller.ValidateStoreDeletedGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Arrays;
 import java.util.Collections;
@@ -54,6 +59,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
@@ -67,6 +73,40 @@ public class StoresRoutesTest {
   private static final String TEST_STORE_NAME = "test_store";
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  @Test
+  public void testGetDeletableTopicsRecognizesAllRealTimeTopics() throws Exception {
+    Admin admin = mock(Admin.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(true).when(admin).isLeaderControllerFor(TEST_CLUSTER);
+    doReturn(TEST_CLUSTER).when(admin).discoverCluster(anyString());
+    doReturn(mock(Store.class)).when(admin).getStore(eq(TEST_CLUSTER), anyString());
+    HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+    doReturn(storeConfigRepo).when(admin).getStoreConfigRepo();
+    doReturn(Optional.empty()).when(storeConfigRepo).getStoreConfig(anyString());
+    long marker = TimeUnit.HOURS.toMillis(23);
+    Map<PubSubTopic, Long> retentions = new HashMap<>();
+    List<String> deprecatedTopics = Arrays
+        .asList("test_store_rt", "test_store_rt_v1_sep", "venice_system_store_meta_store_test_store_rt", "legacy_rt");
+    for (String topic: deprecatedTopics) {
+      long retention = topic.equals("legacy_rt") ? 15000L : marker;
+      retentions.put(pubSubTopicRepository.getTopic(topic), retention);
+      doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(topic, retention);
+    }
+    retentions.put(pubSubTopicRepository.getTopic("healthy_rt"), TimeUnit.DAYS.toMillis(5));
+    retentions.put(pubSubTopicRepository.getTopic("test_store_v1"), marker);
+    doReturn(retentions).when(topicManager).getAllTopicRetentions();
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(ControllerApiConstants.CLUSTER);
+
+    Route route = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getDeletableStoreTopics(admin);
+    MultiStoreTopicsResponse response = ObjectMapperFactory.getInstance()
+        .readValue(route.handle(request, mock(Response.class)).toString(), MultiStoreTopicsResponse.class);
+
+    Assert.assertFalse(response.isError(), response.getError());
+    Assert.assertEqualsNoOrder(response.getTopics().toArray(), deprecatedTopics.toArray());
+  }
 
   @Test
   public void testGetFutureVersion() throws Exception {

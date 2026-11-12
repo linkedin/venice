@@ -443,6 +443,14 @@ public class ConfigKeys {
   public static final String DEPRECATED_TOPIC_RETENTION_MS = "deprecated.topic.retention.ms";
 
   /**
+   * Retention marker for deprecated real-time topics, including separate incremental-push and user system store
+   * topics. Defaults to 23 hours. Must be positive and reserved for deletion, not used by active RT topics.
+   * Cleanup recognizes this exact value in addition to the legacy deprecated-topic threshold; it does not wait
+   * for this retention period to elapse. All controllers must agree on this value.
+   */
+  public static final String DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS = "deprecated.real.time.topic.retention.ms";
+
+  /**
    * Time interval to retry registering service discovery announcers that failed to register. By default, this is set to 30000L ms.
    */
   public static final String SERVICE_DISCOVERY_REGISTRATION_RETRY_MS = "service.discovery.registration.retry.ms";

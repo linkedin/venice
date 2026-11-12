@@ -58,10 +58,59 @@ import java.util.stream.Collectors;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class TestTopicCleanupService {
+  @DataProvider(name = "deprecatedRealTimeTopics")
+  public Object[][] deprecatedRealTimeTopics() {
+    return new Object[][] { { "cleanup_rt", 15000L, false }, { "cleanup_rt", TimeUnit.HOURS.toMillis(23), false },
+        { "cleanup_rt_v1_sep", TimeUnit.HOURS.toMillis(23), false },
+        { "venice_system_store_meta_store_cleanup_rt", TimeUnit.HOURS.toMillis(23), false },
+        { "cleanup_rt", 15000L, true }, { "cleanup_rt", TimeUnit.HOURS.toMillis(23), true },
+        { "cleanup_rt_v1_sep", TimeUnit.HOURS.toMillis(23), true },
+        { "venice_system_store_meta_store_cleanup_rt", TimeUnit.HOURS.toMillis(23), true } };
+  }
+
+  @Test(dataProvider = "deprecatedRealTimeTopics")
+  public void testRealTimeMarkerCleanupRequiresControllerPermission(String topicName, long retention, boolean parent) {
+    PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
+    PubSubTopic healthyRT = pubSubTopicRepository.getTopic(topic.getStoreName() + "_rt_v2");
+    PubSubTopic healthyVT = pubSubTopicRepository.getTopic(topic.getStoreName() + "_v1");
+    Map<PubSubTopic, Long> retentions = new HashMap<>();
+    retentions.put(topic, retention);
+    retentions.put(healthyRT, TimeUnit.DAYS.toMillis(5));
+    retentions.put(healthyVT, TimeUnit.HOURS.toMillis(23));
+    doReturn(retentions).when(topicManager).getAllTopicRetentions();
+    List<TopicManager> managers = Collections.singletonList(topicManager);
+    if (parent) {
+      doReturn(true).when(admin).isParent();
+      doReturn(Utils.setOf("local", "remote")).when(veniceControllerMultiClusterConfig).getParentFabrics();
+      doReturn(topicManager).when(admin).getTopicManager("local");
+      doReturn("remote").when(remoteTopicManager).getPubSubClusterAddress();
+      doReturn(retentions).when(remoteTopicManager).getAllTopicRetentions();
+      managers = Arrays.asList(topicManager, remoteTopicManager);
+    }
+    doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(topicName, retention);
+    doReturn("cluster").when(admin).discoverCluster(topic.getStoreName());
+    doReturn(Optional.of(new StoreConfig(topic.getStoreName()))).when(storeConfigRepository)
+        .getStoreConfig(topic.getStoreName());
+
+    topicCleanupService.cleanupVeniceTopics();
+    for (TopicManager manager: managers) {
+      verify(manager, never()).ensureTopicIsDeletedAndBlockWithRetry(topic);
+    }
+
+    doReturn(true).when(admin).isRTTopicDeletionPermittedByAllControllers(anyString(), eq(topicName));
+    topicCleanupService.cleanupVeniceTopics();
+    for (TopicManager manager: managers) {
+      verify(manager).ensureTopicIsDeletedAndBlockWithRetry(topic);
+      verify(manager, never()).ensureTopicIsDeletedAndBlockWithRetry(healthyRT);
+      verify(manager, never()).ensureTopicIsDeletedAndBlockWithRetry(healthyVT);
+    }
+  }
+
   private Admin admin;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private TopicManager topicManager;
@@ -585,7 +634,7 @@ public class TestTopicCleanupService {
     doReturn(storeConfigRepository).when(parent).getStoreConfigRepo();
     doReturn(internalAdmin).when(parent).getVeniceHelixAdmin();
     doReturn(clusterName).when(parent).discoverCluster(storeName);
-    doReturn(true).when(parent).isTopicTruncatedBasedOnRetention(1000L);
+    doReturn(true).when(parent).isTopicTruncatedBasedOnRetention(rt.getName(), 1000L);
     doReturn(true).when(internalAdmin).isRTTopicDeletionPermittedByAllControllers(clusterName, rt.getName());
     doCallRealMethod().when(parent).isRTTopicDeletionPermittedByAllControllers(clusterName, rt.getName());
     TopicCleanupService parentCleanup = new TopicCleanupService(

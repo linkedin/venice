@@ -893,10 +893,12 @@ public class StoresRoutes extends AbstractRoute {
               LOGGER.warn("Store " + storeName + " does not exist. Skipping it.");
               return;
             }
-            Store store = admin.getStore(cluster, storeName);
-            PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-            if (topicsWithRetention.containsKey(realTimeTopic)) {
-              if (admin.isTopicTruncatedBasedOnRetention(topicsWithRetention.get(realTimeTopic))) {
+            admin.getStore(cluster, storeName);
+            List<PubSubTopic> realTimeTopics =
+                topicsWithRetention.keySet().stream().filter(PubSubTopic::isRealTime).collect(Collectors.toList());
+            for (PubSubTopic realTimeTopic: realTimeTopics) {
+              if (admin
+                  .isTopicTruncatedBasedOnRetention(realTimeTopic.getName(), topicsWithRetention.get(realTimeTopic))) {
                 deletableTopicsList.add(realTimeTopic.getName());
               }
               topicsWithRetention.remove(realTimeTopic);
