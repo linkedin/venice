@@ -69,6 +69,28 @@ public abstract class RequestContext {
 
   public abstract RequestType getRequestType();
 
+  /**
+   * Number of keys in this request, used to route and attribute latency by request size. Defaults to a single key; the
+   * multi-key context reports its actual batch size.
+   */
+  public int getKeyCount() {
+    return 1;
+  }
+
+  /**
+   * Whether any part of this request failed even though it may have completed normally (partial-success requests).
+   */
+  public boolean hasPartialResponseFailure() {
+    return false;
+  }
+
+  /**
+   * Whether a retry was sent for this request, in which case part of it may have been served by another group.
+   */
+  public boolean isRetryTriggered() {
+    return false;
+  }
+
   public void setServerClusterName(String serverClusterName) {
     this.serverClusterName = serverClusterName;
   }

@@ -1,0 +1,241 @@
+package com.linkedin.venice.fastclient.meta;
+
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
+
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.fastclient.RequestContext;
+import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.routing.HelixGroupStats;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.IntUnaryOperator;
+import org.testng.annotations.Test;
+
+
+public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
+  private final static String instance1 = "https://instance1:1234";
+  private final static String instance2 = "https://instance2:1234";
+  private final static String instance3 = "https://instance3:1234";
+
+  private static HelixLatencyAdaptiveGroupRoutingStrategy threeGroupStrategy(HelixGroupStats stats) {
+    InstanceHealthMonitor monitor = mock(InstanceHealthMonitor.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = new HelixLatencyAdaptiveGroupRoutingStrategy(monitor, stats);
+    Map<String, Integer> instanceToGroupIdMapping = new HashMap<>();
+    instanceToGroupIdMapping.put(instance1, 0);
+    instanceToGroupIdMapping.put(instance2, 1);
+    instanceToGroupIdMapping.put(instance3, 2);
+    strategy.updateHelixGroupInfo(instanceToGroupIdMapping);
+    return strategy;
+  }
+
+  @Test
+  public void testThrowsWhenNoGroups() {
+    // No group info was ever set, so the group count is zero.
+    InstanceHealthMonitor monitor = mock(InstanceHealthMonitor.class);
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = new HelixLatencyAdaptiveGroupRoutingStrategy(monitor, stats);
+    assertThrows(VeniceClientException.class, () -> strategy.getHelixGroupId(0, -1));
+  }
+
+  @Test
+  public void testAvoidsOriginalGroupOnRetry() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    doReturn(5d).when(stats).getGroupResponseWaitingTimeAvg(0);
+    doReturn(6d).when(stats).getGroupResponseWaitingTimeAvg(1);
+    doReturn(7d).when(stats).getGroupResponseWaitingTimeAvg(2);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+
+    // Whatever the weighted draw picks, it must never be the group already tried on the original request.
+    for (long requestId = 0; requestId < 300; requestId++) {
+      int excluded = (int) (requestId % 3);
+      int picked = strategy.getHelixGroupId(requestId, excluded);
+      assertNotEquals(picked, excluded, "retry must avoid the original group");
+      assertTrue(picked >= 0 && picked < 3);
+    }
+  }
+
+  @Test
+  public void testFavoursFasterGroup() {
+    // group0 is 10x faster than the other two => at full skew it should absorb the clear majority of traffic.
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    doReturn(10d).when(stats).getGroupResponseWaitingTimeAvg(0);
+    doReturn(100d).when(stats).getGroupResponseWaitingTimeAvg(1);
+    doReturn(100d).when(stats).getGroupResponseWaitingTimeAvg(2);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    int fast = 0;
+    int total = 6000;
+    for (long requestId = 0; requestId < total; requestId++) {
+      if (strategy.getHelixGroupId(requestId, -1) == 0) {
+        fast++;
+      }
+    }
+    assertTrue(fast > total * 0.5, "fast group should get the majority at full skew, got " + fast + "/" + total);
+  }
+
+  @Test
+  public void testSizeAwareRoutesPerKeyCountBucket() {
+    // A group can be fast for small batches but slow for large ones. With size-aware routing the small-batch bucket and
+    // the large-batch bucket must skew to different groups.
+    // Buckets: key counts 1-5 => bucketKey 1, key counts 6+ => bucketKey 6.
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    // Small-batch bucket (key 1): group0 fast, groups 1 and 2 slow.
+    doReturn(10d).when(stats).getRoutingLatencyAvg(0, 1);
+    doReturn(100d).when(stats).getRoutingLatencyAvg(1, 1);
+    doReturn(100d).when(stats).getRoutingLatencyAvg(2, 1);
+    // Large-batch bucket (key 6): group1 fast, groups 0 and 2 slow.
+    doReturn(100d).when(stats).getRoutingLatencyAvg(0, 6);
+    doReturn(10d).when(stats).getRoutingLatencyAvg(1, 6);
+    doReturn(100d).when(stats).getRoutingLatencyAvg(2, 6);
+    // Plenty of samples in every (group, bucket) so nothing is masked as unmeasured.
+    doReturn(1000L).when(stats).getRoutingLatencySampleCount(anyInt(), anyInt());
+
+    TreeMap<Integer, Integer> fullSkewMsByLowerBound = new TreeMap<>();
+    fullSkewMsByLowerBound.put(1, 40);
+    fullSkewMsByLowerBound.put(6, 40);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = sizeAwareStrategy(stats, fullSkewMsByLowerBound, null);
+
+    int total = 6000;
+    int smallBatchToGroup0 = 0;
+    int largeBatchToGroup1 = 0;
+    for (long requestId = 0; requestId < total; requestId++) {
+      if (strategy.getHelixGroupId(requestId, -1, 3) == 0) {
+        smallBatchToGroup0++;
+      }
+      if (strategy.getHelixGroupId(requestId, -1, 50) == 1) {
+        largeBatchToGroup1++;
+      }
+    }
+    assertTrue(
+        smallBatchToGroup0 > total * 0.5,
+        "small-batch requests should favour the group fast for that bucket, got " + smallBatchToGroup0 + "/" + total);
+    assertTrue(
+        largeBatchToGroup1 > total * 0.5,
+        "large-batch requests should favour a different group fast for that bucket, got " + largeBatchToGroup1 + "/"
+            + total);
+  }
+
+  @Test
+  public void testSizeAwareFullSkewFollowsRetryThreshold() {
+    // The slowest group (20ms) is under the bucket's 25ms stay-even point but past a derived 10ms retry threshold.
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    doReturn(20d).when(stats).getRoutingLatencyAvg(0, 1);
+    doReturn(20d).when(stats).getRoutingLatencyAvg(1, 1);
+    doReturn(10d).when(stats).getRoutingLatencyAvg(2, 1);
+    doReturn(1000L).when(stats).getRoutingLatencySampleCount(anyInt(), anyInt());
+    TreeMap<Integer, Integer> buckets = new TreeMap<>(Collections.singletonMap(1, 100));
+
+    int total = 6000;
+    int bucketOnly = countHits(sizeAwareStrategy(stats, buckets, null), 2, total);
+    int derived = countHits(sizeAwareStrategy(stats, buckets, keyCount -> 10_000), 2, total);
+    assertTrue(bucketOnly < total * 0.40, "bucket thresholds keep routing even, got " + bucketOnly + "/" + total);
+    assertTrue(
+        derived > total * 0.45,
+        "the retry threshold fully skews to the fast group, got " + derived + "/" + total);
+  }
+
+  private static HelixLatencyAdaptiveGroupRoutingStrategy sizeAwareStrategy(
+      HelixGroupStats stats,
+      TreeMap<Integer, Integer> fullSkewMsByLowerBound,
+      IntUnaryOperator retryThresholdMicrosByKeyCount) {
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = new HelixLatencyAdaptiveGroupRoutingStrategy(
+        mock(InstanceHealthMonitor.class),
+        stats,
+        fullSkewMsByLowerBound,
+        0.25,
+        1.0,
+        10L,
+        retryThresholdMicrosByKeyCount);
+    Map<String, Integer> instanceToGroupIdMapping = new HashMap<>();
+    instanceToGroupIdMapping.put(instance1, 0);
+    instanceToGroupIdMapping.put(instance2, 1);
+    instanceToGroupIdMapping.put(instance3, 2);
+    strategy.updateHelixGroupInfo(instanceToGroupIdMapping);
+    return strategy;
+  }
+
+  private static int countHits(HelixLatencyAdaptiveGroupRoutingStrategy strategy, int group, int total) {
+    int hits = 0;
+    for (long requestId = 0; requestId < total; requestId++) {
+      if (strategy.getHelixGroupId(requestId, -1, 3) == group) {
+        hits++;
+      }
+    }
+    return hits;
+  }
+
+  private static RequestContext trackedMultiGet(CompletableFuture<?> resultFuture, boolean partialFailure) {
+    return trackedMultiGet(resultFuture, partialFailure, false);
+  }
+
+  private static RequestContext trackedMultiGet(
+      CompletableFuture<?> resultFuture,
+      boolean partialFailure,
+      boolean retryTriggered) {
+    RequestContext requestContext = mock(RequestContext.class);
+    doReturn(RequestType.MULTI_GET).when(requestContext).getRequestType();
+    doReturn(false).when(requestContext).isRetryRequest();
+    doReturn(1).when(requestContext).getHelixGroupId();
+    doReturn(10).when(requestContext).getKeyCount();
+    doReturn(resultFuture).when(requestContext).getResultFuture();
+    doReturn(partialFailure).when(requestContext).hasPartialResponseFailure();
+    doReturn(retryTriggered).when(requestContext).isRetryTriggered();
+    return requestContext;
+  }
+
+  @Test
+  public void testTrackRequestRecordsLatencyOnHealthyCompletion() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.complete(null);
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, false)));
+    verify(stats).recordGroupResponseWaitingTime(eq(1), anyDouble());
+  }
+
+  @Test
+  public void testTrackRequestSkipsLatencyOnFailedCompletion() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.completeExceptionally(new RuntimeException("boom"));
+    // Still tracked (group counters bump), but a failure must not make the group look fast.
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, false)));
+    verify(stats).recordGroupRequest(1);
+    verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
+  }
+
+  @Test
+  public void testTrackRequestSkipsLatencyOnPartialFailure() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    // Streaming requests complete normally even when some routes failed.
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.complete(null);
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, true)));
+    verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
+  }
+
+  @Test
+  public void testTrackRequestSkipsLatencyWhenRetryTriggered() {
+    HelixGroupStats stats = mock(HelixGroupStats.class);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = threeGroupStrategy(stats);
+    // A retried request may be served partly by another group, so it must not be credited to the selected one.
+    CompletableFuture<Object> resultFuture = new CompletableFuture<>();
+    resultFuture.complete(null);
+    assertTrue(strategy.trackRequest(trackedMultiGet(resultFuture, false, true)));
+    verify(stats).recordGroupRequest(1);
+    verify(stats, never()).recordGroupResponseWaitingTime(anyInt(), anyDouble());
+  }
+}

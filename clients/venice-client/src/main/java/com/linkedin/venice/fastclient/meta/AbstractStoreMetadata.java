@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.fastclient.BatchGetRetryThresholdResolver;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.GetRequestContext;
 import com.linkedin.venice.fastclient.MultiKeyRequestContext;
@@ -30,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.IntUnaryOperator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -63,7 +65,11 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     this.storeName = clientConfig.getStoreName();
     try {
       ClientRoutingStrategyType clientRoutingStrategyType = clientConfig.getClientRoutingStrategyType();
-      LOGGER.info("Chose the following routing strategy: {} for store: {}", clientRoutingStrategyType, storeName);
+      LOGGER.info(
+          "Chose the following routing strategy: {} (helix group sub-strategy: {}) for store: {}",
+          clientRoutingStrategyType,
+          clientConfig.getHelixGroupRoutingStrategyType(),
+          storeName);
       this.routingStrategy = getRoutingStrategy(clientRoutingStrategyType);
     } catch (RuntimeException | Error e) {
       closeInstanceHealthMonitorAfterFailure(e);
@@ -79,15 +85,45 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     }
   }
 
+  /**
+   * Unless thresholds were set explicitly, latency-adaptive full skew follows the effective batch-get retry threshold,
+   * including its precedence (fixed, then server policy, then local range). {@code null} keeps the configured buckets.
+   */
+  private IntUnaryOperator effectiveRetryThresholdForRouting() {
+    if (clientConfig.isHelixGroupSizeAwareThresholdsExplicit() || !clientConfig.isLongTailRetryEnabledForBatchGet()) {
+      return null;
+    }
+    return new BatchGetRetryThresholdResolver(
+        clientConfig,
+        this::getMultiKeyLongTailRetryThresholds)::getThresholdInMicroSeconds;
+  }
+
   private AbstractClientRoutingStrategy getRoutingStrategy(ClientRoutingStrategyType clientRoutingStrategyType) {
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
-        return clientConfig.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting()
-            ? new HelixLeastLoadedGroupRoutingStrategy(
+        switch (clientConfig.getHelixGroupRoutingStrategyType()) {
+          case LATENCY_ADAPTIVE:
+            return new HelixLatencyAdaptiveGroupRoutingStrategy(
                 instanceHealthMonitor,
                 clientConfig.getMetricsRepository(),
-                getStoreName())
-            : new HelixGroupRoutingStrategy(instanceHealthMonitor, clientConfig.getMetricsRepository(), getStoreName());
+                getStoreName(),
+                clientConfig.getHelixGroupSizeAwareThresholds(),
+                clientConfig.getHelixGroupEvenUntilFraction(),
+                clientConfig.getHelixGroupSkewRampExponent(),
+                clientConfig.getHelixGroupMinSampleCount(),
+                effectiveRetryThresholdForRouting());
+          case LEAST_LOADED:
+            return new HelixLeastLoadedGroupRoutingStrategy(
+                instanceHealthMonitor,
+                clientConfig.getMetricsRepository(),
+                getStoreName());
+          case ROUND_ROBIN:
+          default:
+            return new HelixGroupRoutingStrategy(
+                instanceHealthMonitor,
+                clientConfig.getMetricsRepository(),
+                getStoreName());
+        }
       case LEAST_LOADED:
         return new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
       default:
@@ -213,7 +249,8 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
       requestContext.setCurrentVersion(currentVersion);
     }
     requestContext.setRequestId(REQUEST_ID_GENERATOR.getAndIncrement());
-    int groupId = routingStrategy.getHelixGroupId(requestContext.getRequestId(), requestContext.getHelixGroupId());
+    int groupId = routingStrategy
+        .getHelixGroupId(requestContext.getRequestId(), requestContext.getHelixGroupId(), requestContext.getKeyCount());
     requestContext.setHelixGroupId(groupId);
     /**
      * Track the request for the routing strategy.

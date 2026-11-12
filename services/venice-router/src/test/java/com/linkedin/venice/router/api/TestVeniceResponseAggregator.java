@@ -8,6 +8,8 @@ import static io.netty.handler.codec.http.HttpResponseStatus.MOVED_PERMANENTLY;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -26,6 +28,7 @@ import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.meta.StoreVersionName;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.routing.helix.HelixGroupSelector;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -54,6 +57,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -228,6 +232,106 @@ public class TestVeniceResponseAggregator {
     metrics.setMetric(MetricNames.ROUTER_SERVER_TIME, 1_000_000);
     responseAggregator.buildResponse(request, metrics, Collections.singletonList(response5));
     verify(mockStatsForMultiGet).recordThrottledRequest(storeName, 1.0, TOO_MANY_REQUESTS, 3);
+  }
+
+  /**
+   * When response processing throws (here: multi-get sub-responses disagree on headers), the Helix group bookkeeping
+   * must still be released and the latency signal suppressed, so a router-side failure neither charges the selected
+   * group a false sample nor leaks the pending-request counter into the 10s timeout safeguard.
+   */
+  @Test
+  public void testFinishRequestSuppressesLatencyOnResponseProcessingException() {
+    String storeName = Utils.getUniqueString("test_store");
+    Map<String, String> headers = new HashMap<>();
+    headers.put(HttpHeaderNames.CONTENT_TYPE.toString(), "avro/binary");
+    headers.put(HttpConstants.VENICE_STORE_VERSION, "1");
+    headers.put(HttpConstants.VENICE_SCHEMA_ID, "1");
+
+    // Three consistent sub-responses plus one with mismatched headers forces processMultiGetResponses to throw.
+    List<FullHttpResponse> gatheredResponses = new ArrayList<>();
+    gatheredResponses.add(buildFullHttpResponse(OK, getResponseContentWithSchemaString("value1"), headers));
+    gatheredResponses.add(buildFullHttpResponse(OK, getResponseContentWithSchemaString("value2"), headers));
+    gatheredResponses.add(buildFullHttpResponse(OK, getResponseContentWithSchemaString("value3"), headers));
+    gatheredResponses.add(buildFullHttpResponse(OK, getResponseContentWithSchemaString("value3"), new HashMap<>()));
+
+    BasicFullHttpRequest request =
+        new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/storage/" + storeName, -1, -1);
+
+    AggRouterHttpRequestStats mockStats = mock(AggRouterHttpRequestStats.class);
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    when(mockRouterStat.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockStats);
+    when(mockRouterStat.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockStats);
+    when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStats);
+
+    Metrics metrics = new Metrics();
+    CompressorFactory compressorFactory = mock(CompressorFactory.class);
+    VenicePath path = getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory);
+    when(path.getChunkedResponse()).thenReturn(null);
+    List<RouterKey> partitionKeys = new ArrayList<>();
+    partitionKeys.add(new RouterKey("key1".getBytes(StandardCharsets.UTF_8)));
+    partitionKeys.add(new RouterKey("key2".getBytes(StandardCharsets.UTF_8)));
+    partitionKeys.add(new RouterKey("key3".getBytes(StandardCharsets.UTF_8)));
+    doReturn(partitionKeys).when(path).getPartitionKeys();
+    doReturn(false).when(path).isRetryRequest();
+    doReturn(2).when(path).getHelixGroupId();
+    doReturn(777L).when(path).getRequestId();
+    metrics.setPath(path);
+
+    HelixGroupSelector helixGroupSelector = mock(HelixGroupSelector.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
+    responseAggregator.initHelixGroupSelector(helixGroupSelector);
+
+    try {
+      responseAggregator.buildResponse(request, metrics, gatheredResponses);
+      Assert.fail("VeniceException is expected when sub-responses disagree on headers");
+    } catch (Exception e) {
+      Assert.assertTrue(e instanceof VeniceException);
+    }
+
+    // Bookkeeping released (success flag false) so the group is not charged a latency sample for a router-side failure.
+    verify(helixGroupSelector).finishRequest(eq(777L), eq(2), eq(3), anyDouble(), eq(false));
+  }
+
+  @DataProvider(name = "retryTriggered")
+  public Object[][] retryTriggered() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  /**
+   * A healthy response feeds the latency signal only when no retry fired; a retried part may have been served by a
+   * group other than the selected one. The counter is released either way.
+   */
+  @Test(dataProvider = "retryTriggered")
+  public void testFinishRequestSkipsLatencyWhenRetryTriggered(boolean retryTriggered) {
+    String storeName = Utils.getUniqueString("test_store");
+    FullHttpResponse response =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, Unpooled.wrappedBuffer("abc".getBytes()));
+    BasicFullHttpRequest request =
+        new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/storage/" + storeName + "/abc", -1, -1);
+
+    AggRouterHttpRequestStats mockStats = mock(AggRouterHttpRequestStats.class);
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    when(mockRouterStat.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockStats);
+
+    VenicePath path =
+        getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request, mock(CompressorFactory.class));
+    doReturn(Collections.singletonList(new RouterKey("key1".getBytes(StandardCharsets.UTF_8)))).when(path)
+        .getPartitionKeys();
+    doReturn(false).when(path).isRetryRequest();
+    doReturn(retryTriggered).when(path).isRetryTriggered();
+    doReturn(1).when(path).getHelixGroupId();
+    doReturn(55L).when(path).getRequestId();
+    Metrics metrics = new Metrics();
+    metrics.setPath(path);
+
+    HelixGroupSelector helixGroupSelector = mock(HelixGroupSelector.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
+    responseAggregator.initHelixGroupSelector(helixGroupSelector);
+    Assert.assertEquals(
+        responseAggregator.buildResponse(request, metrics, Collections.singletonList(response)).status(),
+        OK);
+
+    verify(helixGroupSelector).finishRequest(eq(55L), eq(1), eq(1), anyDouble(), eq(!retryTriggered));
   }
 
   @Test

@@ -395,4 +395,41 @@ public class HelixGroupStatsTest {
         otelMetricPrefix);
   }
 
+  @Test
+  public void testRoutingLatencyBucketedMetric() {
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    String storeName = "test_store";
+    HelixGroupStats stats = new HelixGroupStats(metricsRepository, storeName);
+
+    int groupId = 0;
+    int smallBucket = 1; // e.g. the 1-5 routing bucket
+    int largeBucket = 151; // e.g. the 151-500 routing bucket
+
+    // Unmeasured bucket: avg is the -1 sentinel and the sample count is zero.
+    assertEquals(stats.getRoutingLatencyAvg(groupId, smallBucket), -1d);
+    assertEquals(stats.getRoutingLatencySampleCount(groupId, smallBucket), 0L);
+
+    // Same group, two different buckets must be tracked independently.
+    stats.recordRoutingLatency(groupId, smallBucket, 10.0);
+    stats.recordRoutingLatency(groupId, smallBucket, 20.0);
+    stats.recordRoutingLatency(groupId, largeBucket, 200.0);
+
+    assertEquals(stats.getRoutingLatencyAvg(groupId, smallBucket), 15.0, 0.01, "avg of (10, 20) in the small bucket");
+    assertEquals(stats.getRoutingLatencySampleCount(groupId, smallBucket), 2L, "two samples in the small bucket");
+    assertEquals(stats.getRoutingLatencyAvg(groupId, largeBucket), 200.0, 0.01, "the large bucket is isolated");
+    assertEquals(stats.getRoutingLatencySampleCount(groupId, largeBucket), 1L, "one sample in the large bucket");
+
+    // A bucket measured on one group must not leak into another group.
+    assertEquals(stats.getRoutingLatencyAvg(1, smallBucket), -1d, "a different group stays unmeasured");
+    assertEquals(stats.getRoutingLatencySampleCount(1, smallBucket), 0L);
+
+    // The routing signal lands on its own dedicated Tehuti sensor, separate from group_N_response_waiting_time.
+    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+    String expectedAvgName = "." + storeName + "_HelixGroupStats--group_0_bucket_1_routing_response_waiting_time.Avg";
+    String expectedCountName =
+        "." + storeName + "_HelixGroupStats--group_0_bucket_1_routing_response_waiting_time.Count";
+    assertNotNull(metrics.get(expectedAvgName), "routing-latency Avg sensor should exist: " + expectedAvgName);
+    assertNotNull(metrics.get(expectedCountName), "routing-latency Count sensor should exist: " + expectedCountName);
+  }
+
 }

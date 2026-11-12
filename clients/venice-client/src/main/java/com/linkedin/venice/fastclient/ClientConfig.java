@@ -8,18 +8,22 @@ import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategyType;
+import com.linkedin.venice.fastclient.meta.HelixGroupRoutingStrategyType;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.routing.LatencyAdaptiveGroupSelector;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -103,7 +107,17 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final InstanceHealthMonitorConfig instanceHealthMonitorConfig;
   private final boolean retryBudgetEnabled;
   private final double retryBudgetPercentage;
-  private final boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+  private final HelixGroupRoutingStrategyType helixGroupRoutingStrategyType;
+  private final double helixGroupSkewRampExponent;
+  /**
+   * Size-aware routing: per-key-count-bucket full-skew thresholds, same grammar as the long-tail-retry batch-get
+   * thresholds (e.g. {@code "1-5:9,6-20:18,21-150:30,151-500:60,501-:300"}). Defaults to the long-tail-retry batch-get
+   * thresholds so latency-adaptive group routing and long-tail retry share one source of truth.
+   */
+  private final NavigableMap<Integer, Integer> helixGroupSizeAwareThresholds;
+  private final boolean helixGroupSizeAwareThresholdsExplicit;
+  private final double helixGroupEvenUntilFraction;
+  private final long helixGroupMinSampleCount;
 
   private final MetricsRepository metricsRepository;
 
@@ -234,8 +248,34 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     } else {
       this.instanceHealthMonitorConfig = builder.instanceHealthMonitorConfig;
     }
-    this.enableLeastLoadedRoutingStrategyForHelixGroupRouting =
-        builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+    // An explicit strategy type wins; otherwise fall back to the deprecated least-loaded flag.
+    if (builder.helixGroupRoutingStrategyType != null) {
+      this.helixGroupRoutingStrategyType = builder.helixGroupRoutingStrategyType;
+    } else {
+      this.helixGroupRoutingStrategyType = builder.enableLeastLoadedRoutingStrategyForHelixGroupRouting
+          ? HelixGroupRoutingStrategyType.LEAST_LOADED
+          : HelixGroupRoutingStrategyType.ROUND_ROBIN;
+    }
+    this.helixGroupSkewRampExponent = builder.helixGroupSkewRampExponent;
+    /**
+     * Explicit size-aware thresholds are used as-is. Otherwise the buckets come from the local batch-get retry range,
+     * and each request's full-skew threshold follows the effective batch-get retry policy at selection time (see
+     * {@link BatchGetRetryThresholdResolver}). Parsed only when latency-adaptive routing is selected, so other clients
+     * never fail to build on a range string they do not use.
+     */
+    this.helixGroupSizeAwareThresholdsExplicit =
+        builder.helixGroupSizeAwareThresholdMs != null && !builder.helixGroupSizeAwareThresholdMs.isEmpty();
+    if (this.helixGroupRoutingStrategyType == HelixGroupRoutingStrategyType.LATENCY_ADAPTIVE) {
+      String helixGroupSizeAwareThresholdStr = helixGroupSizeAwareThresholdsExplicit
+          ? builder.helixGroupSizeAwareThresholdMs
+          : builder.longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds;
+      this.helixGroupSizeAwareThresholds =
+          BatchGetConfigUtils.parseRetryThresholdForBatchGet(helixGroupSizeAwareThresholdStr);
+    } else {
+      this.helixGroupSizeAwareThresholds = Collections.emptyNavigableMap();
+    }
+    this.helixGroupEvenUntilFraction = builder.helixGroupEvenUntilFraction;
+    this.helixGroupMinSampleCount = builder.helixGroupMinSampleCount;
     this.retryBudgetEnabled = builder.retryBudgetEnabled;
     this.retryBudgetPercentage = builder.retryBudgetPercentage;
     if (retryBudgetPercentage > 1.0 || retryBudgetPercentage < 0.0) {
@@ -420,8 +460,38 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return retryBudgetPercentage;
   }
 
+  public HelixGroupRoutingStrategyType getHelixGroupRoutingStrategyType() {
+    return helixGroupRoutingStrategyType;
+  }
+
+  /**
+   * @deprecated Use {@link #getHelixGroupRoutingStrategyType()}. Kept for compatibility with older callers.
+   */
+  @Deprecated
   public boolean isEnableLeastLoadedRoutingStrategyForHelixGroupRouting() {
-    return enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+    return helixGroupRoutingStrategyType == HelixGroupRoutingStrategyType.LEAST_LOADED;
+  }
+
+  public double getHelixGroupSkewRampExponent() {
+    return helixGroupSkewRampExponent;
+  }
+
+  /** Parsed per-key-count-bucket full-skew thresholds; buckets default to the local batch-get retry range. */
+  public NavigableMap<Integer, Integer> getHelixGroupSizeAwareThresholds() {
+    return helixGroupSizeAwareThresholds;
+  }
+
+  /** Whether the size-aware thresholds were set explicitly; if not, full skew follows the effective retry policy. */
+  public boolean isHelixGroupSizeAwareThresholdsExplicit() {
+    return helixGroupSizeAwareThresholdsExplicit;
+  }
+
+  public double getHelixGroupEvenUntilFraction() {
+    return helixGroupEvenUntilFraction;
+  }
+
+  public long getHelixGroupMinSampleCount() {
+    return helixGroupMinSampleCount;
   }
 
   public boolean isStoreLoadControllerEnabled() {
@@ -525,7 +595,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
     private double retryBudgetPercentage = 0.1d;
 
+    private HelixGroupRoutingStrategyType helixGroupRoutingStrategyType = null;
     private boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting = true;
+    private double helixGroupSkewRampExponent = LatencyAdaptiveGroupSelector.DEFAULT_INTERPOLATION_EXPONENT;
+    private String helixGroupSizeAwareThresholdMs = null;
+    private double helixGroupEvenUntilFraction = LatencyAdaptiveGroupSelector.DEFAULT_EVEN_UNTIL_FRACTION;
+    private long helixGroupMinSampleCount = LatencyAdaptiveGroupSelector.DEFAULT_MIN_SAMPLE_COUNT;
     private boolean storeLoadControllerEnabled = false;
     private int storeLoadControllerWindowSizeInSec = 30;
     private int storeLoadControllerRejectionRatioUpdateIntervalInSec = 3;
@@ -731,9 +806,41 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setHelixGroupRoutingStrategyType(
+        HelixGroupRoutingStrategyType helixGroupRoutingStrategyType) {
+      this.helixGroupRoutingStrategyType = helixGroupRoutingStrategyType;
+      return this;
+    }
+
+    /**
+     * @deprecated Use {@link #setHelixGroupRoutingStrategyType}: {@code true} maps to
+     * {@link HelixGroupRoutingStrategyType#LEAST_LOADED} and {@code false} to
+     * {@link HelixGroupRoutingStrategyType#ROUND_ROBIN}. Ignored when the strategy type is set explicitly.
+     */
+    @Deprecated
     public ClientConfigBuilder<K, V, T> setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(
         boolean enableLeastLoadedRoutingStrategyForHelixGroupRouting) {
       this.enableLeastLoadedRoutingStrategyForHelixGroupRouting = enableLeastLoadedRoutingStrategyForHelixGroupRouting;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupSkewRampExponent(double helixGroupSkewRampExponent) {
+      this.helixGroupSkewRampExponent = helixGroupSkewRampExponent;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupSizeAwareThresholdMs(String helixGroupSizeAwareThresholdMs) {
+      this.helixGroupSizeAwareThresholdMs = helixGroupSizeAwareThresholdMs;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupEvenUntilFraction(double helixGroupEvenUntilFraction) {
+      this.helixGroupEvenUntilFraction = helixGroupEvenUntilFraction;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setHelixGroupMinSampleCount(long helixGroupMinSampleCount) {
+      this.helixGroupMinSampleCount = helixGroupMinSampleCount;
       return this;
     }
 
@@ -841,7 +948,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setInstanceHealthMonitorConfig(instanceHealthMonitorConfig)
           .setRetryBudgetEnabled(retryBudgetEnabled)
           .setRetryBudgetPercentage(retryBudgetPercentage)
+          .setHelixGroupRoutingStrategyType(helixGroupRoutingStrategyType)
           .setEnableLeastLoadedRoutingStrategyForHelixGroupRouting(enableLeastLoadedRoutingStrategyForHelixGroupRouting)
+          .setHelixGroupSkewRampExponent(helixGroupSkewRampExponent)
+          .setHelixGroupSizeAwareThresholdMs(helixGroupSizeAwareThresholdMs)
+          .setHelixGroupEvenUntilFraction(helixGroupEvenUntilFraction)
+          .setHelixGroupMinSampleCount(helixGroupMinSampleCount)
           .setStoreLoadControllerEnabled(storeLoadControllerEnabled)
           .setStoreLoadControllerWindowSizeInSec(storeLoadControllerWindowSizeInSec)
           .setStoreLoadControllerRejectionRatioUpdateIntervalInSec(storeLoadControllerRejectionRatioUpdateIntervalInSec)

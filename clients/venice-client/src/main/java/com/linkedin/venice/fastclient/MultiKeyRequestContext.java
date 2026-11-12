@@ -67,6 +67,22 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     this.keys = keys;
   }
 
+  @Override
+  public int getKeyCount() {
+    return numKeysInRequest;
+  }
+
+  @Override
+  public boolean hasPartialResponseFailure() {
+    return partialResponseException.get() != null;
+  }
+
+  @Override
+  public boolean isRetryTriggered() {
+    RetryContext context = retryContext;
+    return context != null && context.retryRequestContext != null;
+  }
+
   public Set<K> getKeys() {
     return this.keys;
   }
@@ -271,7 +287,8 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   }
 
   static class RetryContext<K, V> {
-    MultiKeyRequestContext<K, V> retryRequestContext;
+    // Set from the retry timer thread and read on the completion thread.
+    volatile MultiKeyRequestContext<K, V> retryRequestContext;
 
     RetryContext() {
       retryRequestContext = null;
