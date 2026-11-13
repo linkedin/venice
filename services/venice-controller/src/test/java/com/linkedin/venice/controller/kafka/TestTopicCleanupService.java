@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka;
 
+import static com.linkedin.venice.controller.TestVeniceControllerClusterConfig.getBaseSingleRegionProperties;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
@@ -44,6 +45,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -544,13 +546,16 @@ public class TestTopicCleanupService {
 
   @DataProvider(name = "realTimeCleanupRetentions")
   public Object[][] realTimeCleanupRetentions() {
-    return new Object[][] { { 15000L, false }, { TimeUnit.HOURS.toMillis(23), false }, { 15000L, true },
-        { TimeUnit.HOURS.toMillis(23), true } };
+    return new Object[][] { { true, false }, { false, false }, { true, true }, { false, true } };
   }
 
   @Test(dataProvider = "realTimeCleanupRetentions")
-  public void testCleanVeniceTopicRTTopicDeletionWithErrorFetchingVT(long retention, boolean parent) {
+  public void testCleanupHonorsClassifiedRTTopicsAndControllerPermission(boolean legacy, boolean parent) {
     // RT topic deletion should be blocked when version topic cannot be fetched due to error
+    VeniceControllerClusterConfig config =
+        new VeniceControllerClusterConfig(new VeniceProperties(getBaseSingleRegionProperties(false)));
+    long marker = config.getDeprecatedRealTimeTopicRetentionMs();
+    long retention = legacy ? config.getDeprecatedJobTopicRetentionMs() : marker;
     String storeName = Utils.getUniqueString("testStore");
     PubSubTopic rt = getPubSubTopic(storeName, "_rt");
     PubSubTopic healthyRT = getPubSubTopic(storeName, "_rt_v2");
@@ -558,7 +563,7 @@ public class TestTopicCleanupService {
     Map<PubSubTopic, Long> storeTopics = new HashMap<>();
     storeTopics.put(rt, retention);
     storeTopics.put(healthyRT, TimeUnit.DAYS.toMillis(5));
-    storeTopics.put(healthyVT, TimeUnit.HOURS.toMillis(23));
+    storeTopics.put(healthyVT, marker);
     doReturn("cluster0").when(admin).discoverCluster(any());
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(rt.getName(), retention);
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();

@@ -4947,17 +4947,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public boolean isTopicTruncated(String kafkaTopicName) {
-    if (Version.isRealTimeTopic(kafkaTopicName)) {
-      try {
-        return isTopicTruncatedBasedOnRetention(
-            kafkaTopicName,
-            getTopicManager().getTopicRetention(pubSubTopicRepository.getTopic(kafkaTopicName)));
-      } catch (PubSubTopicDoesNotExistException e) {
-        return true;
-      }
+    PubSubTopic topic = pubSubTopicRepository.getTopic(kafkaTopicName);
+    if (topic.isRealTime()) {
+      return getTopicManager()
+          .isTopicTruncated(topic, retention -> isTopicTruncatedBasedOnRetention(kafkaTopicName, retention));
     }
-    return getTopicManager()
-        .isTopicTruncated(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicMaxRetentionMs);
+    return getTopicManager().isTopicTruncated(topic, deprecatedJobTopicMaxRetentionMs);
   }
 
   /**
@@ -4982,7 +4977,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public boolean isTopicTruncatedBasedOnRetention(String kafkaTopicName, long retentionTime) {
-    if (Version.isRealTimeTopic(kafkaTopicName)) {
+    if (pubSubTopicRepository.getTopic(kafkaTopicName).isRealTime()) {
       // Match the reserved RT marker exactly, not a wider threshold that could include active RT topics.
       // Reject unlimited/unknown retentions before applying the legacy threshold.
       return retentionTime >= 0
@@ -5128,7 +5123,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private long getDeprecatedTopicRetentionMs(String kafkaTopicName) {
-    return Version.isRealTimeTopic(kafkaTopicName) ? deprecatedRealTimeTopicRetentionMs : deprecatedJobTopicRetentionMs;
+    return pubSubTopicRepository.getTopic(kafkaTopicName).isRealTime()
+        ? deprecatedRealTimeTopicRetentionMs
+        : deprecatedJobTopicRetentionMs;
   }
 
   /**

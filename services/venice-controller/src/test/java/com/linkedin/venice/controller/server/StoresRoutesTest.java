@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controller.TestVeniceControllerClusterConfig.getBaseSingleRegionProperties;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 import static com.linkedin.venice.exceptions.ErrorType.INCORRECT_CONTROLLER;
 import static com.linkedin.venice.exceptions.ErrorType.INVALID_CONFIG;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -53,6 +55,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -75,22 +78,23 @@ public class StoresRoutesTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @Test
-  public void testGetDeletableTopicsRecognizesAllRealTimeTopics() throws Exception {
+  public void testGetDeletableTopicsUsesTopicAwareClassification() throws Exception {
     Admin admin = mock(Admin.class);
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     doReturn(true).when(admin).isLeaderControllerFor(TEST_CLUSTER);
     doReturn(TEST_CLUSTER).when(admin).discoverCluster(anyString());
-    doReturn(mock(Store.class)).when(admin).getStore(eq(TEST_CLUSTER), anyString());
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     doReturn(storeConfigRepo).when(admin).getStoreConfigRepo();
     doReturn(Optional.empty()).when(storeConfigRepo).getStoreConfig(anyString());
-    long marker = TimeUnit.HOURS.toMillis(23);
+    VeniceControllerClusterConfig config =
+        new VeniceControllerClusterConfig(new VeniceProperties(getBaseSingleRegionProperties(false)));
+    long marker = config.getDeprecatedRealTimeTopicRetentionMs();
     Map<PubSubTopic, Long> retentions = new HashMap<>();
     List<String> deprecatedTopics = Arrays
         .asList("test_store_rt", "test_store_rt_v1_sep", "venice_system_store_meta_store_test_store_rt", "legacy_rt");
     for (String topic: deprecatedTopics) {
-      long retention = topic.equals("legacy_rt") ? 15000L : marker;
+      long retention = topic.equals("legacy_rt") ? config.getDeprecatedJobTopicRetentionMs() : marker;
       retentions.put(pubSubTopicRepository.getTopic(topic), retention);
       doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(topic, retention);
     }

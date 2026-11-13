@@ -8,13 +8,13 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
@@ -217,12 +217,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
   public void testTopicTruncationRetentionMarkers() {
     VeniceHelixAdmin admin = spy(veniceAdmin);
-    TopicManager topicManager = mock(TopicManager.class);
+    TopicManager topicManager = spy(veniceAdmin.getTopicManager());
     doReturn(topicManager).when(admin).getTopicManager();
-    doCallRealMethod().when(topicManager).isRetentionBelowTruncatedThreshold(anyLong(), anyLong());
-    doCallRealMethod().when(topicManager).isTopicTruncated(any(), anyLong());
     doReturn(true).when(topicManager).updateTopicRetention(any(), anyLong());
-    long marker = TimeUnit.HOURS.toMillis(23);
+    long marker = controllerConfig.getDeprecatedRealTimeTopicRetentionMs();
     long legacyMax = controllerConfig.getDeprecatedJobTopicMaxRetentionMs();
     long[] retentions = { 15000, legacyMax, legacyMax + 1, marker - 1, marker, marker + 1, TimeUnit.DAYS.toMillis(5),
         -1, -2, PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION };
@@ -248,13 +246,15 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         Assert.assertEquals(admin.isTopicTruncated(topicName), expected, topicName);
       }
       Assert.assertTrue(admin.truncateKafkaTopic(topicName));
-      verify(topicManager).updateTopicRetention(topic, topic.isRealTime() ? marker : TimeUnit.SECONDS.toMillis(15));
+      verify(topicManager).updateTopicRetention(
+          topic,
+          topic.isRealTime() ? marker : controllerConfig.getDeprecatedJobTopicRetentionMs());
       doThrow(new PubSubTopicDoesNotExistException("missing")).when(topicManager).getTopicRetention(topic);
       Assert.assertTrue(admin.isTopicTruncated(topicName));
     }
     Assert.assertFalse(admin.isTopicTruncatedBasedOnRetention(marker));
 
-    long fatalRetention = TimeUnit.DAYS.toMillis(2);
+    long fatalRetention = controllerConfig.getFatalDataValidationFailureRetentionMs();
     PushJobDetails details = new PushJobDetails();
     doReturn(details).when(admin).getPushJobDetails(any());
     details.reportTimestamp = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1);
@@ -270,7 +270,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testParentTopicTruncationUsesConfiguredRealTimeMarker() throws Exception {
     String parentClusterName = Utils.getUniqueString("retention-parent-cluster");
     Properties props = getControllerProperties(parentClusterName);
-    props.put(ConfigKeys.ADMIN_PORT, controllerConfig.getAdminPort() + 1);
+    props.put(ConfigKeys.ADMIN_PORT, TestUtils.getFreePort());
     props.put(ConfigKeys.CONTROLLER_PARENT_MODE, true);
     props.put(ConfigKeys.CHILD_CLUSTER_ALLOWLIST, "child");
     props.put(ConfigKeys.CHILD_CLUSTER_URL_PREFIX + "child", "http://localhost:1234");
@@ -278,10 +278,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     props.put(ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST, "parent1,parent2");
     props.put(ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".parent1", pubSubBrokerWrapper.getAddress());
     props.put(ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX + ".parent2", pubSubBrokerWrapper.getAddress());
-    long marker = TimeUnit.HOURS.toMillis(12);
-    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, marker);
+    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, TimeUnit.HOURS.toMillis(12));
     VeniceControllerMultiClusterConfig config =
         new VeniceControllerMultiClusterConfig(Collections.singletonList(new VeniceProperties(props)));
+    long marker = config.getDeprecatedRealTimeTopicRetentionMs();
+    Assert.assertNotEquals(marker, controllerConfig.getDeprecatedRealTimeTopicRetentionMs());
     try (VeniceHelixAdmin parentAdmin = new VeniceHelixAdmin(
         config,
         new MetricsRepository(),
@@ -299,12 +300,15 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       doReturn(true).when(topicManager).updateTopicRetention(any(), anyLong());
       for (String topicName: Arrays.asList("truncate_rt", "truncate_rt_v1_sep", "truncate_v1")) {
         Assert.assertTrue(admin.truncateKafkaTopic(topicName));
-        long expected = Version.isRealTimeTopic(topicName) ? marker : TimeUnit.SECONDS.toMillis(15);
-        verify(topicManager, org.mockito.Mockito.times(2))
-            .updateTopicRetention(pubSubTopicRepository.getTopic(topicName), expected);
+        PubSubTopic topic = pubSubTopicRepository.getTopic(topicName);
+        long expected = topic.isRealTime() ? marker : config.getDeprecatedJobTopicRetentionMs();
+        verify(topicManager, times(config.getParentFabrics().size())).updateTopicRetention(topic, expected);
       }
       Assert.assertTrue(parentAdmin.isTopicTruncatedBasedOnRetention("truncate_rt", marker));
-      Assert.assertFalse(parentAdmin.isTopicTruncatedBasedOnRetention("truncate_rt", TimeUnit.HOURS.toMillis(23)));
+      Assert.assertFalse(
+          parentAdmin.isTopicTruncatedBasedOnRetention(
+              "truncate_rt",
+              controllerConfig.getDeprecatedRealTimeTopicRetentionMs()));
     }
   }
 
@@ -1672,7 +1676,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
           Assert.assertTrue(veniceAdmin.isTopicTruncated(topicName), "Topic '" + topicName + "' should be truncated.");
           Assert.assertEquals(
               topicManager.getTopicRetention(pubSubTopicRepository.getTopic(topicName)),
-              TimeUnit.SECONDS.toMillis(15));
+              controllerConfig.getDeprecatedJobTopicRetentionMs());
         } else {
           Assert.assertTrue(
               !veniceAdmin.isTopicTruncated(topicName),
