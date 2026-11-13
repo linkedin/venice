@@ -194,6 +194,17 @@ public class BlobTransferIngestionHelper {
       long timeLagMs = LatencyUtils.getElapsedTimeFromMsToMs(offsetRecord.getHeartbeatTimestamp());
       long thresholdMs = TimeUnit.MINUTES.toMillis(timeLagThresholdMinutes);
       boolean isLagged = timeLagMs > thresholdMs;
+      if (serverConfig.isIngestionCheckpointDiagnosticsEnabled()) {
+        LOGGER.info(
+            "Blob bootstrap original metadata: replica={}, savedHeartbeat={}, savedCheckpoint={}, timeLagMs={}, thresholdMs={}, offsetLag={}, isLagged={}",
+            replicaId,
+            offsetRecord.getHeartbeatTimestamp(),
+            offsetRecord.getLastCheckpointTimestamp(),
+            timeLagMs,
+            thresholdMs,
+            offsetRecord.getOffsetLag(),
+            isLagged);
+      }
       LOGGER.info(
           "Time lag check for replica {}: timeLagMs={}, thresholdMs={} ({}min), isLagged={}",
           replicaId,
