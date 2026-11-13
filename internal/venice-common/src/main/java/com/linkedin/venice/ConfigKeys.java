@@ -2746,6 +2746,13 @@ public class ConfigKeys {
       "server.ingestion.checkpoint.during.graceful.shutdown.enabled";
 
   /**
+   * Opt-in shutdown checkpoint and original blob-bootstrap metadata diagnostics. Default false.
+   * Read at server config construction; changing this setting requires a server restart.
+   */
+  public static final String SERVER_INGESTION_CHECKPOINT_DIAGNOSTICS_ENABLED =
+      "server.ingestion.checkpoint.diagnostics.enabled";
+
+  /**
    * Maximum time in milliseconds to wait for the drainer to execute a sync offset command during graceful shutdown.
    * The sync command itself is fast; the wait is for it to reach the front of the shared drainer queue.
    */

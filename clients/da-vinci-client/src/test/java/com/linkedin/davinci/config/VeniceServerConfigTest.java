@@ -53,6 +53,16 @@ import org.testng.annotations.Test;
 
 public class VeniceServerConfigTest {
   @Test
+  public void testCheckpointDiagnosticsDefaultAndReadLifetime() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig original = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(original.isIngestionCheckpointDiagnosticsEnabled());
+    props.setProperty(com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DIAGNOSTICS_ENABLED, "true");
+    assertFalse(original.isIngestionCheckpointDiagnosticsEnabled());
+    assertTrue(new VeniceServerConfig(new VeniceProperties(props)).isIngestionCheckpointDiagnosticsEnabled());
+  }
+
+  @Test
   public void testMultiKeyRetryPolicyConfig() {
     Properties props = populatedBasicProperties();
     assertEquals(

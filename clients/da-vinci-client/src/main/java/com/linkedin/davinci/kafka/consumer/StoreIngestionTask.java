@@ -166,6 +166,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -322,6 +323,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
+  private volatile ShutdownCheckpointDiagnostics shutdownCheckpointDiagnostics;
   /** Persists the last exception thrown by any asynchronous component that should terminate the entire ingestion task */
   private final AtomicReference<Exception> lastStoreIngestionException = new AtomicReference<>();
   /**
@@ -2157,6 +2159,33 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * enabled and ensures it is always terminated via a finally block.
    */
   void shutdownPartitionConsumptionStates() throws InterruptedException {
+    // Take the inventory before visiting any partition, so interruption cannot hide untouched partitions.
+    Map<Integer, PartitionConsumptionState> diagnosticInventory =
+        getServerConfig().isIngestionCheckpointDiagnosticsEnabled()
+            ? new LinkedHashMap<>(getPartitionConsumptionStateMap())
+            : null;
+    if (diagnosticInventory != null) {
+      shutdownCheckpointDiagnostics = new ShutdownCheckpointDiagnostics(diagnosticInventory);
+    }
+    try {
+      shutdownPartitionConsumptionStatesInternal();
+    } finally {
+      if (diagnosticInventory != null) {
+        try {
+          shutdownCheckpointDiagnostics.log(
+              LOGGER,
+              ingestionTaskName,
+              shutdownCheckpointDiagnostics
+                  .snapshot(diagnosticInventory, pcs -> measureHybridHeartbeatTimestamp(pcs, false)));
+        } catch (RuntimeException e) {
+          // Diagnostics must not replace the original shutdown failure or change the interrupt state.
+          LOGGER.warn("{}: unable to report shutdown checkpoint diagnostics", ingestionTaskName, e);
+        }
+      }
+    }
+  }
+
+  private void shutdownPartitionConsumptionStatesInternal() throws InterruptedException {
     // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
     // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel.
     try {
@@ -2225,10 +2254,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       List<CompletableFuture<Void>> shutdownFutures,
       ExecutorService shutdownExecutor) {
+    ShutdownCheckpointDiagnostics diagnostics = shutdownCheckpointDiagnostics;
+    ShutdownCheckpointDiagnostics.Partition observation =
+        diagnostics == null ? null : diagnostics.partition(partitionConsumptionState.getPartition());
     Runnable shutdownRunnable = () -> {
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
       if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
         try {
+          if (observation != null) {
+            observation.stage(ShutdownCheckpointDiagnostics.Stage.DRAINING);
+          }
           PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
           // Drain all messages, including the messages from the LEADER which are in the process of being produced to
           // local-VT which haven't had their callbacks executed and messages enqueued to the drainer.
@@ -2236,13 +2271,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           // Flush the checkpointed offsets to disk, so we know where to resume upon startup. Global RT DIV is
           // consumer-driven and periodically sent, so without this additional flush on shutdown, the server would need
           // to reingest a bit of data after resuming from the previous checkpoint, significantly delaying the restart.
+          if (observation != null) {
+            observation.stage(ShutdownCheckpointDiagnostics.Stage.COMMAND_SUBMITTED);
+          }
           CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
               ? flushGlobalRtDivCheckpoint(partitionConsumptionState)
               : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
+          if (observation != null) {
+            observation.observe(syncFuture);
+          }
           waitForSyncOffsetCmd(syncFuture, topicPartition);
         } catch (InterruptedException e) {
           throw new VeniceException(e);
         }
+      } else if (observation != null) {
+        observation.stage(ShutdownCheckpointDiagnostics.Stage.SKIPPED);
       }
     };
     if (shutdownExecutor != null) {
@@ -3719,7 +3762,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
 
+    ShutdownCheckpointDiagnostics diagnostics = shutdownCheckpointDiagnostics;
+    long diagnosticHeartbeat = diagnostics == null ? 0 : offsetRecord.getHeartbeatTimestamp();
+    long diagnosticCheckpoint = diagnostics == null ? 0 : offsetRecord.getLastCheckpointTimestamp();
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
+    if (diagnostics != null) {
+      diagnostics.persisted(partition, diagnosticHeartbeat, diagnosticCheckpoint);
+    }
     pcs.resetProcessedRecordSizeSinceLastSync();
 
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
