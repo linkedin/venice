@@ -42,7 +42,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.zookeeper.api.client.HelixZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -119,6 +123,48 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService,
       StoreUpdateHandler storeUpdateHandler) {
+    this(
+        multiClusterConfigs,
+        metricsRepository,
+        sslEnabled,
+        sslConfig,
+        accessController,
+        authorizerService,
+        d2Client,
+        d2Clients,
+        routerClientConfig,
+        icProvider,
+        externalSupersetSchemaGenerator,
+        pubSubTopicRepository,
+        pubSubClientsFactory,
+        pubSubPositionTypeRegistry,
+        versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
+        externalETLService,
+        storeUpdateHandler,
+        ZKHelixAdmin::new);
+  }
+
+  public VeniceControllerService(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository,
+      boolean sslEnabled,
+      Optional<SSLConfig> sslConfig,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      D2Client d2Client,
+      Map<String, D2Client> d2Clients,
+      Optional<ClientConfig> routerClientConfig,
+      Optional<ICProvider> icProvider,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubClientsFactory pubSubClientsFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
+      Optional<ExternalETLService> externalETLService,
+      StoreUpdateHandler storeUpdateHandler,
+      Function<HelixZkClient, HelixAdmin> helixAdminFactory) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -158,7 +204,8 @@ public class VeniceControllerService extends AbstractVeniceService {
             initRoutineForParentControllerMetadataSystemStore),
         versionLifecycleEventListeners,
         valueSchemaCreatedListeners,
-        externalETLService);
+        externalETLService,
+        helixAdminFactory);
     pushJobDetailsSerializer = internalAdmin.getPushJobDetailsSerializer();
 
     if (multiClusterConfigs.isParent()) {

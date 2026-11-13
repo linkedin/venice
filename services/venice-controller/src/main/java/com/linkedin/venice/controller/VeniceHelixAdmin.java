@@ -299,6 +299,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -311,6 +312,7 @@ import org.apache.helix.HelixException;
 import org.apache.helix.HelixManagerProperty;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.ClusterConfig;
@@ -322,6 +324,7 @@ import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.MaintenanceSignal;
 import org.apache.helix.model.RESTConfig;
 import org.apache.helix.participant.StateMachineEngine;
+import org.apache.helix.zookeeper.api.client.HelixZkClient;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
@@ -537,6 +540,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
       Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
       Optional<ExternalETLService> externalETLService) {
+    this(
+        multiClusterConfigs,
+        metricsRepository,
+        sslEnabled,
+        d2Client,
+        d2Clients,
+        sslConfig,
+        accessController,
+        authorizerService,
+        icProvider,
+        pubSubTopicRepository,
+        pubSubClientsFactory,
+        pubSubPositionTypeRegistry,
+        additionalInitRoutines,
+        versionLifecycleEventListeners,
+        valueSchemaCreatedListeners,
+        externalETLService,
+        ZKHelixAdmin::new);
+  }
+
+  public VeniceHelixAdmin(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository,
+      boolean sslEnabled,
+      D2Client d2Client,
+      Map<String, D2Client> d2Clients,
+      Optional<SSLConfig> sslConfig,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthorizerService> authorizerService,
+      Optional<ICProvider> icProvider,
+      PubSubTopicRepository pubSubTopicRepository,
+      PubSubClientsFactory pubSubClientsFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      List<ClusterLeaderInitializationRoutine> additionalInitRoutines,
+      Optional<List<VeniceVersionLifecycleEventListener>> versionLifecycleEventListeners,
+      Optional<List<ValueSchemaCreatedListener>> valueSchemaCreatedListeners,
+      Optional<ExternalETLService> externalETLService,
+      Function<HelixZkClient, HelixAdmin> helixAdminFactory) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
     this.storeLifecycleHooksCache = new StoreLifecycleHooksCache(multiClusterConfigs.getCommonConfig().getProps());
@@ -577,7 +618,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // All Helix-admin operations (storage clusters, the controller cluster, and the HAAS grand cluster)
     // go through this single client, which owns its own Helix ZK connection(s). VeniceHelixAdmin no longer
     // holds a separate ZKHelixAdmin of its own.
-    this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
+    this.helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository, helixAdminFactory);
     // There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
     this.veniceMetadataZkClient =
         new VeniceMetadataZkClient(multiClusterConfigs.getZkAddress(), metricsRepository, "controller-zk-client");

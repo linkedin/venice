@@ -12,15 +12,20 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
+import com.linkedin.venice.helix.ZkClientFactory;
+import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -28,21 +33,29 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.RESTConfig;
 import org.apache.helix.model.StateModelDefinition;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.mockito.MockedConstruction;
+import org.mockito.MockedStatic;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestZkHelixAdminClient {
+  private MetricsRepository metricsRepository;
   private ZkHelixAdminClient zkHelixAdminClient;
   private HelixAdmin mockHelixAdmin;
   private ConfigAccessor mockHelixConfigAccessor;
@@ -51,6 +64,7 @@ public class TestZkHelixAdminClient {
 
   @BeforeMethod
   public void setUp() {
+    metricsRepository = new MetricsRepository();
     zkHelixAdminClient = mock(ZkHelixAdminClient.class);
     mockHelixAdmin = mock(HelixAdmin.class);
     mockHelixConfigAccessor = mock(ConfigAccessor.class);
@@ -92,6 +106,87 @@ public class TestZkHelixAdminClient {
         Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, 10000),
         Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, 100));
     doReturn(defaultCapacityConfig).when(mockMultiClusterConfigs).getHelixCapacityConfig();
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    metricsRepository.close();
+  }
+
+  @Test
+  public void testDefaultHelixAdminFactory() {
+    ZkClient zkClient = connectedZkClient();
+    try (MockedStatic<ZkClientFactory> zkFactory = mockStatic(ZkClientFactory.class);
+        MockedConstruction<ZKHelixAdmin> admins = mockConstruction(
+            ZKHelixAdmin.class,
+            (admin, context) -> assertEquals(context.arguments(), Collections.singletonList(zkClient)))) {
+      zkFactory.when(() -> ZkClientFactory.newZkClient(mockMultiClusterConfigs.getZkAddress())).thenReturn(zkClient);
+      ZkHelixAdminClient client = new ZkHelixAdminClient(mockMultiClusterConfigs, metricsRepository);
+      assertEquals(admins.constructed().size(), 1);
+      assertSame(client.getHelixAdmin(), admins.constructed().get(0));
+      client.close();
+      verify(admins.constructed().get(0)).close();
+      verify(zkClient).close();
+    }
+  }
+
+  @Test
+  public void testContextFactoryReceivesConfiguredClient() {
+    ZkClient zkClient = connectedZkClient();
+    try (MockedStatic<ZkClientFactory> zkFactory = mockStatic(ZkClientFactory.class)) {
+      zkFactory.when(() -> ZkClientFactory.newZkClient(mockMultiClusterConfigs.getZkAddress())).thenReturn(zkClient);
+      VeniceControllerContext context =
+          new VeniceControllerContext.Builder().setMetricsRepository(metricsRepository).setHelixAdminFactory(client -> {
+            assertSame(client, zkClient);
+            verify(zkClient).setZkSerializer(any(ZNRecordSerializer.class));
+            verify(zkClient).waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS);
+            return mockHelixAdmin;
+          }).build();
+
+      ZkHelixAdminClient client =
+          new ZkHelixAdminClient(mockMultiClusterConfigs, metricsRepository, context.getHelixAdminFactory());
+      assertSame(client.getHelixAdmin(), mockHelixAdmin);
+      client.close();
+      verify(mockHelixAdmin).close();
+      verify(zkClient).close();
+    }
+  }
+
+  @Test
+  public void testFactoryFailureClosesClientAndPreservesFailure() {
+    ZkClient zkClient = connectedZkClient();
+    IllegalStateException factoryFailure = new IllegalStateException("Factory failed");
+    IllegalStateException closeFailure = new IllegalStateException("Close failed");
+    doThrow(closeFailure).when(zkClient).close();
+    try (MockedStatic<ZkClientFactory> zkFactory = mockStatic(ZkClientFactory.class)) {
+      zkFactory.when(() -> ZkClientFactory.newZkClient(mockMultiClusterConfigs.getZkAddress())).thenReturn(zkClient);
+      IllegalStateException failure = expectThrows(
+          IllegalStateException.class,
+          () -> new ZkHelixAdminClient(mockMultiClusterConfigs, metricsRepository, client -> {
+            throw factoryFailure;
+          }));
+      assertSame(failure, factoryFailure);
+      assertEquals(failure.getSuppressed(), new Throwable[] { closeFailure });
+      verify(zkClient).close();
+    }
+  }
+
+  @Test
+  public void testNullFactoryResultClosesClient() {
+    ZkClient zkClient = connectedZkClient();
+    try (MockedStatic<ZkClientFactory> zkFactory = mockStatic(ZkClientFactory.class)) {
+      zkFactory.when(() -> ZkClientFactory.newZkClient(mockMultiClusterConfigs.getZkAddress())).thenReturn(zkClient);
+      expectThrows(
+          NullPointerException.class,
+          () -> new ZkHelixAdminClient(mockMultiClusterConfigs, metricsRepository, client -> null));
+      verify(zkClient).close();
+    }
+  }
+
+  private static ZkClient connectedZkClient() {
+    ZkClient zkClient = mock(ZkClient.class);
+    when(zkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)).thenReturn(true);
+    return zkClient;
   }
 
   @Test

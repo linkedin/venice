@@ -20,6 +20,11 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.zookeeper.api.client.HelixZkClient;
 
 
 /**
@@ -43,6 +48,11 @@ public class VeniceControllerContext {
   private ExternalETLService externalETLService;
   private StoreUpdateHandler storeUpdateHandler;
   private TopicPlacement topicPlacement;
+  private final Function<HelixZkClient, HelixAdmin> helixAdminFactory;
+
+  public Function<HelixZkClient, HelixAdmin> getHelixAdminFactory() {
+    return helixAdminFactory;
+  }
 
   public TopicPlacement getTopicPlacement() {
     return topicPlacement;
@@ -109,6 +119,7 @@ public class VeniceControllerContext {
   }
 
   public VeniceControllerContext(Builder builder) {
+    this.helixAdminFactory = builder.helixAdminFactory;
     this.topicPlacement = builder.topicPlacement;
     this.propertiesList = builder.propertiesList;
     this.metricsRepository = builder.metricsRepository;
@@ -148,6 +159,18 @@ public class VeniceControllerContext {
     private ExternalETLService externalETLService;
     private StoreUpdateHandler storeUpdateHandler;
     private TopicPlacement topicPlacement;
+    private Function<HelixZkClient, HelixAdmin> helixAdminFactory = ZKHelixAdmin::new;
+
+    /**
+     * Supplies the Helix admin used for cluster management. The factory receives the connected,
+     * serializer-configured client shared with the config accessor and must return a non-null admin
+     * using that client. Venice closes the returned admin and the supplied client on shutdown;
+     * the implementation must not assume ownership of the supplied client.
+     */
+    public Builder setHelixAdminFactory(Function<HelixZkClient, HelixAdmin> helixAdminFactory) {
+      this.helixAdminFactory = Objects.requireNonNull(helixAdminFactory, "helixAdminFactory");
+      return this;
+    }
 
     public Builder setTopicPlacement(TopicPlacement topicPlacement) {
       this.topicPlacement = topicPlacement;

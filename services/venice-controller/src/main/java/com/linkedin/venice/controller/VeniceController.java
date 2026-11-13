@@ -75,7 +75,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.zookeeper.api.client.HelixZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -256,7 +259,7 @@ public class VeniceController {
     this.valueSchemaCreatedListeners = Optional.ofNullable(ctx.getValueSchemaCreatedListeners());
     this.externalETLService = Optional.ofNullable(ctx.getExternalETLService());
     this.storeUpdateHandler = ctx.getStoreUpdateHandler();
-    this.controllerService = createControllerService();
+    this.controllerService = createControllerService(ctx.getHelixAdminFactory());
     if (ctx.getTopicPlacement() != null) {
       getVeniceHelixAdmin().setTopicPlacement(ctx.getTopicPlacement());
     }
@@ -284,7 +287,7 @@ public class VeniceController {
         : (VeniceHelixAdmin) admin;
   }
 
-  private VeniceControllerService createControllerService() {
+  private VeniceControllerService createControllerService(Function<HelixZkClient, HelixAdmin> helixAdminFactory) {
     VeniceControllerService veniceControllerService = new VeniceControllerService(
         multiClusterConfigs,
         metricsRepository,
@@ -303,7 +306,8 @@ public class VeniceController {
         versionLifecycleEventListeners,
         valueSchemaCreatedListeners,
         externalETLService,
-        storeUpdateHandler);
+        storeUpdateHandler,
+        helixAdminFactory);
     Admin admin = veniceControllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
       throw new VeniceException(
