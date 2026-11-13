@@ -31,6 +31,7 @@ public class PubSubConsumerAdapterContext {
   private final boolean isOffsetCollectionEnabled;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final Function<String, String> pubSubEncryptionKeyUrnLookup;
+  private final int threadPriority;
 
   private PubSubConsumerAdapterContext(Builder builder) {
     this.consumerName = builder.consumerName;
@@ -44,6 +45,7 @@ public class PubSubConsumerAdapterContext {
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
     this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
+    this.threadPriority = builder.threadPriority;
   }
 
   public String getConsumerName() {
@@ -91,6 +93,13 @@ public class PubSubConsumerAdapterContext {
     return pubSubEncryptionKeyUrnLookup;
   }
 
+  /**
+   * @return the priority for threads spawned by the consumer; defaults to {@link Thread#NORM_PRIORITY}.
+   */
+  public int getThreadPriority() {
+    return threadPriority;
+  }
+
   public static class Builder {
     private String consumerName;
     private String pubSubBrokerAddress;
@@ -103,6 +112,7 @@ public class PubSubConsumerAdapterContext {
     private boolean isOffsetCollectionEnabled;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private Function<String, String> pubSubEncryptionKeyUrnLookup;
+    private int threadPriority = Thread.NORM_PRIORITY;
 
     public Builder setConsumerName(String consumerName) {
       this.consumerName = consumerName;
@@ -156,6 +166,11 @@ public class PubSubConsumerAdapterContext {
 
     public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
       this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
+      return this;
+    }
+
+    public Builder setThreadPriority(int threadPriority) {
+      this.threadPriority = threadPriority;
       return this;
     }
 

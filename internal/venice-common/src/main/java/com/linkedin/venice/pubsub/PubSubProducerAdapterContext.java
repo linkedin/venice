@@ -39,6 +39,7 @@ public class PubSubProducerAdapterContext {
   private final String compressionType;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final Function<String, String> pubSubEncryptionKeyUrnLookup;
+  private final int threadPriority;
 
   private PubSubProducerAdapterContext(Builder builder) {
     this.producerName = builder.producerName;
@@ -55,6 +56,7 @@ public class PubSubProducerAdapterContext {
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
     this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
+    this.threadPriority = builder.threadPriority;
   }
 
   public String getProducerName() {
@@ -114,6 +116,13 @@ public class PubSubProducerAdapterContext {
     return pubSubEncryptionKeyUrnLookup;
   }
 
+  /**
+   * @return the priority for threads spawned by the producer; defaults to {@link Thread#NORM_PRIORITY}.
+   */
+  public int getThreadPriority() {
+    return threadPriority;
+  }
+
   public static class Builder {
     private String producerName;
     private String brokerAddress;
@@ -129,6 +138,7 @@ public class PubSubProducerAdapterContext {
     private String compressionType;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private Function<String, String> pubSubEncryptionKeyUrnLookup;
+    private int threadPriority = Thread.NORM_PRIORITY;
 
     public Builder setProducerName(String producerName) {
       this.producerName = producerName;
@@ -198,6 +208,11 @@ public class PubSubProducerAdapterContext {
 
     public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
       this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
+      return this;
+    }
+
+    public Builder setThreadPriority(int threadPriority) {
+      this.threadPriority = threadPriority;
       return this;
     }
 

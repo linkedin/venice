@@ -33,6 +33,7 @@ public class PubSubProducerAdapterContextTest {
         .setProducerEncryptionEnabled(true)
         .setCompressionType("snappy")
         .setPubSubEncryptionKeyUrnLookup(keyLookup)
+        .setThreadPriority(Thread.MAX_PRIORITY)
         .build();
 
     assertTrue(context.getProducerName().contains("test-producer"));
@@ -41,6 +42,7 @@ public class PubSubProducerAdapterContextTest {
     assertFalse(context.isProducerCompressionEnabled());
     assertTrue(context.isProducerEncryptionEnabled());
     assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+    assertEquals(context.getThreadPriority(), Thread.MAX_PRIORITY);
   }
 
   @Test
@@ -67,5 +69,6 @@ public class PubSubProducerAdapterContextTest {
     assertTrue(context.shouldValidateProducerConfigStrictly());
     assertNotNull(context.getPubSubSecurityProtocol());
     assertNotNull(context.getProducerName());
+    assertEquals(context.getThreadPriority(), Thread.NORM_PRIORITY);
   }
 }

@@ -32,6 +32,7 @@ public class PubSubConsumerAdapterContextTest {
         .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
         .setPubSubPositionTypeRegistry(registry)
         .setPubSubEncryptionKeyUrnLookup(keyLookup)
+        .setThreadPriority(Thread.MAX_PRIORITY)
         .build();
 
     assertNotNull(context.getConsumerName());
@@ -44,6 +45,17 @@ public class PubSubConsumerAdapterContextTest {
     assertNotNull(context.getPubSubMessageDeserializer());
     assertEquals(context.getPubSubPositionTypeRegistry(), registry);
     assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
+    assertEquals(context.getThreadPriority(), Thread.MAX_PRIORITY);
+  }
+
+  @Test
+  public void testThreadPriorityDefaultsToNormPriority() {
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress("localhost:1234")
+            .setVeniceProperties(VeniceProperties.empty())
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
+            .build();
+    assertEquals(context.getThreadPriority(), Thread.NORM_PRIORITY);
   }
 
   @Test
