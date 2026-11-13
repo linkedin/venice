@@ -396,6 +396,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final ExecutionIdAccessor executionIdAccessor;
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final long deprecatedJobTopicRetentionMs;
+  private final long deprecatedRealTimeTopicRetentionMs;
 
   private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
@@ -548,6 +549,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
     this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
     this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
+    this.deprecatedRealTimeTopicRetentionMs = multiClusterConfigs.getDeprecatedRealTimeTopicRetentionMs();
     this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
@@ -4941,11 +4943,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Check if a kafka topic is absent or truncated.
    * @see ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS
+   * @see ConfigKeys#DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS
    */
   @Override
   public boolean isTopicTruncated(String kafkaTopicName) {
-    return getTopicManager()
-        .isTopicTruncated(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicMaxRetentionMs);
+    PubSubTopic topic = pubSubTopicRepository.getTopic(kafkaTopicName);
+    if (topic.isRealTime()) {
+      return getTopicManager()
+          .isTopicTruncated(topic, retention -> isTopicTruncatedBasedOnRetention(kafkaTopicName, retention));
+    }
+    return getTopicManager().isTopicTruncated(topic, deprecatedJobTopicMaxRetentionMs);
   }
 
   /**
@@ -4960,7 +4967,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Topic should also be considered to get cleaned up if:
+   * RT topics recognize the exact reserved RT retention marker as well as the legacy threshold.
+   * Other topics should also be considered to get cleaned up if:
    * retention is less than the configured {@linkplain ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS} value.
    * or
    * 1. Topic retention equals fatalDataValidationFailureRetentionMs.
@@ -4969,6 +4977,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public boolean isTopicTruncatedBasedOnRetention(String kafkaTopicName, long retentionTime) {
+    if (pubSubTopicRepository.getTopic(kafkaTopicName).isRealTime()) {
+      // Match the reserved RT marker exactly, not a wider threshold that could include active RT topics.
+      // Reject unlimited/unknown retentions before applying the legacy threshold.
+      return retentionTime >= 0
+          && (retentionTime == deprecatedRealTimeTopicRetentionMs || isTopicTruncatedBasedOnRetention(retentionTime));
+    }
     if (isTopicTruncatedBasedOnRetention(retentionTime)) {
       return true;
     }
@@ -5023,7 +5037,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (multiClusterConfigs.isParent()) {
       return truncateKafkaTopicInParentFabrics(kafkaTopicName);
     } else {
-      return truncateKafkaTopic(getTopicManager(), kafkaTopicName, this.deprecatedJobTopicRetentionMs);
+      return truncateKafkaTopic(getTopicManager(), kafkaTopicName, getDeprecatedTopicRetentionMs(kafkaTopicName));
     }
   }
 
@@ -5060,7 +5074,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       allTopicsAreDeleted &= truncateKafkaTopic(
           getTopicManager(kafkaBootstrapServerAddress),
           kafkaTopicName,
-          this.deprecatedJobTopicRetentionMs);
+          getDeprecatedTopicRetentionMs(kafkaTopicName));
     }
     return allTopicsAreDeleted;
   }
@@ -5097,7 +5111,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (topicConfigs.containsKey(kafkaTopicName)) {
       if (topicManager.updateTopicRetention(
           pubSubTopicRepository.getTopic(kafkaTopicName),
-          deprecatedJobTopicRetentionMs,
+          getDeprecatedTopicRetentionMs(kafkaTopicName),
           topicConfigs.get(kafkaTopicName))) {
         return true;
       }
@@ -5106,6 +5120,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     // return false to indicate the retention config has already been updated.
     return false;
+  }
+
+  private long getDeprecatedTopicRetentionMs(String kafkaTopicName) {
+    return pubSubTopicRepository.getTopic(kafkaTopicName).isRealTime()
+        ? deprecatedRealTimeTopicRetentionMs
+        : deprecatedJobTopicRetentionMs;
   }
 
   /**

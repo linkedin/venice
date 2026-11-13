@@ -886,17 +886,17 @@ public class StoresRoutes extends AbstractRoute {
           List<String> deletableTopicsList = new ArrayList<>();
           int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
-            String cluster;
             try {
-              cluster = admin.discoverCluster(storeName);
+              admin.discoverCluster(storeName);
             } catch (VeniceNoStoreException e) {
               LOGGER.warn("Store " + storeName + " does not exist. Skipping it.");
               return;
             }
-            Store store = admin.getStore(cluster, storeName);
-            PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(store));
-            if (topicsWithRetention.containsKey(realTimeTopic)) {
-              if (admin.isTopicTruncatedBasedOnRetention(topicsWithRetention.get(realTimeTopic))) {
+            List<PubSubTopic> realTimeTopics =
+                topicsWithRetention.keySet().stream().filter(PubSubTopic::isRealTime).collect(Collectors.toList());
+            for (PubSubTopic realTimeTopic: realTimeTopics) {
+              if (admin
+                  .isTopicTruncatedBasedOnRetention(realTimeTopic.getName(), topicsWithRetention.get(realTimeTopic))) {
                 deletableTopicsList.add(realTimeTopic.getName());
               }
               topicsWithRetention.remove(realTimeTopic);

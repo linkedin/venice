@@ -100,6 +100,40 @@ public class TestVeniceControllerClusterConfig {
   private static final Set<String> REGION_ALLOW_LIST = Utils.setOf("dc1", "dc2");
 
   @Test
+  public void testDeprecatedRealTimeTopicRetention() {
+    Properties props = getBaseSingleRegionProperties(false);
+    VeniceControllerMultiClusterConfig config =
+        new VeniceControllerMultiClusterConfig(Collections.singletonList(new VeniceProperties(props)));
+    assertEquals(config.getDeprecatedRealTimeTopicRetentionMs(), TimeUnit.HOURS.toMillis(23));
+    assertEquals(config.getDeprecatedJobTopicRetentionMs(), TimeUnit.SECONDS.toMillis(15));
+    assertEquals(config.getDeprecatedJobTopicMaxRetentionMs(), TimeUnit.SECONDS.toMillis(60));
+    assertEquals(config.getFatalDataValidationFailureRetentionMs(), TimeUnit.DAYS.toMillis(2));
+
+    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, TimeUnit.HOURS.toMillis(12));
+    assertEquals(
+        new VeniceControllerClusterConfig(new VeniceProperties(props)).getDeprecatedRealTimeTopicRetentionMs(),
+        TimeUnit.HOURS.toMillis(12));
+    // The RT marker is independent of the legacy maximum, whose existing validation still applies.
+    props.put(ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS, 14999);
+    assertThrows(VeniceException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
+  }
+
+  @DataProvider(name = "invalidRealTimeRetention")
+  public Object[][] invalidRealTimeRetention() {
+    return new Object[][] { { "0", VeniceException.class }, { "-1", VeniceException.class },
+        { "-2", VeniceException.class }, { "not-a-number", NumberFormatException.class } };
+  }
+
+  @Test(dataProvider = "invalidRealTimeRetention")
+  public void testRejectInvalidDeprecatedRealTimeTopicRetention(
+      String retention,
+      Class<? extends Throwable> exception) {
+    Properties props = getBaseSingleRegionProperties(false);
+    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, retention);
+    assertThrows(exception, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
+  }
+
+  @Test
   public void canParseClusterMap() {
     PropertyBuilder builder = new PropertyBuilder();
     builder.put("child.cluster.url.dc1", "http://host:1234, http://host:5678")
@@ -171,7 +205,7 @@ public class TestVeniceControllerClusterConfig {
     VeniceControllerClusterConfig.parseClusterMap(builder.build(), REGION_ALLOW_LIST);
   }
 
-  protected static Properties getBaseSingleRegionProperties(boolean includeMultiRegionConfig) {
+  public static Properties getBaseSingleRegionProperties(boolean includeMultiRegionConfig) {
     Properties props = TestUtils.getPropertiesForControllerConfig();
     String clusterName = props.getProperty(CLUSTER_NAME);
     props.put(LOCAL_REGION_NAME, "dc-0");
