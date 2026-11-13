@@ -875,6 +875,22 @@ public class ConfigKeys {
    * stall tracking and blocked-time metrics. This is read at construction time; changes require a restart.
    */
   public static final String SERVER_BLOCKED_DRAINER_THRESHOLD_MS = "server.blocked.drainer.threshold.ms";
+  /**
+   * Default false. When enabled, the stall monitor fails and clears a stalled drainer's queue,
+   * releasing blocked enqueues and registering partition ingestion exceptions for the existing error-replica path.
+   * The ingestion task handles drainer partition failures before checking task-level failures; unrelated task failures
+   * remain fatal.
+   * This switch also gates stalled-drainer exception classification and duplicate failure suppression.
+   * Disabling it preserves monitoring-only stall handling. General ERROR-to-OFFLINE consumption cleanup and
+   * completed-batch leadership loopback admission are independent of this switch.
+   * Admission failures remain partition-scoped: current-version server replicas require SERVER_RESET_ERROR_REPLICA_ENABLED
+   * and controller auto-reset capacity to reset and rebootstrap after the held operation returns.
+   * The held write is not interrupted and its persistence future is left to the writer. Only after it actually ends
+   * can the same drainer reopen its queue. Other drainers are unaffected. A write that never returns keeps its queue failed.
+   * Requires a positive SERVER_BLOCKED_DRAINER_THRESHOLD_MS; read at construction time, so changes require restart.
+   */
+  public static final String SERVER_STALLED_DRAINER_QUEUE_FAILURE_ENABLED =
+      "server.stalled.drainer.queue.failure.enabled";
   public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
       "store.writer.buffer.after.leader.logic.enabled";
 
