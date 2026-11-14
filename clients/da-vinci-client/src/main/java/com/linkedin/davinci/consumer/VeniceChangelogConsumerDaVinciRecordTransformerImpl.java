@@ -635,7 +635,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         && versionToServe.equals(partitionToMonitoringVersion.get(partition));
   }
 
-  boolean isMonitoringTopic(PubSubTopicPartition topicPartition) {
+  final boolean isMonitoringTopic(PubSubTopicPartition topicPartition) {
     PubSubTopic topic = topicPartition.getPubSubTopic();
     if (topic.isViewTopic()) {
       return false;

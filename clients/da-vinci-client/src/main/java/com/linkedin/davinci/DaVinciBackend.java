@@ -118,6 +118,8 @@ public class DaVinciBackend implements Closeable {
   private final Map<String, ClientType> storeClientTypes = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> versionSpecificStoreVersions = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> storeClientRefCounts = new VeniceConcurrentHashMap<>();
+  // Stores whose only client is a changelog consumer; guarded by this backend's monitor.
+  private final Set<String> changelogStores = new HashSet<>();
   private VeniceConfigLoader configLoader;
   private SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -708,6 +710,23 @@ public class DaVinciBackend implements Closeable {
    *                               clients target different versions of the same store
    */
   public synchronized void registerStoreClient(String storeName, Integer storeVersion) {
+    registerStoreClient(storeName, storeVersion, null);
+  }
+
+  /**
+   * A changelog consumer, identified by a non-null monitoring filter, must be its store's only client in this backend:
+   * ingestion tasks bind to one record transformer, so another client of the same store would share its callbacks.
+   */
+  public synchronized void registerStoreClient(
+      String storeName,
+      Integer storeVersion,
+      Predicate<PubSubTopicPartition> monitoringFilter) {
+    if (storeClientRefCounts.containsKey(storeName)
+        && (monitoringFilter != null || changelogStores.contains(storeName))) {
+      throw new VeniceClientException(
+          "Store " + storeName + " already has a client in this Da Vinci backend. "
+              + "A changelog consumer cannot share a store with another client.");
+    }
     boolean isVersionSpecific = storeVersion != null;
     ClientType newClientType = isVersionSpecific ? ClientType.VERSION_SPECIFIC : ClientType.REGULAR;
     ClientType existingClientType = storeClientTypes.get(storeName);
@@ -729,6 +748,11 @@ public class DaVinciBackend implements Closeable {
                 + ". Cannot create another version-specific client targeting version " + storeVersion
                 + ". Multiple version-specific clients per store are not allowed.");
       }
+    }
+
+    if (monitoringFilter != null) {
+      configureMonitoringForStore(configLoader, storeName, monitoringFilter);
+      changelogStores.add(storeName);
     }
 
     // Increment ref count for this store
@@ -767,6 +791,7 @@ public class DaVinciBackend implements Closeable {
     if (newCount <= 0) {
       storeClientRefCounts.remove(storeName);
       storeClientTypes.remove(storeName);
+      changelogStores.remove(storeName);
       ingestionService.unregisterBlobTransferDisabled(storeName);
       ingestionService.unregisterRecordTransformerConfig(storeName);
       if (storeVersion != null) {
@@ -982,21 +1007,6 @@ public class DaVinciBackend implements Closeable {
       String storeName,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
     ingestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
-  }
-
-  /**
-   * A CDC client must own its store's ingestion in this backend: ingestion tasks bind to one record transformer, so
-   * another client of the same store would share that transformer's callbacks.
-   */
-  public synchronized void configureMonitoringForStore(
-      String storeName,
-      Predicate<PubSubTopicPartition> positionFilter) {
-    if (storeClientRefCounts.containsKey(storeName)) {
-      throw new VeniceClientException(
-          "Store " + storeName + " already has a client in this Da Vinci backend. "
-              + "A changelog consumer cannot share a store with another client.");
-    }
-    configureMonitoringForStore(configLoader, storeName, positionFilter);
   }
 
   /**

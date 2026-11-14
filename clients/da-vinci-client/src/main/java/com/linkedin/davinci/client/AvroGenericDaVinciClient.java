@@ -947,11 +947,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
+    boolean registered = false;
     try {
-      if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null) {
-        getBackend().configureMonitoringForStore(getStoreName(), recordTransformerConfig.getMonitoringPositionFilter());
-      }
-      getBackend().registerStoreClient(getStoreName(), storeVersion);
+      getBackend().registerStoreClient(
+          getStoreName(),
+          storeVersion,
+          recordTransformerConfig == null ? null : recordTransformerConfig.getMonitoringPositionFilter());
+      registered = true;
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 
       if (daVinciConfig.isCacheEnabled()) {
@@ -1019,7 +1021,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     } catch (Throwable e) {
       String msg = "Unable to start Da Vinci client, storeName=" + getStoreName();
       logger.error(msg, e);
-      daVinciBackend.release();
+      try {
+        if (registered) {
+          getBackend().unregisterStoreClient(getStoreName(), storeVersion);
+        }
+      } finally {
+        daVinciBackend.release();
+      }
       throw new VeniceClientException(msg, e);
     }
   }

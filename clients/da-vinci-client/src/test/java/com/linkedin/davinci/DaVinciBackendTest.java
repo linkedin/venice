@@ -329,7 +329,12 @@ public class DaVinciBackendTest {
     assertThrows(VeniceClientException.class, () -> backend.registerStoreClient(STORE_NAME, 2));
 
     // A changelog consumer cannot share a store that already has a client
-    assertThrows(VeniceClientException.class, () -> backend.configureMonitoringForStore(STORE_NAME, p -> true));
+    assertThrows(VeniceClientException.class, () -> backend.registerStoreClient(STORE_NAME, STORE_VERSION, p -> true));
+    backend.unregisterStoreClient(STORE_NAME, STORE_VERSION);
+
+    // No client can join a store owned by a changelog consumer
+    backend.registerStoreClient(STORE_NAME, null, p -> true);
+    assertThrows(VeniceClientException.class, () -> backend.registerStoreClient(STORE_NAME, null));
   }
 
   @Test
