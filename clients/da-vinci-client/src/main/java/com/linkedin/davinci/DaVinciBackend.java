@@ -984,28 +984,32 @@ public class DaVinciBackend implements Closeable {
     ingestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
   }
 
-  public void configureMonitoringForStore(String storeName, Predicate<PubSubTopicPartition> positionFilter) {
-    configureMonitoringForStore(configLoader, storeName, positionFilter);
+  public Closeable configureMonitoringForStore(String storeName, Predicate<PubSubTopicPartition> positionFilter) {
+    return configureMonitoringForStore(configLoader, storeName, positionFilter);
   }
 
   /**
    * Register before constructing ingestion services: their constructor eagerly builds the local consumer pool.
    * Reused backends call the same path with their actual configuration before adding another CDC store.
    */
-  public static void configureMonitoringForStore(
+  public static Closeable configureMonitoringForStore(
       VeniceConfigLoader configLoader,
       String storeName,
       Predicate<PubSubTopicPartition> positionFilter) {
     VeniceServerConfig serverConfig = configLoader.getVeniceServerConfig();
     Properties consumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
     consumerProperties.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
+    // The consumer service reapplies cluster properties after local/remote overrides.
+    consumerProperties.putAll(serverConfig.getClusterProperties().toProperties());
     Properties remoteConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
     remoteConsumerProperties.putAll(serverConfig.getKafkaConsumerConfigsForRemoteConsumption().toProperties());
+    remoteConsumerProperties.putAll(serverConfig.getClusterProperties().toProperties());
     PubSubConsumerAdapterFactory<?> factory = serverConfig.getPubSubClientsFactory().getConsumerAdapterFactory();
     if (factory.isAutomaticMonitoringEnabled(new VeniceProperties(consumerProperties))
         || factory.isAutomaticMonitoringEnabled(new VeniceProperties(remoteConsumerProperties))) {
-      factory.configureMonitoringForStore(storeName, positionFilter);
+      return factory.registerMonitoringForStore(storeName, positionFilter);
     }
+    return null;
   }
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {

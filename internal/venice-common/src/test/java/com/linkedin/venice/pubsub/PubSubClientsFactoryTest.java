@@ -6,9 +6,15 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLA
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -18,13 +24,49 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.Properties;
+import java.util.function.Predicate;
+import org.mockito.ArgumentCaptor;
 import org.testng.annotations.Test;
 
 
 public class PubSubClientsFactoryTest {
+  @Test
+  public void testMonitoringRegistrationsCombineClientsAndReleaseIndependently() throws IOException {
+    TestPubSubConsumerAdapterFactory factory = spy(new TestPubSubConsumerAdapterFactory());
+    doNothing().when(factory).configureMonitoringForStore(eq("store"), any());
+    Predicate<PubSubTopicPartition> firstClient = partition -> partition.getPartitionNumber() == 0;
+    Predicate<PubSubTopicPartition> secondClient = partition -> partition.getPartitionNumber() == 1;
+    Closeable first = factory.registerMonitoringForStore("store", firstClient);
+    Closeable second = factory.registerMonitoringForStore("store", secondClient);
+    Closeable duplicate = factory.registerMonitoringForStore("store", firstClient);
+    ArgumentCaptor<Predicate<PubSubTopicPartition>> captor = ArgumentCaptor.forClass(Predicate.class);
+    verify(factory).configureMonitoringForStore(eq("store"), captor.capture());
+    Predicate<PubSubTopicPartition> gate = captor.getValue();
+    PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(new PubSubTopicImpl("store_v1"), 0);
+    PubSubTopicPartition partition1 = new PubSubTopicPartitionImpl(new PubSubTopicImpl("store_v1"), 1);
+    PubSubTopicPartition partition2 = new PubSubTopicPartitionImpl(new PubSubTopicImpl("store_v1"), 2);
+    assertTrue(gate.test(partition0));
+    assertTrue(gate.test(partition1));
+    assertFalse(gate.test(partition2));
+    first.close();
+    assertTrue(gate.test(partition0));
+    duplicate.close();
+    assertFalse(gate.test(partition0));
+    assertTrue(gate.test(partition1));
+    second.close();
+    assertTrue(gate.test(partition2));
+    try (Closeable reopened = factory.registerMonitoringForStore("store", firstClient)) {
+      assertTrue(gate.test(partition0));
+      assertFalse(gate.test(partition1));
+    }
+    assertTrue(gate.test(partition1));
+  }
+
   @Test
   public void testCreateInstanceSuccess() {
     // default: no config provided

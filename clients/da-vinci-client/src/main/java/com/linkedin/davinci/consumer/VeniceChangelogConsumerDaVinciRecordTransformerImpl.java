@@ -118,8 +118,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeControlMessages;
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
-  // Resolve the client's topic layout when constructing a transformer, never during monitoring publication.
-  private volatile boolean usesMaterializedViewTopic;
+  private final boolean usesMaterializedViewTopic;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
   // Monitoring-only offset commits (null when disabled); see ChangelogClientConfig#setConsumerOffsetCommitEnabled.
@@ -156,6 +155,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
     this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
     this.viewName = changelogClientConfig.getViewName();
+    this.usesMaterializedViewTopic = viewName != null && !viewName.isEmpty()
+        && MaterializedView.class.getCanonicalName()
+            .equals(
+                veniceChangelogConsumerClientFactory.viewClassGetter.apply(
+                    storeName,
+                    viewName,
+                    changelogClientConfig.getD2ControllerClient(),
+                    changelogClientConfig.getControllerRequestRetryCount()));
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
@@ -643,17 +650,14 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         : Version.composeKafkaTopic(storeName, version);
   }
 
-  boolean isMonitoringTopic(PubSubTopicPartition topicPartition) {
+  final boolean isMonitoringTopic(PubSubTopicPartition topicPartition) {
     PubSubTopic topic = topicPartition.getPubSubTopic();
     if (topic.isViewTopic()) {
       return false;
     }
     // Pooled consumers also carry other stores; this client must not gate their non-view positions.
-    if (!storeName.equals(topic.getStoreName())) {
+    if (usesMaterializedViewTopic || !storeName.equals(topic.getStoreName())) {
       return true;
-    }
-    if (!subscribedPartitions.contains(topicPartition.getPartitionNumber())) {
-      return false;
     }
     // Gate newly prefetched version topics only; do not change RT or other non-version monitoring.
     if (!topic.isVersionTopic()) {
@@ -851,8 +855,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
 
       // Determine the topic name based on whether a view name is provided
-      usesMaterializedViewTopic =
-          viewName != null && !viewName.isEmpty() && getViewClass().equals(MaterializedView.class.getCanonicalName());
       this.topicName = getVersionTopicName(getStoreVersion());
     }
 
@@ -884,6 +886,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         PubSubPosition seekPosition = seekPositions.remove(partitionId);
         bufferLock.lock();
         try {
+          if (isClosed.get() || !subscribedPartitions.contains(partitionId)) {
+            return;
+          }
           if (partitionToVersionToServe.putIfAbsent(partitionId, getStoreVersion()) == null) {
             partitionToMonitoringVersion.put(partitionId, getStoreVersion());
             recordVersionSwapNotification(partitionId, seekPosition);
@@ -1022,17 +1027,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
     }
 
-    /**
-     * Helper method to get the view class based on the view name and store configuration.
-     */
-    private String getViewClass() {
-      return veniceChangelogConsumerClientFactory.viewClassGetter.apply(
-          changelogClientConfig.getStoreName(),
-          viewName,
-          changelogClientConfig.getD2ControllerClient(),
-          changelogClientConfig.getControllerRequestRetryCount());
-    }
-
     private long getNextConsumerSequenceId(int partition) {
       AtomicLong consumerSequenceIdGenerator = consumerSequenceIdGeneratorMap
           .computeIfAbsent(partition, p -> new AtomicLong(consumerSequenceIdStartingValue));
@@ -1094,6 +1088,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       String newTopic = versionSwap.getNewServingVersionTopic().toString();
       bufferLock.lock();
       try {
+        if (isClosed.get() || !subscribedPartitions.contains(partition)) {
+          return;
+        }
         onVersionSwap(
             Version.parseVersionFromVersionTopicName(oldTopic),
             Version.parseVersionFromVersionTopicName(newTopic),
@@ -1195,28 +1192,28 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       } else {
         pendingVersionSwapNotifications.remove(partitions);
       }
+      if (partitions.isEmpty()) {
+        subscribedPartitions.clear();
+        partitionToVersionToServe.clear();
+        partitionToMonitoringVersion.clear();
+        seekPositions.clear();
+        currentVersionLastHeartbeat.clear();
+        eopReceivedPartitions.clear();
+        lastPolledPositions.clear();
+        syntheticHeartbeatEnabled = false;
+      } else {
+        for (int partition: partitions) {
+          subscribedPartitions.remove(partition);
+          partitionToVersionToServe.remove(partition);
+          partitionToMonitoringVersion.remove(partition);
+          seekPositions.remove(partition);
+          currentVersionLastHeartbeat.remove(partition);
+          eopReceivedPartitions.remove(partition);
+          lastPolledPositions.keySet().removeIf(topicPartition -> topicPartition.getPartitionNumber() == partition);
+        }
+      }
     } finally {
       bufferLock.unlock();
-    }
-    if (partitions.isEmpty()) {
-      subscribedPartitions.clear();
-      partitionToVersionToServe.clear();
-      partitionToMonitoringVersion.clear();
-      seekPositions.clear();
-      currentVersionLastHeartbeat.clear();
-      eopReceivedPartitions.clear();
-      lastPolledPositions.clear();
-      syntheticHeartbeatEnabled = false;
-    } else {
-      for (int partition: partitions) {
-        subscribedPartitions.remove(partition);
-        partitionToVersionToServe.remove(partition);
-        partitionToMonitoringVersion.remove(partition);
-        seekPositions.remove(partition);
-        currentVersionLastHeartbeat.remove(partition);
-        eopReceivedPartitions.remove(partition);
-        lastPolledPositions.keySet().removeIf(topicPartition -> topicPartition.getPartitionNumber() == partition);
-      }
     }
   }
 

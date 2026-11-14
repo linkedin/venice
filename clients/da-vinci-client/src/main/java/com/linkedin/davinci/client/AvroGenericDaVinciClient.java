@@ -67,8 +67,10 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RetryUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -150,6 +152,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final Executor readChunkExecutorForLargeRequest;
 
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
+  private Closeable monitoringRegistration;
   private int readerSchemaId;
   private boolean isValidateSpecificSchemaEnabled;
   // null for regular clients, non-null for version-specific clients
@@ -864,24 +867,29 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null) {
-          DaVinciBackend.configureMonitoringForStore(
+          monitoringRegistration = DaVinciBackend.configureMonitoringForStore(
               configLoader,
               getStoreName(),
               recordTransformerConfig.getMonitoringPositionFilter());
         }
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
-        daVinciBackend = new ReferenceCounted<>(
-            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
-            backend -> {
-              // Ensure that existing backend is fully closed before a new one can be created.
-              synchronized (AvroGenericDaVinciClient.class) {
-                logger.info("Start of " + this.getClass().getSimpleName() + "'s ref counted deleter closure.");
-                daVinciBackend = null;
-                backend.close();
-                logger.info("End of " + this.getClass().getSimpleName() + "'s ref counted deleter closure.");
-              }
-            });
+        try {
+          daVinciBackend = new ReferenceCounted<>(
+              new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
+              backend -> {
+                // Ensure that existing backend is fully closed before a new one can be created.
+                synchronized (AvroGenericDaVinciClient.class) {
+                  logger.info("Start of " + this.getClass().getSimpleName() + "'s ref counted deleter closure.");
+                  daVinciBackend = null;
+                  backend.close();
+                  logger.info("End of " + this.getClass().getSimpleName() + "'s ref counted deleter closure.");
+                }
+              });
+        } catch (RuntimeException | Error e) {
+          releaseMonitoringRegistration();
+          throw e;
+        }
       } else if (VeniceSystemStoreType
           .getSystemStoreType(clientConfig.getStoreName()) != VeniceSystemStoreType.META_STORE) {
         logger.info("Da Vinci Backend exists, reusing existing backend for client: " + clientConfig.getStoreName());
@@ -948,8 +956,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
     try {
-      if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null) {
-        getBackend().configureMonitoringForStore(getStoreName(), recordTransformerConfig.getMonitoringPositionFilter());
+      if (monitoringRegistration == null && recordTransformerConfig != null
+          && recordTransformerConfig.getMonitoringPositionFilter() != null) {
+        monitoringRegistration = getBackend()
+            .configureMonitoringForStore(getStoreName(), recordTransformerConfig.getMonitoringPositionFilter());
       }
       getBackend().registerStoreClient(getStoreName(), storeVersion);
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
@@ -1019,6 +1029,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     } catch (Throwable e) {
       String msg = "Unable to start Da Vinci client, storeName=" + getStoreName();
       logger.error(msg, e);
+      releaseMonitoringRegistration();
       daVinciBackend.release();
       throw new VeniceClientException(msg, e);
     }
@@ -1044,6 +1055,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     try {
       logger.info("Closing client, storeName=" + getStoreName());
       ready.set(false);
+      releaseMonitoringRegistration();
 
       getBackend().unregisterStoreClient(getStoreName(), storeVersion);
 
@@ -1057,6 +1069,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       logger.error(msg, e);
       throw new VeniceClientException(msg, e);
     }
+  }
+
+  private void releaseMonitoringRegistration() {
+    Utils.closeQuietlyWithErrorLogged(monitoringRegistration);
+    monitoringRegistration = null;
   }
 
   Logger getClientLogger() {

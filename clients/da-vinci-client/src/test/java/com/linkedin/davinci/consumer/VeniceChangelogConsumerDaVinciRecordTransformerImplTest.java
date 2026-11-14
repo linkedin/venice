@@ -231,6 +231,12 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     assertTrue(
         veniceChangelogConsumer
             .isMonitoringTopic(new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_store_rt"), 0)));
+    assertTrue(
+        veniceChangelogConsumer
+            .isMonitoringTopic(new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_store_rt"), 42)));
+    assertTrue(
+        veniceChangelogConsumer
+            .isMonitoringTopic(new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_store_v1_sr"), 42)));
     assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
 
     // Prefetch, metadata promotion and EOP are not activation.
@@ -298,6 +304,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     veniceChangelogConsumer.clearPartitionState(Collections.singleton(0));
     assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+    futureRecordTransformer.onStartVersionIngestion(0, true);
+    futureRecordTransformer.onVersionSwap(monitoringPartition(2, 0), swap, offset(11));
     veniceChangelogConsumer.getSubscribedPartitions().add(0);
     futureRecordTransformer.onStartVersionIngestion(0, false);
     assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
@@ -321,6 +329,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
             changelogClientConfig,
             veniceChangelogConsumerClientFactory);
+    assertTrue(viewConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
     viewConsumer.getSubscribedPartitions().add(0);
     VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer>.DaVinciRecordTransformerChangelogConsumer current =
         viewConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, 1, keySchema, valueSchema,
@@ -356,7 +365,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     future.onVersionSwap(newTopic, swap, offset(12));
     assertFalse(viewConsumer.isMonitoringTopic(newTopic));
     assertFalse(viewConsumer.isMonitoringTopic(oldTopic));
-    assertFalse(viewConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+    assertTrue(viewConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
 
   }
 
