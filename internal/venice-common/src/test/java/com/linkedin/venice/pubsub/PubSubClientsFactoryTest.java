@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.expectThrows;
 
@@ -71,6 +72,16 @@ public class PubSubClientsFactoryTest {
     PubSubConsumerAdapterFactory consumerFactory = factory.getConsumerAdapterFactory();
     assertNotNull(consumerFactory);
     assertEquals(consumerFactory.getClass().getName(), expectedConsumer.getName());
+    if (consumerFactory instanceof ApacheKafkaConsumerAdapterFactory) {
+      assertFalse(consumerFactory.isAutomaticMonitoringEnabled(veniceProps));
+    } else {
+      expectThrows(
+          UnsupportedOperationException.class,
+          () -> consumerFactory.isAutomaticMonitoringEnabled(veniceProps));
+    }
+    expectThrows(
+        UnsupportedOperationException.class,
+        () -> consumerFactory.configureMonitoringForStore("test_store", partition -> false));
 
     PubSubAdminAdapterFactory adminFactory = factory.getAdminAdapterFactory();
     assertNotNull(adminFactory);

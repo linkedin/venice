@@ -5,10 +5,12 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
@@ -99,6 +101,13 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     if (isCDCRecordTransformer()) {
       ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
           .onVersionSwap(currentVersion, futureVersion, partitionId, position);
+    }
+  }
+
+  public void onVersionSwap(PubSubTopicPartition source, VersionSwap versionSwap, PubSubPosition position) {
+    if (isCDCRecordTransformer()) {
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
+          .onVersionSwap(source, versionSwap, position);
     }
   }
 

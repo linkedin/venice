@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 
 
@@ -19,6 +20,11 @@ public class ApacheKafkaConsumerAdapterFactory extends PubSubConsumerAdapterFact
   @Override
   public ApacheKafkaConsumerAdapter create(PubSubConsumerAdapterContext context) {
     return new ApacheKafkaConsumerAdapter(new ApacheKafkaConsumerConfig(context));
+  }
+
+  @Override
+  public boolean isAutomaticMonitoringEnabled(VeniceProperties consumerProperties) {
+    return false;
   }
 
   @Override

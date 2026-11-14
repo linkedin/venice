@@ -863,6 +863,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<ObjectCacheConfig> cacheConfig) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
+        if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null) {
+          DaVinciBackend.configureMonitoringForStore(
+              configLoader,
+              getStoreName(),
+              recordTransformerConfig.getMonitoringPositionFilter());
+        }
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
@@ -941,8 +947,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
+    boolean registered = false;
     try {
-      getBackend().registerStoreClient(getStoreName(), storeVersion);
+      getBackend().registerStoreClient(
+          getStoreName(),
+          storeVersion,
+          recordTransformerConfig == null ? null : recordTransformerConfig.getMonitoringPositionFilter());
+      registered = true;
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 
       if (daVinciConfig.isCacheEnabled()) {
@@ -1010,6 +1021,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     } catch (Throwable e) {
       String msg = "Unable to start Da Vinci client, storeName=" + getStoreName();
       logger.error(msg, e);
+      if (registered) {
+        try {
+          getBackend().unregisterStoreClient(getStoreName(), storeVersion);
+        } catch (Throwable cleanupError) {
+          e.addSuppressed(cleanupError);
+        }
+      }
       daVinciBackend.release();
       throw new VeniceClientException(msg, e);
     }
