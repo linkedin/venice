@@ -74,12 +74,14 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricConfig;
@@ -98,6 +100,7 @@ import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -512,10 +515,11 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.close();
   }
 
-  @Test
-  public void testReplacementWaitsForInactiveTaskShutdown() {
-    String topicName = "test-store_v1";
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReplacementWaitsForInactiveTaskShutdown(boolean view) {
+    String topicName = view ? "test-store_v1_test_mv" : "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    String ingestionStoreName = view ? VeniceView.parseStoreAndViewFromViewTopic(topicName) : storeName;
     Store mockStore = new ZKStore(
         storeName,
         "unit-test",
@@ -528,6 +532,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(ingestionStoreName);
     doReturn(new StoreVersionInfo(mockStore, mockStore.getVersion(1))).when(mockMetadataRepo)
         .waitVersion(eq(storeName), eq(1), any());
     VeniceServerConfig serverConfig = mockVeniceConfigLoader.getVeniceServerConfig();
@@ -538,6 +543,8 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     StoreIngestionTask oldTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    CompletableFuture<Void> detached = kafkaStoreIngestionService.getConsumerDetachmentFuture(ingestionStoreName);
+    assertFalse(detached.isDone());
     // Mimic an inactive task whose run() has not finished its cleanup yet.
     oldTask.getGracefulShutdownLatch().get();
     oldTask.close();
@@ -546,6 +553,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     kafkaStoreIngestionService.startConsumption(config, 0, Optional.empty());
     assertTrue(System.currentTimeMillis() - startTimeMs >= TimeUnit.SECONDS.toMillis(1));
     Assert.assertNotSame(kafkaStoreIngestionService.getStoreIngestionTask(topicName), oldTask);
+    oldTask.getConsumerDetachmentFuture().complete(null);
+    assertTrue(detached.isDone());
+    assertFalse(kafkaStoreIngestionService.getConsumerDetachmentFuture(ingestionStoreName).isDone());
     kafkaStoreIngestionService.close();
   }
 
@@ -956,6 +966,20 @@ public abstract class KafkaStoreIngestionServiceTest {
     assertEquals(
         kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName),
         internalDaVinciRecordTransformerConfig);
+    assertEquals(internalDaVinciRecordTransformerConfig.getClientConfigs().size(), 2);
+    for (DaVinciRecordTransformerConfig incompatible: new DaVinciRecordTransformerConfig[] {
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setMonitoringPositionFilter(partition -> false)
+            .setStoreRecordsInDaVinci(!recordTransformerConfig.getStoreRecordsInDaVinci())
+            .build(),
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setMonitoringPositionFilter(partition -> false)
+            .setKeyClass(org.apache.avro.specific.SpecificRecord.class)
+            .build() }) {
+      Assert.assertThrows(
+          VeniceException.class,
+          () -> kafkaStoreIngestionService.registerRecordTransformerConfig(storeName, incompatible));
+    }
     assertEquals(internalDaVinciRecordTransformerConfig.getClientConfigs().size(), 2);
     kafkaStoreIngestionService.unregisterRecordTransformerConfig(storeName, recordTransformerConfig);
     assertEquals(internalDaVinciRecordTransformerConfig.getClientConfigs(), Collections.singleton(secondConfig));

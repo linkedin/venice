@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.function.Consumer;
 import org.apache.avro.Schema;
 
 
@@ -38,8 +37,6 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   private final DaVinciRecordTransformer recordTransformer;
   private final InternalDaVinciRecordTransformerConfig internalConfig;
   private final List<DaVinciRecordTransformer> recoveryTransformers;
-  private final Map<Integer, Boolean> partitionStarts;
-  private final Map<Integer, Consumer<DaVinciRecordTransformerChangelogConsumer>> partitionSwaps;
   private final Map<DaVinciRecordTransformerConfig, DaVinciRecordTransformerChangelogConsumer> cdcTemplates =
       new ConcurrentHashMap<>();
   private final Map<DaVinciRecordTransformerChangelogConsumer, Map<Integer, DaVinciRecordTransformerChangelogConsumer>> cdcPartitions =
@@ -56,14 +53,7 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       Schema inputValueSchema,
       Schema outputValueSchema,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig) {
-    this(
-        recordTransformer,
-        keySchema,
-        inputValueSchema,
-        outputValueSchema,
-        internalRecordTransformerConfig,
-        null,
-        null);
+    this(recordTransformer, keySchema, inputValueSchema, outputValueSchema, internalRecordTransformerConfig, null);
   }
 
   private InternalDaVinciRecordTransformer(
@@ -72,8 +62,7 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       Schema inputValueSchema,
       Schema outputValueSchema,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
-      List<DaVinciRecordTransformer> recoveryTransformers,
-      InternalDaVinciRecordTransformer<K, V, O> owner) {
+      List<DaVinciRecordTransformer> recoveryTransformers) {
     super(
         recordTransformer.getStoreName(),
         recordTransformer.getStoreVersion(),
@@ -84,8 +73,6 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer = recordTransformer;
     this.internalConfig = internalRecordTransformerConfig;
     this.recoveryTransformers = recoveryTransformers;
-    this.partitionStarts = owner == null ? new ConcurrentHashMap<>() : owner.partitionStarts;
-    this.partitionSwaps = owner == null ? new ConcurrentHashMap<>() : owner.partitionSwaps;
     this.startLatchConsumptionLatch =
         new CountDownLatch(internalRecordTransformerConfig.getStartConsumptionLatchCount());
   }
@@ -124,22 +111,7 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
                   if (previous != null && previous.isCurrentSubscription(partition)) {
                     return previous;
                   }
-                  DaVinciRecordTransformerChangelogConsumer child = template.forPartition(partition);
-                  // A late joiner shares the existing cursor, not a new partition recovery.
-                  if (previous == null && cdcPartitions.values().stream().anyMatch(partitions -> {
-                    DaVinciRecordTransformerChangelogConsumer active = partitions.get(partition);
-                    return active != null && active.isCurrentSubscription(partition);
-                  })) {
-                    Boolean current = partitionStarts.get(partition);
-                    if (current != null) {
-                      child.onStartVersionIngestion(partition, current);
-                    }
-                    Consumer<DaVinciRecordTransformerChangelogConsumer> swap = partitionSwaps.get(partition);
-                    if (swap != null) {
-                      swap.accept(child);
-                    }
-                  }
-                  return child;
+                  return template.forPartition(partition);
                 }));
       }
     }
@@ -157,8 +129,7 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
             getInputValueSchema(),
             getOutputValueSchema(),
             internalConfig,
-            getPartitionTransformers(partition),
-            this)
+            getPartitionTransformers(partition))
         : this;
   }
 
@@ -191,15 +162,7 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
 
   @Override
   public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
-    List<DaVinciRecordTransformer> transformers = getPartitionTransformers(partitionId);
-    if (isCDCRecordTransformer() && transformers.stream()
-        .anyMatch(
-            transformer -> ((DaVinciRecordTransformerChangelogConsumer) transformer)
-                .isCurrentSubscription(partitionId))) {
-      partitionStarts.put(partitionId, isCurrentVersion);
-      partitionSwaps.remove(partitionId);
-    }
-    for (DaVinciRecordTransformer transformer: transformers) {
+    for (DaVinciRecordTransformer transformer: getPartitionTransformers(partitionId)) {
       transformer.onStartVersionIngestion(partitionId, isCurrentVersion);
     }
   }
@@ -230,8 +193,6 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
 
   public void onVersionSwap(PubSubTopicPartition source, VersionSwap versionSwap, PubSubPosition position) {
     if (isCDCRecordTransformer()) {
-      partitionSwaps
-          .put(source.getPartitionNumber(), transformer -> transformer.onVersionSwap(source, versionSwap, position));
       for (DaVinciRecordTransformer transformer: getPartitionTransformers(source.getPartitionNumber())) {
         ((DaVinciRecordTransformerChangelogConsumer) transformer).onVersionSwap(source, versionSwap, position);
       }

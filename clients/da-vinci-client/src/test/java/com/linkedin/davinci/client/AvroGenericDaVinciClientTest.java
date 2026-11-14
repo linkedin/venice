@@ -51,6 +51,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -110,7 +111,7 @@ public class AvroGenericDaVinciClientTest {
     config.setRecordTransformerConfig(transformerConfig);
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
     AvroGenericDaVinciClient client =
-        new AvroGenericDaVinciClient(config, clientConfig, VeniceProperties.empty(), Optional.empty());
+        spy(new AvroGenericDaVinciClient(config, clientConfig, VeniceProperties.empty(), Optional.empty()));
     VeniceConfigLoader loader = mock(VeniceConfigLoader.class);
     VeniceServerConfig server = mock(VeniceServerConfig.class);
     PubSubClientsFactory pubSubClients = mock(PubSubClientsFactory.class);
@@ -169,7 +170,13 @@ public class AvroGenericDaVinciClientTest {
       } else {
         client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty());
         assertEquals(backends.constructed().size(), 1);
+        client.addPartitionsToSubscription(ComplementSet.of(1));
+        doNothing().when(client).unsubscribe(any(ComplementSet.class));
         client.closeInner();
+        ArgumentCaptor<ComplementSet> closedPartitions = ArgumentCaptor.forClass(ComplementSet.class);
+        verify(client).unsubscribe(closedPartitions.capture());
+        assertTrue(closedPartitions.getValue().contains(1));
+        assertFalse(closedPartitions.getValue().contains(0));
         if (monitoringEnabled) {
           verify(registration).close();
         } else {

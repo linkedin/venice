@@ -113,6 +113,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -674,9 +675,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String topicName = veniceStoreVersionConfig.getStoreVersionName();
 
     // For view topic, we need to use internal view store name
-    String storeName = VeniceView.isViewTopic(topicName)
-        ? VeniceView.parseStoreAndViewFromViewTopic(topicName)
-        : Version.parseStoreFromKafkaTopicName(topicName);
+    String storeName = getIngestionStoreName(topicName);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
 
     StoreVersionInfo storeVersionPair =
@@ -891,8 +890,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           createNewStoreIngestionTask.set(true);
           StoreIngestionTask task = createStoreIngestionTask(veniceStore, partitionId, createPaused);
           CompletableFuture<Void> detached = task.getConsumerDetachmentFuture();
-          Set<CompletableFuture<Void>> pending =
-              pendingConsumerDetachments.computeIfAbsent(task.getStoreName(), ignored -> ConcurrentHashMap.newKeySet());
+          Set<CompletableFuture<Void>> pending = pendingConsumerDetachments
+              .computeIfAbsent(getIngestionStoreName(topic), ignored -> ConcurrentHashMap.newKeySet());
           pending.add(detached);
           detached.thenRun(() -> pending.remove(detached));
           return task;
@@ -1640,8 +1639,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     AggVersionedDaVinciRecordTransformerStats stats = recordTransformerStats;
     storeNameToInternalRecordTransformerConfig.compute(storeName, (name, existing) -> {
-      if (existing != null && existing.getRecordTransformerConfig().getMonitoringPositionFilter() != null
-          && recordTransformerConfig.getMonitoringPositionFilter() != null) {
+      if (existing != null && (existing.getRecordTransformerConfig().getMonitoringPositionFilter() != null
+          || recordTransformerConfig.getMonitoringPositionFilter() != null)) {
+        DaVinciRecordTransformerConfig first = existing.getRecordTransformerConfig();
+        if (first.getMonitoringPositionFilter() == null || recordTransformerConfig.getMonitoringPositionFilter() == null
+            || !Objects.equals(first.getKeyClass(), recordTransformerConfig.getKeyClass())
+            || !Objects.equals(first.getOutputValueClass(), recordTransformerConfig.getOutputValueClass())
+            || !Objects.equals(first.getOutputValueSchema(), recordTransformerConfig.getOutputValueSchema())
+            || first.getStoreRecordsInDaVinci() != recordTransformerConfig.getStoreRecordsInDaVinci()
+            || first.getAlwaysBootstrapFromVersionTopic() != recordTransformerConfig
+                .getAlwaysBootstrapFromVersionTopic()
+            || first.isRecordTransformationEnabled() != recordTransformerConfig.isRecordTransformationEnabled()
+            || first.isRecordMetadataEnabled() != recordTransformerConfig.isRecordMetadataEnabled()) {
+          throw new VeniceException("Incompatible CDC record transformer settings for store " + storeName);
+        }
         existing.getClientConfigs().add(recordTransformerConfig);
         return existing;
       }
@@ -1661,6 +1672,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return pending == null
         ? CompletableFuture.completedFuture(null)
         : CompletableFuture.allOf(pending.toArray(new CompletableFuture<?>[0]));
+  }
+
+  private static String getIngestionStoreName(String topicName) {
+    return VeniceView.isViewTopic(topicName)
+        ? VeniceView.parseStoreAndViewFromViewTopic(topicName)
+        : Version.parseStoreFromKafkaTopicName(topicName);
   }
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {

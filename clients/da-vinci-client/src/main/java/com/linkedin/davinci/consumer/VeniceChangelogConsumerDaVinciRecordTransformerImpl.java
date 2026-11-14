@@ -266,7 +266,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
     throwIfClosed();
     Set<Integer> targetPartitions = new HashSet<>();
-    boolean partitionsAdded = false;
+    Map<Integer, Long> attemptGenerations = new HashMap<>();
     try {
       startDaVinciClient();
 
@@ -280,15 +280,21 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
 
       // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
-      Set<Integer> intersection = new HashSet<>(subscribedPartitions);
-      intersection.retainAll(targetPartitions);
-      if (!intersection.isEmpty()) {
-        throw new VeniceClientException(
-            "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
+      bufferLock.lock();
+      try {
+        Set<Integer> intersection = new HashSet<>(subscribedPartitions);
+        intersection.retainAll(targetPartitions);
+        if (!intersection.isEmpty()) {
+          throw new VeniceClientException(
+              "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
+        }
+        for (int partition: targetPartitions) {
+          attemptGenerations.put(partition, subscriptionGenerations.getOrDefault(partition, 0L));
+        }
+        subscribedPartitions.addAll(targetPartitions);
+      } finally {
+        bufferLock.unlock();
       }
-
-      subscribedPartitions.addAll(targetPartitions);
-      partitionsAdded = true;
 
       /*
        * Invoke subscriptionCall before scheduling startFuture. If it throws synchronously
@@ -339,7 +345,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       subscriptionFuture.whenComplete((result, error) -> {
         if (error != null) {
           LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
-          subscribedPartitions.removeAll(targetPartitions);
+          retireFailedSubscription(attemptGenerations);
           startFuture.completeExceptionally(new VeniceClientException(error));
           return;
         }
@@ -353,15 +359,30 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       return startFuture;
     } catch (Exception e) {
+      retireFailedSubscription(attemptGenerations);
       if (isVersionSpecificClient && isStoreOrVersionNotFoundException(e)) {
         LOGGER.warn("Store or version no longer exists for store: {}. Marking as caught up.", storeName, e);
         isCaughtUp.set(true);
         return CompletableFuture.completedFuture(null);
       }
-      if (partitionsAdded) {
-        subscribedPartitions.removeAll(targetPartitions);
-      }
       throw e;
+    }
+  }
+
+  private void retireFailedSubscription(Map<Integer, Long> attemptGenerations) {
+    bufferLock.lock();
+    try {
+      Set<Integer> failedPartitions = new HashSet<>();
+      attemptGenerations.forEach((partition, generation) -> {
+        if (generation.equals(subscriptionGenerations.getOrDefault(partition, 0L))) {
+          failedPartitions.add(partition);
+        }
+      });
+      if (!failedPartitions.isEmpty()) {
+        clearPartitionState(failedPartitions);
+      }
+    } finally {
+      bufferLock.unlock();
     }
   }
 
@@ -1058,7 +1079,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       try {
         pubSubMessages.put(pubSubMessage);
-        if (isClosed.get() || !isStarted.get() || !isServedByThisVersion(partitionId)) {
+        if (isClosed.get() || !isStarted.get() || !isCurrentSubscription(partitionId)) {
           pubSubMessages.remove(pubSubMessage);
           return;
         }

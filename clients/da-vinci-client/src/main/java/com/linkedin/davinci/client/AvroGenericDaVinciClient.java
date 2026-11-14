@@ -309,12 +309,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   private CompletableFuture<Void> seekToPosition(Set<Integer> partitionSet, PubSubPosition position) {
     throwIfNotReady();
-    addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
     Map<Integer, PubSubPosition> positionMap = new HashMap<>();
     for (int partition: partitionSet) {
       positionMap.put(partition, position);
     }
-    return getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forPositions(positionMap), getVersion());
+    CompletableFuture<Void> future =
+        getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forPositions(positionMap), getVersion());
+    addPartitionsToSubscription(ComplementSet.wrap(partitionSet));
+    return future;
   }
 
   protected CompletableFuture<Void> seekToCheckpoint(Set<VeniceChangeCoordinate> checkpoints) {
@@ -327,14 +329,18 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       }
       positionMap.put(changeCoordinate.getPartition(), changeCoordinate.getPosition());
     }
+    CompletableFuture<Void> future =
+        getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forPositions(positionMap), getVersion());
     addPartitionsToSubscription(ComplementSet.wrap(positionMap.keySet()));
-    return getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forPositions(positionMap), getVersion());
+    return future;
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Map<Integer, Long> timestamps) {
     throwIfNotReady();
+    CompletableFuture<Void> future =
+        getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forTimestamps(timestamps), getVersion());
     addPartitionsToSubscription(ComplementSet.wrap(timestamps.keySet()));
-    return getStoreBackend().seekToCheckpoint(DaVinciSeekCheckpointInfo.forTimestamps(timestamps), getVersion());
+    return future;
   }
 
   protected CompletableFuture<Void> seekToTimestamps(Long timestamp) {
@@ -348,8 +354,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
+    CompletableFuture<Void> future = getStoreBackend().subscribe(partitions, getVersion(), null);
     addPartitionsToSubscription(partitions);
-    return getStoreBackend().subscribe(partitions, getVersion(), null);
+    return future;
   }
 
   @Override
@@ -962,7 +969,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         monitoringRegistration = getBackend()
             .configureMonitoringForStore(getStoreName(), recordTransformerConfig.getMonitoringPositionFilter());
       }
-      getBackend().registerStoreClient(getStoreName(), storeVersion);
+      getBackend().registerStoreClient(getStoreName(), storeVersion, monitoringRegistration);
       storeClientRegistered = true;
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 
@@ -1060,6 +1067,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   void closeInner() {
     try {
       logger.info("Closing client, storeName=" + getStoreName());
+      if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null
+          && !subscription.isEmpty()) {
+        unsubscribe(ComplementSet.newSet(subscription));
+      }
       ready.set(false);
       unregisterStoreClient();
 

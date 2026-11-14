@@ -21,6 +21,9 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
@@ -41,6 +44,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -160,6 +164,30 @@ public class StoreBackendTest {
     store.setVersions(Collections.emptyList());
     store.setCurrentVersion(Store.NON_EXISTING_VERSION);
     assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.universalSet()));
+  }
+
+  @Test
+  void testCdcRejectsOverlapAndRetainsDisjointSubscriptions() {
+    InternalDaVinciRecordTransformerConfig internalConfig = mock(InternalDaVinciRecordTransformerConfig.class);
+    DaVinciRecordTransformerConfig config = mock(DaVinciRecordTransformerConfig.class);
+    when(internalConfig.getRecordTransformerConfig()).thenReturn(config);
+    when(config.getMonitoringPositionFilter()).thenReturn(partition -> false);
+    when(backend.getInternalRecordTransformerConfig(store.getName())).thenReturn(internalConfig);
+    storeBackend.subscribe(ComplementSet.of(0));
+    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.of(0, 1)));
+    assertThrows(
+        VeniceException.class,
+        () -> storeBackend.seekToCheckpoint(
+            DaVinciSeekCheckpointInfo.forPositions(Collections.singletonMap(0, PubSubSymbolicPosition.EARLIEST)),
+            Optional.empty()));
+    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.universalSet()));
+    assertFalse(storeBackend.getSubscription().contains(1));
+    storeBackend.subscribe(ComplementSet.of(1));
+    storeBackend.unsubscribe(ComplementSet.of(0));
+    assertTrue(storeBackend.getSubscription().contains(1));
+    assertFalse(storeBackend.getSubscription().contains(0));
+    storeBackend.subscribe(ComplementSet.of(0));
+    assertTrue(storeBackend.getSubscription().contains(0));
   }
 
   @Test

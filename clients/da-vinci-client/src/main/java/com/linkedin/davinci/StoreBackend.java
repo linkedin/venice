@@ -1,6 +1,7 @@
 package com.linkedin.davinci;
 
 import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.annotation.VisibleForTesting;
@@ -184,6 +185,18 @@ public class StoreBackend {
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion,
       DaVinciSeekCheckpointInfo checkpointInfo) {
+    InternalDaVinciRecordTransformerConfig transformerConfig = backend.getInternalRecordTransformerConfig(storeName);
+    if (transformerConfig != null
+        && transformerConfig.getRecordTransformerConfig().getMonitoringPositionFilter() != null) {
+      ComplementSet<Integer> unassigned = ComplementSet.universalSet();
+      unassigned.removeAll(subscription);
+      ComplementSet<Integer> overlap = ComplementSet.newSet(partitions);
+      overlap.removeAll(unassigned);
+      if (!overlap.isEmpty()) {
+        throw new VeniceException(
+            "Overlapping CDC subscriptions are not supported for store " + storeName + ": " + overlap);
+      }
+    }
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
         Version version = getCurrentVersion();

@@ -118,6 +118,7 @@ public class DaVinciBackend implements Closeable {
   private final Map<String, ClientType> storeClientTypes = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> versionSpecificStoreVersions = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> storeClientRefCounts = new VeniceConcurrentHashMap<>();
+  private final Map<String, Integer> storeMonitoringRefCounts = new VeniceConcurrentHashMap<>();
   private VeniceConfigLoader configLoader;
   private SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -708,6 +709,13 @@ public class DaVinciBackend implements Closeable {
    *                               clients target different versions of the same store
    */
   public synchronized void registerStoreClient(String storeName, Integer storeVersion) {
+    registerStoreClient(storeName, storeVersion, null);
+  }
+
+  public synchronized void registerStoreClient(
+      String storeName,
+      Integer storeVersion,
+      Closeable monitoringRegistration) {
     boolean isVersionSpecific = storeVersion != null;
     ClientType newClientType = isVersionSpecific ? ClientType.VERSION_SPECIFIC : ClientType.REGULAR;
     ClientType existingClientType = storeClientTypes.get(storeName);
@@ -733,6 +741,9 @@ public class DaVinciBackend implements Closeable {
 
     // Increment ref count for this store
     storeClientRefCounts.merge(storeName, 1, Integer::sum);
+    if (monitoringRegistration != null) {
+      storeMonitoringRefCounts.merge(storeName, 1, Integer::sum);
+    }
 
     if (isVersionSpecific) {
       versionSpecificStoreVersions.put(storeName, storeVersion);
@@ -789,7 +800,11 @@ public class DaVinciBackend implements Closeable {
       Integer storeVersion,
       DaVinciRecordTransformerConfig transformerConfig,
       Closeable monitoringRegistration) {
-    boolean lastClient = storeClientRefCounts.getOrDefault(storeName, 0) <= 1;
+    boolean lastMonitoringClient = false;
+    if (monitoringRegistration != null) {
+      lastMonitoringClient = storeMonitoringRefCounts
+          .compute(storeName, (name, count) -> count == null || count <= 1 ? null : count - 1) == null;
+    }
     try {
       if (transformerConfig != null) {
         getIngestionService().unregisterRecordTransformerConfig(storeName, transformerConfig);
@@ -797,7 +812,7 @@ public class DaVinciBackend implements Closeable {
       unregisterStoreClient(storeName, storeVersion);
     } finally {
       if (monitoringRegistration != null) {
-        CompletableFuture<Void> detached = lastClient
+        CompletableFuture<Void> detached = lastMonitoringClient
             ? getIngestionService().getConsumerDetachmentFuture(storeName)
             : CompletableFuture.completedFuture(null);
         detached.thenRun(() -> Utils.closeQuietlyWithErrorLogged(monitoringRegistration));

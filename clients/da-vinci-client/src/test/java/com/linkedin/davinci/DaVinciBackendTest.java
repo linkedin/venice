@@ -79,29 +79,43 @@ public class DaVinciBackendTest {
 
   @Test
   public void testMonitoringGateWaitsForFinalConsumerDetachment() throws Exception {
-    for (boolean closeFails: new boolean[] { false, true }) {
-      DaVinciBackend sharedBackend = spy(backend);
-      KafkaStoreIngestionService ingestion = mock(KafkaStoreIngestionService.class);
-      doReturn(ingestion).when(sharedBackend).getIngestionService();
-      CompletableFuture<Void> detached = new CompletableFuture<>();
-      when(ingestion.getConsumerDetachmentFuture(STORE_NAME)).thenReturn(detached);
-      StoreBackend store = mock(StoreBackend.class);
-      sharedBackend.addStoreBackend(STORE_NAME, store);
-      sharedBackend.registerStoreClient(STORE_NAME, null);
-      sharedBackend.registerStoreClient(STORE_NAME, null);
-      Closeable first = mock(Closeable.class);
-      Closeable last = mock(Closeable.class);
-      sharedBackend.unregisterStoreClient(STORE_NAME, null, null, first);
-      verify(first).close();
-      if (closeFails) {
-        doThrow(new VeniceException("Shutdown failed")).when(store).close();
-        assertThrows(VeniceException.class, () -> sharedBackend.unregisterStoreClient(STORE_NAME, null, null, last));
-      } else {
-        sharedBackend.unregisterStoreClient(STORE_NAME, null, null, last);
+    for (boolean ordinaryClient: new boolean[] { false, true }) {
+      for (boolean closeFails: new boolean[] { false, true }) {
+        DaVinciBackend sharedBackend = spy(backend);
+        KafkaStoreIngestionService ingestion = mock(KafkaStoreIngestionService.class);
+        doReturn(ingestion).when(sharedBackend).getIngestionService();
+        CompletableFuture<Void> detached = new CompletableFuture<>();
+        when(ingestion.getConsumerDetachmentFuture(STORE_NAME)).thenReturn(detached);
+        StoreBackend store = mock(StoreBackend.class);
+        sharedBackend.addStoreBackend(STORE_NAME, store);
+        Closeable first = mock(Closeable.class);
+        Closeable last = mock(Closeable.class);
+        sharedBackend.registerStoreClient(STORE_NAME, null, first);
+        sharedBackend.registerStoreClient(STORE_NAME, null, last);
+        if (ordinaryClient) {
+          sharedBackend.registerStoreClient(STORE_NAME, null);
+        }
+        sharedBackend.unregisterStoreClient(STORE_NAME, null, null, first);
+        verify(first).close();
+        if (closeFails) {
+          doThrow(new VeniceException("Shutdown failed")).when(store).close();
+        }
+        if (closeFails && !ordinaryClient) {
+          assertThrows(VeniceException.class, () -> sharedBackend.unregisterStoreClient(STORE_NAME, null, null, last));
+        } else {
+          sharedBackend.unregisterStoreClient(STORE_NAME, null, null, last);
+        }
+        verify(last, never()).close();
+        detached.complete(null);
+        verify(last).close();
+        if (ordinaryClient) {
+          if (closeFails) {
+            assertThrows(VeniceException.class, () -> sharedBackend.unregisterStoreClient(STORE_NAME, null));
+          } else {
+            sharedBackend.unregisterStoreClient(STORE_NAME, null);
+          }
+        }
       }
-      verify(last, never()).close();
-      detached.complete(null);
-      verify(last).close();
     }
   }
 

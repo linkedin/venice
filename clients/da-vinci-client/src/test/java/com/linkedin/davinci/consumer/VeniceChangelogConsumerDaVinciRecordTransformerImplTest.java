@@ -266,10 +266,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
           (partition == 0 ? veniceChangelogConsumer : second).isMonitoringTopic(monitoringPartition(2, partition)));
     }
 
-    second.getSubscribedPartitions().add(0);
-    future.onHeartbeat(0, 100);
-    assertTrue(second.isMonitoringTopic(monitoringPartition(2, 0)));
-
     InternalDaVinciRecordTransformer retired = current.forPartitionRecovery(1);
     second.clearPartitionState(Collections.singleton(1));
     second.getSubscribedPartitions().add(1);
@@ -1368,6 +1364,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     veniceChangelogConsumer.seekToBeginningOfPush(specificPartitions);
     assertTrue(veniceChangelogConsumer.getSubscribedPartitions().contains(1));
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer retired =
+        recordTransformer.forPartition(1);
+    retired.onStartVersionIngestion(1, true);
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 1)));
 
     // Simulate subscription failure
     daVinciClientSubscribeFuture.completeExceptionally(new VeniceException("Test exception"));
@@ -1380,6 +1380,56 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         () -> assertFalse(
             veniceChangelogConsumer.getSubscribedPartitions().contains(1),
             "Partition 1 should be removed from subscribedPartitions after failure"));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 1)));
+    CompletableFuture<Void> retry = new CompletableFuture<>();
+    when(mockDaVinciClient.seekToBeginningOfPush(any())).thenReturn(retry);
+    veniceChangelogConsumer.seekToBeginningOfPush(specificPartitions);
+    retired.onStartVersionIngestion(1, true);
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 1)));
+    veniceChangelogConsumer.unsubscribe(specificPartitions);
+    CompletableFuture<Void> latest = new CompletableFuture<>();
+    when(mockDaVinciClient.seekToBeginningOfPush(any())).thenReturn(latest);
+    veniceChangelogConsumer.seekToBeginningOfPush(specificPartitions);
+    futureRecordTransformer.onStartVersionIngestion(1, true);
+    retry.completeExceptionally(new VeniceException("Retired attempt failed"));
+    assertTrue(veniceChangelogConsumer.getSubscribedPartitions().contains(1));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 1)));
+    veniceChangelogConsumer.unsubscribe(specificPartitions);
+    doAnswer(invocation -> {
+      recordTransformer.forPartition(1).onStartVersionIngestion(1, true);
+      throw new VeniceException("Synchronous subscription failure");
+    }).when(mockDaVinciClient).seekToBeginningOfPush(any());
+    assertThrows(VeniceException.class, () -> veniceChangelogConsumer.seekToBeginningOfPush(specificPartitions));
+    assertFalse(veniceChangelogConsumer.getSubscribedPartitions().contains(1));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 1)));
+  }
+
+  @Test
+  public void testBlockedAcceptedRecordSurvivesVersionSwap() throws Exception {
+    veniceChangelogConsumer.start(Collections.singleton(0));
+    recordTransformer.onStartVersionIngestion(0, true);
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
+      recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+    }
+    AtomicReference<Thread> producer = new AtomicReference<>();
+    CompletableFuture<Void> blocked = CompletableFuture.runAsync(() -> {
+      producer.set(Thread.currentThread());
+      recordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+    });
+    try {
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        assertNotNull(producer.get());
+        assertEquals(producer.get().getState(), Thread.State.WAITING);
+      });
+      futureRecordTransformer.onStartVersionIngestion(0, false);
+      futureRecordTransformer.onVersionSwap(monitoringPartition(2, 0), monitoringSwap(1, 2), offset(12));
+      getOutputQueue().poll();
+      blocked.get(5, TimeUnit.SECONDS);
+      assertEquals(getOutputQueue().size(), MAX_BUFFER_SIZE);
+    } finally {
+      getOutputQueue().clear();
+      veniceChangelogConsumer.stop();
+    }
   }
 
   @SuppressWarnings("unchecked")
