@@ -1069,7 +1069,8 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       logger.info("Closing client, storeName=" + getStoreName());
       if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null
           && !subscription.isEmpty()) {
-        unsubscribe(ComplementSet.newSet(subscription));
+        storeBackend.closePartitions(ComplementSet.newSet(subscription));
+        subscription.clear();
       }
       ready.set(false);
       unregisterStoreClient();

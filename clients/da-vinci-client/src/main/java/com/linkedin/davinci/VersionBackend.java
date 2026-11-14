@@ -42,8 +42,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -468,6 +470,10 @@ public class VersionBackend {
   }
 
   synchronized void unsubscribe(ComplementSet<Integer> partitions) {
+    unsubscribe(partitions, true);
+  }
+
+  synchronized void unsubscribe(ComplementSet<Integer> partitions, boolean deleteStorage) {
     List<Integer> partitionList = getPartitions(partitions);
     LOGGER.info("Unsubscribing from partitions {} of {}", partitions, this);
 
@@ -480,8 +486,21 @@ public class VersionBackend {
       String replicaId = Utils.getReplicaId(version.kafkaTopicName(), partition);
       backend.getHeartbeatMonitoringService()
           .updateLagMonitor(version.kafkaTopicName(), partition, HeartbeatLagMonitorAction.REMOVE_MONITOR, replicaId);
-      backend.getIngestionBackend()
-          .dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds, replicaId);
+      if (deleteStorage) {
+        backend.getIngestionBackend()
+            .dropStoragePartitionGracefully(config, partition, stopConsumptionTimeoutInSeconds, replicaId);
+      } else {
+        try {
+          backend.getIngestionBackend()
+              .stopConsumption(config, partition, replicaId)
+              .get(stopConsumptionTimeoutInSeconds, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new VeniceException("Interrupted while stopping consumption for " + replicaId, e);
+        } catch (ExecutionException | TimeoutException e) {
+          throw new VeniceException("Failed to stop consumption for " + replicaId, e);
+        }
+      }
       partitionFutures.remove(partition);
       partitionToPendingReportIncrementalPushList.remove(partition);
       partitionToBatchReportEOIPEnabled.remove(partition);

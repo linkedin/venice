@@ -274,6 +274,22 @@ public class StoreBackend {
         });
   }
 
+  public synchronized void closePartitions(ComplementSet<Integer> partitions) {
+    ComplementSet<Integer> remaining = ComplementSet.newSet(subscription);
+    remaining.removeAll(partitions);
+    if (remaining.isEmpty()) {
+      close();
+      return;
+    }
+    if (daVinciCurrentVersion != null) {
+      daVinciCurrentVersion.unsubscribe(partitions, false);
+    }
+    if (daVinciFutureVersion != null) {
+      daVinciFutureVersion.unsubscribe(partitions, false);
+    }
+    subscription.removeAll(partitions);
+  }
+
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
     LOGGER.info("Unsubscribing from partitions {} of {}", partitions, storeName);
     subscription.removeAll(partitions);

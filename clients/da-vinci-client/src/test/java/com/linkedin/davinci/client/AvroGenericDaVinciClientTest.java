@@ -171,10 +171,11 @@ public class AvroGenericDaVinciClientTest {
         client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty());
         assertEquals(backends.constructed().size(), 1);
         client.addPartitionsToSubscription(ComplementSet.of(1));
-        doNothing().when(client).unsubscribe(any(ComplementSet.class));
+        StoreBackend storeBackend = mock(StoreBackend.class);
+        client.storeBackend = storeBackend;
         client.closeInner();
         ArgumentCaptor<ComplementSet> closedPartitions = ArgumentCaptor.forClass(ComplementSet.class);
-        verify(client).unsubscribe(closedPartitions.capture());
+        verify(storeBackend).closePartitions(closedPartitions.capture());
         assertTrue(closedPartitions.getValue().contains(1));
         assertFalse(closedPartitions.getValue().contains(0));
         if (monitoringEnabled) {

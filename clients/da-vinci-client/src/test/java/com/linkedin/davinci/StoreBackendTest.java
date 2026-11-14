@@ -173,6 +173,8 @@ public class StoreBackendTest {
     when(internalConfig.getRecordTransformerConfig()).thenReturn(config);
     when(config.getMonitoringPositionFilter()).thenReturn(partition -> false);
     when(backend.getInternalRecordTransformerConfig(store.getName())).thenReturn(internalConfig);
+    when(ingestionBackend.stopConsumption(any(), anyInt(), anyString()))
+        .thenReturn(CompletableFuture.completedFuture(null));
     storeBackend.subscribe(ComplementSet.of(0));
     assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.of(0, 1)));
     assertThrows(
@@ -183,11 +185,19 @@ public class StoreBackendTest {
     assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.universalSet()));
     assertFalse(storeBackend.getSubscription().contains(1));
     storeBackend.subscribe(ComplementSet.of(1));
-    storeBackend.unsubscribe(ComplementSet.of(0));
+    storeBackend.closePartitions(ComplementSet.of(0));
     assertTrue(storeBackend.getSubscription().contains(1));
     assertFalse(storeBackend.getSubscription().contains(0));
+    verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
+    verify(ingestionBackend).stopConsumption(any(), eq(0), eq(Utils.getReplicaId(version1.kafkaTopicName(), 0)));
     storeBackend.subscribe(ComplementSet.of(0));
     assertTrue(storeBackend.getSubscription().contains(0));
+    storeBackend.unsubscribe(ComplementSet.of(0));
+    verify(ingestionBackend)
+        .dropStoragePartitionGracefully(any(), eq(0), anyInt(), eq(Utils.getReplicaId(version1.kafkaTopicName(), 0)));
+    storeBackend.closePartitions(ComplementSet.of(1));
+    assertTrue(storeBackend.getSubscription().isEmpty());
+    verify(ingestionBackend, never()).removeStorageEngine(anyString());
   }
 
   @Test
