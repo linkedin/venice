@@ -863,6 +863,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<ObjectCacheConfig> cacheConfig) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
+        if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null) {
+          DaVinciBackend.configureMonitoringForStore(
+              configLoader,
+              getStoreName(),
+              recordTransformerConfig.getMonitoringPositionFilter());
+        }
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
@@ -942,6 +948,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
     try {
+      if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null) {
+        getBackend().configureMonitoringForStore(getStoreName(), recordTransformerConfig.getMonitoringPositionFilter());
+      }
       getBackend().registerStoreClient(getStoreName(), storeVersion);
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 

@@ -19,6 +19,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
@@ -27,6 +28,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -83,6 +85,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final BlockingQueue<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages;
   // Determines what version per partition is currently serving
   private final Map<Integer, Integer> partitionToVersionToServe;
+  // Eligibility also requires this served version's processed new-VT VSM, except initial/restored selection.
+  private final Map<Integer, Integer> partitionToMonitoringVersion = new VeniceConcurrentHashMap<>();
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
@@ -114,6 +118,8 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeControlMessages;
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
+  // Resolve the client's topic layout when constructing a transformer, never during monitoring publication.
+  private volatile boolean usesMaterializedViewTopic;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
   // Monitoring-only offset commits (null when disabled); see ChangelogClientConfig#setConsumerOffsetCommitEnabled.
@@ -153,6 +159,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
+        .setMonitoringPositionFilter(this::isMonitoringTopic)
         /*
          * Setting this to false, otherwise records won't be able to be deserialized from on disk scan if
          * schema evolution occurred.
@@ -625,8 +632,34 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       return false;
     }
     Integer versionToServe = partitionToVersionToServe.get(partition);
-    int messageVersion = Version.parseVersionFromKafkaTopicName(topicPartition.getTopicName());
-    return versionToServe != null && versionToServe == messageVersion;
+    Integer monitoringVersion = partitionToMonitoringVersion.get(partition);
+    return versionToServe != null && versionToServe.equals(monitoringVersion)
+        && topicPartition.getTopicName().equals(getVersionTopicName(monitoringVersion));
+  }
+
+  private String getVersionTopicName(int version) {
+    return usesMaterializedViewTopic
+        ? MaterializedView.composeTopicName(storeName, version, viewName)
+        : Version.composeKafkaTopic(storeName, version);
+  }
+
+  boolean isMonitoringTopic(PubSubTopicPartition topicPartition) {
+    PubSubTopic topic = topicPartition.getPubSubTopic();
+    if (topic.isViewTopic()) {
+      return false;
+    }
+    // Pooled consumers also carry other stores; this client must not gate their non-view positions.
+    if (!storeName.equals(topic.getStoreName())) {
+      return true;
+    }
+    if (!subscribedPartitions.contains(topicPartition.getPartitionNumber())) {
+      return false;
+    }
+    // Gate newly prefetched version topics only; do not change RT or other non-version monitoring.
+    if (!topic.isVersionTopic()) {
+      return true;
+    }
+    return isServedTopic(topicPartition);
   }
 
   private void trackPolledPositions(Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> messages) {
@@ -818,12 +851,9 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
 
       // Determine the topic name based on whether a view name is provided
-      if (viewName != null && !viewName.isEmpty() && getViewClass().equals(MaterializedView.class.getCanonicalName())) {
-        this.topicName =
-            MaterializedView.composeTopicName(changelogClientConfig.getStoreName(), getStoreVersion(), viewName);
-      } else {
-        this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
-      }
+      usesMaterializedViewTopic =
+          viewName != null && !viewName.isEmpty() && getViewClass().equals(MaterializedView.class.getCanonicalName());
+      this.topicName = getVersionTopicName(getStoreVersion());
     }
 
     @Override
@@ -855,6 +885,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         bufferLock.lock();
         try {
           if (partitionToVersionToServe.putIfAbsent(partitionId, getStoreVersion()) == null) {
+            partitionToMonitoringVersion.put(partitionId, getStoreVersion());
             recordVersionSwapNotification(partitionId, seekPosition);
           }
         } finally {
@@ -1053,6 +1084,31 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       addControlMessageToBuffer(partitionId, offset, controlMessage, pubSubMessageTimestamp, producerTimestamp);
     }
 
+    /**
+     * Follow the existing serving decision, but enable monitoring only after processing the VSM on this
+     * selected new VT partition. Source validation is monitoring-only; VSM protocol/history semantics are unchanged.
+     */
+    public void onVersionSwap(PubSubTopicPartition source, VersionSwap versionSwap, PubSubPosition position) {
+      int partition = source.getPartitionNumber();
+      String oldTopic = versionSwap.getOldServingVersionTopic().toString();
+      String newTopic = versionSwap.getNewServingVersionTopic().toString();
+      bufferLock.lock();
+      try {
+        onVersionSwap(
+            Version.parseVersionFromVersionTopicName(oldTopic),
+            Version.parseVersionFromVersionTopicName(newTopic),
+            partition,
+            position);
+        if (!isVersionSpecificClient && source.getTopicName().equals(topicName)
+            && newTopic.equals(Version.composeKafkaTopic(storeName, getStoreVersion()))
+            && Integer.valueOf(getStoreVersion()).equals(partitionToVersionToServe.get(partition))) {
+          partitionToMonitoringVersion.put(partition, getStoreVersion());
+        }
+      } finally {
+        bufferLock.unlock();
+      }
+    }
+
     public void onVersionSwap(int currentVersion, int futureVersion, int partitionId, PubSubPosition position) {
       /*
        * ToDo: In the event of a version rollback, VSMs will be added to the VT again to the backup version.
@@ -1145,6 +1201,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     if (partitions.isEmpty()) {
       subscribedPartitions.clear();
       partitionToVersionToServe.clear();
+      partitionToMonitoringVersion.clear();
       seekPositions.clear();
       currentVersionLastHeartbeat.clear();
       eopReceivedPartitions.clear();
@@ -1154,6 +1211,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       for (int partition: partitions) {
         subscribedPartitions.remove(partition);
         partitionToVersionToServe.remove(partition);
+        partitionToMonitoringVersion.remove(partition);
         seekPositions.remove(partition);
         currentVersionLastHeartbeat.remove(partition);
         eopReceivedPartitions.remove(partition);

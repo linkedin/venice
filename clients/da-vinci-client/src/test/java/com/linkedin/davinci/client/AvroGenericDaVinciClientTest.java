@@ -12,6 +12,7 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -29,6 +30,8 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.DaVinciBackend;
 import com.linkedin.davinci.StoreBackend;
 import com.linkedin.davinci.VersionBackend;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
@@ -40,6 +43,9 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.service.ICProvider;
@@ -63,16 +69,84 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.mockito.ArgumentCaptor;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class AvroGenericDaVinciClientTest {
   private static final String storeName = "test_store";
+
+  @DataProvider(name = "nativeMonitoringModes")
+  public Object[][] nativeMonitoringModes() {
+    return new Object[][] { { false, false, true }, { true, false, true }, { false, true, true },
+        { true, false, false }, { false, false, false } };
+  }
+
+  @Test(dataProvider = "nativeMonitoringModes")
+  public void testNativeMonitoringGateIsConfiguredBeforeBackendConstruction(
+      boolean localMonitoring,
+      boolean remoteMonitoring,
+      boolean supported) {
+    AvroGenericDaVinciClient.resetDaVinciBackendForTests();
+    Predicate<PubSubTopicPartition> filter = partition -> false;
+    DaVinciRecordTransformerConfig transformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setMonitoringPositionFilter(filter)
+            .build();
+    DaVinciConfig config = new DaVinciConfig();
+    config.setRecordTransformerConfig(transformerConfig);
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+    AvroGenericDaVinciClient client =
+        new AvroGenericDaVinciClient(config, clientConfig, VeniceProperties.empty(), Optional.empty());
+    VeniceConfigLoader loader = mock(VeniceConfigLoader.class);
+    VeniceServerConfig server = mock(VeniceServerConfig.class);
+    PubSubClientsFactory pubSubClients = mock(PubSubClientsFactory.class);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(loader.getVeniceServerConfig()).thenReturn(server);
+    when(server.getClusterProperties()).thenReturn(VeniceProperties.empty());
+    when(server.getKafkaConsumerConfigsForLocalConsumption())
+        .thenReturn(new PropertyBuilder().put("test.monitoring.enabled", localMonitoring).build());
+    when(server.getKafkaConsumerConfigsForRemoteConsumption())
+        .thenReturn(new PropertyBuilder().put("test.monitoring.enabled", remoteMonitoring).build());
+    when(server.getPubSubClientsFactory()).thenReturn(pubSubClients);
+    when(pubSubClients.getConsumerAdapterFactory()).thenReturn(factory);
+    when(factory.isAutomaticMonitoringEnabled(any())).thenAnswer(
+        invocation -> ((VeniceProperties) invocation.getArgument(0)).getBoolean("test.monitoring.enabled", false));
+    if (!supported) {
+      doCallRealMethod().when(factory).configureMonitoringForStore(anyString(), any());
+      if (!localMonitoring && !remoteMonitoring) {
+        doCallRealMethod().when(factory).isAutomaticMonitoringEnabled(any());
+      }
+    }
+
+    try (MockedConstruction<DaVinciBackend> backends = mockConstruction(DaVinciBackend.class, (backend, context) -> {
+      // Assertion at construction, not afterward: registration must precede eagerly created native consumers.
+      if (localMonitoring || remoteMonitoring) {
+        verify(factory).configureMonitoringForStore(storeName, filter);
+      } else {
+        verify(factory, never()).configureMonitoringForStore(anyString(), any());
+      }
+    })) {
+      if (!supported) {
+        expectThrows(
+            UnsupportedOperationException.class,
+            () -> client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty()));
+        assertEquals(backends.constructed().size(), 0);
+      } else {
+        client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty());
+        assertEquals(backends.constructed().size(), 1);
+      }
+    } finally {
+      AvroGenericDaVinciClient.resetDaVinciBackendForTests();
+    }
+  }
 
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
       ClientConfig clientConfig,

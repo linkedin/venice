@@ -54,7 +54,9 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -69,6 +71,7 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
@@ -77,6 +80,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -84,6 +88,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -977,6 +982,30 @@ public class DaVinciBackend implements Closeable {
       String storeName,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
     ingestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
+  }
+
+  public void configureMonitoringForStore(String storeName, Predicate<PubSubTopicPartition> positionFilter) {
+    configureMonitoringForStore(configLoader, storeName, positionFilter);
+  }
+
+  /**
+   * Register before constructing ingestion services: their constructor eagerly builds the local consumer pool.
+   * Reused backends call the same path with their actual configuration before adding another CDC store.
+   */
+  public static void configureMonitoringForStore(
+      VeniceConfigLoader configLoader,
+      String storeName,
+      Predicate<PubSubTopicPartition> positionFilter) {
+    VeniceServerConfig serverConfig = configLoader.getVeniceServerConfig();
+    Properties consumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
+    consumerProperties.putAll(serverConfig.getKafkaConsumerConfigsForLocalConsumption().toProperties());
+    Properties remoteConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
+    remoteConsumerProperties.putAll(serverConfig.getKafkaConsumerConfigsForRemoteConsumption().toProperties());
+    PubSubConsumerAdapterFactory<?> factory = serverConfig.getPubSubClientsFactory().getConsumerAdapterFactory();
+    if (factory.isAutomaticMonitoringEnabled(new VeniceProperties(consumerProperties))
+        || factory.isAutomaticMonitoringEnabled(new VeniceProperties(remoteConsumerProperties))) {
+      factory.configureMonitoringForStore(storeName, positionFilter);
+    }
   }
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {

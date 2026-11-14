@@ -4405,11 +4405,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaKey kafkaKey,
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
-      int partition,
+      PubSubTopicPartition source,
       PubSubPosition offset,
       long pubSubMessageTime,
       PartitionConsumptionState partitionConsumptionState,
       PubSubMessageHeaders headers) {
+    int partition = source.getPartitionNumber();
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -4454,11 +4455,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case VERSION_SWAP:
         if (recordTransformer != null) {
           VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-          int currentVersion =
-              Version.parseVersionFromVersionTopicName(versionSwap.getOldServingVersionTopic().toString());
-          int futureVersion =
-              Version.parseVersionFromVersionTopicName(versionSwap.getNewServingVersionTopic().toString());
-          recordTransformer.onVersionSwap(currentVersion, futureVersion, partition, offset);
+          recordTransformer.onVersionSwap(source, versionSwap, offset);
           recordTransformer.onControlMessage(partition, offset, controlMessage, pubSubMessageTime);
         }
         break;
@@ -4569,7 +4566,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             kafkaKey,
             kafkaValue,
             controlMessage,
-            consumerRecord.getTopicPartition().getPartitionNumber(),
+            consumerRecord.getTopicPartition(),
             consumerRecord.getPosition(),
             consumerRecord.getPubSubMessageTime(),
             partitionConsumptionState,

@@ -1,8 +1,10 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
+import java.util.function.Predicate;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -25,6 +27,7 @@ public class DaVinciRecordTransformerConfig {
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
   private final boolean recordMetadataEnabled;
+  private final Predicate<PubSubTopicPartition> monitoringPositionFilter;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -46,6 +49,11 @@ public class DaVinciRecordTransformerConfig {
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
     this.recordTransformationEnabled = builder.recordTransformationEnabled;
     this.recordMetadataEnabled = builder.recordMetadataEnabled;
+    this.monitoringPositionFilter = builder.monitoringPositionFilter;
+  }
+
+  public Predicate<PubSubTopicPartition> getMonitoringPositionFilter() {
+    return monitoringPositionFilter;
   }
 
   /**
@@ -119,6 +127,16 @@ public class DaVinciRecordTransformerConfig {
   }
 
   public static class Builder {
+    private Predicate<PubSubTopicPartition> monitoringPositionFilter;
+
+    /**
+     * Runtime CDC bridge, not a recovery checkpoint filter. Only CDC client construction should install it.
+     */
+    public Builder setMonitoringPositionFilter(Predicate<PubSubTopicPartition> monitoringPositionFilter) {
+      this.monitoringPositionFilter = monitoringPositionFilter;
+      return this;
+    }
+
     private DaVinciRecordTransformerFunctionalInterface recordTransformerFunction;
     private Class keyClass;
     private Class outputValueClass;

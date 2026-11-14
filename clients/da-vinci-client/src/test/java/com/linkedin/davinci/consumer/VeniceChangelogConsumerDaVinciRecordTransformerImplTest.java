@@ -42,6 +42,9 @@ import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -56,6 +59,7 @@ import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.views.MaterializedView;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -213,6 +217,154 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     verify(mockDaVinciClient).start();
     assertEquals(veniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+  }
+
+  @Test
+  public void testMonitoringRequiresProcessedNewTopicForActuallyServedVersion() {
+    veniceChangelogConsumer.getSubscribedPartitions().addAll(partitionSet);
+    onStartVersionIngestionHelper(true, true);
+    onStartVersionIngestionHelper(false, false);
+    PubSubTopicPartition oldPartition = monitoringPartition(1, 0);
+    PubSubTopicPartition newPartition = monitoringPartition(2, 0);
+    VersionSwap swap = monitoringSwap(1, 2);
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(oldPartition));
+    assertTrue(
+        veniceChangelogConsumer
+            .isMonitoringTopic(new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_store_rt"), 0)));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+
+    // Prefetch, metadata promotion and EOP are not activation.
+    futureRecordTransformer.onStartVersionIngestion(0, true);
+    futureRecordTransformer.processPut(keys.get(0), lazyValue, 0, recordMetadata);
+    ControlMessage eop = new ControlMessage();
+    eop.setControlMessageType(ControlMessageType.END_OF_PUSH.getValue());
+    futureRecordTransformer.onControlMessage(0, offset(5), eop, 1);
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+
+    recordTransformer.onVersionSwap(oldPartition, swap, offset(11));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(oldPartition));
+
+    futureRecordTransformer
+        .onVersionSwap(new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_store_rt"), 0), swap, offset(10));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+    futureRecordTransformer.onVersionSwap(monitoringPartition(3, 0), swap, offset(12));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+    futureRecordTransformer.onVersionSwap(newPartition, monitoringSwap(2, 1), offset(12));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+
+    // Processing another partition's actual new VT activates only that partition.
+    futureRecordTransformer.onVersionSwap(monitoringPartition(2, 1), swap, offset(12));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 1)));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+    futureRecordTransformer.onVersionSwap(newPartition, swap, offset(13));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(oldPartition));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 2)));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 2)));
+
+    // A message selecting another target cannot enable reporting for that target topic.
+    futureRecordTransformer.onVersionSwap(newPartition, monitoringSwap(2, 3), offset(14));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(3, 0)));
+  }
+
+  @Test
+  public void testMonitoringActivatesWithoutOldTopicWitnessAndSupportsRollback() {
+    veniceChangelogConsumer.getSubscribedPartitions().addAll(partitionSet);
+    onStartVersionIngestionHelper(true, true);
+    onStartVersionIngestionHelper(false, false);
+    PubSubTopicPartition oldPartition = monitoringPartition(1, 0);
+    PubSubTopicPartition newPartition = monitoringPartition(2, 0);
+    VersionSwap replayedSwap = monitoringSwap(1, 2);
+    replayedSwap.setGenerationId(-1L);
+    futureRecordTransformer.onVersionSwap(newPartition, replayedSwap, offset(15));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(oldPartition));
+
+    recordTransformer.onVersionSwap(oldPartition, monitoringSwap(2, 1), offset(21));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(oldPartition));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newPartition));
+  }
+
+  @Test
+  public void testMonitoringResetUsesExistingInitialSelection() {
+    veniceChangelogConsumer.getSubscribedPartitions().addAll(partitionSet);
+    onStartVersionIngestionHelper(true, true);
+    onStartVersionIngestionHelper(false, false);
+    VersionSwap swap = monitoringSwap(1, 2);
+    futureRecordTransformer.onVersionSwap(monitoringPartition(2, 0), swap, offset(10));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+
+    veniceChangelogConsumer.clearPartitionState(Collections.singleton(0));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+    veniceChangelogConsumer.getSubscribedPartitions().add(0);
+    futureRecordTransformer.onStartVersionIngestion(0, false);
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+    futureRecordTransformer.onStartVersionIngestion(0, true);
+    recordTransformer.onStartVersionIngestion(0, true); // Existing selection cannot be overwritten by another start.
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 0)));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 1)));
+  }
+
+  private static PubSubTopicPartition monitoringPartition(int version, int partition) {
+    return new PubSubTopicPartitionImpl(new PubSubTopicImpl("test_store_v" + version), partition);
+  }
+
+  @Test
+  public void testMonitoringExcludesViewTopicsBeforeAndAfterSwap() {
+    changelogClientConfig.setViewName("test_view");
+    veniceChangelogConsumerClientFactory.viewClassGetter =
+        (store, view, controller, retries) -> MaterializedView.class.getCanonicalName();
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> viewConsumer =
+        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(
+            changelogClientConfig,
+            veniceChangelogConsumerClientFactory);
+    viewConsumer.getSubscribedPartitions().add(0);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer>.DaVinciRecordTransformerChangelogConsumer current =
+        viewConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, 1, keySchema, valueSchema,
+            valueSchema, mockDaVinciRecordTransformerConfig);
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer>.DaVinciRecordTransformerChangelogConsumer future =
+        viewConsumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, 2, keySchema, valueSchema,
+            valueSchema, mockDaVinciRecordTransformerConfig);
+    PubSubTopicPartition oldTopic = new PubSubTopicPartitionImpl(
+        new PubSubTopicImpl(MaterializedView.composeTopicName(TEST_STORE_NAME, 1, "test_view")),
+        0);
+    PubSubTopicPartition newTopic = new PubSubTopicPartitionImpl(
+        new PubSubTopicImpl(MaterializedView.composeTopicName(TEST_STORE_NAME, 2, "test_view")),
+        0);
+    current.onStartVersionIngestion(0, true);
+    future.onStartVersionIngestion(0, false);
+    assertFalse(viewConsumer.isMonitoringTopic(oldTopic));
+    assertFalse(viewConsumer.isMonitoringTopic(newTopic));
+    assertFalse(veniceChangelogConsumer.isMonitoringTopic(newTopic));
+    assertFalse(
+        viewConsumer.isMonitoringTopic(
+            new PubSubTopicPartitionImpl(
+                new PubSubTopicImpl(MaterializedView.composeTopicName(TEST_STORE_NAME + "_v2_other", 2, "test_view")),
+                1)));
+    assertFalse(
+        viewConsumer.isMonitoringTopic(
+            new PubSubTopicPartitionImpl(
+                new PubSubTopicImpl(MaterializedView.composeTopicName(TEST_STORE_NAME, 2, "another_view")),
+                1)));
+    VersionSwap swap = monitoringSwap(1, 2);
+    current.onVersionSwap(oldTopic, swap, offset(10));
+    future.onVersionSwap(monitoringPartition(2, 0), swap, offset(11));
+    assertFalse(viewConsumer.isMonitoringTopic(newTopic));
+    future.onVersionSwap(newTopic, swap, offset(12));
+    assertFalse(viewConsumer.isMonitoringTopic(newTopic));
+    assertFalse(viewConsumer.isMonitoringTopic(oldTopic));
+    assertFalse(viewConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+
+  }
+
+  private static VersionSwap monitoringSwap(int oldVersion, int newVersion) {
+    VersionSwap swap = new VersionSwap();
+    swap.setOldServingVersionTopic("test_store_v" + oldVersion);
+    swap.setNewServingVersionTopic("test_store_v" + newVersion);
+    return swap;
   }
 
   @Test
@@ -666,7 +818,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
         consumer.new DaVinciRecordTransformerChangelogConsumer(TEST_STORE_NAME, FUTURE_STORE_VERSION, keySchema,
             valueSchema, valueSchema, mockDaVinciRecordTransformerConfig);
     futureTransformer.onStartVersionIngestion(0, false);
-    futureTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0, null);
+    futureTransformer.onVersionSwap(monitoringPartition(2, 0), monitoringSwap(1, 2), offset(10));
     consumer.commitOffsets();
     verify(commitConsumer)
         .commitSync(eq(Collections.singletonMap(new PubSubTopicPartitionImpl(topic, 2), offset(3))), any());
