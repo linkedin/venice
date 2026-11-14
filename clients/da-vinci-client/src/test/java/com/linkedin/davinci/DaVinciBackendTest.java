@@ -13,10 +13,13 @@ import static com.linkedin.venice.utils.DataProviderUtils.allPermutationGenerato
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,6 +32,7 @@ import static org.testng.AssertJUnit.assertNull;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.repository.VeniceMetadataRepositoryBuilder;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
@@ -49,8 +53,10 @@ import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -70,6 +76,34 @@ public class DaVinciBackendTest {
   private MockedStatic<ClientFactory> mockClientFactory;
   private MockedConstruction<VeniceMetadataRepositoryBuilder> mockMetadataBuilder;
   private MockedConstruction<SchemaPresenceChecker> mockSchemaPresenceChecker;
+
+  @Test
+  public void testMonitoringGateWaitsForFinalConsumerDetachment() throws Exception {
+    for (boolean closeFails: new boolean[] { false, true }) {
+      DaVinciBackend sharedBackend = spy(backend);
+      KafkaStoreIngestionService ingestion = mock(KafkaStoreIngestionService.class);
+      doReturn(ingestion).when(sharedBackend).getIngestionService();
+      CompletableFuture<Void> detached = new CompletableFuture<>();
+      when(ingestion.getConsumerDetachmentFuture(STORE_NAME)).thenReturn(detached);
+      StoreBackend store = mock(StoreBackend.class);
+      sharedBackend.addStoreBackend(STORE_NAME, store);
+      sharedBackend.registerStoreClient(STORE_NAME, null);
+      sharedBackend.registerStoreClient(STORE_NAME, null);
+      Closeable first = mock(Closeable.class);
+      Closeable last = mock(Closeable.class);
+      sharedBackend.unregisterStoreClient(STORE_NAME, null, null, first);
+      verify(first).close();
+      if (closeFails) {
+        doThrow(new VeniceException("Shutdown failed")).when(store).close();
+        assertThrows(VeniceException.class, () -> sharedBackend.unregisterStoreClient(STORE_NAME, null, null, last));
+      } else {
+        sharedBackend.unregisterStoreClient(STORE_NAME, null, null, last);
+      }
+      verify(last, never()).close();
+      detached.complete(null);
+      verify(last).close();
+    }
+  }
 
   @BeforeMethod
   public void setUp() throws Exception {

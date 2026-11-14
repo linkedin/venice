@@ -87,6 +87,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final Map<Integer, Integer> partitionToVersionToServe;
   // Eligibility also requires this served version's processed new-VT VSM, except initial/restored selection.
   private final Map<Integer, Integer> partitionToMonitoringVersion = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, Long> subscriptionGenerations = new VeniceConcurrentHashMap<>();
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
@@ -843,7 +844,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
     private final String topicName;
-    private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new VeniceConcurrentHashMap<>();
+    private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap;
+    private final DaVinciRecordTransformerConfig transformerConfig;
+    private final int subscriptionPartition;
+    private final long subscriptionGeneration;
+    private final DaVinciRecordTransformerChangelogConsumer template;
 
     public DaVinciRecordTransformerChangelogConsumer(
         String storeName,
@@ -852,54 +857,110 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         Schema inputValueSchema,
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
-      super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+      this(
+          storeName,
+          storeVersion,
+          keySchema,
+          inputValueSchema,
+          outputValueSchema,
+          recordTransformerConfig,
+          -1,
+          0,
+          null);
+    }
 
-      // Determine the topic name based on whether a view name is provided
+    private DaVinciRecordTransformerChangelogConsumer(
+        String storeName,
+        int storeVersion,
+        Schema keySchema,
+        Schema inputValueSchema,
+        Schema outputValueSchema,
+        DaVinciRecordTransformerConfig recordTransformerConfig,
+        int subscriptionPartition,
+        long subscriptionGeneration,
+        DaVinciRecordTransformerChangelogConsumer template) {
+      super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
       this.topicName = getVersionTopicName(getStoreVersion());
+      this.transformerConfig = recordTransformerConfig;
+      this.subscriptionPartition = subscriptionPartition;
+      this.subscriptionGeneration = subscriptionGeneration;
+      this.template = template;
+      this.pubSubTopicPartitionMap =
+          template == null ? new VeniceConcurrentHashMap<>() : template.pubSubTopicPartitionMap;
+      if (subscriptionPartition >= 0) {
+        pubSubTopicPartitionMap.putIfAbsent(
+            subscriptionPartition,
+            new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), subscriptionPartition));
+      }
+    }
+
+    public DaVinciRecordTransformerChangelogConsumer forPartition(int partition) {
+      ReentrantLock lock = bufferLock;
+      lock.lock();
+      try {
+        return new DaVinciRecordTransformerChangelogConsumer(
+            getStoreName(),
+            getStoreVersion(),
+            getKeySchema(),
+            getInputValueSchema(),
+            getOutputValueSchema(),
+            transformerConfig,
+            partition,
+            subscriptionGenerations.getOrDefault(partition, 0L),
+            this);
+      } finally {
+        lock.unlock();
+      }
+    }
+
+    public boolean isCurrentSubscription(int partition) {
+      return !isClosed.get() && subscribedPartitions.contains(partition)
+          && (subscriptionPartition < 0 || subscriptionPartition == partition
+              && subscriptionGeneration == subscriptionGenerations.getOrDefault(partition, 0L));
     }
 
     @Override
     public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
-      // Store reference for synthetic heartbeat emission. Set here because the inner class instance
-      // is created via ::new and not directly accessible from the outer class.
-      if (syntheticHeartbeatRecordTransformer == null) {
-        syntheticHeartbeatRecordTransformer = this;
-      }
-      // Caching these objects, so we don't need to recreate them on every single message received
-      pubSubTopicPartitionMap
-          .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+      bufferLock.lock();
+      try {
+        if (!isCurrentSubscription(partitionId)) {
+          return;
+        }
+        // Store reference for synthetic heartbeat emission. Set here because the inner class instance
+        // is created via ::new and not directly accessible from the outer class.
+        if (syntheticHeartbeatRecordTransformer == null) {
+          syntheticHeartbeatRecordTransformer = template == null ? this : template;
+        }
+        // Caching these objects, so we don't need to recreate them on every single message received
+        pubSubTopicPartitionMap
+            .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
 
-      if (isCurrentVersion || isVersionSpecificClient) {
-        /*
-         * This condition can occur when the application is starting up (due to a restart/deployment) or when the
-         * next current version begins ingestion while the previous version is still serving.
-         * In the first case, it is acceptable to immediately serve the current version.
-         * In the second case, we should not immediately serve the next current version. Doing so would result in
-         * sending all messages from SOP to nearline events that the user has already received.
-         * To avoid this, we should only serve the current version if no other version is currently being served.
-         * Once the next current version has consumed the version swap message, then it has caught up enough to be
-         * ready to serve.
-         *
-         * This can also occur when it is running in version specific mode, and no version swap will happen.
-         * In this case, just serve the currently subscribed version.
-         */
-        PubSubPosition seekPosition = seekPositions.remove(partitionId);
-        bufferLock.lock();
-        try {
-          if (isClosed.get() || !subscribedPartitions.contains(partitionId)) {
-            return;
-          }
+        if (isCurrentVersion || isVersionSpecificClient) {
+          /*
+           * This condition can occur when the application is starting up (due to a restart/deployment) or when the
+           * next current version begins ingestion while the previous version is still serving.
+           * In the first case, it is acceptable to immediately serve the current version.
+           * In the second case, we should not immediately serve the next current version. Doing so would result in
+           * sending all messages from SOP to nearline events that the user has already received.
+           * To avoid this, we should only serve the current version if no other version is currently being served.
+           * Once the next current version has consumed the version swap message, then it has caught up enough to be
+           * ready to serve.
+           *
+           * This can also occur when it is running in version specific mode, and no version swap will happen.
+           * In this case, just serve the currently subscribed version.
+           */
+          PubSubPosition seekPosition = seekPositions.remove(partitionId);
           if (partitionToVersionToServe.putIfAbsent(partitionId, getStoreVersion()) == null) {
             partitionToMonitoringVersion.put(partitionId, getStoreVersion());
             recordVersionSwapNotification(partitionId, seekPosition);
           }
-        } finally {
-          bufferLock.unlock();
         }
-      }
 
-      // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
-      currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
+        // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
+        currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
+      } finally {
+        bufferLock.unlock();
+      }
     }
 
     @Override
@@ -918,7 +979,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      */
     private boolean isServedByThisVersion(int partitionId) {
       Integer versionToServe = partitionToVersionToServe.get(partitionId);
-      return versionToServe != null && versionToServe == getStoreVersion();
+      return isCurrentSubscription(partitionId) && versionToServe != null && versionToServe == getStoreVersion();
     }
 
     /**
@@ -997,7 +1058,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       try {
         pubSubMessages.put(pubSubMessage);
-        if (isClosed.get() || !isStarted.get()) {
+        if (isClosed.get() || !isStarted.get() || !isServedByThisVersion(partitionId)) {
           pubSubMessages.remove(pubSubMessage);
           return;
         }
@@ -1066,11 +1127,19 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         ControlMessage controlMessage,
         long pubSubMessageTimestamp,
         long producerTimestamp) {
-      // Track EOP per partition to enable synthetic heartbeats for batch stores.
-      // This runs before the includeControlMessages gate since it's internal state tracking.
-      if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
-        eopReceivedPartitions.add(partitionId);
-        maybeEnableSyntheticHeartbeats();
+      bufferLock.lock();
+      try {
+        if (!isCurrentSubscription(partitionId)) {
+          return;
+        }
+        // Track EOP per partition to enable synthetic heartbeats for batch stores.
+        // This runs before the includeControlMessages gate since it's internal state tracking.
+        if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+          eopReceivedPartitions.add(partitionId);
+          maybeEnableSyntheticHeartbeats();
+        }
+      } finally {
+        bufferLock.unlock();
       }
       if (!isVersionSpecificClient || !includeControlMessages) {
         return;
@@ -1088,7 +1157,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       String newTopic = versionSwap.getNewServingVersionTopic().toString();
       bufferLock.lock();
       try {
-        if (isClosed.get() || !subscribedPartitions.contains(partition)) {
+        if (!isCurrentSubscription(partition)) {
           return;
         }
         onVersionSwap(
@@ -1187,6 +1256,10 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   public void clearPartitionState(Set<Integer> partitions) {
     bufferLock.lock();
     try {
+      Set<Integer> retiredPartitions = partitions.isEmpty() ? new HashSet<>(subscribedPartitions) : partitions;
+      for (int partition: retiredPartitions) {
+        subscriptionGenerations.merge(partition, 1L, Long::sum);
+      }
       if (partitions.isEmpty()) {
         pendingVersionSwapNotifications.clear();
       } else {

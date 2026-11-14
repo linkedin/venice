@@ -6771,6 +6771,7 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
     // The drop partition consumer action should still be handled as part of internalClose
     dropPartitionFuture.get().get();
+    assertTrue(storeIngestionTaskUnderTest.getConsumerDetachmentFuture().isDone());
   }
 
   /**

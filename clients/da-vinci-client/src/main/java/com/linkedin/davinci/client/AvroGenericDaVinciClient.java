@@ -955,6 +955,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
+    boolean storeClientRegistered = false;
     try {
       if (monitoringRegistration == null && recordTransformerConfig != null
           && recordTransformerConfig.getMonitoringPositionFilter() != null) {
@@ -962,6 +963,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
             .configureMonitoringForStore(getStoreName(), recordTransformerConfig.getMonitoringPositionFilter());
       }
       getBackend().registerStoreClient(getStoreName(), storeVersion);
+      storeClientRegistered = true;
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
 
       if (daVinciConfig.isCacheEnabled()) {
@@ -1029,7 +1031,11 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     } catch (Throwable e) {
       String msg = "Unable to start Da Vinci client, storeName=" + getStoreName();
       logger.error(msg, e);
-      releaseMonitoringRegistration();
+      if (storeClientRegistered) {
+        Utils.closeQuietlyWithErrorLogged(this::unregisterStoreClient);
+      } else {
+        releaseMonitoringRegistration();
+      }
       daVinciBackend.release();
       throw new VeniceClientException(msg, e);
     }
@@ -1055,9 +1061,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     try {
       logger.info("Closing client, storeName=" + getStoreName());
       ready.set(false);
-      releaseMonitoringRegistration();
-
-      getBackend().unregisterStoreClient(getStoreName(), storeVersion);
+      unregisterStoreClient();
 
       if (cacheBackend != null) {
         cacheBackend.close();
@@ -1074,6 +1078,12 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private void releaseMonitoringRegistration() {
     Utils.closeQuietlyWithErrorLogged(monitoringRegistration);
     monitoringRegistration = null;
+  }
+
+  private void unregisterStoreClient() {
+    Closeable registration = monitoringRegistration;
+    monitoringRegistration = null;
+    getBackend().unregisterStoreClient(getStoreName(), storeVersion, recordTransformerConfig, registration);
   }
 
   Logger getClientLogger() {

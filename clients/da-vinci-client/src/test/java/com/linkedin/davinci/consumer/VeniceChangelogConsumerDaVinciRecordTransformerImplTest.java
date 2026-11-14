@@ -37,8 +37,11 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerRecordMetadata;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.SeekableDaVinciClient;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -217,6 +220,67 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
 
     verify(mockDaVinciClient).start();
     assertEquals(veniceChangelogConsumer.getSubscribedPartitions(), partitionSet);
+  }
+
+  @Test
+  public void testSharedClientCallbacksAndRetiredRecovery() {
+    veniceChangelogConsumer.getSubscribedPartitions().add(0);
+    DaVinciRecordTransformerConfig firstConfig = veniceChangelogConsumer.getRecordTransformerConfig();
+    InternalDaVinciRecordTransformerConfig sharedConfig =
+        new InternalDaVinciRecordTransformerConfig(firstConfig, mock(AggVersionedDaVinciRecordTransformerStats.class));
+    InternalDaVinciRecordTransformer current = new InternalDaVinciRecordTransformer(
+        firstConfig.getRecordTransformerFunction()
+            .apply(TEST_STORE_NAME, 1, keySchema, valueSchema, valueSchema, firstConfig),
+        keySchema,
+        valueSchema,
+        valueSchema,
+        sharedConfig);
+    current.forPartitionRecovery(0).onStartVersionIngestion(0, true);
+
+    ChangelogClientConfig secondConfig =
+        ChangelogClientConfig.cloneConfig(changelogClientConfig).setConsumerName("second");
+    secondConfig.getInnerClientConfig()
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
+    VeniceChangelogConsumerDaVinciRecordTransformerImpl<Integer, Integer> second =
+        new VeniceChangelogConsumerDaVinciRecordTransformerImpl<>(secondConfig, veniceChangelogConsumerClientFactory);
+    second.getSubscribedPartitions().add(1);
+    sharedConfig.getClientConfigs().add(second.getRecordTransformerConfig());
+    current.forPartitionRecovery(1).onStartVersionIngestion(1, true);
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(1, 0)));
+    assertTrue(second.isMonitoringTopic(monitoringPartition(1, 1)));
+    assertFalse(second.isMonitoringTopic(monitoringPartition(1, 0)));
+
+    InternalDaVinciRecordTransformer future = new InternalDaVinciRecordTransformer(
+        firstConfig.getRecordTransformerFunction()
+            .apply(TEST_STORE_NAME, 2, keySchema, valueSchema, valueSchema, firstConfig),
+        keySchema,
+        valueSchema,
+        valueSchema,
+        sharedConfig);
+    for (int partition: new int[] { 0, 1 }) {
+      future.forPartitionRecovery(partition).onStartVersionIngestion(partition, false);
+      assertFalse(
+          (partition == 0 ? veniceChangelogConsumer : second).isMonitoringTopic(monitoringPartition(2, partition)));
+      future.onVersionSwap(monitoringPartition(2, partition), monitoringSwap(1, 2), offset(12));
+      assertTrue(
+          (partition == 0 ? veniceChangelogConsumer : second).isMonitoringTopic(monitoringPartition(2, partition)));
+    }
+
+    second.getSubscribedPartitions().add(0);
+    future.onHeartbeat(0, 100);
+    assertTrue(second.isMonitoringTopic(monitoringPartition(2, 0)));
+
+    InternalDaVinciRecordTransformer retired = current.forPartitionRecovery(1);
+    second.clearPartitionState(Collections.singleton(1));
+    second.getSubscribedPartitions().add(1);
+    retired.onStartVersionIngestion(1, true);
+    assertFalse(second.isMonitoringTopic(monitoringPartition(1, 1)));
+    current.forPartitionRecovery(1).onStartVersionIngestion(1, true);
+    assertTrue(second.isMonitoringTopic(monitoringPartition(1, 1)));
+    assertTrue(veniceChangelogConsumer.isMonitoringTopic(monitoringPartition(2, 0)));
+    sharedConfig.getClientConfigs().remove(second.getRecordTransformerConfig());
+    future.onVersionSwap(monitoringPartition(2, 1), monitoringSwap(1, 2), offset(13));
+    assertFalse(second.isMonitoringTopic(monitoringPartition(2, 1)));
   }
 
   @Test
@@ -930,7 +994,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImplTest {
     // Buffer is full signal should be hit
     verify(bufferLock, timeout(1000).atLeastOnce()).lock();
     verify(bufferLock, timeout(1000L).atLeastOnce()).unlock();
-    verify(bufferIsFullCondition, atLeastOnce()).signal();
+    verify(bufferIsFullCondition, timeout(1000L).atLeastOnce()).signal();
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       // Verify every CompletableFuture in completableFutureList is completed besides one

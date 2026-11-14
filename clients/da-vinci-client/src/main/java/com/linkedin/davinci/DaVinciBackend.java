@@ -784,6 +784,27 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
+  public synchronized void unregisterStoreClient(
+      String storeName,
+      Integer storeVersion,
+      DaVinciRecordTransformerConfig transformerConfig,
+      Closeable monitoringRegistration) {
+    boolean lastClient = storeClientRefCounts.getOrDefault(storeName, 0) <= 1;
+    try {
+      if (transformerConfig != null) {
+        getIngestionService().unregisterRecordTransformerConfig(storeName, transformerConfig);
+      }
+      unregisterStoreClient(storeName, storeVersion);
+    } finally {
+      if (monitoringRegistration != null) {
+        CompletableFuture<Void> detached = lastClient
+            ? getIngestionService().getConsumerDetachmentFuture(storeName)
+            : CompletableFuture.completedFuture(null);
+        detached.thenRun(() -> Utils.closeQuietlyWithErrorLogged(monitoringRegistration));
+      }
+    }
+  }
+
   @VisibleForTesting
   public ClientType getStoreClientType(String storeName) {
     return storeClientTypes.get(storeName);

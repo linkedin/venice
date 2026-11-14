@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -138,6 +139,13 @@ public class AvroGenericDaVinciClientTest {
     }
 
     try (MockedConstruction<DaVinciBackend> backends = mockConstruction(DaVinciBackend.class, (backend, context) -> {
+      doAnswer(invocation -> {
+        Closeable handle = invocation.getArgument(3);
+        if (handle != null) {
+          handle.close();
+        }
+        return null;
+      }).when(backend).unregisterStoreClient(anyString(), any(), any(), any());
       // Assertion at construction, not afterward: registration must precede eagerly created native consumers.
       if (monitoringEnabled) {
         verify(factory).registerMonitoringForStore(storeName, filter);

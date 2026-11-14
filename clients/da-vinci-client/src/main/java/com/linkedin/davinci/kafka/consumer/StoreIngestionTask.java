@@ -486,6 +486,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
+  private final CompletableFuture<Void> consumerDetachmentFuture = new CompletableFuture<>();
+
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
@@ -952,17 +954,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private CompletableFuture<Void> submitRecordTransformerRecoveryAsync(int partitionNumber, String replicaId) {
     CompletableFuture<Void> future = new CompletableFuture<>();
+    InternalDaVinciRecordTransformer recoveryTransformer = recordTransformer.forPartitionRecovery(partitionNumber);
     recordTransformerOnRecoveryThreadPool.submit(() -> {
       try {
         long startTime = System.nanoTime();
-        recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
+        recoveryTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
         LOGGER.info(
             "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
             LatencyUtils.getElapsedTimeFromNSToMS(startTime),
             replicaId);
 
         startTime = System.nanoTime();
-        recordTransformer.internalOnRecovery(
+        recoveryTransformer.internalOnRecovery(
             storageEngine,
             partitionNumber,
             partitionStateSerializer,
@@ -2468,6 +2471,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     // Unsubscribe any topic partitions related to this version topic from the shared consumer.
     aggKafkaConsumerService.unsubscribeAll(versionTopic);
+    consumerDetachmentFuture.complete(null);
     LOGGER.info("Detached Kafka consumer(s) for version topic: {}", kafkaVersionTopic);
     try {
       partitionConsumptionStateMap.values().parallelStream().forEach(PartitionConsumptionState::unsubscribe);
@@ -5824,6 +5828,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   AtomicBoolean getIsRunning() {
     return isRunning;
+  }
+
+  public CompletableFuture<Void> getConsumerDetachmentFuture() {
+    return consumerDetachmentFuture;
   }
 
   /**

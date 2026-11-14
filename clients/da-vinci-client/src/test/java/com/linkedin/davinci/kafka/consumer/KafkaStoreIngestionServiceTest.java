@@ -89,6 +89,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -939,6 +940,7 @@ public abstract class KafkaStoreIngestionServiceTest {
 
     DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setMonitoringPositionFilter(partition -> false)
             .build();
     kafkaStoreIngestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
 
@@ -946,6 +948,17 @@ public abstract class KafkaStoreIngestionServiceTest {
         kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName);
     assertEquals(internalDaVinciRecordTransformerConfig.getRecordTransformerConfig(), recordTransformerConfig);
     assertNotNull(internalDaVinciRecordTransformerConfig.getRecordTransformerStats());
+    DaVinciRecordTransformerConfig secondConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setMonitoringPositionFilter(partition -> false)
+            .build();
+    kafkaStoreIngestionService.registerRecordTransformerConfig(storeName, secondConfig);
+    assertEquals(
+        kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName),
+        internalDaVinciRecordTransformerConfig);
+    assertEquals(internalDaVinciRecordTransformerConfig.getClientConfigs().size(), 2);
+    kafkaStoreIngestionService.unregisterRecordTransformerConfig(storeName, recordTransformerConfig);
+    assertEquals(internalDaVinciRecordTransformerConfig.getClientConfigs(), Collections.singleton(secondConfig));
   }
 
   @Test

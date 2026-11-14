@@ -177,6 +177,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
+  private final Map<String, Set<CompletableFuture<Void>>> pendingConsumerDetachments = new VeniceConcurrentHashMap<>();
 
   /**
    * Set of Kafka version topics that DaVinci has assigned to its future-version slot.
@@ -888,7 +889,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             v.waitForShutdown(serverConfig.getShutdownSitWaitTimeSeconds());
           }
           createNewStoreIngestionTask.set(true);
-          return createStoreIngestionTask(veniceStore, partitionId, createPaused);
+          StoreIngestionTask task = createStoreIngestionTask(veniceStore, partitionId, createPaused);
+          CompletableFuture<Void> detached = task.getConsumerDetachmentFuture();
+          Set<CompletableFuture<Void>> pending =
+              pendingConsumerDetachments.computeIfAbsent(task.getStoreName(), ignored -> ConcurrentHashMap.newKeySet());
+          pending.add(detached);
+          detached.thenRun(() -> pending.remove(detached));
+          return task;
         }
         return v;
       });
@@ -1631,8 +1638,29 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
     }
 
-    storeNameToInternalRecordTransformerConfig
-        .put(storeName, new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, recordTransformerStats));
+    AggVersionedDaVinciRecordTransformerStats stats = recordTransformerStats;
+    storeNameToInternalRecordTransformerConfig.compute(storeName, (name, existing) -> {
+      if (existing != null && existing.getRecordTransformerConfig().getMonitoringPositionFilter() != null
+          && recordTransformerConfig.getMonitoringPositionFilter() != null) {
+        existing.getClientConfigs().add(recordTransformerConfig);
+        return existing;
+      }
+      return new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, stats);
+    });
+  }
+
+  public void unregisterRecordTransformerConfig(String storeName, DaVinciRecordTransformerConfig clientConfig) {
+    InternalDaVinciRecordTransformerConfig config = storeNameToInternalRecordTransformerConfig.get(storeName);
+    if (config != null) {
+      config.getClientConfigs().remove(clientConfig);
+    }
+  }
+
+  public CompletableFuture<Void> getConsumerDetachmentFuture(String storeName) {
+    Set<CompletableFuture<Void>> pending = pendingConsumerDetachments.get(storeName);
+    return pending == null
+        ? CompletableFuture.completedFuture(null)
+        : CompletableFuture.allOf(pending.toArray(new CompletableFuture<?>[0]));
   }
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
