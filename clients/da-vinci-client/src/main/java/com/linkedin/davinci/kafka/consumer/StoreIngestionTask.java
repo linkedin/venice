@@ -486,8 +486,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ExecutorService parallelProcessingThreadPool;
 
   protected Lazy<CountDownLatch> gracefulShutdownLatch = Lazy.of(() -> new CountDownLatch(1));
-  private final CompletableFuture<Void> consumerDetachmentFuture = new CompletableFuture<>();
-
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
@@ -954,18 +952,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private CompletableFuture<Void> submitRecordTransformerRecoveryAsync(int partitionNumber, String replicaId) {
     CompletableFuture<Void> future = new CompletableFuture<>();
-    InternalDaVinciRecordTransformer recoveryTransformer = recordTransformer.forPartitionRecovery(partitionNumber);
     recordTransformerOnRecoveryThreadPool.submit(() -> {
       try {
         long startTime = System.nanoTime();
-        recoveryTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
+        recordTransformer.onStartVersionIngestion(partitionNumber, isCurrentVersion.getAsBoolean());
         LOGGER.info(
             "DaVinciRecordTransformer onStartVersionIngestion took {} ms for replica: {}",
             LatencyUtils.getElapsedTimeFromNSToMS(startTime),
             replicaId);
 
         startTime = System.nanoTime();
-        recoveryTransformer.internalOnRecovery(
+        recordTransformer.internalOnRecovery(
             storageEngine,
             partitionNumber,
             partitionStateSerializer,
@@ -2471,7 +2468,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     // Unsubscribe any topic partitions related to this version topic from the shared consumer.
     aggKafkaConsumerService.unsubscribeAll(versionTopic);
-    consumerDetachmentFuture.complete(null);
     LOGGER.info("Detached Kafka consumer(s) for version topic: {}", kafkaVersionTopic);
     try {
       partitionConsumptionStateMap.values().parallelStream().forEach(PartitionConsumptionState::unsubscribe);
@@ -2753,6 +2749,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
+        forceUnSubscribedCount--;
+        subscribedCount--;
 
         // Cancel any pending blob transfer before unsubscribing
         if (consumptionState != null && blobTransferHelper != null && blobTransferHelper
@@ -2780,22 +2778,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Drain the buffered message by last subscription.
         waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, consumptionState);
-
-        if (consumptionState != null && recordTransformer != null && recordTransformer.isCDCRecordTransformer()
-            && recordTransformer.getStoreRecordsInDaVinci()) {
-          CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
-              ? flushGlobalRtDivCheckpoint(consumptionState)
-              : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
-          try {
-            syncFuture.get(getServerConfig().getShutdownSyncOffsetTimeoutMs(), MILLISECONDS);
-          } catch (ExecutionException | TimeoutException e) {
-            throw new VeniceException("Unable to checkpoint before unsubscribing " + topicPartition, e);
-          } finally {
-            syncFuture.cancel(true);
-          }
-        }
-        forceUnSubscribedCount--;
-        subscribedCount--;
 
         /**
          * If state transition model is still hanging on waiting for the released latch, but unsubscription happens,
@@ -5842,10 +5824,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   AtomicBoolean getIsRunning() {
     return isRunning;
-  }
-
-  public CompletableFuture<Void> getConsumerDetachmentFuture() {
-    return consumerDetachmentFuture;
   }
 
   /**

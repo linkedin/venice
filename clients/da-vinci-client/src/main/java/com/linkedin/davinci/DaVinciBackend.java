@@ -118,7 +118,6 @@ public class DaVinciBackend implements Closeable {
   private final Map<String, ClientType> storeClientTypes = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> versionSpecificStoreVersions = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> storeClientRefCounts = new VeniceConcurrentHashMap<>();
-  private final Map<String, Integer> storeMonitoringRefCounts = new VeniceConcurrentHashMap<>();
   private VeniceConfigLoader configLoader;
   private SubscriptionBasedReadOnlyStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
@@ -709,13 +708,6 @@ public class DaVinciBackend implements Closeable {
    *                               clients target different versions of the same store
    */
   public synchronized void registerStoreClient(String storeName, Integer storeVersion) {
-    registerStoreClient(storeName, storeVersion, null);
-  }
-
-  public synchronized void registerStoreClient(
-      String storeName,
-      Integer storeVersion,
-      Closeable monitoringRegistration) {
     boolean isVersionSpecific = storeVersion != null;
     ClientType newClientType = isVersionSpecific ? ClientType.VERSION_SPECIFIC : ClientType.REGULAR;
     ClientType existingClientType = storeClientTypes.get(storeName);
@@ -741,9 +733,6 @@ public class DaVinciBackend implements Closeable {
 
     // Increment ref count for this store
     storeClientRefCounts.merge(storeName, 1, Integer::sum);
-    if (monitoringRegistration != null) {
-      storeMonitoringRefCounts.merge(storeName, 1, Integer::sum);
-    }
 
     if (isVersionSpecific) {
       versionSpecificStoreVersions.put(storeName, storeVersion);
@@ -792,40 +781,6 @@ public class DaVinciBackend implements Closeable {
       }
     } else {
       storeClientRefCounts.put(storeName, newCount);
-    }
-  }
-
-  public synchronized void unregisterStoreClient(
-      String storeName,
-      Integer storeVersion,
-      DaVinciRecordTransformerConfig transformerConfig,
-      Closeable monitoringRegistration) {
-    unregisterStoreClient(storeName, storeVersion, transformerConfig, monitoringRegistration, true);
-  }
-
-  public synchronized void unregisterStoreClient(
-      String storeName,
-      Integer storeVersion,
-      DaVinciRecordTransformerConfig transformerConfig,
-      Closeable monitoringRegistration,
-      boolean waitForDetachment) {
-    boolean lastMonitoringClient = false;
-    if (monitoringRegistration != null) {
-      lastMonitoringClient = storeMonitoringRefCounts
-          .compute(storeName, (name, count) -> count == null || count <= 1 ? null : count - 1) == null;
-    }
-    try {
-      if (transformerConfig != null) {
-        getIngestionService().unregisterRecordTransformerConfig(storeName, transformerConfig);
-      }
-      unregisterStoreClient(storeName, storeVersion);
-    } finally {
-      if (monitoringRegistration != null) {
-        CompletableFuture<Void> detached = lastMonitoringClient && waitForDetachment
-            ? getIngestionService().getConsumerDetachmentFuture(storeName)
-            : CompletableFuture.completedFuture(null);
-        detached.thenRun(() -> Utils.closeQuietlyWithErrorLogged(monitoringRegistration));
-      }
     }
   }
 
@@ -1029,15 +984,26 @@ public class DaVinciBackend implements Closeable {
     ingestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
   }
 
-  public Closeable configureMonitoringForStore(String storeName, Predicate<PubSubTopicPartition> positionFilter) {
-    return configureMonitoringForStore(configLoader, storeName, positionFilter);
+  /**
+   * A CDC client must own its store's ingestion in this backend: ingestion tasks bind to one record transformer, so
+   * another client of the same store would share that transformer's callbacks.
+   */
+  public synchronized void configureMonitoringForStore(
+      String storeName,
+      Predicate<PubSubTopicPartition> positionFilter) {
+    if (storeClientRefCounts.containsKey(storeName)) {
+      throw new VeniceClientException(
+          "Store " + storeName + " already has a client in this Da Vinci backend. "
+              + "A changelog consumer cannot share a store with another client.");
+    }
+    configureMonitoringForStore(configLoader, storeName, positionFilter);
   }
 
   /**
    * Register before constructing ingestion services: their constructor eagerly builds the local consumer pool.
    * Reused backends call the same path with their actual configuration before adding another CDC store.
    */
-  public static Closeable configureMonitoringForStore(
+  public static void configureMonitoringForStore(
       VeniceConfigLoader configLoader,
       String storeName,
       Predicate<PubSubTopicPartition> positionFilter) {
@@ -1052,9 +1018,8 @@ public class DaVinciBackend implements Closeable {
     PubSubConsumerAdapterFactory<?> factory = serverConfig.getPubSubClientsFactory().getConsumerAdapterFactory();
     if (factory.isAutomaticMonitoringEnabled(new VeniceProperties(consumerProperties))
         || factory.isAutomaticMonitoringEnabled(new VeniceProperties(remoteConsumerProperties))) {
-      return factory.registerMonitoringForStore(storeName, positionFilter);
+      factory.configureMonitoringForStore(storeName, positionFilter);
     }
-    return null;
   }
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {

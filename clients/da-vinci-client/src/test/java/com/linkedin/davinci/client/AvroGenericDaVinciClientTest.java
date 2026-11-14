@@ -4,16 +4,13 @@ import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EX
 import static com.linkedin.venice.ConfigKeys.DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
@@ -52,12 +49,10 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.Closeable;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -90,21 +85,15 @@ public class AvroGenericDaVinciClientTest {
 
   @DataProvider(name = "nativeMonitoringModes")
   public Object[][] nativeMonitoringModes() {
-    return new Object[][] { { null, false, false, true, false, false }, { null, true, false, true, false, false },
-        { null, false, true, true, false, false }, { true, false, false, true, false, false },
-        { false, true, true, true, false, false }, { null, true, false, false, false, false },
-        { null, false, false, false, false, false }, { null, true, false, true, true, false },
-        { null, true, false, true, false, true } };
+    return new Object[][] { { false, false, true }, { true, false, true }, { false, true, true },
+        { true, false, false }, { false, false, false } };
   }
 
   @Test(dataProvider = "nativeMonitoringModes")
   public void testNativeMonitoringGateIsConfiguredBeforeBackendConstruction(
-      Boolean clusterMonitoring,
       boolean localMonitoring,
       boolean remoteMonitoring,
-      boolean supported,
-      boolean failBackendConstruction,
-      boolean failClose) throws Exception {
+      boolean supported) {
     AvroGenericDaVinciClient.resetDaVinciBackendForTests();
     Predicate<PubSubTopicPartition> filter = partition -> false;
     DaVinciRecordTransformerConfig transformerConfig =
@@ -115,19 +104,13 @@ public class AvroGenericDaVinciClientTest {
     config.setRecordTransformerConfig(transformerConfig);
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
     AvroGenericDaVinciClient client =
-        spy(new AvroGenericDaVinciClient(config, clientConfig, VeniceProperties.empty(), Optional.empty()));
+        new AvroGenericDaVinciClient(config, clientConfig, VeniceProperties.empty(), Optional.empty());
     VeniceConfigLoader loader = mock(VeniceConfigLoader.class);
     VeniceServerConfig server = mock(VeniceServerConfig.class);
     PubSubClientsFactory pubSubClients = mock(PubSubClientsFactory.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    Closeable registration = mock(Closeable.class);
-    when(factory.registerMonitoringForStore(storeName, filter)).thenReturn(registration);
-    boolean monitoringEnabled = clusterMonitoring == null ? localMonitoring || remoteMonitoring : clusterMonitoring;
     when(loader.getVeniceServerConfig()).thenReturn(server);
-    when(server.getClusterProperties()).thenReturn(
-        clusterMonitoring == null
-            ? VeniceProperties.empty()
-            : new PropertyBuilder().put("test.monitoring.enabled", clusterMonitoring).build());
+    when(server.getClusterProperties()).thenReturn(VeniceProperties.empty());
     when(server.getKafkaConsumerConfigsForLocalConsumption())
         .thenReturn(new PropertyBuilder().put("test.monitoring.enabled", localMonitoring).build());
     when(server.getKafkaConsumerConfigsForRemoteConsumption())
@@ -137,28 +120,18 @@ public class AvroGenericDaVinciClientTest {
     when(factory.isAutomaticMonitoringEnabled(any())).thenAnswer(
         invocation -> ((VeniceProperties) invocation.getArgument(0)).getBoolean("test.monitoring.enabled", false));
     if (!supported) {
-      doThrow(new UnsupportedOperationException()).when(factory).registerMonitoringForStore(anyString(), any());
+      doCallRealMethod().when(factory).configureMonitoringForStore(anyString(), any());
       if (!localMonitoring && !remoteMonitoring) {
         doCallRealMethod().when(factory).isAutomaticMonitoringEnabled(any());
       }
     }
 
     try (MockedConstruction<DaVinciBackend> backends = mockConstruction(DaVinciBackend.class, (backend, context) -> {
-      doAnswer(invocation -> {
-        Closeable handle = invocation.getArgument(3);
-        if (handle != null) {
-          handle.close();
-        }
-        return null;
-      }).when(backend).unregisterStoreClient(anyString(), any(), any(), any(), anyBoolean());
       // Assertion at construction, not afterward: registration must precede eagerly created native consumers.
-      if (monitoringEnabled) {
-        verify(factory).registerMonitoringForStore(storeName, filter);
+      if (localMonitoring || remoteMonitoring) {
+        verify(factory).configureMonitoringForStore(storeName, filter);
       } else {
-        verify(factory, never()).registerMonitoringForStore(anyString(), any());
-      }
-      if (failBackendConstruction) {
-        throw new IllegalStateException("Backend construction failed");
+        verify(factory, never()).configureMonitoringForStore(anyString(), any());
       }
     })) {
       if (!supported) {
@@ -166,54 +139,9 @@ public class AvroGenericDaVinciClientTest {
             UnsupportedOperationException.class,
             () -> client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty()));
         assertEquals(backends.constructed().size(), 0);
-      } else if (failBackendConstruction) {
-        expectThrows(
-            RuntimeException.class,
-            () -> client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty()));
-        verify(registration).close();
       } else {
         client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty());
         assertEquals(backends.constructed().size(), 1);
-        StoreBackend storeBackend = mock(StoreBackend.class);
-        client.storeBackend = storeBackend;
-        doReturn(true).when(client).isReady();
-        CompletableFuture<Void> failed = new CompletableFuture<>();
-        CompletableFuture<Void> replacement = new CompletableFuture<>();
-        when(storeBackend.subscribe(any(), any(), any())).thenReturn(failed, replacement);
-        client.subscribe(ComplementSet.of(0));
-        client.unsubscribe(ComplementSet.of(0));
-        client.subscribe(ComplementSet.of(0));
-        failed.completeExceptionally(new VeniceClientException("Old attempt failed"));
-        assertTrue(client.subscription.contains(0));
-        replacement.completeExceptionally(new VeniceClientException("Replacement failed"));
-        assertFalse(client.subscription.contains(0));
-        client.addPartitionsToSubscription(ComplementSet.of(1));
-        if (failClose) {
-          VeniceClientException detachFailure = new VeniceClientException("Partition detach failed");
-          VeniceClientException unregisterFailure = new VeniceClientException("Unregistration failed");
-          doThrow(detachFailure).when(storeBackend).closePartitions(any());
-          doAnswer(invocation -> {
-            registration.close();
-            throw unregisterFailure;
-          }).when(backends.constructed().get(0)).unregisterStoreClient(anyString(), any(), any(), any(), anyBoolean());
-          VeniceClientException closeFailure = expectThrows(VeniceClientException.class, client::closeInner);
-          Assert.assertSame(closeFailure.getCause(), detachFailure);
-          Assert.assertSame(detachFailure.getSuppressed()[0], unregisterFailure);
-          verify(backends.constructed().get(0))
-              .unregisterStoreClient(eq(storeName), any(), any(), eq(registration), eq(true));
-          verify(backends.constructed().get(0)).close();
-        } else {
-          client.closeInner();
-        }
-        ArgumentCaptor<ComplementSet> closedPartitions = ArgumentCaptor.forClass(ComplementSet.class);
-        verify(storeBackend).closePartitions(closedPartitions.capture());
-        assertTrue(closedPartitions.getValue().contains(1));
-        assertFalse(closedPartitions.getValue().contains(0));
-        if (monitoringEnabled) {
-          verify(registration).close();
-        } else {
-          verify(registration, never()).close();
-        }
       }
     } finally {
       AvroGenericDaVinciClient.resetDaVinciBackendForTests();

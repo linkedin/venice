@@ -113,7 +113,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -178,7 +177,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
-  private final Map<String, Set<CompletableFuture<Void>>> pendingConsumerDetachments = new VeniceConcurrentHashMap<>();
 
   /**
    * Set of Kafka version topics that DaVinci has assigned to its future-version slot.
@@ -675,7 +673,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String topicName = veniceStoreVersionConfig.getStoreVersionName();
 
     // For view topic, we need to use internal view store name
-    String storeName = getIngestionStoreName(topicName);
+    String storeName = VeniceView.isViewTopic(topicName)
+        ? VeniceView.parseStoreAndViewFromViewTopic(topicName)
+        : Version.parseStoreFromKafkaTopicName(topicName);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
 
     StoreVersionInfo storeVersionPair =
@@ -888,13 +888,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             v.waitForShutdown(serverConfig.getShutdownSitWaitTimeSeconds());
           }
           createNewStoreIngestionTask.set(true);
-          StoreIngestionTask task = createStoreIngestionTask(veniceStore, partitionId, createPaused);
-          CompletableFuture<Void> detached = task.getConsumerDetachmentFuture();
-          Set<CompletableFuture<Void>> pending = pendingConsumerDetachments
-              .computeIfAbsent(getIngestionStoreName(topic), ignored -> ConcurrentHashMap.newKeySet());
-          pending.add(detached);
-          detached.thenRun(() -> pending.remove(detached));
-          return task;
+          return createStoreIngestionTask(veniceStore, partitionId, createPaused);
         }
         return v;
       });
@@ -1637,47 +1631,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
     }
 
-    AggVersionedDaVinciRecordTransformerStats stats = recordTransformerStats;
-    storeNameToInternalRecordTransformerConfig.compute(storeName, (name, existing) -> {
-      if (existing != null && (existing.getRecordTransformerConfig().getMonitoringPositionFilter() != null
-          || recordTransformerConfig.getMonitoringPositionFilter() != null)) {
-        DaVinciRecordTransformerConfig first = existing.getRecordTransformerConfig();
-        if (first.getMonitoringPositionFilter() == null || recordTransformerConfig.getMonitoringPositionFilter() == null
-            || !Objects.equals(first.getKeyClass(), recordTransformerConfig.getKeyClass())
-            || !Objects.equals(first.getOutputValueClass(), recordTransformerConfig.getOutputValueClass())
-            || !Objects.equals(first.getOutputValueSchema(), recordTransformerConfig.getOutputValueSchema())
-            || first.getStoreRecordsInDaVinci() != recordTransformerConfig.getStoreRecordsInDaVinci()
-            || first.getAlwaysBootstrapFromVersionTopic() != recordTransformerConfig
-                .getAlwaysBootstrapFromVersionTopic()
-            || first.isRecordTransformationEnabled() != recordTransformerConfig.isRecordTransformationEnabled()
-            || first.isRecordMetadataEnabled() != recordTransformerConfig.isRecordMetadataEnabled()) {
-          throw new VeniceException("Incompatible CDC record transformer settings for store " + storeName);
-        }
-        existing.getClientConfigs().add(recordTransformerConfig);
-        return existing;
-      }
-      return new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, stats);
-    });
-  }
-
-  public void unregisterRecordTransformerConfig(String storeName, DaVinciRecordTransformerConfig clientConfig) {
-    InternalDaVinciRecordTransformerConfig config = storeNameToInternalRecordTransformerConfig.get(storeName);
-    if (config != null) {
-      config.getClientConfigs().remove(clientConfig);
-    }
-  }
-
-  public CompletableFuture<Void> getConsumerDetachmentFuture(String storeName) {
-    Set<CompletableFuture<Void>> pending = pendingConsumerDetachments.get(storeName);
-    return pending == null
-        ? CompletableFuture.completedFuture(null)
-        : CompletableFuture.allOf(pending.toArray(new CompletableFuture<?>[0]));
-  }
-
-  private static String getIngestionStoreName(String topicName) {
-    return VeniceView.isViewTopic(topicName)
-        ? VeniceView.parseStoreAndViewFromViewTopic(topicName)
-        : Version.parseStoreFromKafkaTopicName(topicName);
+    storeNameToInternalRecordTransformerConfig
+        .put(storeName, new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, recordTransformerStats));
   }
 
   public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {

@@ -1,7 +1,6 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl;
-import com.linkedin.davinci.consumer.VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -15,11 +14,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import org.apache.avro.Schema;
 
@@ -35,12 +30,6 @@ import org.apache.avro.Schema;
 @Experimental
 public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTransformer<K, V, O> {
   private final DaVinciRecordTransformer recordTransformer;
-  private final InternalDaVinciRecordTransformerConfig internalConfig;
-  private final List<DaVinciRecordTransformer> recoveryTransformers;
-  private final Map<DaVinciRecordTransformerConfig, DaVinciRecordTransformerChangelogConsumer> cdcTemplates =
-      new ConcurrentHashMap<>();
-  private final Map<DaVinciRecordTransformerChangelogConsumer, Map<Integer, DaVinciRecordTransformerChangelogConsumer>> cdcPartitions =
-      new ConcurrentHashMap<>();
 
   /**
    * Latch to ensure we complete local RocksDB scan before resuming remote consumption.
@@ -53,16 +42,6 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       Schema inputValueSchema,
       Schema outputValueSchema,
       InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig) {
-    this(recordTransformer, keySchema, inputValueSchema, outputValueSchema, internalRecordTransformerConfig, null);
-  }
-
-  private InternalDaVinciRecordTransformer(
-      DaVinciRecordTransformer recordTransformer,
-      Schema keySchema,
-      Schema inputValueSchema,
-      Schema outputValueSchema,
-      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
-      List<DaVinciRecordTransformer> recoveryTransformers) {
     super(
         recordTransformer.getStoreName(),
         recordTransformer.getStoreVersion(),
@@ -71,66 +50,8 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
         outputValueSchema,
         internalRecordTransformerConfig.getRecordTransformerConfig());
     this.recordTransformer = recordTransformer;
-    this.internalConfig = internalRecordTransformerConfig;
-    this.recoveryTransformers = recoveryTransformers;
     this.startLatchConsumptionLatch =
         new CountDownLatch(internalRecordTransformerConfig.getStartConsumptionLatchCount());
-  }
-
-  private List<DaVinciRecordTransformer> getPartitionTransformers(int partition) {
-    if (recoveryTransformers != null) {
-      return recoveryTransformers;
-    }
-    if (!isCDCRecordTransformer()) {
-      return Collections.singletonList(recordTransformer);
-    }
-    cdcTemplates.keySet().retainAll(internalConfig.getClientConfigs());
-    cdcPartitions.keySet().retainAll(cdcTemplates.values());
-    List<DaVinciRecordTransformer> transformers = new ArrayList<>();
-    for (DaVinciRecordTransformerConfig config: internalConfig.getClientConfigs()) {
-      DaVinciRecordTransformerChangelogConsumer template = cdcTemplates.computeIfAbsent(config, clientConfig -> {
-        DaVinciRecordTransformer transformer = clientConfig == internalConfig.getRecordTransformerConfig()
-            ? recordTransformer
-            : clientConfig.getRecordTransformerFunction()
-                .apply(
-                    getStoreName(),
-                    getStoreVersion(),
-                    getKeySchema(),
-                    getInputValueSchema(),
-                    getOutputValueSchema(),
-                    clientConfig);
-        if (!(transformer instanceof DaVinciRecordTransformerChangelogConsumer)) {
-          throw new IllegalStateException("Only CDC clients can share CDC ingestion callbacks");
-        }
-        return (DaVinciRecordTransformerChangelogConsumer) transformer;
-      });
-      if (template.isCurrentSubscription(partition)) {
-        transformers.add(
-            cdcPartitions.computeIfAbsent(template, ignored -> new ConcurrentHashMap<>())
-                .compute(partition, (ignored, previous) -> {
-                  if (previous != null && previous.isCurrentSubscription(partition)) {
-                    return previous;
-                  }
-                  return template.forPartition(partition);
-                }));
-      }
-    }
-    return transformers;
-  }
-
-  /**
-   * Capture client ownership and subscription generations before recovery is dispatched asynchronously.
-   */
-  public InternalDaVinciRecordTransformer<K, V, O> forPartitionRecovery(int partition) {
-    return isCDCRecordTransformer()
-        ? new InternalDaVinciRecordTransformer<>(
-            recordTransformer,
-            getKeySchema(),
-            getInputValueSchema(),
-            getOutputValueSchema(),
-            internalConfig,
-            getPartitionTransformers(partition))
-        : this;
   }
 
   @Override
@@ -148,23 +69,17 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       Lazy<O> value,
       int partitionId,
       DaVinciRecordTransformerRecordMetadata recordMetadata) {
-    for (DaVinciRecordTransformer transformer: getPartitionTransformers(partitionId)) {
-      transformer.processPut(key, value, partitionId, recordMetadata);
-    }
+    this.recordTransformer.processPut(key, value, partitionId, recordMetadata);
   }
 
   @Override
   public void processDelete(Lazy<K> key, int partitionId, DaVinciRecordTransformerRecordMetadata recordMetadata) {
-    for (DaVinciRecordTransformer transformer: getPartitionTransformers(partitionId)) {
-      transformer.processDelete(key, partitionId, recordMetadata);
-    }
+    this.recordTransformer.processDelete(key, partitionId, recordMetadata);
   }
 
   @Override
   public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
-    for (DaVinciRecordTransformer transformer: getPartitionTransformers(partitionId)) {
-      transformer.onStartVersionIngestion(partitionId, isCurrentVersion);
-    }
+    this.recordTransformer.onStartVersionIngestion(partitionId, isCurrentVersion);
   }
 
   @Override
@@ -184,18 +99,15 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    */
   public void onVersionSwap(int currentVersion, int futureVersion, int partitionId, PubSubPosition position) {
     if (isCDCRecordTransformer()) {
-      for (DaVinciRecordTransformer transformer: getPartitionTransformers(partitionId)) {
-        ((DaVinciRecordTransformerChangelogConsumer) transformer)
-            .onVersionSwap(currentVersion, futureVersion, partitionId, position);
-      }
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
+          .onVersionSwap(currentVersion, futureVersion, partitionId, position);
     }
   }
 
   public void onVersionSwap(PubSubTopicPartition source, VersionSwap versionSwap, PubSubPosition position) {
     if (isCDCRecordTransformer()) {
-      for (DaVinciRecordTransformer transformer: getPartitionTransformers(source.getPartitionNumber())) {
-        ((DaVinciRecordTransformerChangelogConsumer) transformer).onVersionSwap(source, versionSwap, position);
-      }
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
+          .onVersionSwap(source, versionSwap, position);
     }
   }
 
@@ -205,9 +117,8 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
    */
   public void onHeartbeat(int partitionId, long heartbeatTimestamp) {
     if (isCDCRecordTransformer()) {
-      for (DaVinciRecordTransformer transformer: getPartitionTransformers(partitionId)) {
-        ((DaVinciRecordTransformerChangelogConsumer) transformer).onHeartbeat(partitionId, heartbeatTimestamp);
-      }
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
+          .onHeartbeat(partitionId, heartbeatTimestamp);
     }
   }
 
@@ -234,10 +145,8 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       long pubSubMessageTimestamp,
       long producerTimestamp) {
     if (this.recordTransformer instanceof VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) {
-      for (DaVinciRecordTransformer transformer: getPartitionTransformers(partition)) {
-        ((DaVinciRecordTransformerChangelogConsumer) transformer)
-            .onControlMessage(partition, offset, controlMessage, pubSubMessageTimestamp, producerTimestamp);
-      }
+      ((VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer) this.recordTransformer)
+          .onControlMessage(partition, offset, controlMessage, pubSubMessageTimestamp, producerTimestamp);
     }
   }
 
@@ -256,20 +165,14 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       PubSubContext pubSubContext,
       Map<Integer, Schema> schemaIdToSchemaMap,
       ReadOnlySchemaRepository schemaRepository) {
-    for (DaVinciRecordTransformer transformer: getPartitionTransformers(partitionId)) {
-      if (isCDCRecordTransformer()
-          && !((DaVinciRecordTransformerChangelogConsumer) transformer).isCurrentSubscription(partitionId)) {
-        continue;
-      }
-      transformer.onRecovery(
-          storageEngine,
-          partitionId,
-          partitionStateSerializer,
-          compressor,
-          pubSubContext,
-          schemaIdToSchemaMap,
-          schemaRepository);
-    }
+    this.recordTransformer.onRecovery(
+        storageEngine,
+        partitionId,
+        partitionStateSerializer,
+        compressor,
+        pubSubContext,
+        schemaIdToSchemaMap,
+        schemaRepository);
   }
 
   public long getCountDownStartConsumptionLatchCount() {

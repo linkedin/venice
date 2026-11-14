@@ -21,9 +21,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
-import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
-import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
@@ -44,7 +41,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -164,93 +160,6 @@ public class StoreBackendTest {
     store.setVersions(Collections.emptyList());
     store.setCurrentVersion(Store.NON_EXISTING_VERSION);
     assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.universalSet()));
-  }
-
-  @Test
-  void testCdcRejectsOverlapAndRetainsDisjointSubscriptions() {
-    InternalDaVinciRecordTransformerConfig internalConfig = mock(InternalDaVinciRecordTransformerConfig.class);
-    DaVinciRecordTransformerConfig config = mock(DaVinciRecordTransformerConfig.class);
-    when(internalConfig.getRecordTransformerConfig()).thenReturn(config);
-    when(config.getMonitoringPositionFilter()).thenReturn(partition -> false);
-    when(backend.getInternalRecordTransformerConfig(store.getName())).thenReturn(internalConfig);
-    when(ingestionBackend.stopConsumption(any(), anyInt(), anyString()))
-        .thenReturn(CompletableFuture.completedFuture(null));
-    storeBackend.subscribe(ComplementSet.of(0));
-    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.of(0, 1)));
-    assertThrows(
-        VeniceException.class,
-        () -> storeBackend.seekToCheckpoint(
-            DaVinciSeekCheckpointInfo.forPositions(Collections.singletonMap(0, PubSubSymbolicPosition.EARLIEST)),
-            Optional.empty()));
-    assertThrows(VeniceException.class, () -> storeBackend.subscribe(ComplementSet.universalSet()));
-    assertFalse(storeBackend.getSubscription().contains(1));
-    storeBackend.subscribe(ComplementSet.of(1));
-    storeBackend.closePartitions(ComplementSet.of(0));
-    assertTrue(storeBackend.getSubscription().contains(1));
-    assertFalse(storeBackend.getSubscription().contains(0));
-    verify(ingestionBackend, never()).dropStoragePartitionGracefully(any(), anyInt(), anyInt(), anyString());
-    verify(ingestionBackend).stopConsumption(any(), eq(0), eq(Utils.getReplicaId(version1.kafkaTopicName(), 0)));
-    storeBackend.subscribe(ComplementSet.of(0));
-    assertTrue(storeBackend.getSubscription().contains(0));
-    storeBackend.unsubscribe(ComplementSet.of(0));
-    verify(ingestionBackend)
-        .dropStoragePartitionGracefully(any(), eq(0), anyInt(), eq(Utils.getReplicaId(version1.kafkaTopicName(), 0)));
-    storeBackend.closePartitions(ComplementSet.of(1));
-    assertTrue(storeBackend.getSubscription().isEmpty());
-    storeBackend.close();
-    verify(backend.getStoreRepository(), never()).unsubscribe(store.getName());
-    storeBackend.subscribe(ComplementSet.of(1));
-    storeBackend.close();
-    storeBackend.close();
-    assertTrue(storeBackend.getSubscription().isEmpty());
-    verify(backend.getStoreRepository(), never()).unsubscribe(store.getName());
-    verify(ingestionBackend, never()).removeStorageEngine(anyString());
-    storeBackend.delete();
-    verify(backend.getStoreRepository()).unsubscribe(store.getName());
-  }
-
-  @Test
-  void testFailedCdcSubscriptionReleasesOnlyAttemptReservations() {
-    InternalDaVinciRecordTransformerConfig internalConfig = mock(InternalDaVinciRecordTransformerConfig.class);
-    DaVinciRecordTransformerConfig config = mock(DaVinciRecordTransformerConfig.class);
-    when(internalConfig.getRecordTransformerConfig()).thenReturn(config);
-    when(config.getMonitoringPositionFilter()).thenReturn(partition -> false);
-    when(backend.getInternalRecordTransformerConfig(store.getName())).thenReturn(internalConfig);
-    when(ingestionBackend.stopConsumption(any(), anyInt(), anyString()))
-        .thenReturn(CompletableFuture.completedFuture(null));
-    store.deleteVersion(version2.getNumber());
-    storeBackend.subscribe(ComplementSet.of(0));
-    VersionBackend version = versionMap.get(version1.kafkaTopicName());
-    version.completePartition(0);
-
-    when(backend.getIngestionService().getPubSubPosition(any(), eq(2), any(), any()))
-        .thenThrow(new VeniceException("Timestamp lookup failed"));
-    Map<Integer, Long> timestamps = new HashMap<>();
-    timestamps.put(1, 1L);
-    timestamps.put(2, 1L);
-    assertThrows(
-        VeniceException.class,
-        () -> storeBackend.seekToCheckpoint(DaVinciSeekCheckpointInfo.forTimestamps(timestamps), Optional.empty()));
-    assertTrue(storeBackend.getSubscription().contains(0));
-    for (int partition: new int[] { 1, 2 }) {
-      assertFalse(storeBackend.getSubscription().contains(partition));
-      assertFalse(version.isPartitionSubscribed(partition));
-    }
-
-    CompletableFuture<Void> failed = storeBackend.subscribe(ComplementSet.of(1, 2));
-    storeBackend.unsubscribe(ComplementSet.of(1));
-    CompletableFuture<Void> replacement = storeBackend.subscribe(ComplementSet.of(1));
-    version.completePartition(1);
-    replacement.join();
-    version.completePartitionExceptionally(2, new VeniceException("Bootstrap failed"));
-    assertThrows(CompletionException.class, failed::join);
-    assertTrue(storeBackend.getSubscription().contains(1));
-    assertTrue(version.isPartitionReadyToServe(1));
-    assertFalse(storeBackend.getSubscription().contains(2));
-    assertFalse(version.isPartitionSubscribed(2));
-    CompletableFuture<Void> retry = storeBackend.subscribe(ComplementSet.of(2));
-    version.completePartition(2);
-    retry.join();
   }
 
   @Test

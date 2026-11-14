@@ -87,7 +87,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final Map<Integer, Integer> partitionToVersionToServe;
   // Eligibility also requires this served version's processed new-VT VSM, except initial/restored selection.
   private final Map<Integer, Integer> partitionToMonitoringVersion = new VeniceConcurrentHashMap<>();
-  private final Map<Integer, Long> subscriptionGenerations = new VeniceConcurrentHashMap<>();
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
@@ -119,7 +118,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   private final boolean includeControlMessages;
   private final DaVinciConfig daVinciConfig;
   private final String viewName;
-  private final boolean usesMaterializedViewTopic;
   private volatile boolean syntheticHeartbeatEnabled = false;
   private volatile DaVinciRecordTransformerChangelogConsumer syntheticHeartbeatRecordTransformer;
   // Monitoring-only offset commits (null when disabled); see ChangelogClientConfig#setConsumerOffsetCommitEnabled.
@@ -156,14 +154,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
     this.isVersionSpecificClient = changelogClientConfig.getStoreVersion() != null;
     this.veniceChangelogConsumerClientFactory = veniceChangelogConsumerClientFactory;
     this.viewName = changelogClientConfig.getViewName();
-    this.usesMaterializedViewTopic = viewName != null && !viewName.isEmpty()
-        && MaterializedView.class.getCanonicalName()
-            .equals(
-                veniceChangelogConsumerClientFactory.viewClassGetter.apply(
-                    storeName,
-                    viewName,
-                    changelogClientConfig.getD2ControllerClient(),
-                    changelogClientConfig.getControllerRequestRetryCount()));
 
     recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
         .setRecordTransformerFunction(DaVinciRecordTransformerChangelogConsumer::new)
@@ -266,7 +256,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       Function<Set<Integer>, CompletableFuture<Void>> subscriptionCall) {
     throwIfClosed();
     Set<Integer> targetPartitions = new HashSet<>();
-    Map<Integer, Long> attemptGenerations = new HashMap<>();
+    boolean partitionsAdded = false;
     try {
       startDaVinciClient();
 
@@ -280,21 +270,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       }
 
       // Explicitly don't allow seeking to an already subscribed partition, as DaVinci doesn't support it
-      bufferLock.lock();
-      try {
-        Set<Integer> intersection = new HashSet<>(subscribedPartitions);
-        intersection.retainAll(targetPartitions);
-        if (!intersection.isEmpty()) {
-          throw new VeniceClientException(
-              "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
-        }
-        for (int partition: targetPartitions) {
-          attemptGenerations.put(partition, subscriptionGenerations.getOrDefault(partition, 0L));
-        }
-        subscribedPartitions.addAll(targetPartitions);
-      } finally {
-        bufferLock.unlock();
+      Set<Integer> intersection = new HashSet<>(subscribedPartitions);
+      intersection.retainAll(targetPartitions);
+      if (!intersection.isEmpty()) {
+        throw new VeniceClientException(
+            "Cannot subscribe to partitions: " + intersection + " as they are already subscribed");
       }
+
+      subscribedPartitions.addAll(targetPartitions);
+      partitionsAdded = true;
 
       /*
        * Invoke subscriptionCall before scheduling startFuture. If it throws synchronously
@@ -345,7 +329,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       subscriptionFuture.whenComplete((result, error) -> {
         if (error != null) {
           LOGGER.error("Failed to subscribe to partitions: {} for store: {}", targetPartitions, storeName, error);
-          retireFailedSubscription(attemptGenerations);
+          subscribedPartitions.removeAll(targetPartitions);
           startFuture.completeExceptionally(new VeniceClientException(error));
           return;
         }
@@ -359,30 +343,15 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       return startFuture;
     } catch (Exception e) {
-      retireFailedSubscription(attemptGenerations);
       if (isVersionSpecificClient && isStoreOrVersionNotFoundException(e)) {
         LOGGER.warn("Store or version no longer exists for store: {}. Marking as caught up.", storeName, e);
         isCaughtUp.set(true);
         return CompletableFuture.completedFuture(null);
       }
-      throw e;
-    }
-  }
-
-  private void retireFailedSubscription(Map<Integer, Long> attemptGenerations) {
-    bufferLock.lock();
-    try {
-      Set<Integer> failedPartitions = new HashSet<>();
-      attemptGenerations.forEach((partition, generation) -> {
-        if (generation.equals(subscriptionGenerations.getOrDefault(partition, 0L))) {
-          failedPartitions.add(partition);
-        }
-      });
-      if (!failedPartitions.isEmpty()) {
-        clearPartitionState(failedPartitions);
+      if (partitionsAdded) {
+        subscribedPartitions.removeAll(targetPartitions);
       }
-    } finally {
-      bufferLock.unlock();
+      throw e;
     }
   }
 
@@ -661,25 +630,22 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       return false;
     }
     Integer versionToServe = partitionToVersionToServe.get(partition);
-    Integer monitoringVersion = partitionToMonitoringVersion.get(partition);
-    return versionToServe != null && versionToServe.equals(monitoringVersion)
-        && topicPartition.getTopicName().equals(getVersionTopicName(monitoringVersion));
+    int messageVersion = Version.parseVersionFromKafkaTopicName(topicPartition.getTopicName());
+    return versionToServe != null && versionToServe == messageVersion
+        && versionToServe.equals(partitionToMonitoringVersion.get(partition));
   }
 
-  private String getVersionTopicName(int version) {
-    return usesMaterializedViewTopic
-        ? MaterializedView.composeTopicName(storeName, version, viewName)
-        : Version.composeKafkaTopic(storeName, version);
-  }
-
-  final boolean isMonitoringTopic(PubSubTopicPartition topicPartition) {
+  boolean isMonitoringTopic(PubSubTopicPartition topicPartition) {
     PubSubTopic topic = topicPartition.getPubSubTopic();
     if (topic.isViewTopic()) {
       return false;
     }
     // Pooled consumers also carry other stores; this client must not gate their non-view positions.
-    if (usesMaterializedViewTopic || !storeName.equals(topic.getStoreName())) {
+    if (!storeName.equals(topic.getStoreName())) {
       return true;
+    }
+    if (!subscribedPartitions.contains(topicPartition.getPartitionNumber())) {
+      return false;
     }
     // Gate newly prefetched version topics only; do not change RT or other non-version monitoring.
     if (!topic.isVersionTopic()) {
@@ -865,11 +831,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
   public class DaVinciRecordTransformerChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
     private final String topicName;
-    private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap;
-    private final DaVinciRecordTransformerConfig transformerConfig;
-    private final int subscriptionPartition;
-    private final long subscriptionGeneration;
-    private final DaVinciRecordTransformerChangelogConsumer template;
+    private final Map<Integer, PubSubTopicPartition> pubSubTopicPartitionMap = new VeniceConcurrentHashMap<>();
 
     public DaVinciRecordTransformerChangelogConsumer(
         String storeName,
@@ -878,110 +840,56 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         Schema inputValueSchema,
         Schema outputValueSchema,
         DaVinciRecordTransformerConfig recordTransformerConfig) {
-      this(
-          storeName,
-          storeVersion,
-          keySchema,
-          inputValueSchema,
-          outputValueSchema,
-          recordTransformerConfig,
-          -1,
-          0,
-          null);
-    }
-
-    private DaVinciRecordTransformerChangelogConsumer(
-        String storeName,
-        int storeVersion,
-        Schema keySchema,
-        Schema inputValueSchema,
-        Schema outputValueSchema,
-        DaVinciRecordTransformerConfig recordTransformerConfig,
-        int subscriptionPartition,
-        long subscriptionGeneration,
-        DaVinciRecordTransformerChangelogConsumer template) {
       super(storeName, storeVersion, keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
-      this.topicName = getVersionTopicName(getStoreVersion());
-      this.transformerConfig = recordTransformerConfig;
-      this.subscriptionPartition = subscriptionPartition;
-      this.subscriptionGeneration = subscriptionGeneration;
-      this.template = template;
-      this.pubSubTopicPartitionMap =
-          template == null ? new VeniceConcurrentHashMap<>() : template.pubSubTopicPartitionMap;
-      if (subscriptionPartition >= 0) {
-        pubSubTopicPartitionMap.putIfAbsent(
-            subscriptionPartition,
-            new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), subscriptionPartition));
-      }
-    }
 
-    public DaVinciRecordTransformerChangelogConsumer forPartition(int partition) {
-      ReentrantLock lock = bufferLock;
-      lock.lock();
-      try {
-        return new DaVinciRecordTransformerChangelogConsumer(
-            getStoreName(),
-            getStoreVersion(),
-            getKeySchema(),
-            getInputValueSchema(),
-            getOutputValueSchema(),
-            transformerConfig,
-            partition,
-            subscriptionGenerations.getOrDefault(partition, 0L),
-            this);
-      } finally {
-        lock.unlock();
+      // Determine the topic name based on whether a view name is provided
+      if (viewName != null && !viewName.isEmpty() && getViewClass().equals(MaterializedView.class.getCanonicalName())) {
+        this.topicName =
+            MaterializedView.composeTopicName(changelogClientConfig.getStoreName(), getStoreVersion(), viewName);
+      } else {
+        this.topicName = Version.composeKafkaTopic(changelogClientConfig.getStoreName(), getStoreVersion());
       }
-    }
-
-    public boolean isCurrentSubscription(int partition) {
-      return !isClosed.get() && subscribedPartitions.contains(partition)
-          && (subscriptionPartition < 0 || subscriptionPartition == partition
-              && subscriptionGeneration == subscriptionGenerations.getOrDefault(partition, 0L));
     }
 
     @Override
     public void onStartVersionIngestion(int partitionId, boolean isCurrentVersion) {
-      bufferLock.lock();
-      try {
-        if (!isCurrentSubscription(partitionId)) {
-          return;
-        }
-        // Store reference for synthetic heartbeat emission. Set here because the inner class instance
-        // is created via ::new and not directly accessible from the outer class.
-        if (syntheticHeartbeatRecordTransformer == null) {
-          syntheticHeartbeatRecordTransformer = template == null ? this : template;
-        }
-        // Caching these objects, so we don't need to recreate them on every single message received
-        pubSubTopicPartitionMap
-            .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
+      // Store reference for synthetic heartbeat emission. Set here because the inner class instance
+      // is created via ::new and not directly accessible from the outer class.
+      if (syntheticHeartbeatRecordTransformer == null) {
+        syntheticHeartbeatRecordTransformer = this;
+      }
+      // Caching these objects, so we don't need to recreate them on every single message received
+      pubSubTopicPartitionMap
+          .putIfAbsent(partitionId, new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicName), partitionId));
 
-        if (isCurrentVersion || isVersionSpecificClient) {
-          /*
-           * This condition can occur when the application is starting up (due to a restart/deployment) or when the
-           * next current version begins ingestion while the previous version is still serving.
-           * In the first case, it is acceptable to immediately serve the current version.
-           * In the second case, we should not immediately serve the next current version. Doing so would result in
-           * sending all messages from SOP to nearline events that the user has already received.
-           * To avoid this, we should only serve the current version if no other version is currently being served.
-           * Once the next current version has consumed the version swap message, then it has caught up enough to be
-           * ready to serve.
-           *
-           * This can also occur when it is running in version specific mode, and no version swap will happen.
-           * In this case, just serve the currently subscribed version.
-           */
-          PubSubPosition seekPosition = seekPositions.remove(partitionId);
+      if (isCurrentVersion || isVersionSpecificClient) {
+        /*
+         * This condition can occur when the application is starting up (due to a restart/deployment) or when the
+         * next current version begins ingestion while the previous version is still serving.
+         * In the first case, it is acceptable to immediately serve the current version.
+         * In the second case, we should not immediately serve the next current version. Doing so would result in
+         * sending all messages from SOP to nearline events that the user has already received.
+         * To avoid this, we should only serve the current version if no other version is currently being served.
+         * Once the next current version has consumed the version swap message, then it has caught up enough to be
+         * ready to serve.
+         *
+         * This can also occur when it is running in version specific mode, and no version swap will happen.
+         * In this case, just serve the currently subscribed version.
+         */
+        PubSubPosition seekPosition = seekPositions.remove(partitionId);
+        bufferLock.lock();
+        try {
           if (partitionToVersionToServe.putIfAbsent(partitionId, getStoreVersion()) == null) {
             partitionToMonitoringVersion.put(partitionId, getStoreVersion());
             recordVersionSwapNotification(partitionId, seekPosition);
           }
+        } finally {
+          bufferLock.unlock();
         }
-
-        // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
-        currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
-      } finally {
-        bufferLock.unlock();
       }
+
+      // Initialize heartbeat timestamp for the partition to avoid empty lag until first heartbeat arrives
+      currentVersionLastHeartbeat.putIfAbsent(partitionId, System.currentTimeMillis());
     }
 
     @Override
@@ -1000,7 +908,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
      */
     private boolean isServedByThisVersion(int partitionId) {
       Integer versionToServe = partitionToVersionToServe.get(partitionId);
-      return isCurrentSubscription(partitionId) && versionToServe != null && versionToServe == getStoreVersion();
+      return versionToServe != null && versionToServe == getStoreVersion();
     }
 
     /**
@@ -1079,7 +987,7 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
 
       try {
         pubSubMessages.put(pubSubMessage);
-        if (isClosed.get() || !isStarted.get() || !isCurrentSubscription(partitionId)) {
+        if (isClosed.get() || !isStarted.get()) {
           pubSubMessages.remove(pubSubMessage);
           return;
         }
@@ -1107,6 +1015,17 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         LOGGER.error("Thread was interrupted while putting a message into pubSubMessages", e);
         Thread.currentThread().interrupt();
       }
+    }
+
+    /**
+     * Helper method to get the view class based on the view name and store configuration.
+     */
+    private String getViewClass() {
+      return veniceChangelogConsumerClientFactory.viewClassGetter.apply(
+          changelogClientConfig.getStoreName(),
+          viewName,
+          changelogClientConfig.getD2ControllerClient(),
+          changelogClientConfig.getControllerRequestRetryCount());
     }
 
     private long getNextConsumerSequenceId(int partition) {
@@ -1148,19 +1067,11 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
         ControlMessage controlMessage,
         long pubSubMessageTimestamp,
         long producerTimestamp) {
-      bufferLock.lock();
-      try {
-        if (!isCurrentSubscription(partitionId)) {
-          return;
-        }
-        // Track EOP per partition to enable synthetic heartbeats for batch stores.
-        // This runs before the includeControlMessages gate since it's internal state tracking.
-        if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
-          eopReceivedPartitions.add(partitionId);
-          maybeEnableSyntheticHeartbeats();
-        }
-      } finally {
-        bufferLock.unlock();
+      // Track EOP per partition to enable synthetic heartbeats for batch stores.
+      // This runs before the includeControlMessages gate since it's internal state tracking.
+      if (controlMessage.getControlMessageType() == ControlMessageType.END_OF_PUSH.getValue()) {
+        eopReceivedPartitions.add(partitionId);
+        maybeEnableSyntheticHeartbeats();
       }
       if (!isVersionSpecificClient || !includeControlMessages) {
         return;
@@ -1178,9 +1089,6 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
       String newTopic = versionSwap.getNewServingVersionTopic().toString();
       bufferLock.lock();
       try {
-        if (!isCurrentSubscription(partition)) {
-          return;
-        }
         onVersionSwap(
             Version.parseVersionFromVersionTopicName(oldTopic),
             Version.parseVersionFromVersionTopicName(newTopic),
@@ -1277,37 +1185,33 @@ public class VeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>
   public void clearPartitionState(Set<Integer> partitions) {
     bufferLock.lock();
     try {
-      Set<Integer> retiredPartitions = partitions.isEmpty() ? new HashSet<>(subscribedPartitions) : partitions;
-      for (int partition: retiredPartitions) {
-        subscriptionGenerations.merge(partition, 1L, Long::sum);
-      }
       if (partitions.isEmpty()) {
         pendingVersionSwapNotifications.clear();
       } else {
         pendingVersionSwapNotifications.remove(partitions);
       }
-      if (partitions.isEmpty()) {
-        subscribedPartitions.clear();
-        partitionToVersionToServe.clear();
-        partitionToMonitoringVersion.clear();
-        seekPositions.clear();
-        currentVersionLastHeartbeat.clear();
-        eopReceivedPartitions.clear();
-        lastPolledPositions.clear();
-        syntheticHeartbeatEnabled = false;
-      } else {
-        for (int partition: partitions) {
-          subscribedPartitions.remove(partition);
-          partitionToVersionToServe.remove(partition);
-          partitionToMonitoringVersion.remove(partition);
-          seekPositions.remove(partition);
-          currentVersionLastHeartbeat.remove(partition);
-          eopReceivedPartitions.remove(partition);
-          lastPolledPositions.keySet().removeIf(topicPartition -> topicPartition.getPartitionNumber() == partition);
-        }
-      }
     } finally {
       bufferLock.unlock();
+    }
+    if (partitions.isEmpty()) {
+      subscribedPartitions.clear();
+      partitionToVersionToServe.clear();
+      partitionToMonitoringVersion.clear();
+      seekPositions.clear();
+      currentVersionLastHeartbeat.clear();
+      eopReceivedPartitions.clear();
+      lastPolledPositions.clear();
+      syntheticHeartbeatEnabled = false;
+    } else {
+      for (int partition: partitions) {
+        subscribedPartitions.remove(partition);
+        partitionToVersionToServe.remove(partition);
+        partitionToMonitoringVersion.remove(partition);
+        seekPositions.remove(partition);
+        currentVersionLastHeartbeat.remove(partition);
+        eopReceivedPartitions.remove(partition);
+        lastPolledPositions.keySet().removeIf(topicPartition -> topicPartition.getPartitionNumber() == partition);
+      }
     }
   }
 

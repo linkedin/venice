@@ -1,7 +1,6 @@
 package com.linkedin.davinci;
 
 import com.linkedin.davinci.client.DaVinciSeekCheckpointInfo;
-import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.annotation.VisibleForTesting;
@@ -16,7 +15,6 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -37,12 +35,10 @@ public class StoreBackend {
   private final StoreBackendConfig config;
   private final Set<Integer> faultyVersionSet = new HashSet<>();
   private final ComplementSet<Integer> subscription = ComplementSet.emptySet();
-  private final Map<Object, ComplementSet<Integer>> pendingCdcSubscriptions = new HashMap<>();
   private final ConcurrentRef<VersionBackend> daVinciCurrentVersionRef = new ConcurrentRef<>(this::deleteVersion);
   private final AvroStoreDeserializerCache storeDeserializerCache;
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
-  private boolean closed;
 
   StoreBackend(DaVinciBackend backend, String storeName) {
     LOGGER.info("Opening local store {}", storeName);
@@ -63,10 +59,6 @@ public class StoreBackend {
   }
 
   synchronized void close() {
-    if (closed) {
-      return;
-    }
-    pendingCdcSubscriptions.clear();
     if (subscription.isEmpty()) {
       LOGGER.info("Closing empty local store {}", storeName);
       delete();
@@ -88,7 +80,6 @@ public class StoreBackend {
       setDaVinciCurrentVersion(null);
       version.close();
     }
-    closed = true;
   }
 
   synchronized void delete() {
@@ -108,7 +99,6 @@ public class StoreBackend {
     }
 
     backend.getStoreRepository().unsubscribe(storeName);
-    closed = true;
   }
 
   public boolean isManaged() {
@@ -194,51 +184,6 @@ public class StoreBackend {
       ComplementSet<Integer> partitions,
       Optional<Version> bootstrapVersion,
       DaVinciSeekCheckpointInfo checkpointInfo) {
-    InternalDaVinciRecordTransformerConfig transformerConfig = backend.getInternalRecordTransformerConfig(storeName);
-    if (transformerConfig != null
-        && transformerConfig.getRecordTransformerConfig().getMonitoringPositionFilter() != null) {
-      ComplementSet<Integer> unassigned = ComplementSet.universalSet();
-      unassigned.removeAll(subscription);
-      ComplementSet<Integer> overlap = ComplementSet.newSet(partitions);
-      overlap.removeAll(unassigned);
-      if (!overlap.isEmpty()) {
-        throw new VeniceException(
-            "Overlapping CDC subscriptions are not supported for store " + storeName + ": " + overlap);
-      }
-      Object attempt = new Object();
-      pendingCdcSubscriptions.put(attempt, ComplementSet.newSet(partitions));
-      try {
-        // Detachment must not block the ingestion thread that completes bootstrap.
-        return subscribeInternal(partitions, bootstrapVersion, checkpointInfo)
-            .whenCompleteAsync((ignored, failure) -> finishCdcSubscription(attempt, failure), backend.getExecutor());
-      } catch (RuntimeException e) {
-        try {
-          finishCdcSubscription(attempt, e);
-        } catch (RuntimeException cleanupFailure) {
-          e.addSuppressed(cleanupFailure);
-        }
-        throw e;
-      }
-    }
-    return subscribeInternal(partitions, bootstrapVersion, checkpointInfo);
-  }
-
-  private synchronized void finishCdcSubscription(Object attempt, Throwable failure) {
-    ComplementSet<Integer> owned = pendingCdcSubscriptions.remove(attempt);
-    if (failure != null && owned != null && !owned.isEmpty()) {
-      ComplementSet<Integer> unassigned = ComplementSet.universalSet();
-      unassigned.removeAll(subscription);
-      owned.removeAll(unassigned);
-      if (!owned.isEmpty()) {
-        closePartitions(owned);
-      }
-    }
-  }
-
-  private CompletableFuture<Void> subscribeInternal(
-      ComplementSet<Integer> partitions,
-      Optional<Version> bootstrapVersion,
-      DaVinciSeekCheckpointInfo checkpointInfo) {
     if (daVinciCurrentVersion == null) {
       setDaVinciCurrentVersion(new VersionBackend(backend, bootstrapVersion.orElseGet(() -> {
         Version version = getCurrentVersion();
@@ -263,7 +208,6 @@ public class StoreBackend {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
     }
-    closed = false;
     subscription.addAll(partitions);
 
     if (DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(getStoreName()))
@@ -317,25 +261,7 @@ public class StoreBackend {
         });
   }
 
-  public synchronized void closePartitions(ComplementSet<Integer> partitions) {
-    pendingCdcSubscriptions.values().forEach(owned -> owned.removeAll(partitions));
-    ComplementSet<Integer> remaining = ComplementSet.newSet(subscription);
-    remaining.removeAll(partitions);
-    if (remaining.isEmpty()) {
-      close();
-      return;
-    }
-    if (daVinciCurrentVersion != null) {
-      daVinciCurrentVersion.unsubscribe(partitions, false);
-    }
-    if (daVinciFutureVersion != null) {
-      daVinciFutureVersion.unsubscribe(partitions, false);
-    }
-    subscription.removeAll(partitions);
-  }
-
   public synchronized void unsubscribe(ComplementSet<Integer> partitions) {
-    pendingCdcSubscriptions.values().forEach(owned -> owned.removeAll(partitions));
     LOGGER.info("Unsubscribing from partitions {} of {}", partitions, storeName);
     subscription.removeAll(partitions);
 

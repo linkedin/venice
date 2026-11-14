@@ -433,8 +433,6 @@ public class RecordTransformerTest {
 
     VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer clientRecordTransformer =
         mock(VeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerChangelogConsumer.class);
-    when(clientRecordTransformer.isCurrentSubscription(partitionId)).thenReturn(true);
-    when(clientRecordTransformer.forPartition(partitionId)).thenReturn(clientRecordTransformer);
     InternalDaVinciRecordTransformer<Integer, String, String> internalRecordTransformer =
         new InternalDaVinciRecordTransformer<>(
             clientRecordTransformer,

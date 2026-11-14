@@ -2,8 +2,6 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
@@ -14,7 +12,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class InternalDaVinciRecordTransformerConfig {
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final AggVersionedDaVinciRecordTransformerStats recordTransformerStats;
-  private final Set<DaVinciRecordTransformerConfig> clientConfigs = ConcurrentHashMap.newKeySet();
   // Default = 0 to guard against NPE downstream, which shouldn't be possible.
   private final AtomicInteger startConsumptionLatchCount = new AtomicInteger(0);;
 
@@ -31,11 +28,6 @@ public class InternalDaVinciRecordTransformerConfig {
 
     this.recordTransformerConfig = recordTransformerConfig;
     this.recordTransformerStats = recordTransformerStats;
-    clientConfigs.add(recordTransformerConfig);
-  }
-
-  public Set<DaVinciRecordTransformerConfig> getClientConfigs() {
-    return clientConfigs;
   }
 
   public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
