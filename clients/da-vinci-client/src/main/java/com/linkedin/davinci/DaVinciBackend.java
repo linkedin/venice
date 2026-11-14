@@ -800,6 +800,15 @@ public class DaVinciBackend implements Closeable {
       Integer storeVersion,
       DaVinciRecordTransformerConfig transformerConfig,
       Closeable monitoringRegistration) {
+    unregisterStoreClient(storeName, storeVersion, transformerConfig, monitoringRegistration, true);
+  }
+
+  public synchronized void unregisterStoreClient(
+      String storeName,
+      Integer storeVersion,
+      DaVinciRecordTransformerConfig transformerConfig,
+      Closeable monitoringRegistration,
+      boolean waitForDetachment) {
     boolean lastMonitoringClient = false;
     if (monitoringRegistration != null) {
       lastMonitoringClient = storeMonitoringRefCounts
@@ -812,7 +821,7 @@ public class DaVinciBackend implements Closeable {
       unregisterStoreClient(storeName, storeVersion);
     } finally {
       if (monitoringRegistration != null) {
-        CompletableFuture<Void> detached = lastMonitoringClient
+        CompletableFuture<Void> detached = lastMonitoringClient && waitForDetachment
             ? getIngestionService().getConsumerDetachmentFuture(storeName)
             : CompletableFuture.completedFuture(null);
         detached.thenRun(() -> Utils.closeQuietlyWithErrorLogged(monitoringRegistration));

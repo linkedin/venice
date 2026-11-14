@@ -117,6 +117,17 @@ public class DaVinciBackendTest {
         }
       }
     }
+    DaVinciBackend sharedBackend = spy(backend);
+    KafkaStoreIngestionService ingestion = mock(KafkaStoreIngestionService.class);
+    doReturn(ingestion).when(sharedBackend).getIngestionService();
+    sharedBackend.addStoreBackend(STORE_NAME, mock(StoreBackend.class));
+    sharedBackend.registerStoreClient(STORE_NAME, null);
+    Closeable failedStartup = mock(Closeable.class);
+    sharedBackend.registerStoreClient(STORE_NAME, null, failedStartup);
+    sharedBackend.unregisterStoreClient(STORE_NAME, null, null, failedStartup, false);
+    verify(failedStartup).close();
+    verify(ingestion, never()).getConsumerDetachmentFuture(STORE_NAME);
+    sharedBackend.unregisterStoreClient(STORE_NAME, null);
   }
 
   @BeforeMethod

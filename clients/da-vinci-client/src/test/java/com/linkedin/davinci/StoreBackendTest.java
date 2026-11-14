@@ -201,6 +201,50 @@ public class StoreBackendTest {
   }
 
   @Test
+  void testFailedCdcSubscriptionReleasesOnlyAttemptReservations() {
+    InternalDaVinciRecordTransformerConfig internalConfig = mock(InternalDaVinciRecordTransformerConfig.class);
+    DaVinciRecordTransformerConfig config = mock(DaVinciRecordTransformerConfig.class);
+    when(internalConfig.getRecordTransformerConfig()).thenReturn(config);
+    when(config.getMonitoringPositionFilter()).thenReturn(partition -> false);
+    when(backend.getInternalRecordTransformerConfig(store.getName())).thenReturn(internalConfig);
+    when(ingestionBackend.stopConsumption(any(), anyInt(), anyString()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    store.deleteVersion(version2.getNumber());
+    storeBackend.subscribe(ComplementSet.of(0));
+    VersionBackend version = versionMap.get(version1.kafkaTopicName());
+    version.completePartition(0);
+
+    when(backend.getIngestionService().getPubSubPosition(any(), eq(2), any(), any()))
+        .thenThrow(new VeniceException("Timestamp lookup failed"));
+    Map<Integer, Long> timestamps = new HashMap<>();
+    timestamps.put(1, 1L);
+    timestamps.put(2, 1L);
+    assertThrows(
+        VeniceException.class,
+        () -> storeBackend.seekToCheckpoint(DaVinciSeekCheckpointInfo.forTimestamps(timestamps), Optional.empty()));
+    assertTrue(storeBackend.getSubscription().contains(0));
+    for (int partition: new int[] { 1, 2 }) {
+      assertFalse(storeBackend.getSubscription().contains(partition));
+      assertFalse(version.isPartitionSubscribed(partition));
+    }
+
+    CompletableFuture<Void> failed = storeBackend.subscribe(ComplementSet.of(1, 2));
+    storeBackend.unsubscribe(ComplementSet.of(1));
+    CompletableFuture<Void> replacement = storeBackend.subscribe(ComplementSet.of(1));
+    version.completePartition(1);
+    replacement.join();
+    version.completePartitionExceptionally(2, new VeniceException("Bootstrap failed"));
+    assertThrows(CompletionException.class, failed::join);
+    assertTrue(storeBackend.getSubscription().contains(1));
+    assertTrue(version.isPartitionReadyToServe(1));
+    assertFalse(storeBackend.getSubscription().contains(2));
+    assertFalse(version.isPartitionSubscribed(2));
+    CompletableFuture<Void> retry = storeBackend.subscribe(ComplementSet.of(2));
+    version.completePartition(2);
+    retry.join();
+  }
+
+  @Test
   void testSubscribeCurrentVersion() throws Exception {
     int partition = 0;
     long v1SubscribeDurationMs = 100;

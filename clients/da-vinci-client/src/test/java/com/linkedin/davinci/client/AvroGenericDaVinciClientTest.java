@@ -4,6 +4,7 @@ import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EX
 import static com.linkedin.venice.ConfigKeys.DAVINCI_VALIDATE_SPECIFIC_SCHEMA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
@@ -146,7 +147,7 @@ public class AvroGenericDaVinciClientTest {
           handle.close();
         }
         return null;
-      }).when(backend).unregisterStoreClient(anyString(), any(), any(), any());
+      }).when(backend).unregisterStoreClient(anyString(), any(), any(), any(), anyBoolean());
       // Assertion at construction, not afterward: registration must precede eagerly created native consumers.
       if (monitoringEnabled) {
         verify(factory).registerMonitoringForStore(storeName, filter);
@@ -170,9 +171,20 @@ public class AvroGenericDaVinciClientTest {
       } else {
         client.initBackend(clientConfig, loader, Optional.empty(), null, Optional.empty());
         assertEquals(backends.constructed().size(), 1);
-        client.addPartitionsToSubscription(ComplementSet.of(1));
         StoreBackend storeBackend = mock(StoreBackend.class);
         client.storeBackend = storeBackend;
+        doReturn(true).when(client).isReady();
+        CompletableFuture<Void> failed = new CompletableFuture<>();
+        CompletableFuture<Void> replacement = new CompletableFuture<>();
+        when(storeBackend.subscribe(any(), any(), any())).thenReturn(failed, replacement);
+        client.subscribe(ComplementSet.of(0));
+        client.unsubscribe(ComplementSet.of(0));
+        client.subscribe(ComplementSet.of(0));
+        failed.completeExceptionally(new VeniceClientException("Old attempt failed"));
+        assertTrue(client.subscription.contains(0));
+        replacement.completeExceptionally(new VeniceClientException("Replacement failed"));
+        assertFalse(client.subscription.contains(0));
+        client.addPartitionsToSubscription(ComplementSet.of(1));
         client.closeInner();
         ArgumentCaptor<ComplementSet> closedPartitions = ArgumentCaptor.forClass(ComplementSet.class);
         verify(storeBackend).closePartitions(closedPartitions.capture());
