@@ -1021,13 +1021,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     } catch (Throwable e) {
       String msg = "Unable to start Da Vinci client, storeName=" + getStoreName();
       logger.error(msg, e);
-      try {
-        if (registered) {
+      if (registered) {
+        try {
           getBackend().unregisterStoreClient(getStoreName(), storeVersion);
+        } catch (Throwable cleanupError) {
+          e.addSuppressed(cleanupError);
         }
-      } finally {
-        daVinciBackend.release();
       }
+      daVinciBackend.release();
       throw new VeniceClientException(msg, e);
     }
   }
