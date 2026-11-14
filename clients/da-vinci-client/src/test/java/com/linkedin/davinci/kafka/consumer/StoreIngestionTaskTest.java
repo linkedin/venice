@@ -2487,6 +2487,43 @@ public abstract class StoreIngestionTaskTest {
     }, aaConfig);
   }
 
+  @Test
+  public void testStatefulCdcUnsubscribeCheckpointsBeforeRemovingPartition() throws Exception {
+    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
+    StoreBufferService buffer = spy(storeBufferService);
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
+      try {
+        verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).started(topic, PARTITION_FOO);
+        PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
+        ConsumerAction stop = new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, fooTopicPartition, 0, false);
+        CompletableFuture<Void> failedSync = new CompletableFuture<>();
+        failedSync.completeExceptionally(new VeniceException("Checkpoint failed"));
+        doReturn(failedSync).doCallRealMethod()
+            .when(buffer)
+            .execSyncOffsetCommandAsync(fooTopicPartition, storeIngestionTaskUnderTest);
+        assertThrows(VeniceException.class, () -> storeIngestionTaskUnderTest.processCommonConsumerAction(stop));
+        Assert.assertSame(storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO), pcs);
+        verify(mockLogNotifier, never()).stopped(anyString(), anyInt(), any());
+
+        PubSubPosition processedPosition = InMemoryPubSubPosition.of(321);
+        pcs.setLatestProcessedVtPosition(processedPosition);
+        storeIngestionTaskUnderTest.processCommonConsumerAction(stop);
+        assertNull(storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO));
+        assertEquals(pcs.getOffsetRecord().getCheckpointedLocalVtPosition(), processedPosition);
+        verify(mockAbstractStorageEngine, atLeastOnce()).sync(PARTITION_FOO);
+        verify(mockStorageMetadataService, atLeastOnce()).put(topic, PARTITION_FOO, pcs.getOffsetRecord());
+        verify(mockLogNotifier).stopped(anyString(), eq(PARTITION_FOO), any());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException(e);
+      }
+    }, AA_OFF);
+    config.setRecordTransformerConfig(buildCdcRecordTransformerConfig()).setDaVinci(true);
+    config
+        .setBeforeStartingConsumption(() -> doReturn(buffer).when(storeIngestionTaskUnderTest).getStoreBufferService());
+    runTest(config);
+  }
+
   @Test(dataProvider = "aaConfigProvider")
   public void testKillConsumption(AAConfig aaConfig) throws Exception {
     final Thread writingThread = new Thread(() -> {

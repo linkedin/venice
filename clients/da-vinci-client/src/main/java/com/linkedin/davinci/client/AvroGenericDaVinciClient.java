@@ -1089,8 +1089,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   @VisibleForTesting
   void closeInner() {
+    logger.info("Closing client, storeName=" + getStoreName());
+    Throwable failure = null;
     try {
-      logger.info("Closing client, storeName=" + getStoreName());
       if (recordTransformerConfig != null && recordTransformerConfig.getMonitoringPositionFilter() != null
           && !subscription.isEmpty()) {
         storeBackend.closePartitions(ComplementSet.newSet(subscription));
@@ -1099,19 +1100,35 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
           subscription.clear();
         }
       }
-      ready.set(false);
-      unregisterStoreClient();
-
-      if (cacheBackend != null) {
-        cacheBackend.close();
-      }
-      daVinciBackend.release();
-      logger.info("Client is closed successfully, storeName={}", getStoreName());
     } catch (Throwable e) {
-      String msg = "Unable to close Da Vinci client, storeName=" + getStoreName();
-      logger.error(msg, e);
-      throw new VeniceClientException(msg, e);
+      failure = e;
     }
+    ready.set(false);
+    failure = closeWithSuppressed(this::unregisterStoreClient, failure);
+    if (cacheBackend != null) {
+      failure = closeWithSuppressed(cacheBackend::close, failure);
+    }
+    failure = closeWithSuppressed(daVinciBackend::release, failure);
+    if (failure != null) {
+      String msg = "Unable to close Da Vinci client, storeName=" + getStoreName();
+      logger.error(msg, failure);
+      throw new VeniceClientException(msg, failure);
+    }
+    logger.info("Client is closed successfully, storeName={}", getStoreName());
+  }
+
+  private static Throwable closeWithSuppressed(Runnable close, Throwable failure) {
+    try {
+      close.run();
+    } catch (Throwable e) {
+      if (failure == null) {
+        return e;
+      }
+      if (failure != e) {
+        failure.addSuppressed(e);
+      }
+    }
+    return failure;
   }
 
   private void releaseMonitoringRegistration() {

@@ -197,7 +197,16 @@ public class StoreBackendTest {
         .dropStoragePartitionGracefully(any(), eq(0), anyInt(), eq(Utils.getReplicaId(version1.kafkaTopicName(), 0)));
     storeBackend.closePartitions(ComplementSet.of(1));
     assertTrue(storeBackend.getSubscription().isEmpty());
+    storeBackend.close();
+    verify(backend.getStoreRepository(), never()).unsubscribe(store.getName());
+    storeBackend.subscribe(ComplementSet.of(1));
+    storeBackend.close();
+    storeBackend.close();
+    assertTrue(storeBackend.getSubscription().isEmpty());
+    verify(backend.getStoreRepository(), never()).unsubscribe(store.getName());
     verify(ingestionBackend, never()).removeStorageEngine(anyString());
+    storeBackend.delete();
+    verify(backend.getStoreRepository()).unsubscribe(store.getName());
   }
 
   @Test

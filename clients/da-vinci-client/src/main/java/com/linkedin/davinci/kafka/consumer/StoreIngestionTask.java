@@ -2753,8 +2753,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
-        forceUnSubscribedCount--;
-        subscribedCount--;
 
         // Cancel any pending blob transfer before unsubscribing
         if (consumptionState != null && blobTransferHelper != null && blobTransferHelper
@@ -2782,6 +2780,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Drain the buffered message by last subscription.
         waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, consumptionState);
+
+        if (consumptionState != null && recordTransformer != null && recordTransformer.isCDCRecordTransformer()
+            && recordTransformer.getStoreRecordsInDaVinci()) {
+          CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
+              ? flushGlobalRtDivCheckpoint(consumptionState)
+              : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
+          try {
+            syncFuture.get(getServerConfig().getShutdownSyncOffsetTimeoutMs(), MILLISECONDS);
+          } catch (ExecutionException | TimeoutException e) {
+            throw new VeniceException("Unable to checkpoint before unsubscribing " + topicPartition, e);
+          } finally {
+            syncFuture.cancel(true);
+          }
+        }
+        forceUnSubscribedCount--;
+        subscribedCount--;
 
         /**
          * If state transition model is still hanging on waiting for the released latch, but unsubscription happens,

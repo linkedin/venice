@@ -90,9 +90,11 @@ public class AvroGenericDaVinciClientTest {
 
   @DataProvider(name = "nativeMonitoringModes")
   public Object[][] nativeMonitoringModes() {
-    return new Object[][] { { null, false, false, true, false }, { null, true, false, true, false },
-        { null, false, true, true, false }, { true, false, false, true, false }, { false, true, true, true, false },
-        { null, true, false, false, false }, { null, false, false, false, false }, { null, true, false, true, true } };
+    return new Object[][] { { null, false, false, true, false, false }, { null, true, false, true, false, false },
+        { null, false, true, true, false, false }, { true, false, false, true, false, false },
+        { false, true, true, true, false, false }, { null, true, false, false, false, false },
+        { null, false, false, false, false, false }, { null, true, false, true, true, false },
+        { null, true, false, true, false, true } };
   }
 
   @Test(dataProvider = "nativeMonitoringModes")
@@ -101,7 +103,8 @@ public class AvroGenericDaVinciClientTest {
       boolean localMonitoring,
       boolean remoteMonitoring,
       boolean supported,
-      boolean failBackendConstruction) throws Exception {
+      boolean failBackendConstruction,
+      boolean failClose) throws Exception {
     AvroGenericDaVinciClient.resetDaVinciBackendForTests();
     Predicate<PubSubTopicPartition> filter = partition -> false;
     DaVinciRecordTransformerConfig transformerConfig =
@@ -185,7 +188,23 @@ public class AvroGenericDaVinciClientTest {
         replacement.completeExceptionally(new VeniceClientException("Replacement failed"));
         assertFalse(client.subscription.contains(0));
         client.addPartitionsToSubscription(ComplementSet.of(1));
-        client.closeInner();
+        if (failClose) {
+          VeniceClientException detachFailure = new VeniceClientException("Partition detach failed");
+          VeniceClientException unregisterFailure = new VeniceClientException("Unregistration failed");
+          doThrow(detachFailure).when(storeBackend).closePartitions(any());
+          doAnswer(invocation -> {
+            registration.close();
+            throw unregisterFailure;
+          }).when(backends.constructed().get(0)).unregisterStoreClient(anyString(), any(), any(), any(), anyBoolean());
+          VeniceClientException closeFailure = expectThrows(VeniceClientException.class, client::closeInner);
+          Assert.assertSame(closeFailure.getCause(), detachFailure);
+          Assert.assertSame(detachFailure.getSuppressed()[0], unregisterFailure);
+          verify(backends.constructed().get(0))
+              .unregisterStoreClient(eq(storeName), any(), any(), eq(registration), eq(true));
+          verify(backends.constructed().get(0)).close();
+        } else {
+          client.closeInner();
+        }
         ArgumentCaptor<ComplementSet> closedPartitions = ArgumentCaptor.forClass(ComplementSet.class);
         verify(storeBackend).closePartitions(closedPartitions.capture());
         assertTrue(closedPartitions.getValue().contains(1));

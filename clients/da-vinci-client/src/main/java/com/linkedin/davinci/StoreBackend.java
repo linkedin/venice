@@ -42,6 +42,7 @@ public class StoreBackend {
   private final AvroStoreDeserializerCache storeDeserializerCache;
   private VersionBackend daVinciCurrentVersion;
   private VersionBackend daVinciFutureVersion;
+  private boolean closed;
 
   StoreBackend(DaVinciBackend backend, String storeName) {
     LOGGER.info("Opening local store {}", storeName);
@@ -62,6 +63,9 @@ public class StoreBackend {
   }
 
   synchronized void close() {
+    if (closed) {
+      return;
+    }
     pendingCdcSubscriptions.clear();
     if (subscription.isEmpty()) {
       LOGGER.info("Closing empty local store {}", storeName);
@@ -84,6 +88,7 @@ public class StoreBackend {
       setDaVinciCurrentVersion(null);
       version.close();
     }
+    closed = true;
   }
 
   synchronized void delete() {
@@ -103,6 +108,7 @@ public class StoreBackend {
     }
 
     backend.getStoreRepository().unsubscribe(storeName);
+    closed = true;
   }
 
   public boolean isManaged() {
@@ -257,6 +263,7 @@ public class StoreBackend {
       // Recreate store config that was potentially deleted by unsubscribe.
       config.store();
     }
+    closed = false;
     subscription.addAll(partitions);
 
     if (DaVinciBackend.ClientType.VERSION_SPECIFIC.equals(backend.getStoreClientType(getStoreName()))
