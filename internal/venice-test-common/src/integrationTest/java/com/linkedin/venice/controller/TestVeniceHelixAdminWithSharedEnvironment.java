@@ -8,6 +8,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -214,7 +215,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
   }
 
-  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)
   public void testTopicTruncationRetentionMarkers() {
     VeniceHelixAdmin admin = spy(veniceAdmin);
     TopicManager topicManager = spy(veniceAdmin.getTopicManager());
@@ -222,8 +223,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     doReturn(true).when(topicManager).updateTopicRetention(any(), anyLong());
     long marker = controllerConfig.getDeprecatedRealTimeTopicRetentionMs();
     long legacyMax = controllerConfig.getDeprecatedJobTopicMaxRetentionMs();
-    long[] retentions = { 15000, legacyMax, legacyMax + 1, marker - 1, marker, marker + 1, TimeUnit.DAYS.toMillis(5),
-        -1, -2, PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION };
+    long[] retentions = { 0, 15000, legacyMax, legacyMax + 1, marker - 1, marker, marker + 1, TimeUnit.DAYS.toMillis(5),
+        -1, -2, PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION, PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS };
     for (String topicName: Arrays.asList(
         "retention_rt",
         "retention_rt_v1",
@@ -244,6 +245,15 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         doReturn(retention).when(topicManager).getTopicRetention(topic);
         Assert.assertEquals(admin.isTopicTruncatedBasedOnRetention(topicName, retention), expected, topicName);
         Assert.assertEquals(admin.isTopicTruncated(topicName), expected, topicName);
+        if (topic.isRealTime()) {
+          doReturn(Collections.singleton(topic)).when(topicManager).listTopics();
+          doReturn(retention, marker).when(topicManager).getTopicRetention(topic);
+
+          admin.cleanupRealTimeTopicsForStoreDeletion(clusterName, topic.getStoreName(), false);
+
+          verify(topicManager, times(expected ? 0 : 1)).updateTopicRetention(topic, marker);
+          clearInvocations(topicManager);
+        }
       }
       Assert.assertTrue(admin.truncateKafkaTopic(topicName));
       verify(topicManager).updateTopicRetention(
@@ -264,6 +274,28 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertFalse(admin.isTopicTruncatedBasedOnRetention("retention_rt", fatalRetention));
     Assert.assertTrue(admin.truncateKafkaTopic("retention_v1", fatalRetention));
     verify(topicManager).updateTopicRetention(pubSubTopicRepository.getTopic("retention_v1"), fatalRetention);
+
+    Properties props = controllerProps.toProperties();
+    props.put(ConfigKeys.ADMIN_PORT, TestUtils.getFreePort());
+    props.put(ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS, Long.MAX_VALUE);
+    VeniceControllerMultiClusterConfig config =
+        new VeniceControllerMultiClusterConfig(Collections.singletonList(new VeniceProperties(props)));
+    try (VeniceHelixAdmin legacyAdmin = new VeniceHelixAdmin(
+        config,
+        new MetricsRepository(),
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository,
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty())) {
+      legacyAdmin.initStorageCluster(clusterName);
+      Assert.assertTrue(legacyAdmin.isTopicTruncatedBasedOnRetention(Long.MAX_VALUE));
+      Assert.assertFalse(
+          legacyAdmin
+              .isTopicTruncatedBasedOnRetention("retention_rt", PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS));
+    }
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)

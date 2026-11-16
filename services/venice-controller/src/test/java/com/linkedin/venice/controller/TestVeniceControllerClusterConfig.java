@@ -54,6 +54,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.PushJobCheckpoints.QUOTA_EXCEEDED;
 import static com.linkedin.venice.controller.VeniceControllerClusterConfig.parsePushJobUserErrorCheckpoints;
+import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -109,10 +110,10 @@ public class TestVeniceControllerClusterConfig {
     assertEquals(config.getDeprecatedJobTopicMaxRetentionMs(), TimeUnit.SECONDS.toMillis(60));
     assertEquals(config.getFatalDataValidationFailureRetentionMs(), TimeUnit.DAYS.toMillis(2));
 
-    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, TimeUnit.HOURS.toMillis(12));
+    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, DEFAULT_TOPIC_RETENTION_POLICY_MS - 1);
     assertEquals(
         new VeniceControllerClusterConfig(new VeniceProperties(props)).getDeprecatedRealTimeTopicRetentionMs(),
-        TimeUnit.HOURS.toMillis(12));
+        DEFAULT_TOPIC_RETENTION_POLICY_MS - 1);
     // The RT marker is independent of the legacy maximum, whose existing validation still applies.
     props.put(ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS, 14999);
     assertThrows(VeniceException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
@@ -121,7 +122,9 @@ public class TestVeniceControllerClusterConfig {
   @DataProvider(name = "invalidRealTimeRetention")
   public Object[][] invalidRealTimeRetention() {
     return new Object[][] { { "0", VeniceException.class }, { "-1", VeniceException.class },
-        { "-2", VeniceException.class }, { "not-a-number", NumberFormatException.class } };
+        { "-2", VeniceException.class }, { String.valueOf(DEFAULT_TOPIC_RETENTION_POLICY_MS), VeniceException.class },
+        { String.valueOf(DEFAULT_TOPIC_RETENTION_POLICY_MS + 1), VeniceException.class },
+        { "not-a-number", NumberFormatException.class } };
   }
 
   @Test(dataProvider = "invalidRealTimeRetention")

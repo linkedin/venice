@@ -124,8 +124,13 @@ public class TestDeleteStoreDeletesRealtimeTopic {
 
     // verify realtime topic does not exist
     PubSubTopic realTimeTopicName = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(storeInfo.get()));
+    long retentionMarker = veniceCluster.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getMultiClusterConfigs()
+        .getDeprecatedRealTimeTopicRetentionMs();
     try {
-      boolean isTruncated = topicManagerRepository.getLocalTopicManager().isTopicTruncated(realTimeTopicName, 60000);
+      boolean isTruncated = topicManagerRepository.getLocalTopicManager()
+          .isTopicTruncated(realTimeTopicName, retention -> retention == retentionMarker);
       assertTrue(
           isTruncated,
           "Real-time buffer topic should be truncated: " + realTimeTopicName + " but retention is set to: "
