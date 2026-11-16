@@ -444,7 +444,9 @@ public class ConfigKeys {
 
   /**
    * Retention marker for deprecated real-time topics, including separate incremental-push and user system store
-   * topics. Defaults to 23 hours. Must be positive and reserved for deletion, not used by active RT topics.
+   * topics. Defaults to 23 hours. Must be positive and strictly less than
+   * {@link com.linkedin.venice.pubsub.PubSubConstants#DEFAULT_TOPIC_RETENTION_POLICY_MS} (5 days), the minimum active
+   * RT retention. The value is reserved for deletion and must not be used by active RT topics.
    * Cleanup recognizes this exact value in addition to the legacy deprecated-topic threshold; it does not wait
    * for this retention period to elapse. All controllers must agree on this value.
    */
