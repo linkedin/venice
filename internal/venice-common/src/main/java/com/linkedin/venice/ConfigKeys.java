@@ -2766,6 +2766,9 @@ public class ConfigKeys {
    */
   public static final String SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS = "server.shutdown.partition.state.timeout.ms";
 
+  /** Enable shutdown-only SIT/writer phase timing logs and snapshots before forced interruption. Default: false. */
+  public static final String SERVER_SHUTDOWN_DIAGNOSTICS_ENABLED = "server.shutdown.diagnostics.enabled";
+
   /**
    * Maximum time in seconds for {@code shutdownAndWait} to wait for the StoreIngestionTask thread to complete
    * its shutdown sequence (unsubscribe, checkpoint, internalClose). This is the outermost timeout that caps

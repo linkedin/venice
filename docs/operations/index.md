@@ -15,6 +15,7 @@ This guide covers operational tasks for Venice administrators and operators.
 
 ## Advanced Topics
 
+- [Shutdown Phase Diagnostics](shutdown-diagnostics.md) - Opt-in phase timing for graceful server shutdown
 - [P2P Bootstrapping](advanced/p2p-bootstrapping.md) - Peer-to-peer data transfer for faster server and client
   bootstrapping
 - [Data Integrity](advanced/data-integrity.md) - Verify data consistency and detect corruption

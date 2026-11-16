@@ -714,6 +714,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private static void shutdownExecutorService(ExecutorService executor, String name, boolean force) {
+    shutdownExecutorService(executor, name, force, () -> {});
+  }
+
+  static void shutdownExecutorService(ExecutorService executor, String name, boolean force, Runnable beforeInterrupt) {
     if (executor == null) {
       return;
     }
@@ -725,15 +729,23 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         if (!force) {
           LOGGER.warn("Failed to gracefully shutdown executor {}", name);
         }
-        executor.shutdownNow();
+        try {
+          beforeInterrupt.run();
+        } finally {
+          executor.shutdownNow();
+        }
         if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
           LOGGER.error("Failed to shutdown executor {}", name);
         }
       }
     } catch (InterruptedException e) {
       LOGGER.warn("Executor shutdown is interrupted");
-      executor.shutdownNow();
-      currentThread().interrupt();
+      try {
+        beforeInterrupt.run();
+      } finally {
+        executor.shutdownNow();
+        currentThread().interrupt();
+      }
     } finally {
       LOGGER.info("{} shutdown took {} ms.", name, System.currentTimeMillis() - startTime);
     }
@@ -796,8 +808,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * We would like to gracefully shutdown {@link #ingestionExecutorService},
      * so that it will have an opportunity to checkpoint the processed offset.
      */
-    topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
-    shutdownExecutorService(ingestionExecutorService, "ingestionExecutorService", false);
+    topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::closeForServerShutdown);
+    shutdownExecutorService(
+        ingestionExecutorService,
+        "ingestionExecutorService",
+        false,
+        () -> topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::logShutdownSnapshot));
 
     Utils.closeQuietlyWithErrorLogged(aggKafkaConsumerService);
 

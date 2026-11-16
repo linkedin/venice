@@ -57,6 +57,8 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics.Phase;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -1808,10 +1810,25 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param partition The partition to be closed.
    */
   public void closePartition(int partition) {
+    closePartition(partition, null);
+  }
+
+  /** Shutdown-only diagnostics; routine EOS/heartbeat calls do not create or populate timing state. */
+  public void closePartition(int partition, IngestionShutdownDiagnostics diagnostics) {
     if (segments[partition] != null) {
       logger.debug("Closing partition: {} in VeniceWriter.", partition);
       try {
-        endSegment(partition, true).get();
+        CompletableFuture<PubSubProduceResult> future = endSegment(partition, true, diagnostics);
+        if (diagnostics != null) {
+          diagnostics.transition(Phase.EOS_FUTURE, partition);
+        }
+        try {
+          future.get();
+        } finally {
+          if (diagnostics != null) {
+            diagnostics.transition(Phase.WRITER_CLOSE, partition);
+          }
+        }
       } catch (InterruptedException e) {
         // Callers may swallow the thrown exception, so the interrupt status must survive for them to observe it.
         Thread.currentThread().interrupt();
@@ -2976,7 +2993,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @return A CompletableFuture which either contains a result if a EOS was sent, or null if none needed to be sent.
    */
   private CompletableFuture<PubSubProduceResult> endSegment(int partition, boolean finalSegment) {
+    return endSegment(partition, finalSegment, null);
+  }
+
+  private CompletableFuture<PubSubProduceResult> endSegment(
+      int partition,
+      boolean finalSegment,
+      IngestionShutdownDiagnostics diagnostics) {
+    if (diagnostics != null) {
+      diagnostics.transition(Phase.WRITER_LOCK, partition);
+    }
     synchronized (this.partitionLocks[partition]) {
+      if (diagnostics != null) {
+        diagnostics.transition(Phase.EOS_SUBMIT, partition);
+      }
       Segment currentSegment = segments[partition];
       if (currentSegment == null) {
         logger.debug("endSegment(partition {}) called but currentSegment == null. Ignoring.", partition);

@@ -225,6 +225,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
@@ -7300,8 +7301,9 @@ public abstract class StoreIngestionTaskTest {
     });
   }
 
-  @Test
-  public void testShutdownCallsBatchUnsubscribeBeforeCheckpoint() throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testShutdownCallsBatchUnsubscribeBeforeCheckpoint(boolean diagnosticsEnabled, boolean unsubscribeFails)
+      throws Exception {
     StoreIngestionTask task = mock(StoreIngestionTask.class);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     when(task.getServerConfig()).thenReturn(serverConfig);
@@ -7313,14 +7315,25 @@ public abstract class StoreIngestionTaskTest {
     Map<Integer, PartitionConsumptionState> pcsMap = new HashMap<>();
     pcsMap.put(0, pcs);
     when(task.getPartitionConsumptionStateMap()).thenReturn(pcsMap);
+    if (diagnosticsEnabled) {
+      task.shutdownDiagnostics = new IngestionShutdownDiagnostics();
+    }
+    if (unsubscribeFails) {
+      doThrow(new VeniceException("test batch unsubscribe failure")).when(task).consumerBatchUnsubscribeAllTopics();
+    }
 
     when(serverConfig.getShutdownPartitionStateTimeoutMs()).thenReturn(5000L);
+    doCallRealMethod().when(task).executeShutdownRunnable(any(), anyList(), any());
     doCallRealMethod().when(task).shutdownPartitionConsumptionStates();
     task.shutdownPartitionConsumptionStates();
 
     InOrder inOrder = inOrder(task);
     inOrder.verify(task).consumerBatchUnsubscribeAllTopics();
     inOrder.verify(task).executeShutdownRunnable(any(), anyList(), any());
+    if (diagnosticsEnabled) {
+      assertTrue(task.shutdownDiagnostics.snapshot().startsWith("phase=CHECKPOINT_SWEEP"));
+      assertTrue(task.shutdownDiagnostics.snapshot().contains("checkpointsFinished=1, checkpointsRemaining=0"));
+    }
   }
 
   @Test

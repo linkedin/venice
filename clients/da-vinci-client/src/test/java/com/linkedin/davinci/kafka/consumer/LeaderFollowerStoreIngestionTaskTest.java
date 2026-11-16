@@ -126,6 +126,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.InMemoryLogAppender;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -3445,8 +3446,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     assertEquals(tp.getPartitionNumber(), 5);
   }
 
-  @Test
-  public void testBatchUnsubscribeClosesVeniceWriterPartitionsUnlessInterrupted() {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBatchUnsubscribeClosesVeniceWriterPartitionsUnlessInterrupted(boolean enabled, boolean closeFails) {
     LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
     doCallRealMethod().when(task).consumerBatchUnsubscribeAllTopics();
 
@@ -3471,16 +3472,37 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(pcsMap).when(task).getPartitionConsumptionStateMap();
     doReturn(versionTopic).when(task).getVersionTopic();
     doReturn(topicRepo).when(task).getPubSubTopicRepository();
+    if (enabled) {
+      task.shutdownDiagnostics = new IngestionShutdownDiagnostics();
+      task.shutdownDiagnostics.setPartitions(1);
+      if (closeFails) {
+        doThrow(new VeniceException("test close failure")).when(veniceWriter)
+            .closePartition(7, task.shutdownDiagnostics);
+      }
+    } else if (closeFails) {
+      doThrow(new VeniceException("test close failure")).when(veniceWriter).closePartition(7);
+    }
 
     task.consumerBatchUnsubscribeAllTopics();
 
-    verify(veniceWriter).closePartition(7);
+    InOrder closeBeforeUnsubscribe = inOrder(veniceWriter, task);
+    if (enabled) {
+      closeBeforeUnsubscribe.verify(veniceWriter).closePartition(7, task.shutdownDiagnostics);
+      assertTrue(
+          task.shutdownDiagnostics.snapshot()
+              .contains("writerClosesFinished=1, writerClosesFailed=" + (closeFails ? 1 : 0)));
+      assertTrue(task.shutdownDiagnostics.snapshot().contains("writerSweepPartitionsRemaining=0"));
+    } else {
+      closeBeforeUnsubscribe.verify(veniceWriter).closePartition(7);
+    }
+    closeBeforeUnsubscribe.verify(task).consumerBatchUnsubscribe(any());
 
     clearInvocations(veniceWriter);
     Thread.currentThread().interrupt();
     try {
       task.consumerBatchUnsubscribeAllTopics();
       verify(veniceWriter, never()).closePartition(anyInt());
+      verify(veniceWriter, never()).closePartition(anyInt(), any());
       verify(task, times(2)).consumerBatchUnsubscribe(any());
       assertTrue(Thread.currentThread().isInterrupted());
     } finally {

@@ -223,6 +223,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_FAST_CLASS_WARMUP_TIM
 import static com.linkedin.venice.ConfigKeys.SERVER_SCHEMA_PRESENCE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DIAGNOSTICS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS;
@@ -613,6 +614,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long shutdownSyncOffsetTimeoutMs;
   private final long drainTimeoutMs;
   private final long shutdownPartitionStateTimeoutMs;
+  private final boolean shutdownDiagnosticsEnabled;
   private final int shutdownSitWaitTimeSeconds;
 
   private final int remoteIngestionRepairSleepInterval;
@@ -1164,6 +1166,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     shutdownSyncOffsetTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS, 2000);
     drainTimeoutMs = serverProperties.getLong(SERVER_DRAIN_TIMEOUT_MS, 2000);
     shutdownPartitionStateTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS, 5000);
+    shutdownDiagnosticsEnabled = serverProperties.getBoolean(SERVER_SHUTDOWN_DIAGNOSTICS_ENABLED, false);
     shutdownSitWaitTimeSeconds = serverProperties.getInt(SERVER_SHUTDOWN_SIT_WAIT_TIME_SECONDS, 20);
     optimizeDatabaseForBackupVersionEnabled =
         serverProperties.getBoolean(SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED, false);
@@ -1980,6 +1983,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getShutdownPartitionStateTimeoutMs() {
     return shutdownPartitionStateTimeoutMs;
+  }
+
+  public boolean isShutdownDiagnosticsEnabled() {
+    return shutdownDiagnosticsEnabled;
   }
 
   public int getShutdownSitWaitTimeSeconds() {

@@ -141,6 +141,8 @@ import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics.Phase;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -283,6 +285,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String ingestionTaskName;
   protected final Properties kafkaProps;
   protected final AtomicBoolean isRunning;
+  protected volatile IngestionShutdownDiagnostics shutdownDiagnostics;
   /**
    * Controls whether Tehuti host-level aggregate metrics are emitted by this ingestion task.
    * Only the task for the largest (most recent) store version should have this enabled,
@@ -2143,11 +2146,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // still running — subscriptions are keyed by (versionTopic, partition) with no SIT identity,
       // so the old cleanup would destroy the new consumer's subscriptions.
       try {
+        if (shutdownDiagnostics != null) {
+          shutdownDiagnostics.transition(Phase.INTERNAL_CLOSE, -1);
+        }
         internalClose(doFlush);
       } catch (Throwable t) {
         LOGGER.error("{}: unexpected error in internalClose during shutdown", ingestionTaskName, t);
       } finally {
-        shutdownLatch.countDown();
+        try {
+          if (shutdownDiagnostics != null) {
+            shutdownDiagnostics.transition(Phase.FINISHED, -1);
+            LOGGER.info("{}: server shutdown summary: {}", ingestionTaskName, shutdownDiagnostics.snapshot());
+          }
+        } finally {
+          shutdownLatch.countDown();
+        }
       }
     }
   }
@@ -2157,6 +2170,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * enabled and ensures it is always terminated via a finally block.
    */
   void shutdownPartitionConsumptionStates() throws InterruptedException {
+    if (shutdownDiagnostics != null) {
+      shutdownDiagnostics.setPartitions(getPartitionConsumptionStateMap().size());
+      shutdownDiagnostics.transition(Phase.WRITER_CLOSE, -1);
+    }
     // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
     // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel.
     try {
@@ -2165,6 +2182,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error("{}: batch unsubscribe failed, proceeding with per-partition checkpoint", ingestionTaskName, e);
     }
 
+    if (shutdownDiagnostics != null) {
+      shutdownDiagnostics.transition(Phase.CHECKPOINT_SWEEP, -1);
+    }
     List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(getPartitionConsumptionStateMap().size());
 
     /**
@@ -2226,22 +2246,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       List<CompletableFuture<Void>> shutdownFutures,
       ExecutorService shutdownExecutor) {
     Runnable shutdownRunnable = () -> {
-      // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
-      if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
-        try {
-          PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
-          // Drain all messages, including the messages from the LEADER which are in the process of being produced to
-          // local-VT which haven't had their callbacks executed and messages enqueued to the drainer.
-          waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
-          // Flush the checkpointed offsets to disk, so we know where to resume upon startup. Global RT DIV is
-          // consumer-driven and periodically sent, so without this additional flush on shutdown, the server would need
-          // to reingest a bit of data after resuming from the previous checkpoint, significantly delaying the restart.
-          CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
-              ? flushGlobalRtDivCheckpoint(partitionConsumptionState)
-              : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
-          waitForSyncOffsetCmd(syncFuture, topicPartition);
-        } catch (InterruptedException e) {
-          throw new VeniceException(e);
+      try {
+        // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk.
+        if (getServerConfig().isServerIngestionCheckpointDuringGracefulShutdownEnabled()) {
+          try {
+            PubSubTopicPartition topicPartition = partitionConsumptionState.getReplicaTopicPartition();
+            // Drain all messages, including the messages from the LEADER which are in the process of being produced to
+            // local-VT which haven't had their callbacks executed and messages enqueued to the drainer.
+            waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
+            // Flush the checkpointed offsets to disk, so we know where to resume upon startup. Global RT DIV is
+            // consumer-driven and periodically sent. Without this flush, the server would need to reingest data after
+            // resuming from the previous checkpoint, significantly delaying restart.
+            CompletableFuture<Void> syncFuture = isGlobalRtDivEnabled()
+                ? flushGlobalRtDivCheckpoint(partitionConsumptionState)
+                : getStoreBufferService().execSyncOffsetCommandAsync(topicPartition, this);
+            waitForSyncOffsetCmd(syncFuture, topicPartition);
+          } catch (InterruptedException e) {
+            throw new VeniceException(e);
+          }
+        }
+      } finally {
+        if (shutdownDiagnostics != null) {
+          shutdownDiagnostics.checkpointFinished();
         }
       }
     };
@@ -5824,6 +5850,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   AtomicBoolean getIsRunning() {
     return isRunning;
+  }
+
+  /** Activate timing only for the ingestion service's server-stop invocation, before close acquires the SIT monitor. */
+  void closeForServerShutdown() {
+    if (!isDaVinciClient() && getServerConfig().isShutdownDiagnosticsEnabled()) {
+      IngestionShutdownDiagnostics diagnostics = new IngestionShutdownDiagnostics();
+      diagnostics.setPartitions(getPartitionConsumptionStateMap().size());
+      shutdownDiagnostics = diagnostics;
+    }
+    close();
+  }
+
+  void logShutdownSnapshot() {
+    IngestionShutdownDiagnostics diagnostics = shutdownDiagnostics;
+    if (diagnostics != null && !diagnostics.isFinished()) {
+      LOGGER.warn("{}: before forced shutdown interruption: {}", ingestionTaskName, diagnostics.snapshot());
+    }
   }
 
   /**

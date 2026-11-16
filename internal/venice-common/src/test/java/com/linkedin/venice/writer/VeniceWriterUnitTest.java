@@ -79,6 +79,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -1031,8 +1032,8 @@ public class VeniceWriterUnitTest {
     }
   }
 
-  @Test(timeOut = TIMEOUT)
-  public void testClosePartitionPreservesInterruptStatus() {
+  @Test(timeOut = TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testClosePartitionPreservesFailureAndInterruptSemantics(boolean diagnosticsEnabled, boolean interrupted) {
     PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
     when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any()))
         .thenReturn(CompletableFuture.completedFuture(null));
@@ -1042,17 +1043,91 @@ public class VeniceWriterUnitTest {
         new VeniceWriter<>(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
     writer.getSegment(0, false);
 
-    // The END_OF_SEGMENT write never completes, so the wait in closePartition can only end through an interrupt.
-    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(new CompletableFuture<>());
+    CompletableFuture<PubSubProduceResult> produceFuture = new CompletableFuture<>();
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(produceFuture);
+    IngestionShutdownDiagnostics diagnostics = diagnosticsEnabled ? new IngestionShutdownDiagnostics() : null;
 
-    Thread.currentThread().interrupt();
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    } else {
+      produceFuture.completeExceptionally(new IllegalStateException("test produce failure"));
+    }
     try {
-      VeniceException e = Assert.expectThrows(VeniceException.class, () -> writer.closePartition(0));
-      assertTrue(ExceptionUtils.recursiveClassEquals(e, InterruptedException.class));
-      assertTrue(Thread.currentThread().isInterrupted(), "closePartition must not swallow the interrupt status");
+      VeniceException e = Assert.expectThrows(VeniceException.class, () -> {
+        if (diagnosticsEnabled) {
+          writer.closePartition(0, diagnostics);
+        } else {
+          writer.closePartition(0);
+        }
+      });
+      assertTrue(
+          ExceptionUtils
+              .recursiveClassEquals(e, interrupted ? InterruptedException.class : IllegalStateException.class));
+      assertEquals(Thread.currentThread().isInterrupted(), interrupted);
+      if (diagnosticsEnabled) {
+        assertTrue(diagnostics.snapshot().startsWith("phase=WRITER_CLOSE, partition=0"));
+        assertTrue(diagnostics.snapshot().contains("EOS_FUTURE[finishedVisits=1"));
+      }
     } finally {
       // Clears the interrupt status so it does not leak into other tests.
       Thread.interrupted();
+    }
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testClosePartitionSnapshotDistinguishesBlockedLockSubmitAndFuture() throws Exception {
+    PubSubProducerAdapter producer = mock(PubSubProducerAdapter.class);
+    when(producer.sendMessage(any(), any(), any(), any(), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    VeniceWriter<Object, Object, Object> writer = new VeniceWriter<>(
+        new VeniceWriterOptions.Builder("test").setPartitionCount(1).build(),
+        VeniceProperties.empty(),
+        producer);
+    writer.getSegment(0, false);
+
+    CountDownLatch holderEntered = new CountDownLatch(1);
+    CountDownLatch releaseHolder = new CountDownLatch(1);
+    CountDownLatch submitEntered = new CountDownLatch(1);
+    CountDownLatch releaseSubmit = new CountDownLatch(1);
+    CompletableFuture<PubSubProduceResult> produceFuture = new CompletableFuture<>();
+    when(producer.sendMessage(any(), any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+      holderEntered.countDown();
+      assertTrue(releaseHolder.await(5, TimeUnit.SECONDS));
+      return CompletableFuture.completedFuture(null);
+    }).thenAnswer(invocation -> {
+      submitEntered.countDown();
+      assertTrue(releaseSubmit.await(5, TimeUnit.SECONDS));
+      return produceFuture;
+    });
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    IngestionShutdownDiagnostics diagnostics = new IngestionShutdownDiagnostics();
+    try {
+      Future<?> holder = executor.submit(() -> writer.sendStartOfSegment(0, null));
+      assertTrue(holderEntered.await(5, TimeUnit.SECONDS));
+      Future<?> close = executor.submit(() -> writer.closePartition(0, diagnostics));
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(diagnostics.snapshot().startsWith("phase=WRITER_LOCK, partition=0")));
+      releaseHolder.countDown();
+      holder.get(5, TimeUnit.SECONDS);
+      assertTrue(submitEntered.await(5, TimeUnit.SECONDS));
+      assertTrue(diagnostics.snapshot().startsWith("phase=EOS_SUBMIT, partition=0"));
+      releaseSubmit.countDown();
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(diagnostics.snapshot().startsWith("phase=EOS_FUTURE, partition=0")));
+      produceFuture.complete(null);
+      close.get(5, TimeUnit.SECONDS);
+      assertTrue(diagnostics.snapshot().startsWith("phase=WRITER_CLOSE, partition=0"));
+    } finally {
+      releaseHolder.countDown();
+      releaseSubmit.countDown();
+      produceFuture.complete(null);
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+      writer.close(false);
     }
   }
 

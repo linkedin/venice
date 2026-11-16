@@ -100,6 +100,8 @@ import com.linkedin.venice.stats.dimensions.VenicePartialUpdateOperation;
 import com.linkedin.venice.stats.dimensions.VeniceRegionLocality;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics;
+import com.linkedin.venice.utils.IngestionShutdownDiagnostics.Phase;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -4098,16 +4100,50 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (Thread.currentThread().isInterrupted()) {
             return;
           }
+          IngestionShutdownDiagnostics diagnostics = shutdownDiagnostics;
+          long closeStartNs = diagnostics == null ? 0 : System.nanoTime();
+          boolean failed = true;
           try {
-            vw.closePartition(partitionId);
+            if (diagnostics == null) {
+              vw.closePartition(partitionId);
+            } else {
+              diagnostics.transition(Phase.WRITER_CLOSE, partitionId);
+              vw.closePartition(partitionId, diagnostics);
+            }
+            failed = false;
           } catch (Exception e) {
             LOGGER.error("Failed to close VeniceWriter partition {}", partitionId, e);
+          } finally {
+            if (diagnostics != null) {
+              long elapsedNs = System.nanoTime() - closeStartNs;
+              diagnostics.transition(Phase.WRITER_CLOSE, -1);
+              if (diagnostics.writerCloseFinished(elapsedNs, failed)) {
+                LOGGER.info(
+                    "{}: slow shutdown writer close for partition {}: {} ms, failed={} (at most 5 details per SIT)",
+                    ingestionTaskName,
+                    partitionId,
+                    TimeUnit.NANOSECONDS.toMillis(elapsedNs),
+                    failed);
+              }
+            }
           }
         });
       }
+      if (shutdownDiagnostics != null) {
+        shutdownDiagnostics.writerSweepPartitionFinished();
+      }
     }
     if (!allPartitions.isEmpty()) {
-      consumerBatchUnsubscribe(allPartitions);
+      if (shutdownDiagnostics != null) {
+        shutdownDiagnostics.transition(Phase.BATCH_UNSUBSCRIBE, -1);
+      }
+      try {
+        consumerBatchUnsubscribe(allPartitions);
+      } finally {
+        if (shutdownDiagnostics != null) {
+          shutdownDiagnostics.transition(Phase.WRITER_CLOSE, -1);
+        }
+      }
     }
   }
 

@@ -26,6 +26,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_HANDOVER_USE_DOL_MECHANISM_FOR_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_SHUTDOWN_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DIAGNOSTICS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
@@ -52,6 +53,14 @@ import org.testng.annotations.Test;
 
 
 public class VeniceServerConfigTest {
+  @Test
+  public void testShutdownDiagnosticsDefaultOffAndExplicitEnable() {
+    Properties props = populatedBasicProperties();
+    assertFalse(new VeniceServerConfig(new VeniceProperties(props)).isShutdownDiagnosticsEnabled());
+    props.setProperty(SERVER_SHUTDOWN_DIAGNOSTICS_ENABLED, "true");
+    assertTrue(new VeniceServerConfig(new VeniceProperties(props)).isShutdownDiagnosticsEnabled());
+  }
+
   @Test
   public void testMultiKeyRetryPolicyConfig() {
     Properties props = populatedBasicProperties();
