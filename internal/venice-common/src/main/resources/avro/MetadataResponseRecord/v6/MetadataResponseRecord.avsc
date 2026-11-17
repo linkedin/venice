@@ -147,8 +147,8 @@
       "default": ""
     },
     {
-      "name": "hybridStore",
-      "doc": "Whether the store has hybrid configuration. Null means unknown (including responses from older servers); clients must not assume batch-only.",
+      "name": "currentVersionHybrid",
+      "doc": "Whether the current version advertised in versionMetadata has hybrid configuration, independent of store-level configuration changes. Null means unknown (including responses from older servers); clients must not assume batch-only.",
       "type": ["null", "boolean"],
       "default": null
     }
