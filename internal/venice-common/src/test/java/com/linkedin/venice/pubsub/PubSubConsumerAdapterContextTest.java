@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
@@ -46,16 +47,22 @@ public class PubSubConsumerAdapterContextTest {
     assertEquals(context.getPubSubPositionTypeRegistry(), registry);
     assertSame(context.getPubSubEncryptionKeyUrnLookup(), keyLookup);
     assertEquals(context.getThreadPriority(), Thread.MAX_PRIORITY);
+    assertTrue(context.hasThreadPriority());
   }
 
   @Test
-  public void testThreadPriorityDefaultsToNormPriority() {
-    PubSubConsumerAdapterContext context =
+  public void testThreadPriorityDefaultsToUnspecified() {
+    PubSubConsumerAdapterContext.Builder builder =
         new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress("localhost:1234")
             .setVeniceProperties(VeniceProperties.empty())
-            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
-            .build();
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+    PubSubConsumerAdapterContext context = builder.build();
     assertEquals(context.getThreadPriority(), Thread.NORM_PRIORITY);
+    assertFalse(context.hasThreadPriority());
+
+    context = builder.setThreadPriority(Thread.NORM_PRIORITY).build();
+    assertEquals(context.getThreadPriority(), Thread.NORM_PRIORITY);
+    assertTrue(context.hasThreadPriority());
   }
 
   @Test

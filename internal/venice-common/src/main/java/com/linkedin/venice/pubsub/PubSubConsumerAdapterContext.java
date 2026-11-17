@@ -20,6 +20,8 @@ import java.util.function.Function;
  * PubSub-specific settings based on namespace-scoped configurations.</p>
  */
 public class PubSubConsumerAdapterContext {
+  private static final int UNSPECIFIED_PRIORITY = -1;
+
   private final String consumerName;
   private final String pubSubBrokerAddress;
   private final VeniceProperties veniceProperties;
@@ -94,10 +96,15 @@ public class PubSubConsumerAdapterContext {
   }
 
   /**
-   * @return the priority for threads spawned by the consumer; defaults to {@link Thread#NORM_PRIORITY}.
+   * @return the configured priority, or {@link Thread#NORM_PRIORITY} when unspecified.
+   *         Apply this priority only when {@link #hasThreadPriority()} is true.
    */
   public int getThreadPriority() {
-    return threadPriority;
+    return hasThreadPriority() ? threadPriority : Thread.NORM_PRIORITY;
+  }
+
+  public boolean hasThreadPriority() {
+    return threadPriority != UNSPECIFIED_PRIORITY;
   }
 
   public static class Builder {
@@ -112,7 +119,7 @@ public class PubSubConsumerAdapterContext {
     private boolean isOffsetCollectionEnabled;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private Function<String, String> pubSubEncryptionKeyUrnLookup;
-    private int threadPriority = Thread.NORM_PRIORITY;
+    private int threadPriority = UNSPECIFIED_PRIORITY;
 
     public Builder setConsumerName(String consumerName) {
       this.consumerName = consumerName;

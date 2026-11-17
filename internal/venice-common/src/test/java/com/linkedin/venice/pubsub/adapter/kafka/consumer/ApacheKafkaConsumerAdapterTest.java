@@ -10,6 +10,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -27,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -50,6 +53,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -75,6 +79,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -82,6 +87,7 @@ import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.errors.AuthorizationException;
 import org.apache.kafka.common.errors.InterruptException;
 import org.apache.kafka.common.errors.TimeoutException;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -118,6 +124,110 @@ public class ApacheKafkaConsumerAdapterTest {
   @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     pubSubMessageDeserializer.close();
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testFactoryReadsPriorityOnlyWhenExplicitlySpecified(boolean specifyNormalPriority) {
+    PubSubConsumerAdapterContext.Builder builder =
+        new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress("127.0.0.1:9092")
+            .setVeniceProperties(VeniceProperties.empty())
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+            .setPubSubPositionTypeRegistry(pubSubPositionTypeRegistry);
+    if (specifyNormalPriority) {
+      builder.setThreadPriority(Thread.NORM_PRIORITY);
+    }
+    PubSubConsumerAdapterContext context = builder.build();
+    assertEquals(context.getThreadPriority(), Thread.NORM_PRIORITY);
+    assertEquals(context.hasThreadPriority(), specifyNormalPriority);
+
+    PubSubConsumerAdapterContext contextSpy = spy(context);
+    ApacheKafkaConsumerAdapter adapter = new ApacheKafkaConsumerAdapterFactory().create(contextSpy);
+    try {
+      verify(contextSpy, times(specifyNormalPriority ? 1 : 0)).getThreadPriority();
+      assertTrue(adapter.getAssignment().isEmpty());
+    } finally {
+      adapter.close();
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testUnspecifiedPriorityPreservesCallerDuringConstruction(boolean constructionFails) {
+    Thread currentThread = Thread.currentThread();
+    int originalPriority = currentThread.getPriority();
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenAnswer(invocation -> {
+      assertSame(Thread.currentThread(), currentThread);
+      assertEquals(currentThread.getPriority(), originalPriority);
+      Properties properties = new Properties();
+      if (!constructionFails) {
+        properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "127.0.0.1:9092");
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+      }
+      return properties;
+    });
+
+    if (constructionFails) {
+      expectThrows(KafkaException.class, () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig));
+    } else {
+      ApacheKafkaConsumerAdapter adapter = new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig);
+      try {
+        assertTrue(adapter.getAssignment().isEmpty());
+      } finally {
+        adapter.close();
+      }
+    }
+    assertEquals(currentThread.getPriority(), originalPriority);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testConsumerConstructionPropagatesFailureWithoutChangingCallerPriority(boolean throwError) {
+    Thread currentThread = Thread.currentThread();
+    int originalPriority = currentThread.getPriority();
+    int threadPriority = Thread.MIN_PRIORITY;
+    RuntimeException failure = new IllegalStateException("Consumer construction failed");
+    Error error = new AssertionError("Consumer construction failed");
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenAnswer(invocation -> {
+      assertEquals(currentThread.getPriority(), originalPriority);
+      if (throwError) {
+        throw error;
+      }
+      throw failure;
+    });
+
+    if (throwError) {
+      assertSame(
+          expectThrows(
+              AssertionError.class,
+              () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, threadPriority)),
+          error);
+    } else {
+      assertSame(
+          expectThrows(
+              IllegalStateException.class,
+              () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, threadPriority)),
+          failure);
+    }
+    assertEquals(currentThread.getPriority(), originalPriority);
+  }
+
+  @Test
+  public void testConsumerConstructionPreservesCallerInterruptStatus() {
+    IllegalStateException failure = new IllegalStateException("Consumer construction failed");
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenThrow(failure);
+    boolean wasInterrupted = Thread.currentThread().isInterrupted();
+    try {
+      Thread.currentThread().interrupt();
+      assertSame(
+          expectThrows(
+              IllegalStateException.class,
+              () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, Thread.MIN_PRIORITY)),
+          failure);
+      assertTrue(Thread.currentThread().isInterrupted());
+    } finally {
+      if (!wasInterrupted) {
+        Thread.interrupted();
+      }
+    }
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

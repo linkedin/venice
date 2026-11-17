@@ -172,6 +172,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             .setPubSubEncryptionKeyUrnLookup(pubSubContext.getPubSubEncryptionKeyUrnLookup())
             .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
             .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
+            .setThreadPriority(serverConfig.getWritePathThreadPriority())
             .setPubSubTopicRepository(pubSubContext.getPubSubTopicRepository());
     this.consumerPollTracker = new ConsumerPollTracker(time);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
@@ -182,10 +183,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        */
       contextBuilder.setConsumerName(i + poolType.getStatSuffix());
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          createPubSubConsumerAdapter(
-              pubSubConsumerAdapterFactory,
-              contextBuilder.build(),
-              serverConfig.getWritePathThreadPriority()),
+          pubSubConsumerAdapterFactory.create(contextBuilder.build()),
           aggStats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription,
@@ -238,23 +236,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     }
     serverIngestionInfoLogLineLimit = serverConfig.getServerIngestionInfoLogLineLimit();
     LOGGER.info("KafkaConsumerService was initialized with {} consumers.", numOfConsumersPerKafkaCluster);
-  }
-
-  private PubSubConsumerAdapter createPubSubConsumerAdapter(
-      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
-      PubSubConsumerAdapterContext pubSubConsumerAdapterContext,
-      int writePathThreadPriority) {
-    Thread currentThread = Thread.currentThread();
-    int originalPriority = currentThread.getPriority();
-    if (originalPriority == writePathThreadPriority) {
-      return pubSubConsumerAdapterFactory.create(pubSubConsumerAdapterContext);
-    }
-    currentThread.setPriority(writePathThreadPriority);
-    try {
-      return pubSubConsumerAdapterFactory.create(pubSubConsumerAdapterContext);
-    } finally {
-      currentThread.setPriority(originalPriority);
-    }
   }
 
   /** May be overridden to clean up state in sub-classes */

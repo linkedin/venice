@@ -19,7 +19,10 @@ public class ApacheKafkaConsumerAdapterFactory extends PubSubConsumerAdapterFact
 
   @Override
   public ApacheKafkaConsumerAdapter create(PubSubConsumerAdapterContext context) {
-    return new ApacheKafkaConsumerAdapter(new ApacheKafkaConsumerConfig(context));
+    ApacheKafkaConsumerConfig config = new ApacheKafkaConsumerConfig(context);
+    return context.hasThreadPriority()
+        ? new ApacheKafkaConsumerAdapter(config, context.getThreadPriority())
+        : new ApacheKafkaConsumerAdapter(config);
   }
 
   @Override

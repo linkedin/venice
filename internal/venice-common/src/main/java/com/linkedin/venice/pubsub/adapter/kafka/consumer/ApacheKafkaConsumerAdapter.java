@@ -79,6 +79,12 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     this(new KafkaConsumer<>(config.getConsumerProperties()), config);
   }
 
+  ApacheKafkaConsumerAdapter(ApacheKafkaConsumerConfig config, int threadPriority) {
+    this(config);
+    LOGGER.debug("Attempting to create Kafka consumer with priority {}", threadPriority);
+    // TODO - impl thread priority for the consumer thread.
+  }
+
   ApacheKafkaConsumerAdapter(Consumer<byte[], byte[]> consumer, ApacheKafkaConsumerConfig apacheKafkaConsumerConfig) {
     this.kafkaConsumer = Objects.requireNonNull(consumer, "Kafka consumer cannot be null");
     this.config = Objects.requireNonNull(apacheKafkaConsumerConfig, "ApacheKafkaConsumerConfig cannot be null");
