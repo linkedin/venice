@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -79,6 +80,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongPredicate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.Mockito;
@@ -428,6 +430,28 @@ public class TopicManagerTest {
     assertTrue(
         topicManager.isTopicTruncated(topic3, deprecatedTopicRetentionMaxMs),
         "Topic3 should be deprecated because of low retention policy");
+
+    LongPredicate exactMarker = retention -> retention == deprecatedTopicRetentionMaxMs;
+    assertFalse(topicManager.isTopicTruncated(topic1, exactMarker));
+    assertTrue(topicManager.isTopicTruncated(topic3, exactMarker));
+    PubSubTopic missingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("missing"));
+    assertTrue(topicManager.isTopicTruncated(missingTopic, deprecatedTopicRetentionMaxMs));
+    assertTrue(topicManager.isTopicTruncated(missingTopic, retention -> false));
+
+    TopicManager failingManager = spy(topicManager);
+    PubSubOpTimeoutException failure = new PubSubOpTimeoutException("Cannot read topic retention");
+    doThrow(failure).when(failingManager).getTopicRetention(topic3);
+    Assert.assertSame(
+        Assert.expectThrows(
+            PubSubOpTimeoutException.class,
+            () -> failingManager.isTopicTruncated(topic3, deprecatedTopicRetentionMaxMs)),
+        failure);
+    Assert.assertSame(
+        Assert.expectThrows(PubSubOpTimeoutException.class, () -> failingManager.isTopicTruncated(topic3, exactMarker)),
+        failure);
+    Assert.assertThrows(IllegalStateException.class, () -> topicManager.isTopicTruncated(topic3, retention -> {
+      throw new IllegalStateException("Invalid truncation policy");
+    }));
 
     Assert.assertFalse(
         topicManager

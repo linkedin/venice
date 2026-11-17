@@ -147,6 +147,7 @@ import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_FOR_EMPTY_PUS
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_REGION_ROLL_FORWARD_ORDER;
 import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
+import static com.linkedin.venice.ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
@@ -245,6 +246,7 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.controller.ParentControllerRegionState.ACTIVE;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
+import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
@@ -341,6 +343,7 @@ public class VeniceControllerClusterConfig {
   private final int adminConsumptionMaxWorkerThreadPoolSize;
   private final double storageEngineOverheadRatio;
   private final long deprecatedJobTopicRetentionMs;
+  private final long deprecatedRealTimeTopicRetentionMs;
   private final long pushRetryCooldownMs;
   private final long pushJobSlaMs;
 
@@ -1049,6 +1052,14 @@ public class VeniceControllerClusterConfig {
 
     // The default retention will allow Kafka remove as much data as possible.
     this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(15));
+    this.deprecatedRealTimeTopicRetentionMs =
+        props.getLong(DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, TimeUnit.HOURS.toMillis(23));
+    if (this.deprecatedRealTimeTopicRetentionMs <= 0
+        || this.deprecatedRealTimeTopicRetentionMs >= DEFAULT_TOPIC_RETENTION_POLICY_MS) {
+      throw new VeniceException(
+          "Config: " + DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS + " must be positive and less than "
+              + DEFAULT_TOPIC_RETENTION_POLICY_MS + " ms");
+    }
     this.deprecatedJobTopicMaxRetentionMs =
         props.getLong(DEPRECATED_TOPIC_MAX_RETENTION_MS, TimeUnit.SECONDS.toMillis(60)); // 1 min
     if (this.deprecatedJobTopicMaxRetentionMs < this.deprecatedJobTopicRetentionMs) {
@@ -1834,6 +1845,10 @@ public class VeniceControllerClusterConfig {
 
   public long getDeprecatedJobTopicRetentionMs() {
     return deprecatedJobTopicRetentionMs;
+  }
+
+  public long getDeprecatedRealTimeTopicRetentionMs() {
+    return deprecatedRealTimeTopicRetentionMs;
   }
 
   public long getFatalDataValidationFailureRetentionMs() {

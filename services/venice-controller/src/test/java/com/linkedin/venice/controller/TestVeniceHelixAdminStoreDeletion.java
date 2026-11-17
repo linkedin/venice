@@ -52,6 +52,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongPredicate;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -64,8 +66,7 @@ public class TestVeniceHelixAdminStoreDeletion {
   private static final String STORE_NAME = "deletion_store";
   private static final long CREATED_TIME = 1L;
   private static final long ORIGINAL_RETENTION_MS = 86_400_000L;
-  private static final long DEPRECATED_RETENTION_MS = 1_000L;
-  private static final long MAX_DEPRECATED_RETENTION_MS = 2_000L;
+  private static final long DEPRECATED_RETENTION_MS = TimeUnit.HOURS.toMillis(12);
 
   @Test
   public void testDeleteVersionlessHybridStoreMarksExistingRealTimeTopic() {
@@ -500,8 +501,7 @@ public class TestVeniceHelixAdminStoreDeletion {
       doReturn(configAccessor).when(resources).getStoreConfigAccessor();
       doReturn(mock(PushMonitorDelegator.class)).when(resources).getPushMonitor();
       doReturn(Collections.emptySet()).when(configs).getParentFabrics();
-      doReturn(DEPRECATED_RETENTION_MS).when(configs).getDeprecatedJobTopicRetentionMs();
-      doReturn(MAX_DEPRECATED_RETENTION_MS).when(configs).getDeprecatedJobTopicMaxRetentionMs();
+      doReturn(DEPRECATED_RETENTION_MS).when(configs).getDeprecatedRealTimeTopicRetentionMs();
 
       doAnswer(invocation -> persistedStore == null ? null : persistedStore.cloneStore()).when(storeRepository)
           .getStore(STORE_NAME);
@@ -535,10 +535,10 @@ public class TestVeniceHelixAdminStoreDeletion {
       doAnswer(invocation -> new LinkedHashSet<>(retentionByTopic.keySet())).when(topicManager).listTopics();
       doAnswer(invocation -> {
         PubSubTopic topic = invocation.getArgument(0);
-        long thresholdMs = invocation.getArgument(1);
+        LongPredicate isTruncatedRetention = invocation.getArgument(1);
         Long retentionMs = retentionByTopic.get(topic);
-        return retentionMs == null || retentionMs <= thresholdMs;
-      }).when(topicManager).isTopicTruncated(any(PubSubTopic.class), anyLong());
+        return retentionMs == null || isTruncatedRetention.test(retentionMs);
+      }).when(topicManager).isTopicTruncated(any(PubSubTopic.class), any(LongPredicate.class));
       doAnswer(invocation -> {
         PubSubTopic topic = invocation.getArgument(0);
         long retentionMs = invocation.getArgument(1);
@@ -560,6 +560,7 @@ public class TestVeniceHelixAdminStoreDeletion {
       doReturn(resources).when(admin).getHelixVeniceClusterResources(CLUSTER_NAME);
       doReturn(configs).when(admin).getMultiClusterConfigs();
       doReturn(topicManager).when(admin).getTopicManager();
+      doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(anyString(), eq(DEPRECATED_RETENTION_MS));
       doReturn(graveyard).when(admin).getStoreGraveyard();
       doReturn(Optional.empty()).when(admin).getExternalETLService();
       doReturn(Optional.empty()).when(admin).getAuthorizerService();

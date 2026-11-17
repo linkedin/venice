@@ -347,7 +347,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
       for (PubSubTopic realTimeTopic: realTimeTopics) {
         if (topicRetentions.containsKey(realTimeTopic)) {
-          if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
+          if (admin.isTopicTruncatedBasedOnRetention(realTimeTopic.getName(), topicRetentions.get(realTimeTopic))) {
             topics.offer(realTimeTopic);
             minNumOfUnusedVersionTopicsOverride = 0;
           }

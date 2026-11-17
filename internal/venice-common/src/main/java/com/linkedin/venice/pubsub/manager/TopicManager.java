@@ -53,6 +53,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.LongPredicate;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -525,11 +526,23 @@ public class TopicManager implements Closeable {
    *         false if the topic exists and its retention time is above truncated threshold
    */
   public boolean isTopicTruncated(PubSubTopic topicName, long truncatedTopicMaxRetentionMs) {
+    return isTopicTruncated(
+        topicName,
+        retention -> isRetentionBelowTruncatedThreshold(retention, truncatedTopicMaxRetentionMs));
+  }
+
+  /**
+   * Check whether a topic is absent or its retention matches the supplied truncation policy.
+   * Errors other than a missing topic are propagated to the caller.
+   */
+  public boolean isTopicTruncated(PubSubTopic topicName, LongPredicate isTruncatedRetention) {
+    long retention;
     try {
-      return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
+      retention = getTopicRetention(topicName);
     } catch (PubSubTopicDoesNotExistException e) {
       return true;
     }
+    return isTruncatedRetention.test(retention);
   }
 
   public boolean isRetentionBelowTruncatedThreshold(long retention, long truncatedTopicMaxRetentionMs) {

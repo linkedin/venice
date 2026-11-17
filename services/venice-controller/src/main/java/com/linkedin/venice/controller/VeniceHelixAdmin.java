@@ -26,6 +26,7 @@ import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.ROLLED_BACK;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
+import static com.linkedin.venice.pubsub.PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.status.protocol.PushJobDetailsAdditionalMetrics.EXTERNAL_STORAGE_WRITE_TIME_MS;
@@ -299,6 +300,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.LongPredicate;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -396,6 +398,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final ExecutionIdAccessor executionIdAccessor;
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final long deprecatedJobTopicRetentionMs;
+  private final long deprecatedRealTimeTopicRetentionMs;
 
   private final long fatalDataValidationFailureRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
@@ -548,6 +551,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
     this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
     this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
+    this.deprecatedRealTimeTopicRetentionMs = multiClusterConfigs.getDeprecatedRealTimeTopicRetentionMs();
     this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
     this.backupVersionDefaultRetentionMs = multiClusterConfigs.getBackupVersionDefaultRetentionMs();
@@ -1468,11 +1472,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   void cleanupRealTimeTopicsForStoreDeletion(String clusterName, String storeName, boolean waitOnRTTopicDeletion) {
     List<TopicManager> topicManagers = getTopicManagersForStoreDeletion();
-    long retentionMs = getMultiClusterConfigs().getDeprecatedJobTopicRetentionMs();
-    long maxRetentionMs = getMultiClusterConfigs().getDeprecatedJobTopicMaxRetentionMs();
-    if (retentionMs < 0 || retentionMs > maxRetentionMs) {
-      throw new VeniceException("Invalid deprecated topic retention for store deletion: " + retentionMs);
-    }
+    long retentionMs = getMultiClusterConfigs().getDeprecatedRealTimeTopicRetentionMs();
     VeniceRetriableException failure =
         new VeniceRetriableException("Failed to mark all RT topics for deletion for store: " + storeName);
     for (TopicManager topicManager: topicManagers) {
@@ -1495,9 +1495,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         checkControllerLeadershipFor(clusterName);
         try {
-          if (!topicManager.isTopicTruncated(topic, maxRetentionMs)) {
+          LongPredicate isTruncatedRetention =
+              retention -> isTopicTruncatedBasedOnRetention(topic.getName(), retention);
+          if (!topicManager.isTopicTruncated(topic, isTruncatedRetention)) {
             topicManager.updateTopicRetention(topic, retentionMs);
-            if (!topicManager.isTopicTruncated(topic, maxRetentionMs)) {
+            if (!topicManager.isTopicTruncated(topic, isTruncatedRetention)) {
               throw new VeniceRetriableException(
                   "Retention update not confirmed for RT topic: " + topic.getName() + " in "
                       + topicManager.getPubSubClusterAddress());
@@ -4941,11 +4943,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Check if a kafka topic is absent or truncated.
    * @see ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS
+   * @see ConfigKeys#DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS
    */
   @Override
   public boolean isTopicTruncated(String kafkaTopicName) {
-    return getTopicManager()
-        .isTopicTruncated(pubSubTopicRepository.getTopic(kafkaTopicName), deprecatedJobTopicMaxRetentionMs);
+    PubSubTopic topic = pubSubTopicRepository.getTopic(kafkaTopicName);
+    if (topic.isRealTime()) {
+      return getTopicManager()
+          .isTopicTruncated(topic, retention -> isTopicTruncatedBasedOnRetention(kafkaTopicName, retention));
+    }
+    return getTopicManager().isTopicTruncated(topic, deprecatedJobTopicMaxRetentionMs);
   }
 
   /**
@@ -4960,7 +4967,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Topic should also be considered to get cleaned up if:
+   * RT topics recognize the exact reserved RT retention marker as well as the legacy threshold.
+   * Other topics should also be considered to get cleaned up if:
    * retention is less than the configured {@linkplain ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS} value.
    * or
    * 1. Topic retention equals fatalDataValidationFailureRetentionMs.
@@ -4969,6 +4977,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public boolean isTopicTruncatedBasedOnRetention(String kafkaTopicName, long retentionTime) {
+    if (pubSubTopicRepository.getTopic(kafkaTopicName).isRealTime()) {
+      // Match the reserved RT marker exactly, not a wider threshold that could include active RT topics.
+      // Reject unlimited/unknown retentions before applying the legacy threshold.
+      return retentionTime >= 0 && retentionTime != ETERNAL_TOPIC_RETENTION_POLICY_MS
+          && (retentionTime == deprecatedRealTimeTopicRetentionMs || isTopicTruncatedBasedOnRetention(retentionTime));
+    }
     if (isTopicTruncatedBasedOnRetention(retentionTime)) {
       return true;
     }
@@ -5023,7 +5037,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (multiClusterConfigs.isParent()) {
       return truncateKafkaTopicInParentFabrics(kafkaTopicName);
     } else {
-      return truncateKafkaTopic(getTopicManager(), kafkaTopicName, this.deprecatedJobTopicRetentionMs);
+      return truncateKafkaTopic(getTopicManager(), kafkaTopicName, getDeprecatedTopicRetentionMs(kafkaTopicName));
     }
   }
 
@@ -5060,7 +5074,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       allTopicsAreDeleted &= truncateKafkaTopic(
           getTopicManager(kafkaBootstrapServerAddress),
           kafkaTopicName,
-          this.deprecatedJobTopicRetentionMs);
+          getDeprecatedTopicRetentionMs(kafkaTopicName));
     }
     return allTopicsAreDeleted;
   }
@@ -5097,7 +5111,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (topicConfigs.containsKey(kafkaTopicName)) {
       if (topicManager.updateTopicRetention(
           pubSubTopicRepository.getTopic(kafkaTopicName),
-          deprecatedJobTopicRetentionMs,
+          getDeprecatedTopicRetentionMs(kafkaTopicName),
           topicConfigs.get(kafkaTopicName))) {
         return true;
       }
@@ -5106,6 +5120,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     // return false to indicate the retention config has already been updated.
     return false;
+  }
+
+  private long getDeprecatedTopicRetentionMs(String kafkaTopicName) {
+    return pubSubTopicRepository.getTopic(kafkaTopicName).isRealTime()
+        ? deprecatedRealTimeTopicRetentionMs
+        : deprecatedJobTopicRetentionMs;
   }
 
   /**

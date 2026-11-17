@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
@@ -40,6 +41,8 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongPredicate;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -48,8 +51,7 @@ import org.testng.annotations.Test;
 public class TestRealTimeTopicDeletion {
   private static final String CLUSTER = "test-cluster";
   private static final String STORE = "test-store";
-  private static final long RETENTION = 1000;
-  private static final long MAX_RETENTION = 2000;
+  private static final long RETENTION = TimeUnit.HOURS.toMillis(12);
   private static final PubSubTopicRepository TOPICS = new PubSubTopicRepository();
   private static final PubSubTopic RT = TOPICS.getTopic(STORE + "_rt_v1");
 
@@ -67,23 +69,22 @@ public class TestRealTimeTopicDeletion {
     doReturn(true).when(admin).isLeaderControllerFor(CLUSTER);
     doCallRealMethod().when(admin).checkControllerLeadershipFor(CLUSTER);
     doCallRealMethod().when(admin).cleanupRealTimeTopicsForStoreDeletion(anyString(), anyString(), anyBoolean());
-    doReturn(RETENTION).when(config).getDeprecatedJobTopicRetentionMs();
-    doReturn(MAX_RETENTION).when(config).getDeprecatedJobTopicMaxRetentionMs();
+    doReturn(RETENTION).when(config).getDeprecatedRealTimeTopicRetentionMs();
     doReturn(Collections.singleton(RT)).when(local).listTopics();
-    doReturn(false, true).when(local).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false, true).when(local).isTopicTruncated(eq(RT), any(LongPredicate.class));
   }
 
   @Test
   public void testAlreadyMarkedAndAbsentTopicsAreSuccessful() {
-    doReturn(true).when(local).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(true).when(local).isTopicTruncated(eq(RT), any(LongPredicate.class));
     admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false);
     verify(local, never()).updateTopicRetention(RT, RETENTION);
 
-    doReturn(false, true).when(local).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false, true).when(local).isTopicTruncated(eq(RT), any(LongPredicate.class));
     doReturn(false).when(local).updateTopicRetention(RT, RETENTION);
     admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false);
 
-    doReturn(false).when(local).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false).when(local).isTopicTruncated(eq(RT), any(LongPredicate.class));
     doThrow(new PubSubTopicDoesNotExistException(RT)).when(local).updateTopicRetention(RT, RETENTION);
     admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false);
   }
@@ -91,22 +92,25 @@ public class TestRealTimeTopicDeletion {
   @Test
   public void testUnconfirmedRetentionIsRetried() {
     doReturn(true).when(local).updateTopicRetention(RT, RETENTION);
-    doReturn(false).when(local).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false).when(local).isTopicTruncated(eq(RT), any(LongPredicate.class));
     VeniceRetriableException failure = expectThrows(
         VeniceRetriableException.class,
         () -> admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false));
     assertEquals(failure.getSuppressed().length, 1);
 
-    doReturn(true).when(local).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(true).when(local).isTopicTruncated(eq(RT), any(LongPredicate.class));
     admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false);
   }
 
   @Test
   public void testReadbackFailureIsNotTreatedAsAbsence() {
-    doThrow(new PubSubClientException("Cannot read retention")).when(local).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false).doThrow(new PubSubClientException("Cannot read retention"))
+        .when(local)
+        .isTopicTruncated(eq(RT), any(LongPredicate.class));
     expectThrows(
         VeniceRetriableException.class,
         () -> admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false));
+    verify(local).updateTopicRetention(RT, RETENTION);
   }
 
   @Test
@@ -117,7 +121,7 @@ public class TestRealTimeTopicDeletion {
     PubSubTopic version = TOPICS.getTopic(STORE + "_v1");
     doReturn(new LinkedHashSet<>(Arrays.asList(RT, separate, similarStore, systemStore, version))).when(local)
         .listTopics();
-    doReturn(false, true).when(local).isTopicTruncated(separate, MAX_RETENTION);
+    doReturn(false, true).when(local).isTopicTruncated(eq(separate), any(LongPredicate.class));
 
     admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false);
 
@@ -135,8 +139,8 @@ public class TestRealTimeTopicDeletion {
     configureParent(first, second);
     doReturn(Collections.singleton(RT)).when(first).listTopics();
     doReturn(Collections.singleton(RT)).when(second).listTopics();
-    doReturn(false, true).when(first).isTopicTruncated(RT, MAX_RETENTION);
-    doReturn(false, true).when(second).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false, true).when(first).isTopicTruncated(eq(RT), any(LongPredicate.class));
+    doReturn(false, true).when(second).isTopicTruncated(eq(RT), any(LongPredicate.class));
 
     expectThrows(
         VeniceRetriableException.class,
@@ -154,7 +158,7 @@ public class TestRealTimeTopicDeletion {
     TopicManager second = mock(TopicManager.class);
     configureParent(first, second);
     doReturn(Collections.singleton(RT)).when(second).listTopics();
-    doReturn(false, true).when(second).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false, true).when(second).isTopicTruncated(eq(RT), any(LongPredicate.class));
 
     admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false);
 
@@ -170,7 +174,7 @@ public class TestRealTimeTopicDeletion {
     configureParent(first, second);
     doThrow(new PubSubClientException("Broker unavailable")).when(first).listTopics();
     doReturn(Collections.singleton(RT)).when(second).listTopics();
-    doReturn(false, true).when(second).isTopicTruncated(RT, MAX_RETENTION);
+    doReturn(false, true).when(second).isTopicTruncated(eq(RT), any(LongPredicate.class));
 
     expectThrows(
         VeniceRetriableException.class,
@@ -192,13 +196,6 @@ public class TestRealTimeTopicDeletion {
     doReturn(true).when(admin).isParent();
     admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false);
     verify(local).updateTopicRetention(RT, RETENTION);
-  }
-
-  @Test
-  public void testInvalidRetentionFailsBeforeTopicMutation() {
-    doReturn(MAX_RETENTION + 1).when(config).getDeprecatedJobTopicRetentionMs();
-    expectThrows(VeniceException.class, () -> admin.cleanupRealTimeTopicsForStoreDeletion(CLUSTER, STORE, false));
-    verify(local, never()).updateTopicRetention(any(), anyLong());
   }
 
   @Test

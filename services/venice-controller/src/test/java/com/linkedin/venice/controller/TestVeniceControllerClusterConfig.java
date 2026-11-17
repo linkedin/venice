@@ -54,6 +54,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.PushJobCheckpoints.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.PushJobCheckpoints.QUOTA_EXCEEDED;
 import static com.linkedin.venice.controller.VeniceControllerClusterConfig.parsePushJobUserErrorCheckpoints;
+import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -98,6 +99,42 @@ import org.testng.annotations.Test;
 public class TestVeniceControllerClusterConfig {
   private static final String DELIMITER = ",\\s*";
   private static final Set<String> REGION_ALLOW_LIST = Utils.setOf("dc1", "dc2");
+
+  @Test
+  public void testDeprecatedRealTimeTopicRetention() {
+    Properties props = getBaseSingleRegionProperties(false);
+    VeniceControllerMultiClusterConfig config =
+        new VeniceControllerMultiClusterConfig(Collections.singletonList(new VeniceProperties(props)));
+    assertEquals(config.getDeprecatedRealTimeTopicRetentionMs(), TimeUnit.HOURS.toMillis(23));
+    assertEquals(config.getDeprecatedJobTopicRetentionMs(), TimeUnit.SECONDS.toMillis(15));
+    assertEquals(config.getDeprecatedJobTopicMaxRetentionMs(), TimeUnit.SECONDS.toMillis(60));
+    assertEquals(config.getFatalDataValidationFailureRetentionMs(), TimeUnit.DAYS.toMillis(2));
+
+    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, DEFAULT_TOPIC_RETENTION_POLICY_MS - 1);
+    assertEquals(
+        new VeniceControllerClusterConfig(new VeniceProperties(props)).getDeprecatedRealTimeTopicRetentionMs(),
+        DEFAULT_TOPIC_RETENTION_POLICY_MS - 1);
+    // The RT marker is independent of the legacy maximum, whose existing validation still applies.
+    props.put(ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS, 14999);
+    assertThrows(VeniceException.class, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
+  }
+
+  @DataProvider(name = "invalidRealTimeRetention")
+  public Object[][] invalidRealTimeRetention() {
+    return new Object[][] { { "0", VeniceException.class }, { "-1", VeniceException.class },
+        { "-2", VeniceException.class }, { String.valueOf(DEFAULT_TOPIC_RETENTION_POLICY_MS), VeniceException.class },
+        { String.valueOf(DEFAULT_TOPIC_RETENTION_POLICY_MS + 1), VeniceException.class },
+        { "not-a-number", NumberFormatException.class } };
+  }
+
+  @Test(dataProvider = "invalidRealTimeRetention")
+  public void testRejectInvalidDeprecatedRealTimeTopicRetention(
+      String retention,
+      Class<? extends Throwable> exception) {
+    Properties props = getBaseSingleRegionProperties(false);
+    props.put(ConfigKeys.DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, retention);
+    assertThrows(exception, () -> new VeniceControllerClusterConfig(new VeniceProperties(props)));
+  }
 
   @Test
   public void canParseClusterMap() {
@@ -171,7 +208,7 @@ public class TestVeniceControllerClusterConfig {
     VeniceControllerClusterConfig.parseClusterMap(builder.build(), REGION_ALLOW_LIST);
   }
 
-  protected static Properties getBaseSingleRegionProperties(boolean includeMultiRegionConfig) {
+  public static Properties getBaseSingleRegionProperties(boolean includeMultiRegionConfig) {
     Properties props = TestUtils.getPropertiesForControllerConfig();
     String clusterName = props.getProperty(CLUSTER_NAME);
     props.put(LOCAL_REGION_NAME, "dc-0");
