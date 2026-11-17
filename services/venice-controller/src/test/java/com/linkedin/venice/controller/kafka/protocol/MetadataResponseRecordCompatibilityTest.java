@@ -15,6 +15,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -48,6 +49,47 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v5, v4).deserialize(v5Bytes);
     Assert.assertEquals(v4Reader.get("batchGetLimit"), 500);
     Assert.assertNull(v4Reader.getSchema().getField("multiKeyLongTailRetryThresholdsInMs"));
+  }
+
+  @Test
+  public void testStagedV6ReadsV5WithUnknownHybridStatus() throws IOException {
+    Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
+    Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
+    GenericRecord v5Record = createMetadataRecord(v5);
+    v5Record.put("batchGetLimit", 500);
+    v5Record.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
+    byte[] v5Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v5).serialize(v5Record);
+
+    GenericRecord v6Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v5, v6).deserialize(v5Bytes);
+    Assert.assertNull(v6Reader.get("currentVersionHybrid"));
+    Assert.assertEquals(v6Reader.get("batchGetLimit"), 500);
+    Assert.assertEquals(v6Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
+  }
+
+  @DataProvider
+  public Object[][] hybridStatuses() {
+    return new Object[][] { { null }, { true }, { false } };
+  }
+
+  @Test(dataProvider = "hybridStatuses")
+  public void testV5ReadsStagedV6(Boolean currentVersionHybrid) throws IOException {
+    Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
+    Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
+    GenericRecord v6Record = createMetadataRecord(v6);
+    v6Record.put("currentVersionHybrid", currentVersionHybrid);
+    v6Record.put("batchGetLimit", 500);
+    v6Record.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
+    byte[] v6Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v6).serialize(v6Record);
+
+    GenericRecord v6Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v6, v6).deserialize(v6Bytes);
+    Assert.assertEquals(v6Reader.get("currentVersionHybrid"), currentVersionHybrid);
+    GenericRecord v5Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v6, v5).deserialize(v6Bytes);
+    Assert.assertEquals(v5Reader.get("batchGetLimit"), 500);
+    Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
+    Assert.assertNull(v5Reader.getSchema().getField("currentVersionHybrid"));
   }
 
   private GenericRecord createMetadataRecord(Schema schema) {
