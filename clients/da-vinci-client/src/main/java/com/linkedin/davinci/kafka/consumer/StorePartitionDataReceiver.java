@@ -9,6 +9,10 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,12 +26,27 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
   private final Logger LOGGER;
 
   private long receivedRecordsCount;
+  private final PeriodicCheckpoint periodicCheckpoint;
+  private final PeriodicCheckpoint.CheckpointAction checkpointAction;
+  private final LongSupplier nanoTime;
+  private volatile boolean subscribed = true;
+  private PartitionConsumptionState checkpointState;
+  private final BooleanSupplier checkpointStillValid;
 
   public StorePartitionDataReceiver(
       StoreIngestionTask storeIngestionTask,
       PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) {
+    this(storeIngestionTask, topicPartition, kafkaUrl, kafkaClusterId, System::nanoTime);
+  }
+
+  StorePartitionDataReceiver(
+      StoreIngestionTask storeIngestionTask,
+      PubSubTopicPartition topicPartition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      LongSupplier nanoTime) {
     this.storeIngestionTask = Validate.notNull(storeIngestionTask);
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaUrl = Validate.notNull(kafkaUrl);
@@ -35,6 +54,50 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
     this.kafkaClusterId = kafkaClusterId;
     this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
+    this.nanoTime = nanoTime;
+    this.checkpointStillValid = () -> subscribed && storeIngestionTask.isRunning() && checkpointState != null
+        && storeIngestionTask.getPartitionConsumptionState(topicPartition.getPartitionNumber()) == checkpointState;
+    if (storeIngestionTask.isTimeBasedCheckpointEnabled()) {
+      long intervalNs = TimeUnit.MILLISECONDS.toNanos(storeIngestionTask.getServerConfig().getDatabaseSyncIntervalMs());
+      long spreadNs = TimeUnit.MILLISECONDS.toNanos(storeIngestionTask.getServerConfig().getDatabaseSyncSpreadMs());
+      this.periodicCheckpoint = new PeriodicCheckpoint(
+          intervalNs,
+          spreadNs == 0 ? 0 : ThreadLocalRandom.current().nextLong(spreadNs),
+          nanoTime.getAsLong());
+      this.checkpointAction = () -> storeIngestionTask
+          .checkpointOnTime(topicPartition, kafkaUrl, kafkaClusterId, checkpointState, checkpointStillValid);
+    } else {
+      this.periodicCheckpoint = null;
+      this.checkpointAction = null;
+    }
+  }
+
+  @Override
+  public boolean requiresPollCallback() {
+    return periodicCheckpoint != null;
+  }
+
+  @Override
+  public void onPoll() throws Exception {
+    if (periodicCheckpoint == null || !subscribed || !storeIngestionTask.isRunning()) {
+      return;
+    }
+    if (checkpointState == null) {
+      checkpointState = storeIngestionTask.getPartitionConsumptionState(topicPartition.getPartitionNumber());
+    }
+    if (!checkpointStillValid.getAsBoolean()) {
+      return;
+    }
+    try {
+      periodicCheckpoint.maybeCheckpoint(nanoTime.getAsLong(), checkpointAction);
+    } catch (Exception e) {
+      handleDataReceiverException(e);
+    }
+  }
+
+  @Override
+  public void onUnsubscription() {
+    subscribed = false;
   }
 
   @Override
@@ -117,6 +180,7 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
         "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will propagate via setLastConsumerException(e).",
         e.getClass().getSimpleName(),
         topicPartition);
+    subscribed = false;
     storeIngestionTask.setLastConsumerException(e);
   }
 

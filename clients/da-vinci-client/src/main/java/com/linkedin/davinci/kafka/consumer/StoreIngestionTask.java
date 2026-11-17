@@ -2278,6 +2278,41 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  boolean isTimeBasedCheckpointEnabled() {
+    return serverConfig.isDatabaseSyncIntervalEnabled();
+  }
+
+  CompletableFuture<Void> checkpointOnTime(
+      PubSubTopicPartition sourceTopicPartition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      PartitionConsumptionState pcs,
+      BooleanSupplier stillValid) throws InterruptedException {
+    return enqueuePeriodicCheckpoint(sourceTopicPartition, pcs, null, null, stillValid);
+  }
+
+  protected CompletableFuture<Void> enqueuePeriodicCheckpoint(
+      PubSubTopicPartition topicPartition,
+      PartitionConsumptionState pcs,
+      PartitionTracker snapshot,
+      CompletableFuture<Void> precedingRecord,
+      BooleanSupplier stillValid) throws InterruptedException {
+    return getStoreBufferService().execCheckpointCommandAsync(topicPartition, this, () -> {
+      if (!stillValid.getAsBoolean() || getPartitionConsumptionState(pcs.getPartition()) != pcs || !pcs.isSubscribed()
+          || pcs.isErrorReported()) {
+        return;
+      }
+      if (precedingRecord != null && (!precedingRecord.isDone() || precedingRecord.isCompletedExceptionally())) {
+        return;
+      }
+      if (snapshot == null) {
+        updateOffsetMetadataAndSyncOffset(pcs);
+      } else {
+        updateAndSyncOffsetFromSnapshot(snapshot, topicPartition);
+      }
+    });
+  }
+
   protected void updateOffsetMetadataAndSyncOffset(@Nonnull PartitionConsumptionState pcs) {
     updateOffsetMetadataAndSyncOffset(getDataIntegrityValidator(), pcs);
   }

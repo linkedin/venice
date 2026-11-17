@@ -14,6 +14,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKED_DRAINER_THRESHOLD_MS
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_CURRENT_VERSION_AA_WC_LEADER_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CROSS_TP_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_INTERVAL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_SPREAD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FAST_CLIENT_MULTI_KEY_LONG_TAIL_RETRY_THRESHOLDS_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
@@ -30,6 +33,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURREN
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
+import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.WRITE_PATH_THREAD_PRIORITY;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.testng.Assert.assertEquals;
@@ -52,6 +56,38 @@ import org.testng.annotations.Test;
 
 
 public class VeniceServerConfigTest {
+  @Test
+  public void testTimeCheckpointDefaultsAndValidation() {
+    Properties props = populatedBasicProperties();
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isDatabaseSyncIntervalEnabled());
+    assertEquals(config.getDatabaseSyncIntervalMs(), TimeUnit.HOURS.toMillis(2));
+    assertEquals(config.getDatabaseSyncSpreadMs(), TimeUnit.MINUTES.toMillis(10));
+
+    props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "true");
+    props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_MS, "100");
+    props.setProperty(SERVER_DATABASE_SYNC_SPREAD_MS, "0");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertTrue(config.isDatabaseSyncIntervalEnabled());
+    assertEquals(config.getDatabaseSyncIntervalMs(), 100L);
+    assertEquals(config.getDatabaseSyncSpreadMs(), 0L);
+
+    props.setProperty(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, "false");
+    assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+    props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "false");
+    new VeniceServerConfig(new VeniceProperties(props));
+    props.setProperty(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, "true");
+    for (String spread: Arrays.asList("-1", "100", "101")) {
+      props.setProperty(SERVER_DATABASE_SYNC_SPREAD_MS, spread);
+      assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+    }
+    props.setProperty(SERVER_DATABASE_SYNC_SPREAD_MS, "0");
+    for (String interval: Arrays.asList("0", "-1", String.valueOf(Long.MAX_VALUE))) {
+      props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_MS, interval);
+      assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+    }
+  }
+
   @Test
   public void testMultiKeyRetryPolicyConfig() {
     Properties props = populatedBasicProperties();

@@ -13,6 +13,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -57,7 +58,9 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.Logger;
 import org.mockito.MockedConstruction;
@@ -86,6 +89,57 @@ public class StoreBufferServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     mockedStats = mock(StoreBufferServiceStats.class);
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testPeriodicCheckpointIsOrderedAndRejectsStaleSubscription(boolean globalRtDiv) throws Exception {
+    StoreBufferService service = new StoreBufferService(2, 100000, 1000, true, mockedStats, null);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubTopicPartition source = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test_store_rt"), 0);
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(key, value, source, mockPosition, 0, 0);
+    when(task.getStoreBufferService()).thenReturn(service);
+    when(task.getPartitionConsumptionState(0)).thenReturn(pcs);
+    when(pcs.isSubscribed()).thenReturn(true);
+    doCallRealMethod().when(task).checkpointOnTime(any(), anyString(), anyInt(), any(), any());
+    doCallRealMethod().when(task).enqueuePeriodicCheckpoint(any(), any(), any(), any(), any());
+    PartitionTracker snapshot = globalRtDiv ? mock(PartitionTracker.class) : null;
+    AtomicBoolean valid = new AtomicBoolean(true);
+    BooleanSupplier stillValid = valid::get;
+
+    service.putConsumerRecord(record, task, null, 0, "broker", 0);
+    CompletableFuture<Void> first = globalRtDiv
+        ? task.enqueuePeriodicCheckpoint(source, pcs, snapshot, pcs.getLastQueuedRecordPersistedFuture(), stillValid)
+        : task.checkpointOnTime(source, "broker", 0, pcs, stillValid);
+    Assert.assertFalse(first.isDone());
+    service.start();
+    try {
+      first.get(5, SECONDS);
+      org.mockito.InOrder order = inOrder(task);
+      order.verify(task).processConsumerRecord(record, null, 0, "broker", 0);
+      if (globalRtDiv) {
+        order.verify(task).updateAndSyncOffsetFromSnapshot(snapshot, source);
+      } else {
+        order.verify(task).updateOffsetMetadataAndSyncOffset(pcs);
+      }
+
+      clearInvocations(task);
+      valid.set(false);
+      task.enqueuePeriodicCheckpoint(source, pcs, snapshot, null, stillValid).get(5, SECONDS);
+      valid.set(true);
+      when(task.getPartitionConsumptionState(0)).thenReturn(mock(PartitionConsumptionState.class));
+      task.enqueuePeriodicCheckpoint(source, pcs, snapshot, null, stillValid).get(5, SECONDS);
+      when(task.getPartitionConsumptionState(0)).thenReturn(pcs);
+      when(pcs.isSubscribed()).thenReturn(false);
+      task.enqueuePeriodicCheckpoint(source, pcs, snapshot, null, stillValid).get(5, SECONDS);
+      when(pcs.isSubscribed()).thenReturn(true);
+      when(pcs.isErrorReported()).thenReturn(true);
+      task.enqueuePeriodicCheckpoint(source, pcs, snapshot, null, stillValid).get(5, SECONDS);
+      verify(task, never()).updateOffsetMetadataAndSyncOffset(any(PartitionConsumptionState.class));
+      verify(task, never()).updateAndSyncOffsetFromSnapshot(any(), any());
+    } finally {
+      service.stop();
+    }
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")

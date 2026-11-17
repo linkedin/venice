@@ -18,6 +18,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_INTERVAL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_SPREAD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS;
@@ -341,6 +343,11 @@ public abstract class StoreIngestionTaskTest {
   @DataProvider
   public static Object[][] aaConfigProvider() {
     return DataProviderUtils.allPermutationGenerator(AAConfig.values());
+  }
+
+  @DataProvider
+  public static Object[][] aaConfigAndTimeCheckpointProvider() {
+    return DataProviderUtils.allPermutationGenerator(AAConfig.values(), new Boolean[] { false, true });
   }
 
   @DataProvider
@@ -4977,15 +4984,10 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Verifies that during a graceful shutdown event, the metadata of OffsetRecord will be synced up with partitionConsumptionState
-   * in order to avoid re-ingesting everything, regardless of the sync bytes interval
-   * Steps:
-   * 1. offsetRecord and pcs has the same state at the beginning
-   * 2. pcs consumes 2 records and offsetRecords doesn't sync up with pcs due to high sync interval.
-   * 3. enforce to gracefully shutdown and validate offsetRecord has been synced up with pcs once.
+   * Both a quiet-partition deadline and graceful shutdown must persist processed offsets below the byte threshold.
    */
-  @Test(dataProvider = "aaConfigProvider")
-  public void testOffsetSyncBeforeGracefulShutDown(AAConfig aaConfig) throws Exception {
+  @Test(dataProvider = "aaConfigAndTimeCheckpointProvider")
+  public void testOffsetSyncBeforeGracefulShutDown(AAConfig aaConfig, boolean timeCheckpoint) throws Exception {
     // prepare to send 2 messages
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID);
@@ -5031,28 +5033,53 @@ public abstract class StoreIngestionTaskTest {
       Assert.assertEquals(pcs.getLatestProcessedVtPosition(), p2); // PCS updated
       // offsetRecord hasn't been updated yet
       Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition(), p0);
+      if (timeCheckpoint) {
+        AtomicLong clock = new AtomicLong();
+        StorePartitionDataReceiver receiver = new StorePartitionDataReceiver(
+            storeIngestionTaskUnderTest,
+            pcs.getReplicaTopicPartition(),
+            inMemoryLocalKafkaBroker.getPubSubBrokerAddress(),
+            0,
+            clock::get);
+        try {
+          receiver.onPoll();
+          verify(mockStorageMetadataService, never()).put(eq(topic), eq(PARTITION_FOO), any());
+          long heartbeat = storeIngestionTaskUnderTest.measureHybridHeartbeatTimestamp(pcs, false);
+          clock.set(TimeUnit.HOURS.toNanos(2));
+          receiver.onPoll();
+          verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).put(eq(topic), eq(PARTITION_FOO), any());
+          Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition(), p2);
+          Assert.assertEquals(offsetRecord.getHeartbeatTimestamp(), heartbeat);
+          assertTrue(offsetRecord.getLastCheckpointTimestamp() > 0);
+        } catch (Exception e) {
+          throw new AssertionError("Idle time checkpoint failed", e);
+        }
+      }
       storeIngestionTaskUnderTest.close();
 
-      // Verify the OffsetRecord is synced up with pcs and get persisted only once during shutdown
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
+      int expectedSyncs = timeCheckpoint ? 2 : 1;
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(expectedSyncs))
+          .put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(
           offsetRecord.getCheckpointedLocalVtPosition(),
           p2,
           "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be 2!");
 
       // Verify that the underlying storage engine sync function is invoked.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(1)).sync(eq(PARTITION_FOO));
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(expectedSyncs)).sync(eq(PARTITION_FOO));
     }, aaConfig);
 
+    Map<String, Object> serverProperties = new HashMap<>();
+    serverProperties.put(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
+    serverProperties.put(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, timeCheckpoint);
+    serverProperties.put(SERVER_DATABASE_SYNC_SPREAD_MS, 0);
     testConfig.setHybridStoreConfig(this.hybridStoreConfig).setBeforeStartingConsumption(() -> {
       doReturn(getOffsetRecord(InMemoryPubSubPosition.of(0L), true, pubSubContext)).when(mockStorageMetadataService)
           .getLastOffset(topic, PARTITION_FOO, pubSubContext);
     }).setStoreVersionConfigOverride(configOverride -> {
       // set very high threshold so offsetRecord isn't be synced during regular consumption
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
-    })
-        .setExtraServerProperties(
-            Collections.singletonMap(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true));
+    }).setExtraServerProperties(serverProperties);
     runTest(testConfig);
     Assert.assertEquals(mockNotifierError.size(), 0);
   }

@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.testng.Assert;
@@ -61,6 +62,33 @@ public class ConsumptionTaskTest {
     if (crossTpProcessingPool != null) {
       crossTpProcessingPool.shutdownNow();
     }
+  }
+
+  @Test
+  public void testPollCallbackIncludesIdleSubscriptionsAndStopsAfterRemoval() throws Exception {
+    PubSubTopic topic = pubSubTopicRepository.getTopic("test_store_v1");
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, 0);
+    ConsumedDataReceiver<List<DefaultPubSubMessage>> receiver = createMockReceiver(topic);
+    when(receiver.requiresPollCallback()).thenReturn(true);
+    AtomicInteger polls = new AtomicInteger();
+    AtomicReference<ConsumptionTask> taskRef = new AtomicReference<>();
+    ConsumptionTask task = createTask(() -> {
+      if (polls.incrementAndGet() == 2) {
+        taskRef.get().removeDataReceiver(partition);
+      }
+      if (polls.get() == 3) {
+        taskRef.get().stop();
+      }
+      return new HashMap<>();
+    }, ignored -> {}, ignored -> {}, null);
+    taskRef.set(task);
+    task.setDataReceiver(partition, receiver);
+    task.setDataReceiver(partition, receiver);
+    task.run();
+
+    verify(receiver, times(2)).onPoll();
+    verify(receiver).onUnsubscription();
+    verify(receiver, never()).write(any());
   }
 
   /**

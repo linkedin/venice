@@ -808,8 +808,71 @@ public class LeaderFollowerStoreIngestionTaskTest {
     verify(mockTopicManager, times(1)).getIngestionProgressPercentage(any(), any());
   }
 
-  @Test
-  public void testSendGlobalRtDivMessage() throws InterruptedException, IOException {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testTimeCheckpointSnapshotsConsumerDivAfterPrecedingProducerWork(boolean producingLeader)
+      throws Exception {
+    setUp();
+    int partition = 0;
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic("test_store_v1"), partition);
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(producingLeader).when(leaderFollowerStoreIngestionTask)
+        .shouldProduceToVersionTopic(mockPartitionConsumptionState);
+    doReturn(true).when(mockPartitionConsumptionState).isSubscribed();
+    doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+    doReturn(topicPartition).when(mockPartitionConsumptionState).getReplicaTopicPartition();
+    doReturn(producingLeader ? LeaderFollowerStateType.LEADER : LeaderFollowerStateType.STANDBY)
+        .when(mockPartitionConsumptionState)
+        .getLeaderFollowerState();
+    PubSubPosition upstream = InMemoryPubSubPosition.of(5);
+    PubSubPosition local = InMemoryPubSubPosition.of(7);
+    doReturn(local).when(mockPartitionConsumptionState).getLatestProcessedVtPosition();
+    DataIntegrityValidator validator = mock(DataIntegrityValidator.class);
+    PartitionTracker snapshot = mock(PartitionTracker.class);
+    doReturn(upstream).when(snapshot).getLatestConsumedVtPosition();
+    doReturn(validator).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
+    doReturn(snapshot).when(validator).cloneVtProducerStates(eq(partition), eq(true), anyLong());
+    CompletableFuture<Void> enqueued = CompletableFuture.completedFuture(null);
+    doReturn(enqueued).when(leaderFollowerStoreIngestionTask)
+        .enqueuePeriodicCheckpoint(any(), any(), any(), any(), any());
+    CompletableFuture<Void> pendingView = new CompletableFuture<>();
+    CompletableFuture<Void> pendingPersist = new CompletableFuture<>();
+    doReturn(pendingView).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+    doReturn(pendingPersist).when(mockPartitionConsumptionState).getLastLeaderPersistFuture();
+    doReturn(pendingPersist).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
+
+    if (producingLeader) {
+      assertNull(
+          leaderFollowerStoreIngestionTask
+              .checkpointOnTime(topicPartition, "broker", 0, mockPartitionConsumptionState, () -> true));
+      pendingView.complete(null);
+      assertNull(
+          leaderFollowerStoreIngestionTask
+              .checkpointOnTime(topicPartition, "broker", 0, mockPartitionConsumptionState, () -> true));
+      verify(validator, never()).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+      pendingPersist.complete(null);
+    }
+    assertSame(
+        leaderFollowerStoreIngestionTask
+            .checkpointOnTime(topicPartition, "broker", 0, mockPartitionConsumptionState, () -> true),
+        enqueued);
+    verify(leaderFollowerStoreIngestionTask).enqueuePeriodicCheckpoint(
+        eq(topicPartition),
+        eq(mockPartitionConsumptionState),
+        eq(snapshot),
+        eq(pendingPersist),
+        any());
+    if (producingLeader) {
+      verify(snapshot).updateLatestConsumedRemoteVtPosition(upstream);
+      verify(snapshot).updateLatestConsumedVtPosition(local);
+    } else {
+      verify(snapshot, never()).updateLatestConsumedVtPosition(any());
+      verify(snapshot, never()).updateLatestConsumedRemoteVtPosition(any());
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSendGlobalRtDivMessage(boolean periodic) throws InterruptedException, IOException {
     setUp();
     int partition = 1;
     long offset = 3L;
@@ -823,7 +886,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     // leaderTopic (RT here) and must skip the stamp, since that RT-domain position is checkpointed separately as the
     // LCRP; keying off the source record's topic would cross-write the RT LCRP into the remote-VT LCVP field.
     PubSubTopic mockLocalVtTopic = mock(PubSubTopic.class);
-    doReturn(false).when(mockLocalVtTopic).isRealTime();
+    doReturn(periodic).when(mockLocalVtTopic).isRealTime();
     doReturn(mockLocalVtTopic).when(mockTopicPartition).getPubSubTopic();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
     Lazy<VeniceWriter<byte[], byte[], byte[]>> lazyMockWriter = Lazy.of(() -> mockWriter);
@@ -840,8 +903,29 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(mockLeaderRtTopic).when(mockOffsetRecord).getLeaderTopic(any());
     doReturn(mockOffsetRecord).when(mockPartitionConsumptionState).getOffsetRecord();
 
-    leaderFollowerStoreIngestionTask
-        .sendGlobalRtDivMessage(p3, mockTopicPartition, mockPartitionConsumptionState, partition, brokerUrl, 0L, 0);
+    if (periodic) {
+      doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+      doReturn(true).when(mockPartitionConsumptionState).isSubscribed();
+      doReturn(partition).when(mockPartitionConsumptionState).getPartition();
+      doReturn(LeaderFollowerStateType.LEADER).when(mockPartitionConsumptionState).getLeaderFollowerState();
+      doReturn(p3).when(leaderFollowerStoreIngestionTask)
+          .getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(mockPartitionConsumptionState, brokerUrl);
+      doReturn(CompletableFuture.completedFuture(null)).when(leaderFollowerStoreIngestionTask)
+          .enqueuePeriodicCheckpoint(any(), any(), any(), any(), any());
+      CompletableFuture<Void> pendingView = new CompletableFuture<>();
+      doReturn(pendingView).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+      assertNull(
+          leaderFollowerStoreIngestionTask
+              .checkpointOnTime(mockTopicPartition, brokerUrl, 0, mockPartitionConsumptionState, () -> true));
+      verify(mockWriter, never())
+          .put(any(), any(), anyInt(), anyInt(), any(), any(), anyLong(), any(), any(), any(), anyBoolean());
+      pendingView.complete(null);
+      leaderFollowerStoreIngestionTask
+          .checkpointOnTime(mockTopicPartition, brokerUrl, 0, mockPartitionConsumptionState, () -> true);
+    } else {
+      leaderFollowerStoreIngestionTask
+          .sendGlobalRtDivMessage(p3, mockTopicPartition, mockPartitionConsumptionState, partition, brokerUrl, 0L, 0);
+    }
 
     ArgumentCaptor<byte[]> valueBytesArgumentCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<LeaderProducerCallback> callbackArgumentCaptor =
@@ -882,7 +966,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // Verify that completing the future from put() causes execSyncOffsetFromSnapshotAsync to be called
     // and that produceResult should override the LCVP of the VT DIV sent to the drainer
-    PartitionTracker captured = fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L));
+    PartitionTracker captured =
+        fireProduceCallbackAndAssertLcvpSynced(callback, InMemoryPubSubPosition.of(11L), periodic);
     // The flush send must not advance the remote VT LCVP: its consumed position (p3) is the RT/LCRP domain,
     // checkpointed separately, and leaderTopic is RT. It stays at its default rather than picking up the produced
     // (11L) or the RT LCRP (p3) - a regression guard against cross-writing an RT position into the remote-VT LCVP.
@@ -1484,13 +1569,26 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private PartitionTracker fireProduceCallbackAndAssertLcvpSynced(
       LeaderProducerCallback callback,
       PubSubPosition producedPosition) throws InterruptedException {
+    return fireProduceCallbackAndAssertLcvpSynced(callback, producedPosition, false);
+  }
+
+  private PartitionTracker fireProduceCallbackAndAssertLcvpSynced(
+      LeaderProducerCallback callback,
+      PubSubPosition producedPosition,
+      boolean periodic) throws InterruptedException {
     verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
     PubSubProduceResult produceResult = mock(PubSubProduceResult.class);
     doReturn(producedPosition).when(produceResult).getPubSubPosition();
     callback.onCompletion(produceResult, null);
     ArgumentCaptor<PartitionTracker> vtDivCaptor = ArgumentCaptor.forClass(PartitionTracker.class);
-    verify(mockStoreBufferService, times(1))
-        .execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any(), any());
+    if (periodic) {
+      verify(leaderFollowerStoreIngestionTask)
+          .enqueuePeriodicCheckpoint(any(), any(), vtDivCaptor.capture(), any(), any());
+      verify(mockStoreBufferService, never()).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any());
+    } else {
+      verify(mockStoreBufferService, times(1))
+          .execSyncOffsetFromSnapshotAsync(any(), vtDivCaptor.capture(), any(), any());
+    }
     PartitionTracker captured = vtDivCaptor.getValue();
     assertEquals(captured.getLatestConsumedVtPosition(), producedPosition);
     return captured;
