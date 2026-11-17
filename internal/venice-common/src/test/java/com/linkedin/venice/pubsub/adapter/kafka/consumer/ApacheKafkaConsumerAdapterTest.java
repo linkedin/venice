@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
@@ -66,13 +67,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -180,6 +184,33 @@ public class ApacheKafkaConsumerAdapterTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testExplicitPriorityConstructsConsumerOnDedicatedThread(boolean useCallerPriority) {
+    Thread caller = Thread.currentThread();
+    int originalPriority = caller.getPriority();
+    int priority = useCallerPriority ? originalPriority : Thread.MIN_PRIORITY;
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenAnswer(invocation -> {
+      assertNotSame(Thread.currentThread(), caller);
+      assertEquals(Thread.currentThread().getPriority(), priority);
+      assertEquals(new Thread().getPriority(), priority);
+      assertEquals(caller.getPriority(), originalPriority);
+      Properties properties = new Properties();
+      properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "127.0.0.1:9092");
+      properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+      properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+      return properties;
+    });
+
+    ApacheKafkaConsumerAdapter adapter = new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, priority);
+    try {
+      verify(apacheKafkaConsumerConfig).getConsumerProperties();
+      assertTrue(adapter.getAssignment().isEmpty());
+      assertEquals(caller.getPriority(), originalPriority);
+    } finally {
+      adapter.close();
+    }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testConsumerConstructionPropagatesFailureWithoutChangingCallerPriority(boolean throwError) {
     Thread currentThread = Thread.currentThread();
     int originalPriority = currentThread.getPriority();
@@ -194,39 +225,89 @@ public class ApacheKafkaConsumerAdapterTest {
       throw failure;
     });
 
-    if (throwError) {
-      assertSame(
-          expectThrows(
-              AssertionError.class,
-              () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, threadPriority)),
-          error);
-    } else {
-      assertSame(
-          expectThrows(
-              IllegalStateException.class,
-              () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, threadPriority)),
-          failure);
-    }
+    CompletionException exception = expectThrows(
+        CompletionException.class,
+        () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, threadPriority));
+    assertSame(exception.getCause(), throwError ? error : failure);
     assertEquals(currentThread.getPriority(), originalPriority);
   }
 
-  @Test
-  public void testConsumerConstructionPreservesCallerInterruptStatus() {
-    IllegalStateException failure = new IllegalStateException("Consumer construction failed");
-    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenThrow(failure);
-    boolean wasInterrupted = Thread.currentThread().isInterrupted();
-    try {
-      Thread.currentThread().interrupt();
-      assertSame(
-          expectThrows(
-              IllegalStateException.class,
-              () -> new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, Thread.MIN_PRIORITY)),
-          failure);
-      assertTrue(Thread.currentThread().isInterrupted());
-    } finally {
-      if (!wasInterrupted) {
-        Thread.interrupted();
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testInterruptedConstructionReturnsBeforeCleanup(boolean initiallyInterrupted)
+      throws InterruptedException {
+    CountDownLatch constructionStarted = new CountDownLatch(1);
+    CountDownLatch releaseConstruction = new CountDownLatch(1);
+    CountDownLatch workerInterrupted = new CountDownLatch(1);
+    CountDownLatch callerFinished = new CountDownLatch(1);
+    CountDownLatch consumerClosed = new CountDownLatch(1);
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    AtomicBoolean interruptPreserved = new AtomicBoolean();
+    when(apacheKafkaConsumerConfig.getConsumerProperties()).thenAnswer(invocation -> {
+      constructionStarted.countDown();
+      boolean released = false;
+      while (!released) {
+        try {
+          released = releaseConstruction.await(10, TimeUnit.SECONDS);
+          assertTrue(released, "Construction was not released");
+        } catch (InterruptedException e) {
+          workerInterrupted.countDown();
+        }
       }
+      Properties properties = new Properties();
+      properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "127.0.0.1:9092");
+      properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, CloseTrackingDeserializer.class);
+      properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+      properties.put("test.consumer.closed", consumerClosed);
+      return properties;
+    });
+    Thread caller = new Thread(() -> {
+      if (initiallyInterrupted) {
+        Thread.currentThread().interrupt();
+      }
+      try {
+        ApacheKafkaConsumerAdapter adapter =
+            new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, Thread.MIN_PRIORITY);
+        adapter.close();
+      } catch (Throwable e) {
+        failure.set(e);
+      } finally {
+        interruptPreserved.set(Thread.currentThread().isInterrupted());
+        callerFinished.countDown();
+      }
+    }, "interrupted-consumer-caller");
+    caller.setDaemon(true);
+    caller.start();
+    try {
+      assertTrue(constructionStarted.await(10, TimeUnit.SECONDS));
+      if (!initiallyInterrupted) {
+        caller.interrupt();
+      }
+      assertTrue(callerFinished.await(10, TimeUnit.SECONDS), "Caller waited for construction");
+      assertTrue(failure.get() instanceof PubSubClientException);
+      assertTrue(failure.get().getCause() instanceof InterruptedException);
+      assertTrue(interruptPreserved.get());
+      assertTrue(workerInterrupted.await(10, TimeUnit.SECONDS));
+      assertEquals(consumerClosed.getCount(), 1L);
+      releaseConstruction.countDown();
+      assertTrue(consumerClosed.await(10, TimeUnit.SECONDS), "Abandoned consumer was not closed");
+    } finally {
+      releaseConstruction.countDown();
+      caller.interrupt();
+      caller.join(TimeUnit.SECONDS.toMillis(10));
+    }
+  }
+
+  public static class CloseTrackingDeserializer extends ByteArrayDeserializer {
+    private CountDownLatch closed;
+
+    @Override
+    public void configure(Map<String, ?> configs, boolean isKey) {
+      closed = (CountDownLatch) configs.get("test.consumer.closed");
+    }
+
+    @Override
+    public void close() {
+      closed.countDown();
     }
   }
 
