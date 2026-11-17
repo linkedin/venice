@@ -1,5 +1,7 @@
 package com.linkedin.venice.producer;
 
+import static com.linkedin.venice.stats.dimensions.VeniceProducerOperation.DELETE;
+import static com.linkedin.venice.stats.dimensions.VeniceProducerOperation.PUT;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -84,9 +86,9 @@ public class VeniceProducerMetricsTest {
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Record preprocessing latency
-    metrics.recordPreprocessingLatency(100);
-    metrics.recordPreprocessingLatency(200);
-    metrics.recordPreprocessingLatency(300);
+    metrics.recordPreprocessingLatency(PUT, 100);
+    metrics.recordPreprocessingLatency(PUT, 200);
+    metrics.recordPreprocessingLatency(PUT, 300);
 
     // Verify latency is recorded (value depends on percentile calculation)
     double latency = metricsRepository.getMetric(PREPROCESSING_LATENCY_50_METRIC).value();
@@ -99,7 +101,7 @@ public class VeniceProducerMetricsTest {
 
     // Simulate successful request with latency
     metrics.recordPutRequest();
-    metrics.recordSuccessfulRequestWithLatency(150);
+    metrics.recordSuccessfulRequestWithLatency(PUT, 150);
 
     // Verify latency is recorded (percentile calculation may have slight variance)
     double latency = metricsRepository.getMetric(PRODUCE_LATENCY_50_METRIC).value();
@@ -111,9 +113,9 @@ public class VeniceProducerMetricsTest {
     VeniceProducerMetrics metrics = new VeniceProducerMetrics(metricsRepository, TEST_STORE);
 
     // Record end-to-end latency
-    metrics.recordEndToEndLatency(500);
-    metrics.recordEndToEndLatency(600);
-    metrics.recordEndToEndLatency(700);
+    metrics.recordEndToEndLatency(PUT, 500);
+    metrics.recordEndToEndLatency(PUT, 600);
+    metrics.recordEndToEndLatency(PUT, 700);
 
     // Verify latency is recorded
     double latency = metricsRepository.getMetric(END_TO_END_LATENCY_50_METRIC).value();
@@ -157,9 +159,9 @@ public class VeniceProducerMetricsTest {
     assertEquals(pendingCount, 3.0, "Pending operations gauge should be 3");
 
     // Complete requests
-    metrics.recordSuccessfulRequestWithLatency(100);
-    metrics.recordSuccessfulRequestWithLatency(100);
-    metrics.recordFailedRequest();
+    metrics.recordSuccessfulRequestWithLatency(PUT, 100);
+    metrics.recordSuccessfulRequestWithLatency(PUT, 100);
+    metrics.recordFailedRequest(DELETE);
 
     // Gauge should be 0 after completing all requests
     pendingCount = metricsRepository.getMetric(PENDING_OPERATION_GAUGE_METRIC).value();
@@ -175,10 +177,10 @@ public class VeniceProducerMetricsTest {
     metrics.recordPutRequest();
     metrics.recordDeleteRequest();
     metrics.recordUpdateRequest();
-    metrics.recordSuccessfulRequestWithLatency(100);
-    metrics.recordFailedRequest();
-    metrics.recordPreprocessingLatency(50);
-    metrics.recordEndToEndLatency(200);
+    metrics.recordSuccessfulRequestWithLatency(PUT, 100);
+    metrics.recordFailedRequest(DELETE);
+    metrics.recordPreprocessingLatency(PUT, 50);
+    metrics.recordEndToEndLatency(PUT, 200);
 
     // Register queue metrics with null executor should also not throw
     metrics.registerQueueMetrics(null);
@@ -193,10 +195,10 @@ public class VeniceProducerMetricsTest {
     metrics.recordPutRequest();
     metrics.recordDeleteRequest();
     metrics.recordUpdateRequest();
-    metrics.recordSuccessfulRequestWithLatency(100);
-    metrics.recordSuccessfulRequestWithLatency(100);
-    metrics.recordSuccessfulRequestWithLatency(100);
-    metrics.recordFailedRequest();
+    metrics.recordSuccessfulRequestWithLatency(PUT, 100);
+    metrics.recordSuccessfulRequestWithLatency(PUT, 100);
+    metrics.recordSuccessfulRequestWithLatency(PUT, 100);
+    metrics.recordFailedRequest(DELETE);
 
     // Verify rates are being recorded (rates are non-zero)
     assertTrue(metricsRepository.getMetric(WRITE_OPERATION_METRIC).value() > 0, "Write operation rate should be > 0");

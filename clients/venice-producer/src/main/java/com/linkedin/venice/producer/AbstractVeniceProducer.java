@@ -24,6 +24,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.stats.dimensions.VeniceProducerOperation;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -260,14 +261,17 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
    * @return null if no routing needed, {@link #SERIALIZATION_FAILED} on error (use == to check),
    *         or the serialized key bytes on success
    */
-  private byte[] serializeKeyForRouting(K key, CompletableFuture<DurableWrite> durableWriteFuture) {
+  private byte[] serializeKeyForRouting(
+      K key,
+      VeniceProducerOperation operation,
+      CompletableFuture<DurableWrite> durableWriteFuture) {
     if (!needsPartitionRouting) {
       return null;
     }
     try {
       return keySerializer.serialize(key);
     } catch (Exception e) {
-      producerMetrics.recordFailedRequest();
+      producerMetrics.recordFailedRequest(operation);
       durableWriteFuture.completeExceptionally(new VeniceException("Key serialization failed", e));
       return SERIALIZATION_FAILED;
     }
@@ -297,7 +301,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     long submissionTimeNanos = System.nanoTime();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, VeniceProducerOperation.PUT, durableWriteFuture);
     if (serializedKeyBytes == SERIALIZATION_FAILED) {
       return durableWriteFuture;
     }
@@ -305,7 +309,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     try {
       asyncDispatcher.submit(partition, () -> {
         long preprocessStartNanos = System.nanoTime();
-        producerMetrics.recordQueueWaitLatency(convertNSToMS(preprocessStartNanos - submissionTimeNanos));
+        producerMetrics.recordQueueWaitLatency(
+            VeniceProducerOperation.PUT,
+            convertNSToMS(preprocessStartNanos - submissionTimeNanos));
         try {
           byte[] keyBytes = getKeyBytes(key, serializedKeyBytes);
           Schema valueSchema = getSchemaFromObject(value);
@@ -321,7 +327,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
           byte[] valueBytes = getSerializer(valueSchema).serialize(value);
           long preprocessEndNanos = System.nanoTime();
-          producerMetrics.recordPreprocessingLatency(convertNSToMS(preprocessEndNanos - preprocessStartNanos));
+          producerMetrics.recordPreprocessingLatency(
+              VeniceProducerOperation.PUT,
+              convertNSToMS(preprocessEndNanos - preprocessStartNanos));
           veniceWriter.put(
               keyBytes,
               valueBytes,
@@ -329,16 +337,19 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
               logicalTime,
               getPubSubProducerCallback(
                   durableWriteFuture,
+                  VeniceProducerOperation.PUT,
                   submissionTimeNanos,
                   preprocessEndNanos,
                   "Failed to write the PUT record to the PubSub system"));
-          producerMetrics.recordCallerToPubSubBufferLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+          producerMetrics.recordCallerToPubSubBufferLatency(
+              VeniceProducerOperation.PUT,
+              getElapsedTimeFromNSToMS(submissionTimeNanos));
         } catch (Exception e) {
-          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+          completeDurableWriteFutureExceptionally(durableWriteFuture, VeniceProducerOperation.PUT, e);
         }
       });
     } catch (RejectedExecutionException e) {
-      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+      completeDurableWriteFutureExceptionally(durableWriteFuture, VeniceProducerOperation.PUT, e);
     }
 
     return durableWriteFuture;
@@ -369,7 +380,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     long submissionTimeNanos = System.nanoTime();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, VeniceProducerOperation.DELETE, durableWriteFuture);
     if (serializedKeyBytes == SERIALIZATION_FAILED) {
       return durableWriteFuture;
     }
@@ -377,26 +388,33 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     try {
       asyncDispatcher.submit(partition, () -> {
         long preprocessStartNanos = System.nanoTime();
-        producerMetrics.recordQueueWaitLatency(convertNSToMS(preprocessStartNanos - submissionTimeNanos));
+        producerMetrics.recordQueueWaitLatency(
+            VeniceProducerOperation.DELETE,
+            convertNSToMS(preprocessStartNanos - submissionTimeNanos));
         try {
           byte[] keyBytes = getKeyBytes(key, serializedKeyBytes);
           long preprocessEndNanos = System.nanoTime();
-          producerMetrics.recordPreprocessingLatency(convertNSToMS(preprocessEndNanos - preprocessStartNanos));
+          producerMetrics.recordPreprocessingLatency(
+              VeniceProducerOperation.DELETE,
+              convertNSToMS(preprocessEndNanos - preprocessStartNanos));
           veniceWriter.delete(
               keyBytes,
               logicalTime,
               getPubSubProducerCallback(
                   durableWriteFuture,
+                  VeniceProducerOperation.DELETE,
                   submissionTimeNanos,
                   preprocessEndNanos,
                   "Failed to write the DELETE record to the PubSub system"));
-          producerMetrics.recordCallerToPubSubBufferLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+          producerMetrics.recordCallerToPubSubBufferLatency(
+              VeniceProducerOperation.DELETE,
+              getElapsedTimeFromNSToMS(submissionTimeNanos));
         } catch (Exception e) {
-          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+          completeDurableWriteFutureExceptionally(durableWriteFuture, VeniceProducerOperation.DELETE, e);
         }
       });
     } catch (RejectedExecutionException e) {
-      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+      completeDurableWriteFutureExceptionally(durableWriteFuture, VeniceProducerOperation.DELETE, e);
     }
 
     return durableWriteFuture;
@@ -430,7 +448,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     long submissionTimeNanos = System.nanoTime();
     CompletableFuture<DurableWrite> durableWriteFuture = new CompletableFuture<>();
 
-    byte[] serializedKeyBytes = serializeKeyForRouting(key, durableWriteFuture);
+    byte[] serializedKeyBytes = serializeKeyForRouting(key, VeniceProducerOperation.UPDATE, durableWriteFuture);
     if (serializedKeyBytes == SERIALIZATION_FAILED) {
       return durableWriteFuture;
     }
@@ -438,7 +456,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     try {
       asyncDispatcher.submit(partition, () -> {
         long preprocessStartNanos = System.nanoTime();
-        producerMetrics.recordQueueWaitLatency(convertNSToMS(preprocessStartNanos - submissionTimeNanos));
+        producerMetrics.recordQueueWaitLatency(
+            VeniceProducerOperation.UPDATE,
+            convertNSToMS(preprocessStartNanos - submissionTimeNanos));
         try {
           byte[] keyBytes = getKeyBytes(key, serializedKeyBytes);
           // Caching to avoid race conditions during processing of the function
@@ -465,7 +485,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
           byte[] updateBytes = getSerializer(updateSchema).serialize(updateRecord);
 
           long preprocessEndNanos = System.nanoTime();
-          producerMetrics.recordPreprocessingLatency(convertNSToMS(preprocessEndNanos - preprocessStartNanos));
+          producerMetrics.recordPreprocessingLatency(
+              VeniceProducerOperation.UPDATE,
+              convertNSToMS(preprocessEndNanos - preprocessStartNanos));
           veniceWriter.update(
               keyBytes,
               updateBytes,
@@ -473,17 +495,20 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
               updateSchemaEntry.getId(),
               getPubSubProducerCallback(
                   durableWriteFuture,
+                  VeniceProducerOperation.UPDATE,
                   submissionTimeNanos,
                   preprocessEndNanos,
                   "Failed to write the UPDATE record to the PubSub system"),
               logicalTime);
-          producerMetrics.recordCallerToPubSubBufferLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+          producerMetrics.recordCallerToPubSubBufferLatency(
+              VeniceProducerOperation.UPDATE,
+              getElapsedTimeFromNSToMS(submissionTimeNanos));
         } catch (Exception e) {
-          completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+          completeDurableWriteFutureExceptionally(durableWriteFuture, VeniceProducerOperation.UPDATE, e);
         }
       });
     } catch (RejectedExecutionException e) {
-      completeDurableWriteFutureExceptionally(durableWriteFuture, e);
+      completeDurableWriteFutureExceptionally(durableWriteFuture, VeniceProducerOperation.UPDATE, e);
     }
 
     return durableWriteFuture;
@@ -493,12 +518,14 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
    * Create a callback for the PubSub producer that completes the durable write future.
    *
    * @param durableWriteFuture the future to complete
+   * @param operation the write operation type
    * @param submissionTimeNanos submission time in nanoseconds (from System.nanoTime())
    * @param preprocessEndNanos preprocessing end time in nanoseconds (from System.nanoTime())
    * @param errorMessage error message to use if the operation fails
    */
   private PubSubProducerCallback getPubSubProducerCallback(
       CompletableFuture<DurableWrite> durableWriteFuture,
+      VeniceProducerOperation operation,
       long submissionTimeNanos,
       long preprocessEndNanos,
       String errorMessage) {
@@ -512,9 +539,10 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
       long pubSubAckTimeNanos = System.nanoTime();
       if (exception != null) {
-        producerMetrics.recordFailedRequest();
+        producerMetrics.recordFailedRequest(operation);
       } else {
-        producerMetrics.recordSuccessfulRequestWithLatency(convertNSToMS(pubSubAckTimeNanos - preprocessEndNanos));
+        producerMetrics
+            .recordSuccessfulRequestWithLatency(operation, convertNSToMS(pubSubAckTimeNanos - preprocessEndNanos));
       }
 
       // Complete user future (on callback executor or inline)
@@ -522,7 +550,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         asyncDispatcher.executeCallback(() -> {
           if (exception == null) {
             durableWriteFuture.complete(DURABLE_WRITE);
-            producerMetrics.recordEndToEndLatency(getElapsedTimeFromNSToMS(submissionTimeNanos));
+            producerMetrics.recordEndToEndLatency(operation, getElapsedTimeFromNSToMS(submissionTimeNanos));
           } else {
             durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception));
           }
@@ -539,14 +567,16 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
    * Note: End-to-end latency is not recorded for failed requests.
    *
    * @param durableWriteFuture the future to complete exceptionally
+   * @param operation the write operation type
    * @param exception the exception that caused the failure
    */
   private void completeDurableWriteFutureExceptionally(
       CompletableFuture<DurableWrite> durableWriteFuture,
+      VeniceProducerOperation operation,
       Exception exception) {
     try {
       asyncDispatcher.executeCallback(() -> {
-        producerMetrics.recordFailedRequest();
+        producerMetrics.recordFailedRequest(operation);
         String errorMessage = "Write operation failed: " + exception.getMessage();
         durableWriteFuture.completeExceptionally(new VeniceException(errorMessage, exception));
       });
