@@ -191,7 +191,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(apacheKafkaConsumerConfig.getConsumerProperties()).thenAnswer(invocation -> {
       assertNotSame(Thread.currentThread(), caller);
       assertEquals(Thread.currentThread().getPriority(), priority);
-      assertEquals(new Thread().getPriority(), priority);
+      assertEquals(new Thread(() -> {}).getPriority(), priority);
       assertEquals(caller.getPriority(), originalPriority);
       Properties properties = new Properties();
       properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "127.0.0.1:9092");
