@@ -24,6 +24,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -37,8 +38,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -77,6 +84,47 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   ApacheKafkaConsumerAdapter(ApacheKafkaConsumerConfig config) {
     this(new KafkaConsumer<>(config.getConsumerProperties()), config);
+  }
+
+  ApacheKafkaConsumerAdapter(ApacheKafkaConsumerConfig config, int threadPriority) {
+    this(((Supplier<KafkaConsumer<byte[], byte[]>>) () -> {
+      DaemonThreadFactory threadFactory = new DaemonThreadFactory("kafka-consumer-creator", threadPriority, null);
+      AtomicReference<Thread> worker = new AtomicReference<>();
+      Executor creationExecutor = task -> {
+        Thread creationThread = threadFactory.newThread(task);
+        worker.set(creationThread);
+        creationThread.start();
+      };
+      CompletableFuture<KafkaConsumer<byte[], byte[]>> consumerFuture = CompletableFuture.supplyAsync(() -> {
+        LOGGER.debug("Attempting to create Kafka consumer with priority {}", threadPriority);
+        return new KafkaConsumer<>(config.getConsumerProperties());
+      }, creationExecutor);
+
+      try {
+        if (Thread.interrupted()) {
+          throw new InterruptedException("Caller interrupted before waiting for Kafka consumer creation");
+        }
+        return consumerFuture.get();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        worker.get().interrupt();
+        // Async cleanup must also stay off the caller when construction has already completed.
+        consumerFuture.whenCompleteAsync((consumer, failure) -> {
+          if (failure != null) {
+            LOGGER.warn("Kafka consumer creation failed after caller interruption", failure);
+            return;
+          }
+          try {
+            consumer.close(Duration.ZERO);
+          } catch (Exception closeFailure) {
+            LOGGER.warn("Failed to close Kafka consumer after caller interruption", closeFailure);
+          }
+        }, creationExecutor);
+        throw new PubSubClientException("Interrupted while creating Kafka consumer", e);
+      } catch (ExecutionException e) {
+        throw new CompletionException(e.getCause());
+      }
+    }).get(), config);
   }
 
   ApacheKafkaConsumerAdapter(Consumer<byte[], byte[]> consumer, ApacheKafkaConsumerConfig apacheKafkaConsumerConfig) {

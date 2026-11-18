@@ -245,7 +245,9 @@ public class KafkaConsumerServiceTest {
         capturedContext.getPubSubTopicRepository(),
         pubSubTopicRepository,
         "PubSubConsumerAdapterContext should contain the same PubSubTopicRepository instance from PubSubContext");
-    Assert.assertEquals(factoryThreadPriority.get().intValue(), VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+    Assert.assertTrue(capturedContext.hasThreadPriority());
+    Assert.assertEquals(capturedContext.getThreadPriority(), VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+    Assert.assertEquals(factoryThreadPriority.get().intValue(), originalThreadPriority);
     Assert.assertEquals(Thread.currentThread().getPriority(), originalThreadPriority);
   }
 

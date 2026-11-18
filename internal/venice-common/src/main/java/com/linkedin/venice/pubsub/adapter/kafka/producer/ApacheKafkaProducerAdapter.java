@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
@@ -22,7 +23,12 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.Metric;
@@ -52,6 +58,44 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
    */
   public ApacheKafkaProducerAdapter(ApacheKafkaProducerConfig producerConfig) {
     this(producerConfig, new KafkaProducer<>(producerConfig.getProducerProperties()));
+  }
+
+  ApacheKafkaProducerAdapter(ApacheKafkaProducerConfig producerConfig, int threadPriority) {
+    this(producerConfig, ((Supplier<KafkaProducer<byte[], byte[]>>) () -> {
+      DaemonThreadFactory threadFactory = new DaemonThreadFactory("kafka-producer-creator", threadPriority, null);
+      AtomicReference<Thread> worker = new AtomicReference<>();
+      Executor creationExecutor = task -> {
+        Thread creationThread = threadFactory.newThread(task);
+        worker.set(creationThread);
+        creationThread.start();
+      };
+      CompletableFuture<KafkaProducer<byte[], byte[]>> producerFuture = CompletableFuture
+          .supplyAsync(() -> new KafkaProducer<>(producerConfig.getProducerProperties()), creationExecutor);
+
+      try {
+        if (Thread.interrupted()) {
+          throw new InterruptedException("Caller interrupted before waiting for Kafka producer creation");
+        }
+        return producerFuture.get();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        worker.get().interrupt();
+        producerFuture.whenCompleteAsync((producer, failure) -> {
+          if (failure != null) {
+            LOGGER.warn("Kafka producer creation failed after caller interruption", failure);
+            return;
+          }
+          try {
+            producer.close(Duration.ZERO);
+          } catch (Exception closeFailure) {
+            LOGGER.warn("Failed to close Kafka producer after caller interruption", closeFailure);
+          }
+        }, creationExecutor);
+        throw new PubSubClientException("Interrupted while creating Kafka producer", e);
+      } catch (ExecutionException e) {
+        throw new CompletionException(e.getCause());
+      }
+    }).get());
   }
 
   @VisibleForTesting

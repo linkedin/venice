@@ -20,6 +20,8 @@ import java.util.function.Function;
  * PubSub-specific settings based on namespace-scoped configurations.</p>
  */
 public class PubSubConsumerAdapterContext {
+  private static final int UNSPECIFIED_PRIORITY = -1;
+
   private final String consumerName;
   private final String pubSubBrokerAddress;
   private final VeniceProperties veniceProperties;
@@ -31,6 +33,7 @@ public class PubSubConsumerAdapterContext {
   private final boolean isOffsetCollectionEnabled;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final Function<String, String> pubSubEncryptionKeyUrnLookup;
+  private final int threadPriority;
 
   private PubSubConsumerAdapterContext(Builder builder) {
     this.consumerName = builder.consumerName;
@@ -44,6 +47,7 @@ public class PubSubConsumerAdapterContext {
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
     this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
+    this.threadPriority = builder.threadPriority;
   }
 
   public String getConsumerName() {
@@ -91,6 +95,18 @@ public class PubSubConsumerAdapterContext {
     return pubSubEncryptionKeyUrnLookup;
   }
 
+  /**
+   * @return the configured priority, or {@link Thread#NORM_PRIORITY} when unspecified.
+   *         Apply this priority only when {@link #hasThreadPriority()} is true.
+   */
+  public int getThreadPriority() {
+    return hasThreadPriority() ? threadPriority : Thread.NORM_PRIORITY;
+  }
+
+  public boolean hasThreadPriority() {
+    return threadPriority != UNSPECIFIED_PRIORITY;
+  }
+
   public static class Builder {
     private String consumerName;
     private String pubSubBrokerAddress;
@@ -103,6 +119,7 @@ public class PubSubConsumerAdapterContext {
     private boolean isOffsetCollectionEnabled;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private Function<String, String> pubSubEncryptionKeyUrnLookup;
+    private int threadPriority = UNSPECIFIED_PRIORITY;
 
     public Builder setConsumerName(String consumerName) {
       this.consumerName = consumerName;
@@ -156,6 +173,11 @@ public class PubSubConsumerAdapterContext {
 
     public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
       this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
+      return this;
+    }
+
+    public Builder setThreadPriority(int threadPriority) {
+      this.threadPriority = threadPriority;
       return this;
     }
 

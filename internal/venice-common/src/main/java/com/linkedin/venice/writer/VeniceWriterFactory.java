@@ -40,6 +40,8 @@ public class VeniceWriterFactory {
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final Function<String, String> pubSubEncryptionKeyUrnLookup;
   private final boolean producerEncryptionEnabled;
+  private final boolean hasThreadPriority;
+  private final int threadPriority;
 
   public VeniceWriterFactory(Properties properties) {
     this(properties, null, null, null);
@@ -80,9 +82,54 @@ public class VeniceWriterFactory {
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       Function<String, String> pubSubEncryptionKeyUrnLookup,
       boolean producerEncryptionEnabled) {
+    this(
+        properties,
+        producerAdapterFactory,
+        metricsRepository,
+        pubSubPositionTypeRegistry,
+        pubSubEncryptionKeyUrnLookup,
+        producerEncryptionEnabled,
+        Thread.NORM_PRIORITY,
+        false);
+  }
+
+  /**
+   * @param threadPriority priority passed to the {@link PubSubProducerAdapterFactory} via
+   *                       {@link PubSubProducerAdapterContext#getThreadPriority()} for each producer it creates.
+   */
+  public VeniceWriterFactory(
+      Properties properties,
+      PubSubProducerAdapterFactory producerAdapterFactory,
+      MetricsRepository metricsRepository,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      Function<String, String> pubSubEncryptionKeyUrnLookup,
+      boolean producerEncryptionEnabled,
+      int threadPriority) {
+    this(
+        properties,
+        producerAdapterFactory,
+        metricsRepository,
+        pubSubPositionTypeRegistry,
+        pubSubEncryptionKeyUrnLookup,
+        producerEncryptionEnabled,
+        threadPriority,
+        true);
+  }
+
+  private VeniceWriterFactory(
+      Properties properties,
+      PubSubProducerAdapterFactory producerAdapterFactory,
+      MetricsRepository metricsRepository,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
+      Function<String, String> pubSubEncryptionKeyUrnLookup,
+      boolean producerEncryptionEnabled,
+      int threadPriority,
+      boolean hasThreadPriority) {
     this.metricsRepository = metricsRepository;
     this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
     this.producerEncryptionEnabled = producerEncryptionEnabled;
+    this.threadPriority = threadPriority;
+    this.hasThreadPriority = hasThreadPriority;
     this.veniceProperties = new VeniceProperties(properties);
     this.defaultBrokerAddress = lookupBrokerAddress(veniceProperties);
     if (metricsRepository != null) {
@@ -144,6 +191,9 @@ public class VeniceWriterFactory {
             .setProducerCompressionEnabled(options.isProducerCompressionEnabled())
             .setProducerEncryptionEnabled(producerEncryptionEnabled)
             .setPubSubPositionTypeRegistry(pubSubPositionTypeRegistry);
+    if (hasThreadPriority) {
+      producerContext.setThreadPriority(threadPriority);
+    }
 
     Supplier<PubSubProducerAdapter> producerAdapterSupplier =
         () -> producerAdapterFactory.create(producerContext.build());

@@ -25,6 +25,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class PubSubProducerAdapterContext {
   private static final Logger LOGGER = LogManager.getLogger(PubSubProducerAdapterContext.class);
+  private static final int UNSPECIFIED_PRIORITY = -1;
   private final String producerName;
   private final String brokerAddress;
   private final VeniceProperties veniceProperties;
@@ -39,6 +40,7 @@ public class PubSubProducerAdapterContext {
   private final String compressionType;
   private final AsyncStoreChangeNotifier asyncStoreChangeNotifier;
   private final Function<String, String> pubSubEncryptionKeyUrnLookup;
+  private final int threadPriority;
 
   private PubSubProducerAdapterContext(Builder builder) {
     this.producerName = builder.producerName;
@@ -55,6 +57,7 @@ public class PubSubProducerAdapterContext {
     this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.asyncStoreChangeNotifier = builder.asyncStoreChangeNotifier;
     this.pubSubEncryptionKeyUrnLookup = builder.pubSubEncryptionKeyUrnLookup;
+    this.threadPriority = builder.threadPriority;
   }
 
   public String getProducerName() {
@@ -114,6 +117,18 @@ public class PubSubProducerAdapterContext {
     return pubSubEncryptionKeyUrnLookup;
   }
 
+  /**
+   * @return the configured priority, or {@link Thread#NORM_PRIORITY} when unspecified.
+   *         Apply this priority only when {@link #hasThreadPriority()} is true.
+   */
+  public int getThreadPriority() {
+    return hasThreadPriority() ? threadPriority : Thread.NORM_PRIORITY;
+  }
+
+  public boolean hasThreadPriority() {
+    return threadPriority != UNSPECIFIED_PRIORITY;
+  }
+
   public static class Builder {
     private String producerName;
     private String brokerAddress;
@@ -129,6 +144,7 @@ public class PubSubProducerAdapterContext {
     private String compressionType;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private Function<String, String> pubSubEncryptionKeyUrnLookup;
+    private int threadPriority = UNSPECIFIED_PRIORITY;
 
     public Builder setProducerName(String producerName) {
       this.producerName = producerName;
@@ -198,6 +214,11 @@ public class PubSubProducerAdapterContext {
 
     public Builder setPubSubEncryptionKeyUrnLookup(Function<String, String> pubSubEncryptionKeyUrnLookup) {
       this.pubSubEncryptionKeyUrnLookup = pubSubEncryptionKeyUrnLookup;
+      return this;
+    }
+
+    public Builder setThreadPriority(int threadPriority) {
+      this.threadPriority = threadPriority;
       return this;
     }
 
