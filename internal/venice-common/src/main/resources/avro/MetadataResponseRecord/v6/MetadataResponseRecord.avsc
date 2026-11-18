@@ -147,10 +147,15 @@
       "default": ""
     },
     {
-      "name": "currentVersionHybrid",
-      "doc": "Whether the current version advertised in versionMetadata has hybrid configuration, independent of store-level configuration changes. Null means unknown (including responses from older servers); clients must not assume batch-only.",
-      "type": ["null", "boolean"],
-      "default": null
+      "name": "currentVersionType",
+      "doc": "The type of the current version advertised in versionMetadata, independent of store-level configuration changes. UNKNOWN includes responses from older servers; clients must not assume batch-only.",
+      "type": {
+        "type": "enum",
+        "name": "CurrentVersionType",
+        "symbols": ["UNKNOWN", "BATCH_ONLY", "HYBRID"],
+        "default": "UNKNOWN"
+      },
+      "default": "UNKNOWN"
     }
   ]
 }

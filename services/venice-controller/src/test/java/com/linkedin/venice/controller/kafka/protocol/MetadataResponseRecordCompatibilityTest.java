@@ -52,7 +52,7 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
   }
 
   @Test
-  public void testStagedV6ReadsV5WithUnknownHybridStatus() throws IOException {
+  public void testStagedV6ReadsV5WithUnknownVersionType() throws IOException {
     Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
     Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
     GenericRecord v5Record = createMetadataRecord(v5);
@@ -62,34 +62,50 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
 
     GenericRecord v6Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v5, v6).deserialize(v5Bytes);
-    Assert.assertNull(v6Reader.get("currentVersionHybrid"));
+    Assert.assertEquals(v6Reader.get("currentVersionType").toString(), "UNKNOWN");
     Assert.assertEquals(v6Reader.get("batchGetLimit"), 500);
     Assert.assertEquals(v6Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
   }
 
   @DataProvider
-  public Object[][] hybridStatuses() {
-    return new Object[][] { { null }, { true }, { false } };
+  public Object[][] versionTypes() {
+    return new Object[][] { { "UNKNOWN" }, { "BATCH_ONLY" }, { "HYBRID" } };
   }
 
-  @Test(dataProvider = "hybridStatuses")
-  public void testV5ReadsStagedV6(Boolean currentVersionHybrid) throws IOException {
+  @Test(dataProvider = "versionTypes")
+  public void testV5ReadsStagedV6(String currentVersionType) throws IOException {
     Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
     Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
     GenericRecord v6Record = createMetadataRecord(v6);
-    v6Record.put("currentVersionHybrid", currentVersionHybrid);
+    v6Record.put(
+        "currentVersionType",
+        AvroCompatibilityHelper.newEnumSymbol(v6.getField("currentVersionType").schema(), currentVersionType));
     v6Record.put("batchGetLimit", 500);
     v6Record.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
     byte[] v6Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v6).serialize(v6Record);
 
     GenericRecord v6Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v6, v6).deserialize(v6Bytes);
-    Assert.assertEquals(v6Reader.get("currentVersionHybrid"), currentVersionHybrid);
+    Assert.assertEquals(v6Reader.get("currentVersionType").toString(), currentVersionType);
     GenericRecord v5Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v6, v5).deserialize(v6Bytes);
     Assert.assertEquals(v5Reader.get("batchGetLimit"), 500);
     Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
-    Assert.assertNull(v5Reader.getSchema().getField("currentVersionHybrid"));
+    Assert.assertNull(v5Reader.getSchema().getField("currentVersionType"));
+  }
+
+  @Test
+  public void testUnrecognizedVersionTypeDefaultsToUnknown() throws IOException {
+    Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
+    Schema futureSchema = new Schema.Parser().parse(v6.toString().replace("\"HYBRID\"", "\"HYBRID\",\"FUTURE\""));
+    GenericRecord futureRecord = createMetadataRecord(futureSchema);
+    futureRecord.put(
+        "currentVersionType",
+        AvroCompatibilityHelper.newEnumSymbol(futureSchema.getField("currentVersionType").schema(), "FUTURE"));
+    byte[] bytes = SerializerDeserializerFactory.getAvroGenericSerializer(futureSchema).serialize(futureRecord);
+    GenericRecord v6Reader =
+        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(futureSchema, v6).deserialize(bytes);
+    Assert.assertEquals(v6Reader.get("currentVersionType").toString(), "UNKNOWN");
   }
 
   private GenericRecord createMetadataRecord(Schema schema) {
