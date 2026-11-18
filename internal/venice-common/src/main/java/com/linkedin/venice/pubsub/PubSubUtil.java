@@ -28,6 +28,10 @@ import org.apache.logging.log4j.Logger;
 public final class PubSubUtil {
   private static final Logger LOGGER = LogManager.getLogger(PubSubUtil.class);
 
+  static int clampThreadPriority(int threadPriority) {
+    return Math.max(Thread.MIN_PRIORITY, Math.min(Thread.MAX_PRIORITY, threadPriority));
+  }
+
   public static String getPubSubBrokerAddress(Properties properties) {
     String brokerAddress = properties.getProperty(PUBSUB_BROKER_ADDRESS);
     if (brokerAddress == null) {

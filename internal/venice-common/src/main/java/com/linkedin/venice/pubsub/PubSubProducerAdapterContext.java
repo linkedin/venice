@@ -217,8 +217,12 @@ public class PubSubProducerAdapterContext {
       return this;
     }
 
+    /**
+     * Sets an explicit priority, clamped between {@link Thread#MIN_PRIORITY} and {@link Thread#MAX_PRIORITY}.
+     * Omitting this call leaves the priority unspecified.
+     */
     public Builder setThreadPriority(int threadPriority) {
-      this.threadPriority = threadPriority;
+      this.threadPriority = PubSubUtil.clampThreadPriority(threadPriority);
       return this;
     }
 
