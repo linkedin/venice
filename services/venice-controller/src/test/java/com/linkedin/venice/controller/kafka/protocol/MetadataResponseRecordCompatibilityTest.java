@@ -77,6 +77,16 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
     Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
     Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
     GenericRecord v6Record = createMetadataRecord(v6);
+    GenericRecord versionMetadata = new GenericData.Record(v6.getField("versionMetadata").schema().getTypes().get(1));
+    versionMetadata.put("currentVersion", 1);
+    versionMetadata.put("compressionStrategy", 0);
+    versionMetadata.put("partitionCount", 1);
+    versionMetadata.put("partitionerClass", "com.linkedin.venice.partitioner.DefaultVenicePartitioner");
+    versionMetadata.put("partitionerParams", Collections.emptyMap());
+    versionMetadata.put("amplificationFactor", 1);
+    versionMetadata.put("storageMode", 0);
+    v6Record.put("versionMetadata", versionMetadata);
+    v6Record.put("routingInfo", Collections.singletonMap("0", Collections.singletonList("https://replica:1234")));
     v6Record.put("currentVersionType", currentVersionType);
     v6Record.put("batchGetLimit", 500);
     v6Record.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
@@ -90,6 +100,18 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
     Assert.assertEquals(v5Reader.get("batchGetLimit"), 500);
     Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
     Assert.assertNull(v5Reader.getSchema().getField("currentVersionType"));
+    MetadataResponseRecord specificReader =
+        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(v6, MetadataResponseRecord.class)
+            .deserialize(v6Bytes);
+    Assert.assertEquals(specificReader.getBatchGetLimit(), 500);
+    Assert.assertEquals(specificReader.getMultiKeyLongTailRetryThresholdsInMs().toString(), "1-:8");
+    Assert.assertEquals(specificReader.getVersionMetadata().getCurrentVersion(), 1);
+    Assert.assertEquals(specificReader.getVersionMetadata().getPartitionCount(), 1);
+    Assert.assertEquals(specificReader.getRoutingInfo().size(), 1);
+    Assert.assertEquals(specificReader.getRoutingInfo().keySet().iterator().next().toString(), "0");
+    Assert.assertEquals(
+        specificReader.getRoutingInfo().values().iterator().next().get(0).toString(),
+        "https://replica:1234");
   }
 
   private GenericRecord createMetadataRecord(Schema schema) {
