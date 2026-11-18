@@ -6,8 +6,12 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -96,6 +100,47 @@ public class TestHelixReadWriteLiveClusterConfigRepository {
             && liveClusterConfigRWRepo2.getConfigs()
                 .getServerKafkaFetchQuotaRecordsPerSecondForRegion(
                     NON_CONFIGURED_REGION) == LiveClusterConfig.DEFAULT_SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND);
+  }
+
+  @Test
+  public void testDiagnosticsToggleReachesReadOnlyRepository() {
+    HelixReadOnlyLiveClusterConfigRepository reader =
+        new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, cluster);
+    reader.refresh();
+    try {
+      Assert.assertFalse(reader.getConfigs().isStalledDrainerDiagnosticsEnabled());
+      Assert.assertTrue(reader.getConfigs().getStalledDrainerDiagnosticsHostAllowlist().isEmpty());
+      for (boolean enabled: new boolean[] { true, false }) {
+        LiveClusterConfig config = new LiveClusterConfig(liveClusterConfigRWRepo.getConfigs());
+        config.setStalledDrainerDiagnosticsEnabled(enabled);
+        liveClusterConfigRWRepo.updateConfigs(config);
+        TestUtils.waitForNonDeterministicAssertion(
+            3,
+            TimeUnit.SECONDS,
+            () -> Assert.assertEquals(reader.getConfigs().isStalledDrainerDiagnosticsEnabled(), enabled));
+      }
+      for (Set<String> hosts: Arrays.asList(
+          Collections.singleton("server-b.example.com"),
+          Collections.singleton("server-a.example.com"),
+          Collections.singleton("server-a"),
+          Collections.<String>emptySet())) {
+        LiveClusterConfig config = new LiveClusterConfig(liveClusterConfigRWRepo.getConfigs());
+        config.setStalledDrainerDiagnosticsEnabled(true);
+        config.setStalledDrainerDiagnosticsHostAllowlist(hosts);
+        liveClusterConfigRWRepo.updateConfigs(config);
+        TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+          Assert.assertEquals(reader.getConfigs().getStalledDrainerDiagnosticsHostAllowlist(), hosts);
+          Assert.assertEquals(
+              reader.getConfigs().isStalledDrainerDiagnosticsEnabledForHost("server-a.example.com"),
+              hosts.contains("server-a.example.com"));
+          Assert.assertEquals(
+              reader.getConfigs().isStalledDrainerDiagnosticsEnabledForHost("server-a"),
+              hosts.contains("server-a"));
+        });
+      }
+    } finally {
+      reader.clear();
+    }
   }
 
   @Test

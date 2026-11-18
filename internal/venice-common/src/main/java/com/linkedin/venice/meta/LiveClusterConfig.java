@@ -4,8 +4,11 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.utils.Utils;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 
 public class LiveClusterConfig {
@@ -21,6 +24,12 @@ public class LiveClusterConfig {
   @JsonProperty(ConfigKeys.DEGRADED_MODE_ENABLED)
   private boolean degradedModeEnabled = false;
 
+  @JsonProperty(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED)
+  private boolean stalledDrainerDiagnosticsEnabled = false;
+
+  @JsonProperty(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST)
+  private Set<String> stalledDrainerDiagnosticsHostAllowlist = Collections.emptySet();
+
   @JsonProperty("degraded.datacenters")
   private Map<String, DegradedDcInfo> degradedDatacenters;
 
@@ -34,6 +43,8 @@ public class LiveClusterConfig {
     storeMigrationAllowed = clone.storeMigrationAllowed;
     childControllerAdminTopicConsumptionEnabled = clone.childControllerAdminTopicConsumptionEnabled;
     degradedModeEnabled = clone.degradedModeEnabled;
+    stalledDrainerDiagnosticsEnabled = clone.stalledDrainerDiagnosticsEnabled;
+    setStalledDrainerDiagnosticsHostAllowlist(clone.stalledDrainerDiagnosticsHostAllowlist);
     if (clone.degradedDatacenters != null) {
       degradedDatacenters = new HashMap<>();
       for (Map.Entry<String, DegradedDcInfo> entry: clone.degradedDatacenters.entrySet()) {
@@ -74,6 +85,29 @@ public class LiveClusterConfig {
 
   public void setDegradedModeEnabled(boolean degradedModeEnabled) {
     this.degradedModeEnabled = degradedModeEnabled;
+  }
+
+  public boolean isStalledDrainerDiagnosticsEnabled() {
+    return stalledDrainerDiagnosticsEnabled;
+  }
+
+  public void setStalledDrainerDiagnosticsEnabled(boolean enabled) {
+    stalledDrainerDiagnosticsEnabled = enabled;
+  }
+
+  public Set<String> getStalledDrainerDiagnosticsHostAllowlist() {
+    return stalledDrainerDiagnosticsHostAllowlist;
+  }
+
+  public void setStalledDrainerDiagnosticsHostAllowlist(Set<String> hostnames) {
+    stalledDrainerDiagnosticsHostAllowlist =
+        hostnames == null ? Collections.emptySet() : Collections.unmodifiableSet(new HashSet<>(hostnames));
+  }
+
+  @JsonIgnore
+  public boolean isStalledDrainerDiagnosticsEnabledForHost(String hostname) {
+    return stalledDrainerDiagnosticsEnabled && hostname != null && !hostname.isEmpty()
+        && stalledDrainerDiagnosticsHostAllowlist.contains(hostname);
   }
 
   public Map<String, DegradedDcInfo> getDegradedDatacenters() {
@@ -147,6 +181,14 @@ public class LiveClusterConfig {
         .append(ConfigKeys.DEGRADED_MODE_ENABLED)
         .append('=')
         .append(degradedModeEnabled)
+        .append(Utils.NEW_LINE_CHAR)
+        .append(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_ENABLED)
+        .append('=')
+        .append(stalledDrainerDiagnosticsEnabled)
+        .append(Utils.NEW_LINE_CHAR)
+        .append(ConfigKeys.SERVER_STALLED_DRAINER_DIAGNOSTICS_HOST_ALLOWLIST)
+        .append('=')
+        .append(stalledDrainerDiagnosticsHostAllowlist)
         .append(Utils.NEW_LINE_CHAR)
         .append("degraded.datacenters")
         .append('=')
