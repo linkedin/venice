@@ -62,50 +62,34 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
 
     GenericRecord v6Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v5, v6).deserialize(v5Bytes);
-    Assert.assertEquals(v6Reader.get("currentVersionType").toString(), "UNKNOWN");
+    Assert.assertEquals(v6Reader.get("currentVersionType"), 0);
     Assert.assertEquals(v6Reader.get("batchGetLimit"), 500);
     Assert.assertEquals(v6Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
   }
 
   @DataProvider
   public Object[][] versionTypes() {
-    return new Object[][] { { "UNKNOWN" }, { "BATCH_ONLY" }, { "HYBRID" } };
+    return new Object[][] { { 0 }, { 1 }, { 2 }, { 3 }, { -1 } };
   }
 
   @Test(dataProvider = "versionTypes")
-  public void testV5ReadsStagedV6(String currentVersionType) throws IOException {
+  public void testV5ReadsStagedV6(int currentVersionType) throws IOException {
     Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
     Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
     GenericRecord v6Record = createMetadataRecord(v6);
-    v6Record.put(
-        "currentVersionType",
-        AvroCompatibilityHelper.newEnumSymbol(v6.getField("currentVersionType").schema(), currentVersionType));
+    v6Record.put("currentVersionType", currentVersionType);
     v6Record.put("batchGetLimit", 500);
     v6Record.put("multiKeyLongTailRetryThresholdsInMs", "1-:8");
     byte[] v6Bytes = SerializerDeserializerFactory.getAvroGenericSerializer(v6).serialize(v6Record);
 
     GenericRecord v6Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v6, v6).deserialize(v6Bytes);
-    Assert.assertEquals(v6Reader.get("currentVersionType").toString(), currentVersionType);
+    Assert.assertEquals(v6Reader.get("currentVersionType"), currentVersionType);
     GenericRecord v5Reader =
         SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(v6, v5).deserialize(v6Bytes);
     Assert.assertEquals(v5Reader.get("batchGetLimit"), 500);
     Assert.assertEquals(v5Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
     Assert.assertNull(v5Reader.getSchema().getField("currentVersionType"));
-  }
-
-  @Test
-  public void testUnrecognizedVersionTypeDefaultsToUnknown() throws IOException {
-    Schema v6 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v6/MetadataResponseRecord.avsc");
-    Schema futureSchema = new Schema.Parser().parse(v6.toString().replace("\"HYBRID\"", "\"HYBRID\",\"FUTURE\""));
-    GenericRecord futureRecord = createMetadataRecord(futureSchema);
-    futureRecord.put(
-        "currentVersionType",
-        AvroCompatibilityHelper.newEnumSymbol(futureSchema.getField("currentVersionType").schema(), "FUTURE"));
-    byte[] bytes = SerializerDeserializerFactory.getAvroGenericSerializer(futureSchema).serialize(futureRecord);
-    GenericRecord v6Reader =
-        SerializerDeserializerFactory.<GenericRecord>getAvroGenericDeserializer(futureSchema, v6).deserialize(bytes);
-    Assert.assertEquals(v6Reader.get("currentVersionType").toString(), "UNKNOWN");
   }
 
   private GenericRecord createMetadataRecord(Schema schema) {
