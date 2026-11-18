@@ -45,6 +45,7 @@ public class VeniceWriterFactoryTest {
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").setPartitionCount(1).build())) {
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
       assertNull(capturedProducerCtx.getPubSubEncryptionKeyUrnLookup());
+      assertFalse(capturedProducerCtx.hasThreadPriority());
       assertEquals(capturedProducerCtx.getThreadPriority(), Thread.NORM_PRIORITY);
       when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
       assertNotNull(veniceWriter);
@@ -57,8 +58,8 @@ public class VeniceWriterFactoryTest {
     }
   }
 
-  @Test
-  public void testThreadPriorityPropagatedToProducerContext() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testThreadPriorityPropagatedToProducerContext(boolean normalPriority) {
     PubSubProducerAdapterFactory<PubSubProducerAdapter> producerFactoryMock = mock(PubSubProducerAdapterFactory.class);
     PubSubProducerAdapter producerAdapterMock = mock(PubSubProducerAdapter.class);
     ArgumentCaptor<PubSubProducerAdapterContext> producerCtxCaptor =
@@ -67,11 +68,13 @@ public class VeniceWriterFactoryTest {
 
     Properties properties = new Properties();
     properties.put(ConfigKeys.PUBSUB_BROKER_ADDRESS, "kafka:9898");
+    int priority = normalPriority ? Thread.NORM_PRIORITY : Thread.MAX_PRIORITY;
     VeniceWriterFactory veniceWriterFactory =
-        new VeniceWriterFactory(properties, producerFactoryMock, null, null, null, false, Thread.MAX_PRIORITY);
+        new VeniceWriterFactory(properties, producerFactoryMock, null, null, null, false, priority);
     try (VeniceWriter ignored = veniceWriterFactory
         .createVeniceWriter(new VeniceWriterOptions.Builder("store_v1").setPartitionCount(1).build())) {
-      assertEquals(producerCtxCaptor.getValue().getThreadPriority(), Thread.MAX_PRIORITY);
+      assertTrue(producerCtxCaptor.getValue().hasThreadPriority());
+      assertEquals(producerCtxCaptor.getValue().getThreadPriority(), priority);
     }
   }
 

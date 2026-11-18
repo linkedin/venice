@@ -21,7 +21,10 @@ public class ApacheKafkaProducerAdapterFactory extends PubSubProducerAdapterFact
 
   @Override
   public ApacheKafkaProducerAdapter create(PubSubProducerAdapterContext context) {
-    return new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(context));
+    ApacheKafkaProducerConfig config = new ApacheKafkaProducerConfig(context);
+    return context.hasThreadPriority()
+        ? new ApacheKafkaProducerAdapter(config, context.getThreadPriority())
+        : new ApacheKafkaProducerAdapter(config);
   }
 
   @Override

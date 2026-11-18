@@ -25,6 +25,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class PubSubProducerAdapterContext {
   private static final Logger LOGGER = LogManager.getLogger(PubSubProducerAdapterContext.class);
+  private static final int UNSPECIFIED_PRIORITY = -1;
   private final String producerName;
   private final String brokerAddress;
   private final VeniceProperties veniceProperties;
@@ -117,10 +118,15 @@ public class PubSubProducerAdapterContext {
   }
 
   /**
-   * @return the priority for threads spawned by the producer; defaults to {@link Thread#NORM_PRIORITY}.
+   * @return the configured priority, or {@link Thread#NORM_PRIORITY} when unspecified.
+   *         Apply this priority only when {@link #hasThreadPriority()} is true.
    */
   public int getThreadPriority() {
-    return threadPriority;
+    return hasThreadPriority() ? threadPriority : Thread.NORM_PRIORITY;
+  }
+
+  public boolean hasThreadPriority() {
+    return threadPriority != UNSPECIFIED_PRIORITY;
   }
 
   public static class Builder {
@@ -138,7 +144,7 @@ public class PubSubProducerAdapterContext {
     private String compressionType;
     private AsyncStoreChangeNotifier asyncStoreChangeNotifier;
     private Function<String, String> pubSubEncryptionKeyUrnLookup;
-    private int threadPriority = Thread.NORM_PRIORITY;
+    private int threadPriority = UNSPECIFIED_PRIORITY;
 
     public Builder setProducerName(String producerName) {
       this.producerName = producerName;
