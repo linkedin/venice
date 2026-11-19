@@ -300,14 +300,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository,
         serverConfig.getPubSubPositionTypeRegistry(),
         null,
-        false);
+        false,
+        serverConfig.getWritePathThreadPriority());
     this.encryptedVeniceWriterFactory = new VeniceWriterFactory(
         veniceWriterProperties,
         producerAdapterFactory,
         metricsRepository,
         serverConfig.getPubSubPositionTypeRegistry(),
         pubSubEncryptionKeyUrnLookup,
-        true);
+        true,
+        serverConfig.getWritePathThreadPriority());
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,

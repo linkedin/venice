@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Properties;
 import java.util.function.Function;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -50,8 +51,16 @@ public class PubSubConsumerAdapterContextTest {
     assertTrue(context.hasThreadPriority());
   }
 
-  @Test
-  public void testThreadPriorityDefaultsToUnspecified() {
+  @DataProvider
+  public Object[][] threadPriorities() {
+    return new Object[][] { { Integer.MIN_VALUE, Thread.MIN_PRIORITY }, { -1, Thread.MIN_PRIORITY },
+        { 0, Thread.MIN_PRIORITY }, { Thread.MIN_PRIORITY, Thread.MIN_PRIORITY },
+        { Thread.NORM_PRIORITY, Thread.NORM_PRIORITY }, { Thread.MAX_PRIORITY, Thread.MAX_PRIORITY },
+        { Thread.MAX_PRIORITY + 1, Thread.MAX_PRIORITY }, { Integer.MAX_VALUE, Thread.MAX_PRIORITY } };
+  }
+
+  @Test(dataProvider = "threadPriorities")
+  public void testThreadPriorityClampingPreservesUnspecifiedDefault(int priority, int expectedPriority) {
     PubSubConsumerAdapterContext.Builder builder =
         new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress("localhost:1234")
             .setVeniceProperties(VeniceProperties.empty())
@@ -60,8 +69,8 @@ public class PubSubConsumerAdapterContextTest {
     assertEquals(context.getThreadPriority(), Thread.NORM_PRIORITY);
     assertFalse(context.hasThreadPriority());
 
-    context = builder.setThreadPriority(Thread.NORM_PRIORITY).build();
-    assertEquals(context.getThreadPriority(), Thread.NORM_PRIORITY);
+    context = builder.setThreadPriority(priority).build();
+    assertEquals(context.getThreadPriority(), expectedPriority);
     assertTrue(context.hasThreadPriority());
   }
 

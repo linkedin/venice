@@ -81,6 +81,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
@@ -213,6 +214,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         .createVeniceWriter(new VeniceWriterOptions.Builder("store_v1").setPartitionCount(1).build())) {
       assertNull(captor.getValue().getPubSubEncryptionKeyUrnLookup());
       assertFalse(captor.getValue().isProducerEncryptionEnabled());
+      assertTrue(captor.getValue().hasThreadPriority());
+      assertEquals(captor.getValue().getThreadPriority(), VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
     }
     verify(mockMetadataRepo, never()).getStore(anyString());
     verify(mockMetadataRepo, never()).refreshOneStore(anyString());
@@ -1022,9 +1025,14 @@ public abstract class KafkaStoreIngestionServiceTest {
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
 
     List<List<?>> daemonThreadFactoryArgs = new ArrayList<>();
-    try (MockedConstruction<DaemonThreadFactory> ignored = mockConstruction(
-        DaemonThreadFactory.class,
-        (mock, context) -> daemonThreadFactoryArgs.add(new ArrayList<>(context.arguments())))) {
+    List<List<?>> writerFactoryArgs = new ArrayList<>();
+    try (
+        MockedConstruction<DaemonThreadFactory> ignored = mockConstruction(
+            DaemonThreadFactory.class,
+            (mock, context) -> daemonThreadFactoryArgs.add(new ArrayList<>(context.arguments())));
+        MockedConstruction<VeniceWriterFactory> ignoredWriterFactories = mockConstruction(
+            VeniceWriterFactory.class,
+            (mock, context) -> writerFactoryArgs.add(new ArrayList<>(context.arguments())))) {
       // Create the ingestion service
       KafkaStoreIngestionService service = new KafkaStoreIngestionService(
           mockStorageService,
@@ -1052,6 +1060,13 @@ public abstract class KafkaStoreIngestionServiceTest {
           Optional.empty());
 
       try {
+        assertEquals(writerFactoryArgs.size(), 2);
+        for (List<?> args: writerFactoryArgs) {
+          assertEquals(args.size(), 7);
+          assertEquals(args.get(6), Integer.valueOf(writePathThreadPriority));
+        }
+        assertEquals(writerFactoryArgs.get(0).get(5), Boolean.FALSE);
+        assertEquals(writerFactoryArgs.get(1).get(5), Boolean.TRUE);
         assertTrue(
             hasDaemonThreadFactoryArgs(daemonThreadFactoryArgs, "AA_WC_PARALLEL_PROCESSING", writePathThreadPriority),
             "AA/WC workload processing pool should use the configured write-path thread priority");

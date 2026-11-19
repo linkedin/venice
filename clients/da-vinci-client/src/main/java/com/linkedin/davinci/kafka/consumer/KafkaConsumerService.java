@@ -172,7 +172,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             .setPubSubEncryptionKeyUrnLookup(pubSubContext.getPubSubEncryptionKeyUrnLookup())
             .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
             .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
-            .setThreadPriority(serverConfig.getWritePathThreadPriority())
+            .setThreadPriority(serverConfig.getWritePathThreadPriority() - 1)
             .setPubSubTopicRepository(pubSubContext.getPubSubTopicRepository());
     this.consumerPollTracker = new ConsumerPollTracker(time);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =

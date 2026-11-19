@@ -62,6 +62,7 @@ import org.apache.logging.log4j.LogManager;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -214,8 +215,15 @@ public class KafkaConsumerServiceTest {
     return consumerService;
   }
 
-  @Test
-  public void testConsumerContextIncludesPubSubDependencies() {
+  @DataProvider
+  public Object[][] consumerThreadPriorities() {
+    return new Object[][] { { VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY, 3 }, { 3, 2 }, { 2, 1 }, { 1, 1 },
+        { Thread.MAX_PRIORITY, 9 } };
+  }
+
+  @Test(dataProvider = "consumerThreadPriorities")
+  public void testConsumerContextIncludesPubSubDependencies(int writePathPriority, int expectedConsumerPriority) {
+    doReturn(writePathPriority).when(mockVeniceServerConfig).getWritePathThreadPriority();
     ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
         ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
@@ -246,7 +254,7 @@ public class KafkaConsumerServiceTest {
         pubSubTopicRepository,
         "PubSubConsumerAdapterContext should contain the same PubSubTopicRepository instance from PubSubContext");
     Assert.assertTrue(capturedContext.hasThreadPriority());
-    Assert.assertEquals(capturedContext.getThreadPriority(), VeniceServerConfig.DEFAULT_WRITE_PATH_THREAD_PRIORITY);
+    Assert.assertEquals(capturedContext.getThreadPriority(), expectedConsumerPriority);
     Assert.assertEquals(factoryThreadPriority.get().intValue(), originalThreadPriority);
     Assert.assertEquals(Thread.currentThread().getPriority(), originalThreadPriority);
   }
