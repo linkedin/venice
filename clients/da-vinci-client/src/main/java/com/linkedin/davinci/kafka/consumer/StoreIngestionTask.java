@@ -3735,8 +3735,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (!isGlobalRtDivEnabled()) {
       return false;
     }
+    if (record.getKey().isControlMessage()) {
+      return isTimeBasedCheckpointEnabled() && record.getTopicPartition().getPubSubTopic().isRealTime()
+          && isCheckpointDue(pcs, record, consumedBytesKey);
+    }
     final long syncBytesInterval = getSyncBytesInterval(pcs);
-    return (!record.getKey().isControlMessage() && syncBytesInterval > 0
+    return (syncBytesInterval > 0
         && pcs.getConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey) >= syncBytesInterval)
         || (isTimeBasedCheckpointEnabled() && record.getTopicPartition().getPubSubTopic().isRealTime()
             && isCheckpointDue(pcs, record, consumedBytesKey));

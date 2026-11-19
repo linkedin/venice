@@ -2361,12 +2361,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       monitor.recordLeaderProduceLatencyNs(System.nanoTime() - beforeProduceTimestampNS);
     }
 
-    maybeSendGlobalRtDiv(consumerRecord, pcs, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestampNs);
+    maybeSendGlobalRtDiv(consumerRecord, pcs, partition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestampNs);
   }
 
   private void maybeSendGlobalRtDiv(
       DefaultPubSubMessage consumerRecord,
       PartitionConsumptionState pcs,
+      int partition,
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs) {
@@ -2376,7 +2377,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerRecord.getPosition(),
             consumerRecord.getTopicPartition(),
             pcs,
-            pcs.getPartition(),
+            partition,
             kafkaUrl,
             beforeProcessingRecordTimestampNs,
             kafkaClusterId);
@@ -3373,6 +3374,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs) {
+    LeaderProducerCallback callback = createProducerCallback(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        partition,
+        kafkaUrl,
+        beforeProcessingRecordTimestampNs);
     PubSubPosition consumedPosition = consumerRecord.getPosition();
     LeaderMetadataWrapper leaderMetadataWrapper =
         new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
@@ -3389,13 +3397,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         max(consumerRecord.getPubSubMessageTime(), consumerRecord.getValue().producerMetadata.messageTimestamp);
     PubSubTopicPartition topicPartition =
         new PubSubTopicPartitionImpl(getVersionTopic(), partitionConsumptionState.getPartition());
-    LeaderProducerCallback callback = createProducerCallback(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        partition,
-        kafkaUrl,
-        beforeProcessingRecordTimestampNs);
     sendIngestionHeartbeatToVT(
         partitionConsumptionState,
         topicPartition,
@@ -3411,6 +3412,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         maybeSendGlobalRtDiv(
             consumerRecord,
             partitionConsumptionState,
+            partition,
             kafkaUrl,
             kafkaClusterId,
             beforeProcessingRecordTimestampNs);
@@ -4841,6 +4843,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         valueBytes,
         topicPartition);
 
+    // Keep byte-only callback registration ahead of manifest preparation, including its failure behavior.
+    CompletableFuture<Void> vtDivSyncedFuture = isTimeBasedCheckpointEnabled()
+        ? null
+        : sendVtDivSnapshotOnCompletion(
+            divCallback,
+            topicPartition,
+            vtDiv,
+            divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture(),
+            pcs,
+            Collections.emptyMap());
+
     // Read the old manifest (if any) so VeniceWriter can delete orphaned old chunks in Kafka.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
     byte[] manifestKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes);
@@ -4866,15 +4879,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Produce to local VT for the Global RT DIV + latest RT position (GlobalRtDivState)
     // Internally, VeniceWriter.put() will schedule DELETEs for the old chunks in the old manifest after the new PUTs
     // Reserve only once preparation succeeds, and settle the reservation even on a synchronous produce failure.
-    CompletableFuture<Void> vtDivSyncedFuture = sendVtDivSnapshotOnCompletion(
-        divCallback,
-        topicPartition,
-        vtDiv,
-        divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture(),
-        pcs,
-        isTimeBasedCheckpointEnabled()
-            ? captureCheckpointCoverage(pcs, checkpointSource(topicPartition, brokerUrl))
-            : Collections.emptyMap());
+    if (isTimeBasedCheckpointEnabled()) {
+      vtDivSyncedFuture = sendVtDivSnapshotOnCompletion(
+          divCallback,
+          topicPartition,
+          vtDiv,
+          divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture(),
+          pcs,
+          captureCheckpointCoverage(pcs, checkpointSource(topicPartition, brokerUrl)));
+    }
     try {
       getVeniceWriter(pcs).get()
           .put(

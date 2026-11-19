@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -15,6 +16,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -34,6 +36,95 @@ import org.testng.annotations.Test;
 
 
 public class RecordDrivenCheckpointTest {
+  @Test
+  public void testDisabledProducerFailureRetainsOriginalCallbackAndPersistenceFuture() throws Exception {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic("store_v1"), 0);
+    DefaultPubSubMessage record = heartbeat(tp);
+    when(record.getKey()).thenReturn(new KafkaKey(MessageType.PUT, new byte[0]));
+    when(task.isGlobalRtDivEnabled()).thenReturn(true);
+    when(task.getVersionTopic()).thenReturn(tp.getPubSubTopic());
+    when(task.shouldSendGlobalRtDiv(record, pcs, "store_v1")).thenReturn(true);
+    when(pcs.getReplicaTopicPartition()).thenReturn(tp);
+    DataIntegrityValidator div = mock(DataIntegrityValidator.class);
+    when(task.getConsumerDiv()).thenReturn(div);
+    when(div.cloneVtProducerStates(anyInt(), anyBoolean(), anyLong())).thenReturn(mock(PartitionTracker.class));
+    LeaderProducerCallback callback = mock(LeaderProducerCallback.class);
+    when(task.createProducerCallback(any(), any(), any(), anyInt(), any(), anyLong())).thenReturn(callback);
+    LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
+    CompletableFuture<Void> persisted = new CompletableFuture<>();
+    when(context.getPersistedToDBFuture()).thenReturn(persisted);
+    doCallRealMethod().when(task).produceToLocalKafka(any(), any(), any(), any(), anyInt(), any(), anyInt(), anyLong());
+    VeniceException failure = new VeniceException("produce failed");
+
+    org.testng.Assert.assertSame(
+        org.testng.Assert.expectThrows(
+            VeniceException.class,
+            () -> task.produceToLocalKafka(record, pcs, context, (installedCallback, metadata) -> {
+              org.testng.Assert.assertSame(installedCallback, callback);
+              verify(callback).setOnCompletionCallback(any());
+              throw failure;
+            }, 0, "remote-broker", 0, 0)),
+        failure);
+
+    assertFalse(persisted.isDone(), "Byte-only mode must not add failure completion of the original persist future");
+    verify(pcs).setLastLeaderPersistFuture(persisted);
+    verify(pcs, never()).initializeCheckpointProgress();
+    verify(pcs, never()).getCheckpointProgress();
+    verify(task, never()).enqueueCheckpointSnapshot(any(), any(), any(), any(), any());
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = com.linkedin.venice.utils.DataProviderUtils.class)
+  public void testHeartbeatCreatesCallbackBeforeMetadataPreparationFailure(boolean periodic) {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
+    when(task.isTimeBasedCheckpointEnabled()).thenReturn(periodic);
+    VeniceException failure = new VeniceException("metadata preparation failed");
+    when(record.getPosition()).thenThrow(failure);
+    doCallRealMethod().when(task)
+        .propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
+            any(),
+            any(),
+            any(),
+            anyInt(),
+            any(),
+            anyInt(),
+            anyLong());
+
+    org.testng.Assert
+        .assertSame(
+            org.testng.Assert.expectThrows(
+                VeniceException.class,
+                () -> task
+                    .propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(pcs, record, context, 0, "broker", 0, 0)),
+            failure);
+
+    org.mockito.InOrder order = inOrder(task, record);
+    order.verify(task).propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(pcs, record, context, 0, "broker", 0, 0);
+    order.verify(task).createProducerCallback(record, pcs, context, 0, "broker", 0);
+    order.verify(record).getPosition();
+    verify(pcs, never()).initializeCheckpointProgress();
+  }
+
+  @Test
+  public void testDisabledGlobalControlPredicateSkipsByteAndTimeState() {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    DefaultPubSubMessage record =
+        heartbeat(new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic("store_rt"), 0));
+    when(task.isGlobalRtDivEnabled()).thenReturn(true);
+    doCallRealMethod().when(task).shouldSendGlobalRtDiv(any(), any(), any());
+
+    assertFalse(task.shouldSendGlobalRtDiv(record, pcs, "broker"));
+
+    verify(task, never()).getSyncBytesInterval(any());
+    verify(task, never()).isCheckpointDue(any(), any(), any());
+    org.mockito.Mockito.verifyNoInteractions(pcs);
+  }
+
   @DataProvider
   public Object[][] heartbeatPendingData() {
     return new Object[][] { { false }, { true } };

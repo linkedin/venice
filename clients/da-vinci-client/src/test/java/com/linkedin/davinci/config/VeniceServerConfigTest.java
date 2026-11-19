@@ -79,13 +79,35 @@ public class VeniceServerConfigTest {
     props.setProperty(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, "true");
     for (String spread: Arrays.asList("-1", "100", "101")) {
       props.setProperty(SERVER_DATABASE_SYNC_SPREAD_SECONDS, spread);
+      props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "false");
+      assertFalse(new VeniceServerConfig(new VeniceProperties(props)).isDatabaseSyncIntervalEnabled());
+      props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "true");
       assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
     }
     props.setProperty(SERVER_DATABASE_SYNC_SPREAD_SECONDS, "0");
     for (String interval: Arrays.asList("0", "-1", String.valueOf(Long.MAX_VALUE))) {
       props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_SECONDS, interval);
+      props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "false");
+      assertFalse(new VeniceServerConfig(new VeniceProperties(props)).isDatabaseSyncIntervalEnabled());
+      props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "true");
       assertThrows(VeniceException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
     }
+  }
+
+  @Test
+  public void testDisabledTimeCheckpointIgnoresMalformedSettings() {
+    Properties props = populatedBasicProperties();
+    props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "false");
+    props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_SECONDS, "not-a-number");
+    props.setProperty(SERVER_DATABASE_SYNC_SPREAD_SECONDS, "9223372036854775808");
+    VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isDatabaseSyncIntervalEnabled());
+    assertEquals(config.getDatabaseSyncIntervalSeconds(), 7200L);
+    assertEquals(config.getDatabaseSyncSpreadSeconds(), 600L);
+    props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, "true");
+    assertThrows(NumberFormatException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
+    props.setProperty(SERVER_DATABASE_SYNC_INTERVAL_SECONDS, "7200");
+    assertThrows(NumberFormatException.class, () -> new VeniceServerConfig(new VeniceProperties(props)));
   }
 
   @Test

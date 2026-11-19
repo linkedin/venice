@@ -1007,15 +1007,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseSyncBytesIntervalForDeferredWriteMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024);
     databaseSyncIntervalEnabled = serverProperties.getBoolean(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, false);
-    databaseSyncIntervalSeconds = serverProperties.getLong(SERVER_DATABASE_SYNC_INTERVAL_SECONDS, 7200);
-    databaseSyncSpreadSeconds = serverProperties.getLong(SERVER_DATABASE_SYNC_SPREAD_SECONDS, 600);
+    databaseSyncIntervalSeconds =
+        databaseSyncIntervalEnabled ? serverProperties.getLong(SERVER_DATABASE_SYNC_INTERVAL_SECONDS, 7200) : 7200;
+    databaseSyncSpreadSeconds =
+        databaseSyncIntervalEnabled ? serverProperties.getLong(SERVER_DATABASE_SYNC_SPREAD_SECONDS, 600) : 600;
     if (databaseSyncIntervalEnabled && !storeWriterBufferAfterLeaderLogicEnabled) {
       throw new VeniceException(
           SERVER_DATABASE_SYNC_INTERVAL_ENABLED + " requires " + STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED);
     }
-    if (databaseSyncIntervalSeconds <= 0
+    if (databaseSyncIntervalEnabled && (databaseSyncIntervalSeconds <= 0
         || databaseSyncIntervalSeconds > TimeUnit.NANOSECONDS.toSeconds(Long.MAX_VALUE / 4)
-        || databaseSyncSpreadSeconds < 0 || databaseSyncSpreadSeconds >= databaseSyncIntervalSeconds) {
+        || databaseSyncSpreadSeconds < 0 || databaseSyncSpreadSeconds >= databaseSyncIntervalSeconds)) {
       throw new VeniceException(
           "Database sync interval must be positive and representable in nanoseconds; spread must be in [0, interval)");
     }
