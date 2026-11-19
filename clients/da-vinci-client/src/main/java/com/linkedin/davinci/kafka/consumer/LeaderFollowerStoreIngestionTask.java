@@ -2276,6 +2276,42 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestampNs) {
+    if (isTimeBasedCheckpointEnabled() && isGlobalRtDivEnabled() && pcs.getCheckpointProgress() != null) {
+      synchronized (pcs.getCheckpointProgress().producerLock) {
+        recordCheckpointUserData(pcs, consumerRecord, kafkaUrl);
+        pcs.getCheckpointProgress().trackProducerPersistence(leaderProducedRecordContext.getPersistedToDBFuture());
+        produceToLocalKafkaWithCheckpoint(
+            consumerRecord,
+            pcs,
+            leaderProducedRecordContext,
+            produceFunction,
+            partition,
+            kafkaUrl,
+            kafkaClusterId,
+            beforeProcessingRecordTimestampNs);
+      }
+    } else {
+      produceToLocalKafkaWithCheckpoint(
+          consumerRecord,
+          pcs,
+          leaderProducedRecordContext,
+          produceFunction,
+          partition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs);
+    }
+  }
+
+  private void produceToLocalKafkaWithCheckpoint(
+      DefaultPubSubMessage consumerRecord,
+      PartitionConsumptionState pcs,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
+      int partition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestampNs) {
     LeaderProducerCallback callback = createProducerCallback(
         consumerRecord,
         pcs,
@@ -2307,7 +2343,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     CompletableFuture<Void> persistedToDBFuture = leaderProducedRecordContext.getPersistedToDBFuture();
     pcs.setLastLeaderPersistFuture(persistedToDBFuture);
 
-    addVtDivToProducerCallbackIfNeeded(consumerRecord, callback, pcs, persistedToDBFuture);
+    addVtDivToProducerCallbackIfNeeded(consumerRecord, callback, pcs, persistedToDBFuture, kafkaUrl);
 
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
@@ -2452,6 +2488,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderProducerCallback callback,
       PartitionConsumptionState pcs,
       CompletableFuture<Void> persistedToDBFuture) {
+    addVtDivToProducerCallbackIfNeeded(consumerRecord, callback, pcs, persistedToDBFuture, localKafkaServer);
+  }
+
+  private void addVtDivToProducerCallbackIfNeeded(
+      DefaultPubSubMessage consumerRecord,
+      LeaderProducerCallback callback,
+      PartitionConsumptionState pcs,
+      CompletableFuture<Void> persistedToDBFuture,
+      String kafkaUrl) {
     if (!isGlobalRtDivEnabled() || consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
       return;
     }
@@ -2462,7 +2507,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PubSubTopicPartition topicPartition = pcs.getReplicaTopicPartition();
     PartitionTracker vtDiv =
         getConsumerDiv().cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
-    sendVtDivSnapshotOnCompletion(callback, topicPartition, vtDiv, persistedToDBFuture, pcs);
+    sendVtDivSnapshotOnCompletion(
+        callback,
+        topicPartition,
+        vtDiv,
+        persistedToDBFuture,
+        pcs,
+        null,
+        isTimeBasedCheckpointEnabled()
+            ? captureCheckpointCoverage(pcs, checkpointSource(consumerRecord.getTopicPartition(), kafkaUrl))
+            : Collections.emptyMap());
     pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
   }
 
@@ -2478,11 +2532,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDiv,
       CompletableFuture<Void> persistedToDBFuture,
-      PartitionConsumptionState pcs) {
+      PartitionConsumptionState pcs,
+      BooleanSupplier periodicCheckpointStillValid,
+      Map<PeriodicCheckpoint, Long> coverage) {
     // Relay future the leader graceful-shutdown path awaits. It completes when the drainer-side VT DIV sync node has
     // run. The leader-produce callback only fires on produce success, so also fail the relay if the produce/persist
     // fails — otherwise the shutdown await would hang until its timeout instead of completing promptly.
     CompletableFuture<Void> vtDivSyncedFuture = new CompletableFuture<>();
+    if (isTimeBasedCheckpointEnabled() && pcs.getCheckpointProgress() != null) {
+      pcs.getCheckpointProgress().trackCheckpoint(vtDivSyncedFuture);
+    }
     persistedToDBFuture.whenComplete((ignored, throwable) -> {
       if (throwable != null) {
         vtDivSyncedFuture.completeExceptionally(throwable);
@@ -2516,18 +2575,37 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             && leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
           vtDiv.updateLatestConsumedRemoteVtPosition(leaderProducedRecordContext.getConsumedPosition());
         }
-        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, persistedToDBFuture, this)
-            .whenComplete((ignored, throwable) -> {
-              if (throwable != null) {
-                vtDivSyncedFuture.completeExceptionally(throwable);
-              } else {
-                vtDivSyncedFuture.complete(null);
-              }
-            });
+        CompletableFuture<Void> syncFuture;
+        if (isTimeBasedCheckpointEnabled() && pcs.getCheckpointProgress() != null) {
+          syncFuture = enqueueCheckpointSnapshot(
+              topicPartition,
+              pcs,
+              vtDiv,
+              persistedToDBFuture,
+              coverage,
+              () -> (periodicCheckpointStillValid == null || periodicCheckpointStillValid.getAsBoolean())
+                  && getPartitionConsumptionState(pcs.getPartition()) == pcs);
+        } else {
+          syncFuture =
+              storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, persistedToDBFuture, this);
+        }
+        syncFuture.whenComplete((ignored, throwable) -> {
+          if (throwable != null) {
+            vtDivSyncedFuture.completeExceptionally(throwable);
+          } else {
+            vtDivSyncedFuture.complete(null);
+          }
+        });
       } catch (InterruptedException e) {
         LOGGER.error("event=globalRtDiv Failed to async VT DIV OffsetRecord sync for replica: {}", topicPartition, e);
         Thread.currentThread().interrupt();
         vtDivSyncedFuture.completeExceptionally(e);
+      } catch (RuntimeException e) {
+        if (!isTimeBasedCheckpointEnabled()) {
+          throw e;
+        }
+        vtDivSyncedFuture.completeExceptionally(e);
+        setIngestionException(pcs.getPartition(), e);
       }
     });
     return vtDivSyncedFuture;
@@ -2616,6 +2694,97 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+  }
+
+  @Override
+  CompletableFuture<Void> checkpointOnTime(
+      PubSubTopicPartition sourceTopicPartition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      PartitionConsumptionState pcs,
+      BooleanSupplier stillValid) throws InterruptedException {
+    if (!isGlobalRtDivEnabled()) {
+      return super.checkpointOnTime(sourceTopicPartition, kafkaUrl, kafkaClusterId, pcs, stillValid);
+    }
+    if (!stillValid.getAsBoolean() || !pcs.isSubscribed() || pcs.isErrorReported()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    CheckpointProgress progress = pcs.getCheckpointProgress();
+    if (progress == null) {
+      return null;
+    }
+    synchronized (progress.producerLock) {
+      boolean producingLeader = shouldProduceToVersionTopic(pcs);
+      if (producingLeader) {
+        // The atomic call tail covers every source/key, and the persistence aggregate covers every callback.
+        // Never block a shared consumer waiting for either fence.
+        CompletableFuture<Void> calls = pcs.getLastVTProduceCallFuture();
+        CompletableFuture<Void> persisted = progress.producerPersistence();
+        if (!calls.isDone() || !persisted.isDone()) {
+          return null;
+        }
+        calls.join();
+        persisted.join();
+      }
+      if (!stillValid.getAsBoolean()) {
+        return null;
+      }
+      Map<PeriodicCheckpoint, Long> coverage =
+          captureCheckpointCoverage(pcs, checkpointSource(sourceTopicPartition, kafkaUrl));
+      if (producingLeader && sourceTopicPartition.getPubSubTopic().isRealTime()) {
+        PubSubPosition position = getLatestConsumedUpstreamPositionForHybridOffsetLagMeasurement(pcs, kafkaUrl);
+        if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
+          return null;
+        }
+        return sendGlobalRtDivMessage(
+            position,
+            sourceTopicPartition,
+            pcs,
+            pcs.getPartition(),
+            kafkaUrl,
+            System.nanoTime(),
+            kafkaClusterId,
+            stillValid);
+      }
+
+      PartitionTracker snapshot = getGlobalVtCheckpointSnapshot(pcs);
+      if (PubSubSymbolicPosition.EARLIEST.equals(snapshot.getLatestConsumedVtPosition())) {
+        return null;
+      }
+      if (producingLeader) {
+        if (PubSubSymbolicPosition.EARLIEST.equals(pcs.getLatestProcessedVtPosition())) {
+          return null;
+        }
+      }
+      return enqueueCheckpointSnapshot(
+          pcs.getReplicaTopicPartition(),
+          pcs,
+          snapshot,
+          pcs.getLastQueuedRecordPersistedFuture(),
+          coverage,
+          () -> stillValid.getAsBoolean() && shouldProduceToVersionTopic(pcs) == producingLeader);
+    }
+  }
+
+  @Override
+  protected PartitionTracker getGlobalVtCheckpointSnapshot(PartitionConsumptionState pcs) {
+    if (!isTimeBasedCheckpointEnabled()) {
+      return super.getGlobalVtCheckpointSnapshot(pcs);
+    }
+    PartitionTracker snapshot =
+        getConsumerDiv().cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
+    PubSubTopic upstreamTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+    if (shouldProduceToVersionTopic(pcs) && (upstreamTopic == null || !upstreamTopic.isRealTime())) {
+      // Both periodic requests and the existing post-drain shutdown fallback must persist local and remote
+      // cursors in their own domains. Their callers fence preceding producer and persistence work.
+      PubSubPosition upstream = snapshot.getLatestConsumedVtPosition();
+      snapshot.updateLatestConsumedRemoteVtPosition(upstream);
+      snapshot.updateLatestConsumedVtPosition(
+          PubSubSymbolicPosition.EARLIEST.equals(upstream)
+              ? PubSubSymbolicPosition.EARLIEST
+              : pcs.getLatestProcessedVtPosition());
+    }
+    return snapshot;
   }
 
   /**
@@ -3506,6 +3675,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
       }
       boolean produceToLocalKafka = shouldProduceToVersionTopic(partitionConsumptionState);
+      if (isTimeBasedCheckpointEnabled() && isGlobalRtDivEnabled() && produceToLocalKafka
+          && !consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+        // The remote consumer cursor must advance even though this record is reproduced to local VT.
+        getConsumerDiv().updateLatestConsumedVtPosition(partition, consumerRecord.getPosition());
+      }
       // UPDATE message is only expected in LEADER which must be produced to kafka.
       MessageType msgType = MessageType.valueOf(kafkaValue);
       if (msgType == UPDATE && !produceToLocalKafka) {
@@ -3875,7 +4049,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       }
 
       CompletableFuture<Void> lastFuture = pcs.getLastQueuedRecordPersistedFuture();
-      storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
+      if (isTimeBasedCheckpointEnabled() && pcs.getCheckpointProgress() != null) {
+        enqueueCheckpointSnapshot(
+            topicPartition,
+            pcs,
+            vtDiv,
+            lastFuture,
+            captureCheckpointCoverage(pcs, checkpointSource(topicPartition, localKafkaServer)),
+            () -> true);
+      } else {
+        storeBufferService.execSyncOffsetFromSnapshotAsync(topicPartition, vtDiv, lastFuture, this);
+      }
       // Reset consumer-side VT bytes so shouldSendVtDivSnapshot does not keep firing for every subsequent record
       pcs.resetConsumedBytesSinceLastGlobalRtDivSync(getVersionTopic().getName());
 
@@ -3926,6 +4110,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     super.waitForAllMessageToBeProcessedFromTopicPartition(topicPartition, partitionConsumptionState);
+    if (isTimeBasedCheckpointEnabled() && partitionConsumptionState != null
+        && partitionConsumptionState.getCheckpointProgress() != null) {
+      CheckpointProgress progress = partitionConsumptionState.getCheckpointProgress();
+      try {
+        partitionConsumptionState.getLastVTProduceCallFuture()
+            .get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+        progress.producerPersistence().get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+        // Producer calls can install snapshot callbacks after the base class took its barrier snapshot.
+        progress.checkpoints().get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
+      } catch (ExecutionException | TimeoutException e) {
+        throw new VeniceException("Could not finish checkpoint producer work for " + topicPartition, e);
+      }
+    }
 
     /**
      * In case of L/F model in Leader we first produce to local kafka then queue to drainer from kafka callback thread.
@@ -4662,6 +4859,26 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String brokerUrl,
       long beforeProcessingRecordTimestampNs,
       int kafkaClusterId) {
+    return sendGlobalRtDivMessage(
+        previousPosition,
+        topicPartition,
+        pcs,
+        partition,
+        brokerUrl,
+        beforeProcessingRecordTimestampNs,
+        kafkaClusterId,
+        null);
+  }
+
+  private CompletableFuture<Void> sendGlobalRtDivMessage(
+      PubSubPosition previousPosition,
+      PubSubTopicPartition topicPartition,
+      PartitionConsumptionState pcs,
+      int partition,
+      String brokerUrl,
+      long beforeProcessingRecordTimestampNs,
+      int kafkaClusterId,
+      BooleanSupplier periodicCheckpointStillValid) {
     final byte[] keyBytes = getGlobalRtDivKeyBytes(partition, brokerUrl);
     TopicType realTimeTopicType = TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
     LeaderMetadataWrapper leaderMetadataWrapper =
@@ -4698,7 +4915,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         vtDiv,
         divCallback.getLeaderProducedRecordContext().getPersistedToDBFuture(),
-        pcs);
+        pcs,
+        periodicCheckpointStillValid,
+        isTimeBasedCheckpointEnabled()
+            ? captureCheckpointCoverage(pcs, checkpointSource(topicPartition, brokerUrl))
+            : Collections.emptyMap());
 
     // Read the old manifest (if any) so VeniceWriter can delete orphaned old chunks in Kafka.
     ChunkedValueManifestContainer valueManifestContainer = new ChunkedValueManifestContainer();
@@ -5468,7 +5689,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     CompletableFuture[] viewWriterFutures = new CompletableFuture[this.viewWriters.size() + 1];
     int index = 0;
     // The first future is for the previous write to VT
-    viewWriterFutures[index++] = partitionConsumptionState.getLastVTProduceCallFuture();
+    viewWriterFutures[index++] = isTimeBasedCheckpointEnabled()
+        ? partitionConsumptionState.swapLastVTProduceCallFuture(currentVersionTopicWrite)
+        : partitionConsumptionState.getLastVTProduceCallFuture();
     for (VeniceViewWriter writer: viewWriters.values()) {
       Set<Integer> viewPartitionSet = null;
       if (viewPartitionMap != null && writer.getViewWriterType() == VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW) {
@@ -5486,8 +5709,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     CompletableFuture.allOf(viewWriterFutures).whenCompleteAsync((value, exception) -> {
       double viewAckLatency = LatencyUtils.getElapsedTimeFromMsToMs(preprocessingTime);
       if (exception == null) {
-        versionTopicWrite.run();
-        currentVersionTopicWrite.complete(null);
+        try {
+          versionTopicWrite.run();
+          currentVersionTopicWrite.complete(null);
+        } catch (Exception e) {
+          if (!isTimeBasedCheckpointEnabled()) {
+            throw e;
+          }
+          setIngestionException(partitionConsumptionState.getPartition(), e);
+          currentVersionTopicWrite.completeExceptionally(e);
+        }
       } else {
         VeniceException veniceException = new VeniceException(exception);
         this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
@@ -5497,7 +5728,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       versionedIngestionStats.recordViewWriterAckTime(storeName, versionNumber, viewAckLatency);
     });
 
-    partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+    if (!isTimeBasedCheckpointEnabled()) {
+      partitionConsumptionState.setLastVTProduceCallFuture(currentVersionTopicWrite);
+    }
   }
 
   /**
@@ -5540,17 +5773,30 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       Runnable produceCall) {
     if (hasViewWriters()) {
       CompletableFuture<Void> propagateSegmentCMWrite = new CompletableFuture<>();
-      partitionConsumptionState.getLastVTProduceCallFuture().whenCompleteAsync((value, exception) -> {
+      CompletableFuture<Void> previous = isTimeBasedCheckpointEnabled()
+          ? partitionConsumptionState.swapLastVTProduceCallFuture(propagateSegmentCMWrite)
+          : partitionConsumptionState.getLastVTProduceCallFuture();
+      previous.whenCompleteAsync((value, exception) -> {
         if (exception == null) {
-          produceCall.run();
-          propagateSegmentCMWrite.complete(null);
+          try {
+            produceCall.run();
+            propagateSegmentCMWrite.complete(null);
+          } catch (Exception e) {
+            if (!isTimeBasedCheckpointEnabled()) {
+              throw e;
+            }
+            setIngestionException(partitionConsumptionState.getPartition(), e);
+            propagateSegmentCMWrite.completeExceptionally(e);
+          }
         } else {
           VeniceException veniceException = new VeniceException(exception);
           this.setIngestionException(partitionConsumptionState.getPartition(), veniceException);
           propagateSegmentCMWrite.completeExceptionally(veniceException);
         }
       });
-      partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
+      if (!isTimeBasedCheckpointEnabled()) {
+        partitionConsumptionState.setLastVTProduceCallFuture(propagateSegmentCMWrite);
+      }
     } else {
       produceCall.run();
     }

@@ -1500,6 +1500,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     switch (delegateConsumerRecordResult) {
       case QUEUED_TO_DRAINER:
+        if (isTimeBasedCheckpointEnabled() && isGlobalRtDivEnabled()) {
+          recordCheckpointUserData(partitionConsumptionState, record, kafkaUrl);
+        }
         boolean measureTime = recordLevelMetricEnabled.get();
         long queuePutStartTimeInNS = measureTime ? System.nanoTime() : 0;
 
@@ -2278,6 +2281,109 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  boolean isTimeBasedCheckpointEnabled() {
+    return serverConfig.isDatabaseSyncIntervalEnabled();
+  }
+
+  static String checkpointSource(PubSubTopicPartition topicPartition, String kafkaUrl) {
+    return kafkaUrl + "/" + topicPartition.getPubSubTopic().getName();
+  }
+
+  protected void recordCheckpointUserData(PartitionConsumptionState pcs, DefaultPubSubMessage record, String kafkaUrl) {
+    if (!record.getKey().isControlMessage() && !record.getKey().isGlobalRtDiv()) {
+      CheckpointProgress progress = pcs.getCheckpointProgress();
+      if (progress != null) {
+        PeriodicCheckpoint checkpoint = progress.source(checkpointSource(record.getTopicPartition(), kafkaUrl));
+        if (checkpoint != null) {
+          checkpoint.recordUserData();
+        }
+      }
+    }
+  }
+
+  protected Map<PeriodicCheckpoint, Long> captureCheckpointCoverage(PartitionConsumptionState pcs, String source) {
+    CheckpointProgress progress = pcs.getCheckpointProgress();
+    return progress == null ? Collections.emptyMap() : progress.capture(source);
+  }
+
+  CompletableFuture<Void> checkpointOnTime(
+      PubSubTopicPartition sourceTopicPartition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      PartitionConsumptionState pcs,
+      BooleanSupplier stillValid) throws InterruptedException {
+    return enqueuePeriodicCheckpoint(sourceTopicPartition, pcs, null, null, stillValid);
+  }
+
+  protected CompletableFuture<Void> enqueuePeriodicCheckpoint(
+      PubSubTopicPartition topicPartition,
+      PartitionConsumptionState pcs,
+      PartitionTracker snapshot,
+      CompletableFuture<Void> precedingRecord,
+      BooleanSupplier stillValid) throws InterruptedException {
+    return enqueueCheckpointSnapshot(
+        topicPartition,
+        pcs,
+        snapshot,
+        precedingRecord,
+        captureCheckpointCoverage(pcs, null),
+        stillValid);
+  }
+
+  protected CompletableFuture<Void> enqueueCheckpointSnapshot(
+      PubSubTopicPartition topicPartition,
+      PartitionConsumptionState pcs,
+      PartitionTracker snapshot,
+      CompletableFuture<Void> precedingRecord,
+      Map<PeriodicCheckpoint, Long> coverage,
+      BooleanSupplier stillValid) throws InterruptedException {
+    CheckpointProgress progress = pcs.getCheckpointProgress();
+    CompletableFuture<Void> tracked = new CompletableFuture<>();
+    if (progress != null) {
+      progress.trackCheckpoint(tracked);
+    }
+    try {
+      CompletableFuture<Void> command = getStoreBufferService().execCheckpointCommandAsync(topicPartition, this, () -> {
+        if (progress == null) {
+          return;
+        }
+        synchronized (progress.executionLock) {
+          if (!stillValid.getAsBoolean() || getPartitionConsumptionState(pcs.getPartition()) != pcs
+              || !pcs.isSubscribed() || pcs.isErrorReported() || failedPartitions.contains(pcs.getPartition())
+              || !progress.isValid()) {
+            return;
+          }
+          if (precedingRecord != null) {
+            if (!precedingRecord.isDone()) {
+              return;
+            }
+            precedingRecord.join();
+          }
+          if (snapshot == null) {
+            updateOffsetMetadataAndSyncOffset(pcs);
+          } else {
+            if (updateAndSyncOffsetFromSnapshotIfValid(snapshot, topicPartition)) {
+              if (!coverage.isEmpty()) {
+                CheckpointProgress.checkpointSucceeded(coverage);
+              }
+            }
+          }
+        }
+      });
+      command.whenComplete((ignored, failure) -> {
+        if (failure == null) {
+          tracked.complete(null);
+        } else {
+          tracked.completeExceptionally(failure);
+        }
+      });
+      return command;
+    } catch (InterruptedException | RuntimeException e) {
+      tracked.completeExceptionally(e);
+      throw e;
+    }
+  }
+
   protected void updateOffsetMetadataAndSyncOffset(@Nonnull PartitionConsumptionState pcs) {
     updateOffsetMetadataAndSyncOffset(getDataIntegrityValidator(), pcs);
   }
@@ -2318,12 +2424,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This version of the method syncs using a PartitionTracker object which contains the vtSegments and LCVP
    */
   protected void updateAndSyncOffsetFromSnapshot(PartitionTracker vtDivSnapshot, PubSubTopicPartition topicPartition) {
+    updateAndSyncOffsetFromSnapshotIfValid(vtDivSnapshot, topicPartition);
+  }
+
+  private boolean updateAndSyncOffsetFromSnapshotIfValid(
+      PartitionTracker vtDivSnapshot,
+      PubSubTopicPartition topicPartition) {
     PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
     if (pcs == null) {
       // The PCS can be removed between the sync node being enqueued and executed (e.g. during shutdown/unsubscribe).
       // Skip cleanly rather than NPE so the drainer node completes normally and the shutdown await stays deterministic.
       LOGGER.warn("event=globalRtDiv No PCS found for {}. Skipping VT DIV OffsetRecord sync.", topicPartition);
-      return;
+      return false;
     }
     int partition = pcs.getPartition();
     if (failedPartitions.contains(partition) || pcs.isErrorReported()) {
@@ -2331,11 +2443,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Leaving the last good durable offset in place lets the failed record be re-read on restart. The Global-RT-DIV
       // graceful-shutdown checkpoint reaches storage through this method, so the error gate is enforced here.
       LOGGER.warn("event=globalRtDiv Skipping offset checkpoint for errored replica: {}", pcs.getReplicaId());
-      return;
+      return false;
     }
     vtDivSnapshot.updateOffsetRecord(PartitionTracker.VERSION_TOPIC, pcs.getOffsetRecord());
     updateOffsetMetadataInOffsetRecord(pcs);
-    syncOffset(pcs);
+    return syncOffset(pcs);
   }
 
   /**
@@ -2352,8 +2464,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.warn("event=globalRtDiv No PCS found for {}. Skipping Global RT DIV sync.", topicPartition);
       return;
     }
-    PartitionTracker vtDivSnapshot =
-        getDataIntegrityValidator().cloneVtProducerStates(partition, true, pcs.getLatestMessageTimeInMs());
+    PartitionTracker vtDivSnapshot = getGlobalVtCheckpointSnapshot(pcs);
 
     // Skip sync if no real VT progress has been made yet. Syncing with EARLIEST would persist
     // EARLIEST to the OffsetRecord, causing the consumer to re-subscribe from EARLIEST on restart.
@@ -2364,6 +2475,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
+  }
+
+  protected PartitionTracker getGlobalVtCheckpointSnapshot(PartitionConsumptionState pcs) {
+    return getDataIntegrityValidator().cloneVtProducerStates(pcs.getPartition(), true, pcs.getLatestMessageTimeInMs());
   }
 
   private void handleIngestionException(Exception e, VeniceIngestionFailureReason reason, int errorPartitionId) {
@@ -2798,6 +2913,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * {@link #kafkaDataValidationService}, we would like to drain all the buffered messages before cleaning up those
          * two variables to avoid the race condition.
          */
+        invalidateTimeCheckpoints(partitionConsumptionStateMap.get(partition));
         partitionConsumptionStateMap.remove(partition);
         if (consumerAction.isHelixTriggeredAction()) {
           // Queued role transitions can register monitors after Helix starts teardown.
@@ -2891,6 +3007,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private PartitionConsumptionState createAndInstallPartitionConsumptionState(PubSubTopicPartition topicPartition) {
     int partition = topicPartition.getPartitionNumber();
+    invalidateTimeCheckpoints(partitionConsumptionStateMap.get(partition));
     OffsetRecord offsetRecord =
         storageMetadataService.getLastOffset(topicPartition.getTopicName(), partition, pubSubContext);
     LOGGER.info("Creating PCS for replica: {} with offsetRecord: {}", topicPartition, offsetRecord);
@@ -2972,6 +3089,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       pcs.setLatchCreated();
     }
 
+    invalidateTimeCheckpoints(partitionConsumptionStateMap.get(partition));
     partitionConsumptionStateMap.put(partition, pcs);
     // Deliberately skip getDataIntegrityValidator().setPartitionState(), The offset is a
     // placeholder. The real DIV state will be set when createAndInstallPartitionConsumptionState
@@ -3199,6 +3317,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    // Wait for executing checkpoint commands and invalidate queued ones before clearing/replacing durable state.
+    invalidateTimeCheckpoints(partitionConsumptionState);
 
     if (partitionConsumptionState != null
         && (restartIngestion || consumerHasSubscription(topicPartition.getPubSubTopic(), partitionConsumptionState))) {
@@ -3531,6 +3651,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         monitor.recordIngested(recordSize);
       }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
+      if (isTimeBasedCheckpointEnabled() && !isGlobalRtDivEnabled()) {
+        recordCheckpointUserData(partitionConsumptionState, record, kafkaUrl);
+      }
     }
     /*
      * Per-record path: pass forceCacheRefresh=false. The latch-held catch-up window can hold many
@@ -3684,12 +3807,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Note that the updates for {@link OffsetRecord} is happened in {@link #updateOffsetMetadataInOffsetRecord}
    * @param pcs, the corresponding {@link PartitionConsumptionState} to sync with.
    */
-  private void syncOffset(PartitionConsumptionState pcs) {
+  private boolean syncOffset(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
     if (this.storageEngine.isClosed()) {
       LOGGER.warn("Storage engine has been closed. Could not execute sync offset for replica: {}", pcs.getReplicaId());
-      return;
+      return false;
     }
+    Map<PeriodicCheckpoint, Long> coverage = isTimeBasedCheckpointEnabled() && !isGlobalRtDivEnabled()
+        ? captureCheckpointCoverage(pcs, null)
+        : Collections.emptyMap();
     // Flush data partition
     final AtomicReference<Map<String, String>> dbCheckpointingInfoReference = new AtomicReference<>();
     executeStorageEngineRunnable(partition, () -> {
@@ -3721,6 +3847,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     storageMetadataService.put(this.kafkaVersionTopic, partition, offsetRecord);
     pcs.resetProcessedRecordSizeSinceLastSync();
+    if (!coverage.isEmpty()) {
+      CheckpointProgress.checkpointSucceeded(coverage);
+    }
 
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtPosition: {} progress: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -3734,6 +3863,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       LOGGER.info(msg, position, percentage);
     }
+    return true;
   }
 
   private void updateOffsetLagInMetadata(PartitionConsumptionState ps) {
@@ -6131,6 +6261,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     getStoreBufferService()
         .drainBufferedRecordsFromTopicPartition(topicPartition, getServerConfig().getDrainTimeoutMs());
+    if (isTimeBasedCheckpointEnabled() && partitionConsumptionState != null
+        && partitionConsumptionState.getCheckpointProgress() != null) {
+      try {
+        // A queue-membership check alone misses a command already executing storageEngine.sync().
+        partitionConsumptionState.getCheckpointProgress()
+            .checkpoints()
+            .get(getServerConfig().getDrainTimeoutMs(), MILLISECONDS);
+      } catch (ExecutionException | TimeoutException e) {
+        throw new VeniceException("Could not finish time checkpoints for " + topicPartition, e);
+      }
+    }
   }
 
   protected abstract DelegateConsumerRecordResult delegateConsumerRecord(
@@ -6181,7 +6322,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   // Visible for unit test.
   protected void setPartitionConsumptionState(int partition, PartitionConsumptionState pcs) {
+    invalidateTimeCheckpoints(partitionConsumptionStateMap.get(partition));
     partitionConsumptionStateMap.put(partition, pcs);
+  }
+
+  private void invalidateTimeCheckpoints(PartitionConsumptionState pcs) {
+    if (isTimeBasedCheckpointEnabled() && pcs != null && pcs.getCheckpointProgress() != null) {
+      CheckpointProgress progress = pcs.getCheckpointProgress();
+      CompletableFuture<Void> pending;
+      synchronized (progress.admissionLock) {
+        progress.invalidate();
+        pending = progress.checkpoints();
+      }
+      try {
+        // A time-triggered RT DIV may still be producing. Finish its data and snapshot work before reset clears
+        // state, not just the snapshot command that eventually arrives at the drainer.
+        pending.get(getServerConfig().getDrainTimeoutMs(), MILLISECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Interrupted while invalidating time checkpoints", e);
+      } catch (TimeoutException e) {
+        throw new VeniceException("Timed out invalidating time checkpoints", e);
+      } catch (ExecutionException e) {
+        // The operation has terminated. Reset must remain available to recover an already failed replica.
+        LOGGER.warn("Invalidated a failed checkpoint for replica: {}", pcs.getReplicaId(), e);
+      }
+    }
   }
 
   protected AggVersionedDIVStats getVersionedDIVStats() {

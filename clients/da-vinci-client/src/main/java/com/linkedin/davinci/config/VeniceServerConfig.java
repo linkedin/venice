@@ -118,6 +118,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACI
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_MEMORY_STATS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_INTERVAL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_SPREAD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEAD_LEADER_READY_TO_SERVE_FALLBACK_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEBUG_LOGGING_ENABLED;
@@ -463,6 +466,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long databaseSyncBytesIntervalForTransactionalMode;
 
   private final long databaseSyncBytesIntervalForDeferredWriteMode;
+  private final boolean databaseSyncIntervalEnabled;
+  private final long databaseSyncIntervalSeconds;
+  private final long databaseSyncSpreadSeconds;
 
   private final double diskFullThreshold;
 
@@ -1000,6 +1006,19 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024);
     databaseSyncBytesIntervalForDeferredWriteMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024);
+    databaseSyncIntervalEnabled = serverProperties.getBoolean(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, false);
+    databaseSyncIntervalSeconds = serverProperties.getLong(SERVER_DATABASE_SYNC_INTERVAL_SECONDS, 7200);
+    databaseSyncSpreadSeconds = serverProperties.getLong(SERVER_DATABASE_SYNC_SPREAD_SECONDS, 600);
+    if (databaseSyncIntervalEnabled && !storeWriterBufferAfterLeaderLogicEnabled) {
+      throw new VeniceException(
+          SERVER_DATABASE_SYNC_INTERVAL_ENABLED + " requires " + STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED);
+    }
+    if (databaseSyncIntervalSeconds <= 0
+        || databaseSyncIntervalSeconds > TimeUnit.NANOSECONDS.toSeconds(Long.MAX_VALUE / 4)
+        || databaseSyncSpreadSeconds < 0 || databaseSyncSpreadSeconds >= databaseSyncIntervalSeconds) {
+      throw new VeniceException(
+          "Database sync interval must be positive and representable in nanoseconds; spread must be in [0, interval)");
+    }
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.95);
     versionSwapDiskSizeDropAlertThreshold =
         serverProperties.getDouble(SERVER_VERSION_SWAP_DISK_SIZE_DROP_ALERT_THRESHOLD, 0.5);
@@ -1663,6 +1682,18 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getDatabaseSyncBytesIntervalForDeferredWriteMode() {
     return databaseSyncBytesIntervalForDeferredWriteMode;
+  }
+
+  public boolean isDatabaseSyncIntervalEnabled() {
+    return databaseSyncIntervalEnabled;
+  }
+
+  public long getDatabaseSyncIntervalSeconds() {
+    return databaseSyncIntervalSeconds;
+  }
+
+  public long getDatabaseSyncSpreadSeconds() {
+    return databaseSyncSpreadSeconds;
   }
 
   public double getDiskFullThreshold() {

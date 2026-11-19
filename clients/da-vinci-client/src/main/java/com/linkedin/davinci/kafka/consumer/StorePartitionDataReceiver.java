@@ -9,6 +9,11 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -22,12 +27,31 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
   private final Logger LOGGER;
 
   private long receivedRecordsCount;
+  private final boolean timeCheckpointsEnabled;
+  private final Object checkpointLifecycleLock;
+  private boolean checkpointFailed;
+  private final String checkpointSource;
+  private final long intervalNs;
+  private final long spreadNs;
+  private PeriodicCheckpoint periodicCheckpoint;
+  private final LongSupplier nanoTime;
+  private volatile boolean subscribed = true;
+  private PartitionConsumptionState checkpointState;
 
   public StorePartitionDataReceiver(
       StoreIngestionTask storeIngestionTask,
       PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) {
+    this(storeIngestionTask, topicPartition, kafkaUrl, kafkaClusterId, System::nanoTime);
+  }
+
+  StorePartitionDataReceiver(
+      StoreIngestionTask storeIngestionTask,
+      PubSubTopicPartition topicPartition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      LongSupplier nanoTime) {
     this.storeIngestionTask = Validate.notNull(storeIngestionTask);
     this.topicPartition = Validate.notNull(topicPartition);
     this.kafkaUrl = Validate.notNull(kafkaUrl);
@@ -35,10 +59,107 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
     this.kafkaClusterId = kafkaClusterId;
     this.LOGGER = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaUrlForLogger + "]");
     this.receivedRecordsCount = 0L;
+    this.nanoTime = nanoTime;
+    this.timeCheckpointsEnabled = storeIngestionTask.isTimeBasedCheckpointEnabled();
+    this.checkpointLifecycleLock = timeCheckpointsEnabled ? new Object() : null;
+    this.checkpointSource =
+        timeCheckpointsEnabled ? StoreIngestionTask.checkpointSource(topicPartition, kafkaUrl) : null;
+    this.intervalNs = timeCheckpointsEnabled
+        ? TimeUnit.SECONDS.toNanos(storeIngestionTask.getServerConfig().getDatabaseSyncIntervalSeconds())
+        : 0;
+    this.spreadNs = timeCheckpointsEnabled
+        ? TimeUnit.SECONDS.toNanos(storeIngestionTask.getServerConfig().getDatabaseSyncSpreadSeconds())
+        : 0;
+  }
+
+  @Override
+  public boolean requiresPollCallback() {
+    return timeCheckpointsEnabled;
+  }
+
+  @Override
+  public synchronized void onPoll() throws Exception {
+    if (!timeCheckpointsEnabled || !subscribed || !storeIngestionTask.isRunning()) {
+      return;
+    }
+    PartitionConsumptionState pcs = bindCheckpointState();
+    if (pcs == null || checkpointFailed) {
+      return;
+    }
+    try {
+      synchronized (pcs.getCheckpointProgress().admissionLock) {
+        PeriodicCheckpoint checkpoint = periodicCheckpoint;
+        BooleanSupplier valid = () -> subscribed && storeIngestionTask.isRunning()
+            && storeIngestionTask.getPartitionConsumptionState(topicPartition.getPartitionNumber()) == pcs
+            && pcs.getCheckpointProgress().isValid()
+            && pcs.getCheckpointProgress().source(checkpointSource) == checkpoint
+            && checkpoint.isDue(nanoTime.getAsLong());
+        checkpoint.maybeCheckpoint(nanoTime.getAsLong(), () -> {
+          CompletableFuture<Void> tracked = new CompletableFuture<>();
+          synchronized (checkpointLifecycleLock) {
+            if (!subscribed) {
+              return null;
+            }
+            // Reserve before any potentially blocking enqueue/produce. Unsubscribe need only invalidate under
+            // this short lock; teardown's barrier then includes work not yet present in the drainer queue.
+            pcs.getCheckpointProgress().trackCheckpoint(tracked);
+          }
+          try {
+            CompletableFuture<Void> future =
+                storeIngestionTask.checkpointOnTime(topicPartition, kafkaUrl, kafkaClusterId, pcs, valid);
+            if (future == null) {
+              tracked.complete(null);
+            } else {
+              future.whenComplete((ignored, failure) -> {
+                if (failure == null) {
+                  tracked.complete(null);
+                } else {
+                  tracked.completeExceptionally(failure);
+                }
+              });
+            }
+            return future;
+          } catch (InterruptedException | RuntimeException e) {
+            tracked.completeExceptionally(e);
+            throw e;
+          }
+        });
+      }
+    } catch (InterruptedException e) {
+      // An actual shared-consumer interruption must retain its normal shutdown semantics.
+      Thread.currentThread().interrupt();
+      throw e;
+    } catch (Exception e) {
+      // A periodic checkpoint failure belongs to this replica, not every subscription on this shared consumer.
+      LOGGER.error("Time checkpoint failed for {}", topicPartition, e);
+      checkpointFailed = true;
+      storeIngestionTask.setIngestionException(pcs.getPartition(), e);
+    }
+  }
+
+  @Override
+  public void onUnsubscription() {
+    if (timeCheckpointsEnabled) {
+      synchronized (checkpointLifecycleLock) {
+        subscribed = false;
+      }
+    } else {
+      subscribed = false;
+    }
   }
 
   @Override
   public void write(List<DefaultPubSubMessage> consumedData) throws Exception {
+    if (timeCheckpointsEnabled) {
+      synchronized (this) {
+        writeRecords(consumedData);
+      }
+    } else {
+      writeRecords(consumedData);
+    }
+  }
+
+  private void writeRecords(List<DefaultPubSubMessage> consumedData) throws Exception {
     receivedRecordsCount += consumedData.size();
     try {
       /**
@@ -72,10 +193,41 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
        * all the buffered messages for the paused partitions, but just slightly more complicate.
        *
        */
-      storeIngestionTask.produceToStoreBufferServiceOrKafka(consumedData, topicPartition, kafkaUrl, kafkaClusterId);
+      if (timeCheckpointsEnabled) {
+        PartitionConsumptionState pcs = bindCheckpointState();
+        if (subscribed && pcs != null && pcs.getCheckpointProgress().isValid()) {
+          // Serialize source admission with poll snapshots, including AA sources with different per-key locks.
+          synchronized (pcs.getCheckpointProgress().admissionLock) {
+            storeIngestionTask
+                .produceToStoreBufferServiceOrKafka(consumedData, topicPartition, kafkaUrl, kafkaClusterId);
+          }
+        }
+      } else {
+        storeIngestionTask.produceToStoreBufferServiceOrKafka(consumedData, topicPartition, kafkaUrl, kafkaClusterId);
+      }
     } catch (Exception e) {
       handleDataReceiverException(e);
     }
+  }
+
+  private PartitionConsumptionState bindCheckpointState() {
+    PartitionConsumptionState current =
+        storeIngestionTask.getPartitionConsumptionState(topicPartition.getPartitionNumber());
+    if (current != checkpointState) {
+      checkpointState = current;
+      periodicCheckpoint = null;
+      checkpointFailed = false;
+    }
+    if (current != null && periodicCheckpoint == null) {
+      periodicCheckpoint = current.initializeCheckpointProgress()
+          .source(
+              checkpointSource,
+              new PeriodicCheckpoint(
+                  intervalNs,
+                  spreadNs == 0 ? 0 : ThreadLocalRandom.current().nextLong(spreadNs),
+                  nanoTime.getAsLong()));
+    }
+    return current;
   }
 
   @Override
@@ -117,6 +269,7 @@ public class StorePartitionDataReceiver implements ConsumedDataReceiver<List<Def
         "Received {} while StoreIngestionTask is processing the polled consumer record for topic: {}. Will propagate via setLastConsumerException(e).",
         e.getClass().getSimpleName(),
         topicPartition);
+    subscribed = false;
     storeIngestionTask.setLastConsumerException(e);
   }
 

@@ -359,7 +359,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     cmd.executeGuarded(() -> {
-      if (pcs == null) {
+      if (cmd.checkpoint != null) {
+        cmd.checkpoint.run();
+      } else if (pcs == null) {
         LOGGER.warn(
             "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.",
             cmd.getConsumerRecord().getTopicPartition(),
@@ -416,6 +418,18 @@ public class StoreBufferService extends AbstractStoreBufferService {
         new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, fakeRecord, ingestionTask);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncOffsetCmd);
     return syncOffsetCmd.getExecutedFuture();
+  }
+
+  @Override
+  public CompletableFuture<Void> execCheckpointCommandAsync(
+      PubSubTopicPartition topicPartition,
+      StoreIngestionTask ingestionTask,
+      Runnable checkpoint) throws InterruptedException {
+    DefaultPubSubMessage record = new FakePubSubMessage(topicPartition);
+    CommandQueueNode command =
+        new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, record, ingestionTask, checkpoint);
+    getDrainerForConsumerRecord(record, topicPartition.getPartitionNumber()).put(command);
+    return command.getExecutedFuture();
   }
 
   /**
@@ -846,8 +860,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * Issues a command to the drainer thread. Today the only command is {@link CommandType#SYNC_OFFSET}, the
-   * non-Global-RT-DIV graceful-shutdown OffsetRecord sync.
+   * Issues an ordered checkpoint command for periodic or graceful-shutdown OffsetRecord sync.
    */
   private static class CommandQueueNode extends WaitableQueueNode {
     /**
@@ -863,13 +876,23 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     private final CommandType commandType;
+    private final Runnable checkpoint;
 
     public CommandQueueNode(
         CommandType commandType,
         DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask) {
+      this(commandType, consumerRecord, ingestionTask, null);
+    }
+
+    CommandQueueNode(
+        CommandType commandType,
+        DefaultPubSubMessage consumerRecord,
+        StoreIngestionTask ingestionTask,
+        Runnable checkpoint) {
       super(consumerRecord, ingestionTask);
       this.commandType = commandType;
+      this.checkpoint = checkpoint;
     }
 
     public CommandType getCommandType() {

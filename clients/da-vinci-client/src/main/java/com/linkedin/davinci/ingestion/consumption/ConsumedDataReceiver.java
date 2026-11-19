@@ -31,4 +31,16 @@ public interface ConsumedDataReceiver<MESSAGE> {
   PubSubTopic destinationIdentifier();
 
   void notifyOfTopicDeletion(String topicName);
+
+  default boolean requiresPollCallback() {
+    return false;
+  }
+
+  /** Called between polls, after all writes from the preceding poll, even when that poll returned no data. */
+  default void onPoll() throws Exception {
+  }
+
+  /** Invalidates deferred work without waiting for a drainer while holding consumer subscription locks. */
+  default void onUnsubscription() {
+  }
 }

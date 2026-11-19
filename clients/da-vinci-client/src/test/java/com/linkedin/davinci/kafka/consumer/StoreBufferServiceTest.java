@@ -13,6 +13,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -86,6 +87,38 @@ public class StoreBufferServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     mockedStats = mock(StoreBufferServiceStats.class);
+  }
+
+  @Test
+  public void testCheckpointCommandIsOrderedAndTracksExecutingWork() throws Exception {
+    StoreBufferService service = new StoreBufferService(2, 100000, 1000, true, mockedStats, null);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    PubSubTopicPartition source = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test_store_rt"), 0);
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(key, value, source, mockPosition, 0, 0);
+    Runnable checkpoint = mock(Runnable.class);
+    CountDownLatch executing = new CountDownLatch(1);
+    CountDownLatch finish = new CountDownLatch(1);
+    doAnswer(invocation -> {
+      executing.countDown();
+      Assert.assertTrue(finish.await(5, SECONDS));
+      return null;
+    }).when(checkpoint).run();
+    service.putConsumerRecord(record, task, null, 0, "broker", 0);
+    CompletableFuture<Void> first = service.execCheckpointCommandAsync(source, task, checkpoint);
+    Assert.assertFalse(first.isDone());
+    service.start();
+    try {
+      Assert.assertTrue(executing.await(5, SECONDS));
+      Assert.assertFalse(first.isDone(), "A dequeued, executing checkpoint must still be awaitable");
+      finish.countDown();
+      first.get(5, SECONDS);
+      org.mockito.InOrder order = inOrder(task, checkpoint);
+      order.verify(task).processConsumerRecord(record, null, 0, "broker", 0);
+      order.verify(checkpoint).run();
+    } finally {
+      finish.countDown();
+      service.stop();
+    }
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
