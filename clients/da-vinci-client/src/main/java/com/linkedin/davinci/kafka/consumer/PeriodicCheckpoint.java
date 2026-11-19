@@ -8,11 +8,6 @@ import java.util.concurrent.CompletableFuture;
  * share this state. Only a successful storage AND metadata checkpoint may acknowledge a captured generation.
  */
 class PeriodicCheckpoint {
-  interface CheckpointAction {
-    /** A null result defers the attempt without acknowledging progress. */
-    CompletableFuture<Void> checkpoint() throws InterruptedException;
-  }
-
   private final long intervalNs;
   private final long spreadNs;
   private long deadlineNs;
@@ -35,11 +30,16 @@ class PeriodicCheckpoint {
   }
 
   synchronized boolean isDue(long nowNs) {
-    return generation > checkpointedGeneration && nowNs - deadlineNs >= 0;
+    return generation > checkpointedGeneration && nowNs - deadlineNs >= 0 && (inFlight == null || inFlight.isDone());
+  }
+
+  synchronized void trackCheckpoint(CompletableFuture<Void> future) {
+    inFlight = future;
   }
 
   synchronized void checkpointSucceeded(long coveredGeneration, long nowNs) {
-    if (coveredGeneration < checkpointedGeneration) {
+    if (coveredGeneration < checkpointedGeneration
+        || (generation > checkpointedGeneration && coveredGeneration <= checkpointedGeneration)) {
       return;
     }
     checkpointedGeneration = Math.min(coveredGeneration, generation);
@@ -48,24 +48,4 @@ class PeriodicCheckpoint {
     deadlineNs = nowNs + intervalNs + spreadNs;
   }
 
-  void maybeCheckpoint(long nowNs, CheckpointAction action) throws InterruptedException {
-    synchronized (this) {
-      if (inFlight != null) {
-        if (!inFlight.isDone()) {
-          return;
-        }
-        CompletableFuture<Void> completed = inFlight;
-        inFlight = null;
-        completed.join();
-      }
-      if (!isDue(nowNs)) {
-        return;
-      }
-    }
-    // Never hold the progress monitor while putting into a bounded drainer queue.
-    CompletableFuture<Void> future = action.checkpoint();
-    synchronized (this) {
-      inFlight = future;
-    }
-  }
 }

@@ -860,7 +860,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * Issues an ordered checkpoint command for periodic or graceful-shutdown OffsetRecord sync.
+   * Issues an ordered checkpoint command for a captured snapshot or graceful-shutdown OffsetRecord sync.
    */
   private static class CommandQueueNode extends WaitableQueueNode {
     /**

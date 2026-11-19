@@ -4984,13 +4984,14 @@ public abstract class StoreIngestionTaskTest {
   }
 
   /**
-   * Both a quiet-partition deadline and graceful shutdown must persist processed offsets below the byte threshold.
+   * A new heartbeat after the deadline and graceful shutdown persist user data below the byte threshold.
    */
   @Test(dataProvider = "aaConfigAndTimeCheckpointProvider")
   public void testOffsetSyncBeforeGracefulShutDown(AAConfig aaConfig, boolean timeCheckpoint) throws Exception {
     if (timeCheckpoint && !isStoreWriterBufferAfterLeaderLogicEnabled()) {
       throw new org.testng.SkipException("Startup rejects time checkpoints with inline leader writes");
     }
+    AtomicLong checkpointClock = new AtomicLong();
     // prepare to send 2 messages
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID);
@@ -5037,32 +5038,24 @@ public abstract class StoreIngestionTaskTest {
       // offsetRecord hasn't been updated yet
       Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition(), p0);
       if (timeCheckpoint) {
-        AtomicLong clock = new AtomicLong();
-        StorePartitionDataReceiver receiver = new StorePartitionDataReceiver(
-            storeIngestionTaskUnderTest,
-            pcs.getReplicaTopicPartition(),
-            inMemoryLocalKafkaBroker.getPubSubBrokerAddress(),
-            0,
-            clock::get);
         try {
-          receiver.onPoll();
-          // This additional test receiver is installed after the records were already drained.
-          pcs.getCheckpointProgress()
-              .source(
-                  StoreIngestionTask.checkpointSource(
-                      pcs.getReplicaTopicPartition(),
-                      inMemoryLocalKafkaBroker.getPubSubBrokerAddress()))
-              .recordUserData();
-          verify(mockStorageMetadataService, never()).put(eq(topic), eq(PARTITION_FOO), any());
-          long heartbeat = storeIngestionTaskUnderTest.measureHybridHeartbeatTimestamp(pcs, false);
-          clock.set(TimeUnit.HOURS.toNanos(2));
-          receiver.onPoll();
+          // Advancing the clock alone (including empty polls) must not checkpoint pending user data.
+          checkpointClock.set(TimeUnit.HOURS.toNanos(3));
+          verify(mockStorageMetadataService, org.mockito.Mockito.after(100).never())
+              .put(eq(topic), eq(PARTITION_FOO), any());
+          localVeniceWriter
+              .sendHeartbeat(
+                  pcs.getReplicaTopicPartition(),
+                  null,
+                  DEFAULT_LEADER_METADATA_WRAPPER,
+                  true,
+                  LeaderCompleteState.getLeaderCompleteState(true),
+                  System.currentTimeMillis())
+              .get();
           verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).put(eq(topic), eq(PARTITION_FOO), any());
-          Assert.assertEquals(offsetRecord.getCheckpointedLocalVtPosition(), p2);
-          Assert.assertEquals(offsetRecord.getHeartbeatTimestamp(), heartbeat);
           assertTrue(offsetRecord.getLastCheckpointTimestamp() > 0);
         } catch (Exception e) {
-          throw new AssertionError("Idle time checkpoint failed", e);
+          throw new AssertionError("Record-driven time checkpoint failed", e);
         }
       }
       storeIngestionTaskUnderTest.close();
@@ -5072,8 +5065,8 @@ public abstract class StoreIngestionTaskTest {
           .put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(
           offsetRecord.getCheckpointedLocalVtPosition(),
-          p2,
-          "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be 2!");
+          timeCheckpoint ? InMemoryPubSubPosition.of(3) : p2,
+          "Checkpoint must cover the last processed record");
 
       // Verify that the underlying storage engine sync function is invoked.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(expectedSyncs)).sync(eq(PARTITION_FOO));
@@ -5084,6 +5077,7 @@ public abstract class StoreIngestionTaskTest {
     serverProperties.put(SERVER_DATABASE_SYNC_INTERVAL_ENABLED, timeCheckpoint);
     serverProperties.put(SERVER_DATABASE_SYNC_SPREAD_SECONDS, 0);
     testConfig.setHybridStoreConfig(this.hybridStoreConfig).setBeforeStartingConsumption(() -> {
+      doAnswer(ignored -> checkpointClock.get()).when(storeIngestionTaskUnderTest).checkpointTimeNs();
       doReturn(getOffsetRecord(InMemoryPubSubPosition.of(0L), true, pubSubContext)).when(mockStorageMetadataService)
           .getLastOffset(topic, PARTITION_FOO, pubSubContext);
     }).setStoreVersionConfigOverride(configOverride -> {

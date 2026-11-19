@@ -1,8 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotSame;
-import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import java.util.Map;
@@ -31,18 +29,18 @@ public class CheckpointProgressTest {
   }
 
   @Test
-  public void testProducerFenceIncludesAllSourcesAndRetainsFailure() {
+  public void testCheckpointFenceRetainsFailure() {
     CheckpointProgress progress = new CheckpointProgress();
     CompletableFuture<Void> first = new CompletableFuture<>();
     CompletableFuture<Void> second = new CompletableFuture<>();
-    progress.trackProducerPersistence(first);
-    progress.trackProducerPersistence(second);
+    progress.trackCheckpoint(first);
+    progress.trackCheckpoint(second);
     second.complete(null);
-    assertFalse(progress.producerPersistence().isDone());
+    assertFalse(progress.checkpoints().isDone());
     first.completeExceptionally(new IllegalStateException("failed persistence"));
-    assertTrue(progress.producerPersistence().isCompletedExceptionally());
-    progress.trackProducerPersistence(CompletableFuture.completedFuture(null));
-    assertTrue(progress.producerPersistence().isCompletedExceptionally());
+    assertTrue(progress.checkpoints().isCompletedExceptionally());
+    progress.trackCheckpoint(CompletableFuture.completedFuture(null));
+    assertTrue(progress.checkpoints().isCompletedExceptionally());
   }
 
   @Test
@@ -92,28 +90,4 @@ public class CheckpointProgressTest {
     }
   }
 
-  @Test
-  public void testAtomicProducerCallReservationsCoverBothConcurrentSources() throws Exception {
-    PartitionConsumptionState pcs =
-        org.mockito.Mockito.mock(PartitionConsumptionState.class, org.mockito.Mockito.CALLS_REAL_METHODS);
-    CompletableFuture<Void> initial = CompletableFuture.completedFuture(null);
-    CompletableFuture<Void> first = new CompletableFuture<>();
-    CompletableFuture<Void> second = new CompletableFuture<>();
-    pcs.setLastVTProduceCallFuture(initial);
-    CompletableFuture<CompletableFuture<Void>> firstPrevious =
-        CompletableFuture.supplyAsync(() -> pcs.swapLastVTProduceCallFuture(first));
-    CompletableFuture<CompletableFuture<Void>> secondPrevious =
-        CompletableFuture.supplyAsync(() -> pcs.swapLastVTProduceCallFuture(second));
-    CompletableFuture<Void> beforeFirst = firstPrevious.get(5, TimeUnit.SECONDS);
-    CompletableFuture<Void> beforeSecond = secondPrevious.get(5, TimeUnit.SECONDS);
-    assertNotSame(beforeFirst, beforeSecond, "Both sources must not reserve the same predecessor");
-    if (beforeFirst == initial) {
-      assertSame(beforeSecond, first);
-      assertSame(pcs.getLastVTProduceCallFuture(), second);
-    } else {
-      assertSame(beforeSecond, initial);
-      assertSame(beforeFirst, second);
-      assertSame(pcs.getLastVTProduceCallFuture(), first);
-    }
-  }
 }

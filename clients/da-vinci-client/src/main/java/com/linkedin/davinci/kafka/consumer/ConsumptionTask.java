@@ -53,8 +53,6 @@ class ConsumptionTask implements Runnable {
   private final String consumptionTaskIdStr;
   private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
-  private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<DefaultPubSubMessage>>> pollCallbackReceivers =
-      new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
   private final Supplier<Map<PubSubTopicPartition, List<DefaultPubSubMessage>>> pollFunction;
   private final IntConsumer bandwidthThrottler;
@@ -127,11 +125,6 @@ class ConsumptionTask implements Runnable {
           }
           long beforePollingTimestamp = System.currentTimeMillis();
           processAndClearUnsubscriptions(topicPartitionsToUnsub);
-          if (!pollCallbackReceivers.isEmpty()) {
-            for (ConsumedDataReceiver<List<DefaultPubSubMessage>> receiver: pollCallbackReceivers.values()) {
-              receiver.onPoll();
-            }
-          }
 
           Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledMessages = pollFunction.get();
           lastSuccessfulPollTimestamp = System.currentTimeMillis();
@@ -178,9 +171,7 @@ class ConsumptionTask implements Runnable {
     cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub);
     for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
       ConsumedDataReceiver<List<DefaultPubSubMessage>> dataReceiver = dataReceiverMap.remove(topicPartitionToUnSub);
-      pollCallbackReceivers.remove(topicPartitionToUnSub);
       if (dataReceiver != null) {
-        dataReceiver.onUnsubscription();
         dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
       }
       consumerPollTracker.removeTopicPartition(topicPartitionToUnSub);
@@ -300,14 +291,6 @@ class ConsumptionTask implements Runnable {
       ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
     ConsumedDataReceiver<List<DefaultPubSubMessage>> previousConsumedDataReceiver =
         dataReceiverMap.put(pubSubTopicPartition, consumedDataReceiver);
-    if (previousConsumedDataReceiver != null && previousConsumedDataReceiver != consumedDataReceiver) {
-      previousConsumedDataReceiver.onUnsubscription();
-    }
-    if (consumedDataReceiver.requiresPollCallback()) {
-      pollCallbackReceivers.put(pubSubTopicPartition, consumedDataReceiver);
-    } else {
-      pollCallbackReceivers.remove(pubSubTopicPartition);
-    }
     if (previousConsumedDataReceiver != null
         && !previousConsumedDataReceiver.destinationIdentifier().equals(consumedDataReceiver.destinationIdentifier())) {
       // Defensive coding. Should never happen except in case of a regression.
@@ -332,11 +315,7 @@ class ConsumptionTask implements Runnable {
   }
 
   void removeDataReceiver(PubSubTopicPartition topicPartition) {
-    ConsumedDataReceiver<List<DefaultPubSubMessage>> receiver = this.dataReceiverMap.remove(topicPartition);
-    pollCallbackReceivers.remove(topicPartition);
-    if (receiver != null) {
-      receiver.onUnsubscription();
-    }
+    this.dataReceiverMap.remove(topicPartition);
     this.partitionToStatsMap.remove(topicPartition);
   }
 

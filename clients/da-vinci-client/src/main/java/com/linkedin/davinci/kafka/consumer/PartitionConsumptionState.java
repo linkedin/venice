@@ -121,13 +121,6 @@ public class PartitionConsumptionState {
     return checkpointProgress;
   }
 
-  /** Atomically reserve a producer-call slot across all source consumers, not just one AA key lock. */
-  synchronized CompletableFuture<Void> swapLastVTProduceCallFuture(CompletableFuture<Void> next) {
-    CompletableFuture<Void> previous = lastVTProduceCallFuture;
-    lastVTProduceCallFuture = next;
-    return previous;
-  }
-
   /**
    * State machine that can only transition to LATCH_CREATED if LatchStatus is NONE, and transition to LATCH_RELEASED
    * if LatchStatus is LATCH_CREATED. The latch will only be created in {@link LeaderFollowerPartitionStateModel} if

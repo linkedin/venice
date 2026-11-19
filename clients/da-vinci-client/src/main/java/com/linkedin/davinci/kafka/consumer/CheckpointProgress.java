@@ -10,7 +10,6 @@ import java.util.concurrent.CompletableFuture;
  * reset on send, before durability. Source tokens are captured with the corresponding immutable DIV snapshot.
  */
 class CheckpointProgress {
-  final Object admissionLock = new Object();
   final Object producerLock = new Object();
   final Object executionLock = new Object();
   private volatile boolean valid = true;
@@ -26,7 +25,6 @@ class CheckpointProgress {
   }
 
   private final Map<String, PeriodicCheckpoint> sources = new HashMap<>();
-  private CompletableFuture<Void> producerPersistence = CompletableFuture.completedFuture(null);
   private CompletableFuture<Void> checkpoints = CompletableFuture.completedFuture(null);
 
   synchronized PeriodicCheckpoint source(String key) {
@@ -34,8 +32,11 @@ class CheckpointProgress {
   }
 
   synchronized PeriodicCheckpoint source(String key, PeriodicCheckpoint initial) {
-    sources.put(key, initial);
-    return initial;
+    return sources.computeIfAbsent(key, ignored -> initial);
+  }
+
+  synchronized boolean isDue(long nowNs) {
+    return valid && sources.values().stream().anyMatch(checkpoint -> checkpoint.isDue(nowNs));
   }
 
   synchronized Map<PeriodicCheckpoint, Long> capture(String source) {
@@ -51,14 +52,6 @@ class CheckpointProgress {
   static void checkpointSucceeded(Map<PeriodicCheckpoint, Long> coverage) {
     long now = System.nanoTime();
     coverage.forEach((checkpoint, generation) -> checkpoint.checkpointSucceeded(generation, now));
-  }
-
-  synchronized void trackProducerPersistence(CompletableFuture<Void> future) {
-    producerPersistence = combine(producerPersistence, future);
-  }
-
-  synchronized CompletableFuture<Void> producerPersistence() {
-    return producerPersistence;
   }
 
   synchronized void trackCheckpoint(CompletableFuture<Void> future) {

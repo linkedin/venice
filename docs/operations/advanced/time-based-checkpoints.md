@@ -13,39 +13,46 @@ byte thresholds, control-message boundaries, or graceful-shutdown behavior.
 The feature requires `store.writer.buffer.after.leader.logic.enabled=true` (the existing default). Startup rejects
 enabling time checkpoints with inline leader writes, because those writes would not be ordered with a queued checkpoint.
 
-Each subscription chooses one random delay in `[0, spread)`. The first deadline is subscription time plus the interval
-and that delay. A successful checkpoint of covered user data sets the next deadline to completion time plus the interval
-and the same delay. The delay is retained after long stalls and byte-triggered checkpoints, rather than resetting all
-partitions to an unstaggered deadline. Resubscription starts a new schedule. This is a pacing target, not a hard
-completion guarantee or a coordinated cluster-wide sweep.
+Each source-partition uses a stable delay in whole seconds in `[0, spread)`, derived from the source and replica
+identity. The effective interval is the configured interval plus this delay. Its monotonic clock starts on the first
+processed record. A successful checkpoint sets the next deadline to completion time plus the same effective interval,
+including after a byte-triggered checkpoint or a long stall. Replacing partition state starts a new clock.
 
-The existing consumer loop checks deadlines between polls, including empty polls, so a quiet partition below the byte
-threshold can still checkpoint without receiving another record. There are no additional timer threads or checkpoint
-workers. Disabled subscriptions allocate no deadline state and register no poll callback. Checkpoints run through the
-partition's existing ordered drainer and use the normal offsets, checksums, and storage sync. No RocksDB or WAL
-semantics change. A checkpoint acknowledges progress only after `storageEngine.sync` and metadata persistence succeed.
+**Checks are record-driven, not timer-driven.** A new record goes through the existing ordered processing and checks the
+existing byte threshold OR elapsed time since the last successful checkpoint. If input is completely idle, the
+checkpoint waits until a new record arrives. Empty polls do nothing. No poll callbacks, timer threads, workers or
+executors are added. Disabled partitions allocate no time-checkpoint state. Checkpoints use the existing offsets,
+checksums and storage sync. No RocksDB or WAL semantics change. Only successful `storageEngine.sync` AND metadata
+persistence refresh the clock; the wall-clock timestamp in the offset record is not the freshness clock.
 
 **Only pending user data qualifies.** Heartbeats, control messages and Global DIV messages do not dirty a subscription.
-An empty poll can checkpoint data left pending by an earlier poll. Heartbeat-only stale metadata remains unresolved
-under this policy; the timer never invents a fresh heartbeat or flushes a clean partition merely because time passed.
+A newly processed heartbeat can provide the next record opportunity for earlier pending user data, but heartbeat-only or
+control-only traffic never qualifies for the time branch. Heartbeat-only stale metadata remains unresolved.
 
-There is at most one outstanding time checkpoint per source-partition subscription. Slow checkpoints, producer work,
-throttling, and long polls can delay attempts. Missed intervals are skipped rather than replayed in a catch-up burst.
-Successful byte/control checkpoints refresh freshness for the user-data generations they actually cover. A snapshot
-cannot acknowledge newer arrivals or another RT source's progress. The consumer check is preliminary: ordered execution
-rechecks eligibility so an intervening byte checkpoint suppresses a redundant time request. Enqueue, producer
-acknowledgement, cancellation, skipped commands and failures never acknowledge progress. Unsubscription, replacement of
-partition state, errors and task shutdown invalidate deferred commands. Teardown awaits executing as well as queued time
-checkpoints; reset/replacement also serializes against executing snapshot commands.
+An outstanding source snapshot suppresses further time attempts until it completes. Slow checkpoints, producer work,
+throttling, and missing records can delay attempts. Missed intervals are not replayed in a catch-up burst. Successful
+byte/control checkpoints refresh freshness for the user-data generations they actually cover. A snapshot cannot
+acknowledge newer arrivals or another RT source's progress. Enqueue, producer acknowledgement, cancellation, skipped
+commands and failures never acknowledge progress. Unsubscription, replacement of partition state, errors and task
+shutdown invalidate deferred commands. Teardown awaits executing as well as queued time checkpoints; reset/replacement
+also serializes against executing snapshot commands.
 
-With Global RT DIV enabled, followers snapshot consumer-owned VT DIV between polls and persist it after the preceding
-records. RT leaders use the existing RT DIV production and produce-completion snapshot path, separately for each
-subscribed source. Non-RT producing leaders (remote VT or stream reprocessing) defer until all preceding producer calls
-and persistence callbacks finish before pairing the upstream-consumed cursor with the processed local VT position. They
-do not emit an RT DIV. Atomic producer-call reservations cover overlapping AA source/key processing, not just the most
-recently assigned future. Opted-in source admission is serialized per partition so poll snapshots do not race another
-source's batch. No threads, workers or executors are added. No normal-ingestion checkpoint drains or unsubscribes a
-consumer.
+The four existing routes gain a time alternative to their normal predicates:
+
+1. Without Global DIV, the drainer checks processed bytes OR time after processing each record.
+2. A Global RT-consuming producing leader checks source bytes OR time and uses the existing RT DIV production and
+   produce-completion snapshot path, separately for each source.
+3. A Global non-RT producing leader (remote VT or stream reprocessing) checks the existing control/byte predicate OR
+   time. The existing data-produce callback pairs the upstream-consumed and produced-local VT positions. It does not
+   produce a synthetic RT DIV for a time checkpoint.
+4. A Global local-VT follower or nonproducing leader checks the existing complete-DIV/control/twice-byte threshold OR
+   time and enqueues its consumer snapshot after the preceding record's persistence dependency.
+
+Source-specific generations remain necessary because Global byte counters reset on send, before durable success. Global
+producer snapshot capture is serialized with source progress; queued/executing snapshots retain partition-state
+validation and a teardown completion barrier. Independent producer-persistence fences and poll-admission locks are not
+needed. No normal-ingestion checkpoint drains or unsubscribes a consumer. Existing selected-control, Global DIV, manual
+and graceful-shutdown triggers are preserved.
 
 ## Validation before enabling
 

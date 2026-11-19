@@ -1,16 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import org.testng.annotations.Test;
 
 
@@ -26,20 +19,12 @@ public class PeriodicCheckpointTest {
   }
 
   @Test
-  public void testOnlyDirtyAndDueProgressTriggers() throws Exception {
-    PeriodicCheckpoint.CheckpointAction action = mock(PeriodicCheckpoint.CheckpointAction.class);
-    when(action.checkpoint()).thenReturn(CompletableFuture.completedFuture(null));
+  public void testOnlyPendingDataAfterIntervalAndStableSpreadIsDue() {
     PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 20, 0);
-    checkpoint.maybeCheckpoint(1000, action);
-    verify(action, never()).checkpoint();
+    assertFalse(checkpoint.isDue(1000));
     checkpoint.recordUserData();
-    checkpoint.maybeCheckpoint(119, action);
-    verify(action, never()).checkpoint();
-    checkpoint.maybeCheckpoint(120, action);
-    verify(action).checkpoint();
-    // Completing a command without a successful sync is not an acknowledgement.
-    checkpoint.maybeCheckpoint(121, action);
-    verify(action, times(2)).checkpoint();
+    assertFalse(checkpoint.isDue(119));
+    assertTrue(checkpoint.isDue(120));
   }
 
   @Test
@@ -60,36 +45,38 @@ public class PeriodicCheckpointTest {
   }
 
   @Test
-  public void testOutstandingCheckpointDefersAndPreservesPhaseAcrossMissedRounds() throws Exception {
-    PeriodicCheckpoint.CheckpointAction action = mock(PeriodicCheckpoint.CheckpointAction.class);
+  public void testOutstandingSnapshotDefersTimeBranchWithoutAcknowledgingData() {
     CompletableFuture<Void> pending = new CompletableFuture<>();
-    when(action.checkpoint()).thenReturn(pending);
     PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 20, 0);
     checkpoint.recordUserData();
-    checkpoint.maybeCheckpoint(120, action);
-    checkpoint.maybeCheckpoint(500, action);
-    verify(action).checkpoint();
+    assertTrue(checkpoint.isDue(120));
+    checkpoint.trackCheckpoint(pending);
+    assertFalse(checkpoint.isDue(500));
     checkpoint.checkpointSucceeded(checkpoint.generation(), 501);
     pending.complete(null);
     checkpoint.recordUserData();
-    checkpoint.maybeCheckpoint(620, action);
-    verify(action).checkpoint();
-    checkpoint.maybeCheckpoint(621, action);
-    verify(action, times(2)).checkpoint();
+    assertFalse(checkpoint.isDue(620));
+    assertTrue(checkpoint.isDue(621));
   }
 
   @Test
-  public void testDeferralAndFailureNeverAcknowledgeProgress() throws Exception {
-    PeriodicCheckpoint.CheckpointAction action = mock(PeriodicCheckpoint.CheckpointAction.class);
+  public void testFailureAndNoOpNeverRefreshDeadline() {
     CompletableFuture<Void> failed = new CompletableFuture<>();
     failed.completeExceptionally(new IllegalStateException("checkpoint failed"));
-    when(action.checkpoint()).thenReturn(null).thenReturn(failed);
     PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 0, 0);
     checkpoint.recordUserData();
-    checkpoint.maybeCheckpoint(100, action);
-    checkpoint.maybeCheckpoint(101, action);
-    assertThrows(CompletionException.class, () -> checkpoint.maybeCheckpoint(102, action));
+    checkpoint.trackCheckpoint(CompletableFuture.completedFuture(null));
+    assertTrue(checkpoint.isDue(100));
+    checkpoint.trackCheckpoint(failed);
     assertTrue(checkpoint.isDue(102));
+  }
+
+  @Test
+  public void testEmptyCoverageCannotPostponeUncoveredData() {
+    PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 0, 0);
+    checkpoint.recordUserData();
+    checkpoint.checkpointSucceeded(0, 200);
+    assertTrue(checkpoint.isDue(100));
   }
 
   @Test

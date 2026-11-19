@@ -1058,7 +1058,7 @@ public class ConfigKeys {
   public static final String SERVER_DATABASE_SYNC_INTERVAL_ENABLED = "server.database.sync.interval.enabled";
   /** Minimum freshness interval in seconds. Defaults to two hours. */
   public static final String SERVER_DATABASE_SYNC_INTERVAL_SECONDS = "server.database.sync.interval.seconds";
-  /** Initial random staggering window in seconds. Defaults to ten minutes; zero disables staggering. */
+  /** Stable per-source staggering window in seconds. Defaults to ten minutes; zero disables staggering. */
   public static final String SERVER_DATABASE_SYNC_SPREAD_SECONDS = "server.database.sync.spread.seconds";
 
   /**

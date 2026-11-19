@@ -2285,20 +2285,53 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return serverConfig.isDatabaseSyncIntervalEnabled();
   }
 
+  long checkpointTimeNs() {
+    return System.nanoTime();
+  }
+
   static String checkpointSource(PubSubTopicPartition topicPartition, String kafkaUrl) {
     return kafkaUrl + "/" + topicPartition.getPubSubTopic().getName();
   }
 
   protected void recordCheckpointUserData(PartitionConsumptionState pcs, DefaultPubSubMessage record, String kafkaUrl) {
+    PeriodicCheckpoint checkpoint = checkpointProgress(pcs, record.getTopicPartition(), kafkaUrl);
     if (!record.getKey().isControlMessage() && !record.getKey().isGlobalRtDiv()) {
-      CheckpointProgress progress = pcs.getCheckpointProgress();
-      if (progress != null) {
-        PeriodicCheckpoint checkpoint = progress.source(checkpointSource(record.getTopicPartition(), kafkaUrl));
-        if (checkpoint != null) {
-          checkpoint.recordUserData();
-        }
-      }
+      checkpoint.recordUserData();
     }
+  }
+
+  private PeriodicCheckpoint checkpointProgress(
+      PartitionConsumptionState pcs,
+      PubSubTopicPartition topicPartition,
+      String kafkaUrl) {
+    CheckpointProgress progress = pcs.initializeCheckpointProgress();
+    String source = checkpointSource(topicPartition, kafkaUrl);
+    PeriodicCheckpoint checkpoint = progress.source(source);
+    if (checkpoint == null) {
+      long spreadSeconds = serverConfig.getDatabaseSyncSpreadSeconds();
+      long stableSpread = spreadSeconds == 0
+          ? 0
+          : SECONDS.toNanos(Math.floorMod((long) (source + pcs.getReplicaId()).hashCode(), spreadSeconds));
+      checkpoint = progress.source(
+          source,
+          new PeriodicCheckpoint(
+              SECONDS.toNanos(serverConfig.getDatabaseSyncIntervalSeconds()),
+              stableSpread,
+              checkpointTimeNs()));
+    }
+    return checkpoint;
+  }
+
+  protected boolean isCheckpointDue(PartitionConsumptionState pcs, DefaultPubSubMessage record, String kafkaUrl) {
+    if (!isTimeBasedCheckpointEnabled() || pcs == null || pcs.isErrorReported() || !pcs.isSubscribed()) {
+      return false;
+    }
+    CheckpointProgress progress = pcs.getCheckpointProgress();
+    if (progress == null || !progress.isValid()) {
+      return false;
+    }
+    PeriodicCheckpoint checkpoint = progress.source(checkpointSource(record.getTopicPartition(), kafkaUrl));
+    return checkpoint != null && checkpoint.isDue(checkpointTimeNs());
   }
 
   protected Map<PeriodicCheckpoint, Long> captureCheckpointCoverage(PartitionConsumptionState pcs, String source) {
@@ -2306,41 +2339,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return progress == null ? Collections.emptyMap() : progress.capture(source);
   }
 
-  CompletableFuture<Void> checkpointOnTime(
-      PubSubTopicPartition sourceTopicPartition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      PartitionConsumptionState pcs,
-      BooleanSupplier stillValid) throws InterruptedException {
-    return enqueuePeriodicCheckpoint(sourceTopicPartition, pcs, null, null, stillValid);
-  }
-
-  protected CompletableFuture<Void> enqueuePeriodicCheckpoint(
-      PubSubTopicPartition topicPartition,
-      PartitionConsumptionState pcs,
-      PartitionTracker snapshot,
-      CompletableFuture<Void> precedingRecord,
-      BooleanSupplier stillValid) throws InterruptedException {
-    return enqueueCheckpointSnapshot(
-        topicPartition,
-        pcs,
-        snapshot,
-        precedingRecord,
-        captureCheckpointCoverage(pcs, null),
-        stillValid);
-  }
-
   protected CompletableFuture<Void> enqueueCheckpointSnapshot(
       PubSubTopicPartition topicPartition,
       PartitionConsumptionState pcs,
       PartitionTracker snapshot,
       CompletableFuture<Void> precedingRecord,
-      Map<PeriodicCheckpoint, Long> coverage,
-      BooleanSupplier stillValid) throws InterruptedException {
+      Map<PeriodicCheckpoint, Long> coverage) throws InterruptedException {
     CheckpointProgress progress = pcs.getCheckpointProgress();
     CompletableFuture<Void> tracked = new CompletableFuture<>();
     if (progress != null) {
       progress.trackCheckpoint(tracked);
+      coverage.keySet().forEach(checkpoint -> checkpoint.trackCheckpoint(tracked));
     }
     try {
       CompletableFuture<Void> command = getStoreBufferService().execCheckpointCommandAsync(topicPartition, this, () -> {
@@ -2348,9 +2357,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           return;
         }
         synchronized (progress.executionLock) {
-          if (!stillValid.getAsBoolean() || getPartitionConsumptionState(pcs.getPartition()) != pcs
-              || !pcs.isSubscribed() || pcs.isErrorReported() || failedPartitions.contains(pcs.getPartition())
-              || !progress.isValid()) {
+          if (getPartitionConsumptionState(pcs.getPartition()) != pcs || !pcs.isSubscribed() || pcs.isErrorReported()
+              || failedPartitions.contains(pcs.getPartition()) || !progress.isValid()) {
             return;
           }
           if (precedingRecord != null) {
@@ -2359,14 +2367,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             }
             precedingRecord.join();
           }
-          if (snapshot == null) {
-            updateOffsetMetadataAndSyncOffset(pcs);
-          } else {
-            if (updateAndSyncOffsetFromSnapshotIfValid(snapshot, topicPartition)) {
-              if (!coverage.isEmpty()) {
-                CheckpointProgress.checkpointSucceeded(coverage);
-              }
-            }
+          if (updateAndSyncOffsetFromSnapshotIfValid(snapshot, topicPartition) && !coverage.isEmpty()) {
+            CheckpointProgress.checkpointSucceeded(coverage);
           }
         }
       });
@@ -2375,6 +2377,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           tracked.complete(null);
         } else {
           tracked.completeExceptionally(failure);
+          setIngestionException(pcs.getPartition(), new VeniceException("Checkpoint snapshot failed", failure));
         }
       });
       return command;
@@ -3651,9 +3654,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         monitor.recordIngested(recordSize);
       }
       partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
-      if (isTimeBasedCheckpointEnabled() && !isGlobalRtDivEnabled()) {
-        recordCheckpointUserData(partitionConsumptionState, record, kafkaUrl);
-      }
+    }
+    if (isTimeBasedCheckpointEnabled() && !isGlobalRtDivEnabled()) {
+      recordCheckpointUserData(partitionConsumptionState, record, kafkaUrl);
     }
     /*
      * Per-record path: pass forceCacheRefresh=false. The latch-held catch-up window can hold many
@@ -3729,12 +3732,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    *     (it consumes externally and produces to local VT) so the byte-threshold logic applies identically.
    */
   boolean shouldSendGlobalRtDiv(DefaultPubSubMessage record, PartitionConsumptionState pcs, String consumedBytesKey) {
-    if (!isGlobalRtDivEnabled() || record.getKey().isControlMessage()) {
+    if (!isGlobalRtDivEnabled()) {
       return false;
     }
     final long syncBytesInterval = getSyncBytesInterval(pcs);
-    return syncBytesInterval > 0
-        && (pcs.getConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey) >= syncBytesInterval);
+    return (!record.getKey().isControlMessage() && syncBytesInterval > 0
+        && pcs.getConsumedBytesSinceLastGlobalRtDivSync(consumedBytesKey) >= syncBytesInterval)
+        || (isTimeBasedCheckpointEnabled() && record.getTopicPartition().getPubSubTopic().isRealTime()
+            && isCheckpointDue(pcs, record, consumedBytesKey));
   }
 
   abstract void sendVtDivSnapshotIfNeeded(DefaultPubSubMessage record, PubSubTopicPartition topicPartition);
@@ -3775,7 +3780,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     final long syncBytesInterval = getSyncBytesInterval(pcs); // size-based sync condition
-    return syncBytesInterval > 0 && (pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval);
+    return (syncBytesInterval > 0 && pcs.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval)
+        || (isTimeBasedCheckpointEnabled() && pcs.getCheckpointProgress() != null
+            && pcs.getCheckpointProgress().isDue(checkpointTimeNs()));
   }
 
   /**
@@ -6329,14 +6336,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void invalidateTimeCheckpoints(PartitionConsumptionState pcs) {
     if (isTimeBasedCheckpointEnabled() && pcs != null && pcs.getCheckpointProgress() != null) {
       CheckpointProgress progress = pcs.getCheckpointProgress();
-      CompletableFuture<Void> pending;
-      synchronized (progress.admissionLock) {
-        progress.invalidate();
-        pending = progress.checkpoints();
-      }
+      progress.invalidate();
+      CompletableFuture<Void> pending = progress.checkpoints();
       try {
-        // A time-triggered RT DIV may still be producing. Finish its data and snapshot work before reset clears
-        // state, not just the snapshot command that eventually arrives at the drainer.
+        // Include producer-completion snapshots not yet present in the drainer queue.
         pending.get(getServerConfig().getDrainTimeoutMs(), MILLISECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();

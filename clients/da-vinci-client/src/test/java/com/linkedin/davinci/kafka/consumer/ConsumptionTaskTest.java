@@ -65,11 +65,10 @@ public class ConsumptionTaskTest {
   }
 
   @Test
-  public void testPollCallbackIncludesIdleSubscriptionsAndStopsAfterRemoval() throws Exception {
+  public void testEmptyPollsDoNotDeliverRecordsOrCheckpointCallbacks() throws Exception {
     PubSubTopic topic = pubSubTopicRepository.getTopic("test_store_v1");
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(topic, 0);
     ConsumedDataReceiver<List<DefaultPubSubMessage>> receiver = createMockReceiver(topic);
-    when(receiver.requiresPollCallback()).thenReturn(true);
     AtomicInteger polls = new AtomicInteger();
     AtomicReference<ConsumptionTask> taskRef = new AtomicReference<>();
     ConsumptionTask task = createTask(() -> {
@@ -83,12 +82,9 @@ public class ConsumptionTaskTest {
     }, ignored -> {}, ignored -> {}, null);
     taskRef.set(task);
     task.setDataReceiver(partition, receiver);
-    task.setDataReceiver(partition, receiver);
     task.run();
 
-    verify(receiver, times(2)).onPoll();
-    verify(receiver).onUnsubscription();
-    verify(receiver, never()).write(any());
+    org.mockito.Mockito.verifyNoInteractions(receiver);
   }
 
   /**
