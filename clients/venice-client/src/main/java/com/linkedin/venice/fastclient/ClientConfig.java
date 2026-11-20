@@ -74,6 +74,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * {@link com.linkedin.venice.fastclient.meta.RequestBasedMetadata#DEFAULT_CONN_WARMUP_TIMEOUT_IN_SECONDS_DEFAULT} by default.
    */
   private final long metadataConnWarmupTimeoutInSeconds;
+  /**
+   * Byte budget for the client-side record cache. A positive value is the only thing that enables the cache; at zero
+   * (the default) the cache is never instantiated and the read path is unchanged.
+   */
+  private final long maxCacheSizeInBytes;
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
   private final boolean longTailRetryEnabledForCompute;
@@ -199,6 +204,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.isMetadataConnWarmupEnabled = builder.isMetadataConnWarmupEnabled;
     this.metadataRefreshIntervalInSeconds = builder.metadataRefreshIntervalInSeconds;
     this.metadataConnWarmupTimeoutInSeconds = builder.metadataConnWarmupTimeoutInSeconds;
+
+    this.maxCacheSizeInBytes = builder.maxCacheSizeInBytes;
 
     this.longTailRetryEnabledForSingleGet = builder.longTailRetryEnabledForSingleGet;
     this.longTailRetryThresholdForSingleGetInMicroSeconds = builder.longTailRetryThresholdForSingleGetInMicroSeconds;
@@ -390,6 +397,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRetryThresholdForBatchGetInMicroSeconds;
   }
 
+  public long getMaxCacheSizeInBytes() {
+    return maxCacheSizeInBytes;
+  }
+
+  public boolean isCacheEnabled() {
+    return maxCacheSizeInBytes > 0;
+  }
+
   public boolean isLongTailRetryEnabledForCompute() {
     return longTailRetryEnabledForCompute;
   }
@@ -566,6 +581,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean longTailRetryEnabledForBatchGet = true;
     private int longTailRetryThresholdForBatchGetInMicroSeconds = 0;
 
+    private long maxCacheSizeInBytes = 0;
+
     private String longTailRangeBasedRetryThresholdForBatchGetInMilliSeconds =
         LONG_TAIL_RANGE_BASED_RETRY_THRESHOLD_FOR_BATCH_GET_IN_MILLI_SECONDS;
 
@@ -732,6 +749,19 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForBatchGetInMicroSeconds(
         int longTailRetryThresholdForBatchGetInMicroSeconds) {
       this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
+      return this;
+    }
+
+    /**
+     * Enable the client-side record cache with the supplied byte budget. Leaving this unset (or non-positive) means
+     * the cache is never created. Hybrid entries expire 120 seconds after insertion (hits do not renew them), or
+     * earlier on a successful metadata refresh. Batch-only entries survive unchanged-version refreshes and are
+     * cleared on observed version swaps. These are cache residence limits, not end-to-end freshness guarantees.
+     * These policies follow the current serving version, not store-level configuration changes.
+     * Caching is bypassed until server metadata identifies whether that version is hybrid.
+     */
+    public ClientConfigBuilder<K, V, T> setMaxCacheSizeInBytes(long maxCacheSizeInBytes) {
+      this.maxCacheSizeInBytes = maxCacheSizeInBytes;
       return this;
     }
 
@@ -935,6 +965,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds)
+          .setMaxCacheSizeInBytes(maxCacheSizeInBytes)
           .setLongTailRetryEnabledForCompute(longTailRetryEnabledForCompute)
           .setVsonStore(isVsonStore)
           .setStoreMetadataFetchMode(storeMetadataFetchMode)

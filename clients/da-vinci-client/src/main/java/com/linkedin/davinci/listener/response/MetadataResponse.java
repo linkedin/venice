@@ -1,5 +1,6 @@
 package com.linkedin.davinci.listener.response;
 
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -23,6 +24,7 @@ public class MetadataResponse {
   public MetadataResponse() {
     this.responseRecord = new MetadataResponseRecord();
     this.responseRecord.setMultiKeyLongTailRetryThresholdsInMs("");
+    this.responseRecord.setCurrentVersionType(CurrentVersionType.UNKNOWN.getValue());
   }
 
   public void setVersionMetadata(VersionProperties versionProperties) {
@@ -55,6 +57,10 @@ public class MetadataResponse {
 
   public void setBatchGetLimit(int batchGetLimit) {
     responseRecord.setBatchGetLimit(batchGetLimit);
+  }
+
+  public void setCurrentVersionType(int currentVersionType) {
+    responseRecord.setCurrentVersionType(currentVersionType);
   }
 
   public void setMultiKeyLongTailRetryThresholdsInMs(String thresholds) {

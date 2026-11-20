@@ -10,7 +10,9 @@ import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RE
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.fastclient.cache.FastClientRecordCache;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.dimensions.RejectionReason;
@@ -32,6 +34,7 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -51,6 +54,11 @@ public class FastClientStats extends ClientStats {
   private final Sensor dualReadThinClientFastClientLatencyDeltaSensor;
 
   private final Sensor leakedRequestCountSensor;
+  private final Sensor cacheHitKeyCountSensor;
+  private final Sensor cacheHitLatencySensor;
+  private CacheGauges cacheGauges;
+  private final Map<CacheReadFailureReason, Sensor> cacheReadFailureSensors =
+      new EnumMap<>(CacheReadFailureReason.class);
   private volatile MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
 
   // OTel metrics
@@ -130,6 +138,88 @@ public class FastClientStats extends ClientStats {
       this.dualReadThinClientFastClientLatencyDeltaSensor = noopSensor;
     }
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
+    this.cacheHitKeyCountSensor = registerSensor("cache_hit_key_count", new Rate());
+    boolean cacheRequestType = requestType == RequestType.SINGLE_GET || requestType == RequestType.MULTI_GET_STREAMING;
+    this.cacheHitLatencySensor = cacheRequestType
+        ? registerSensorWithDetailedPercentiles("cache_hit_latency", new Avg(), new Max())
+        : metricsRepository.getNoopSensor("cache_hit_latency");
+    for (CacheReadFailureReason reason: CacheReadFailureReason.values()) {
+      cacheReadFailureSensors.put(
+          reason,
+          cacheRequestType
+              ? registerSensor("cache_read_failure_" + reason.metricSuffix, new OccurrenceRate())
+              : metricsRepository.getNoopSensor("cache_read_failure"));
+    }
+  }
+
+  /**
+   * Register once for the dispatcher's shared cache, using SINGLE_GET's unprefixed store/client namespace.
+   * Batch reads use this same cache; they must not register another set of capacity gauges.
+   * As with other client metrics, independent clients sharing a repository need distinct stats prefixes.
+   */
+  public synchronized void registerCacheGauges(FastClientRecordCache cache) {
+    if (getRequestType() != RequestType.SINGLE_GET) {
+      throw new IllegalStateException("Cache gauges belong to the shared store/client namespace");
+    }
+    if (cacheGauges == null) {
+      cacheGauges = new CacheGauges(getMetricsRepository(), storeName, cache);
+    }
+  }
+
+  /** Remove only this cache's gauges; other client metrics and the shared repository remain available. */
+  public synchronized void unregisterCacheGauges(FastClientRecordCache cache) {
+    if (cacheGauges != null && cacheGauges.cache == cache) {
+      cacheGauges.close();
+      cacheGauges = null;
+    }
+  }
+
+  private static final class CacheGauges extends AbstractVeniceStats {
+    private final FastClientRecordCache cache;
+
+    private CacheGauges(MetricsRepository repository, String storeName, FastClientRecordCache cache) {
+      super(repository, storeName);
+      this.cache = cache;
+      registerSensor(new AsyncGauge((ignored, ignored2) -> cache.getEntryCount(), "cache_estimated_entry_count"));
+      registerSensor(
+          new AsyncGauge((ignored, ignored2) -> cache.getEstimatedWeightInBytes(), "cache_estimated_weight_in_bytes"));
+      registerSensor(
+          new AsyncGauge(
+              (ignored, ignored2) -> cache.getConfiguredBudgetInBytes(),
+              "cache_configured_budget_in_bytes"));
+    }
+
+    private void close() {
+      unregisterAllSensors();
+    }
+  }
+
+  /**
+   * Successful per-key cache lookup plus metadata resolution, decompression and deserialization, in milliseconds.
+   * Excludes key serialization, routing, callbacks and remote fetches. Misses and failures are not samples.
+   */
+  public void recordCacheHitLatency(double latencyInMs) {
+    cacheHitLatencySensor.record(latencyInMs);
+  }
+
+  /** One occurrence per failed cache read, exposed as failures/second, separately for each bounded phase. */
+  public void recordCacheReadFailure(CacheReadFailureReason reason) {
+    cacheReadFailureSensors.get(reason).record();
+  }
+
+  /** Bounded execution phases, not exception classes or messages. Metadata includes compressor/deserializer resolution. */
+  public enum CacheReadFailureReason {
+    METADATA("metadata"), DECOMPRESSION("decompression"), DESERIALIZATION("deserialization");
+
+    private final String metricSuffix;
+
+    CacheReadFailureReason(String metricSuffix) {
+      this.metricSuffix = metricSuffix;
+    }
+  }
+
+  public void recordCacheHitKeyCount(int keyCount) {
+    cacheHitKeyCountSensor.record(keyCount);
   }
 
   /**

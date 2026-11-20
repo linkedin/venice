@@ -52,13 +52,18 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StorageMode;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.util.Arrays;
@@ -79,6 +84,9 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
@@ -91,6 +99,94 @@ public class RequestBasedMetadataTest {
   // and close() which involves executor shutdown + JDK lambda class loading overhead (slow on first use in JDK 17).
   // The previous 10s budget was too tight and caused ThreadTimeoutException on CI.
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCurrentVersionTypeIsUnknownForOlderServersAndUpdatesFromMetadata() throws Exception {
+    String storeName = "testStore";
+    ClientConfig config = RequestBasedMetadataTestUtils
+        .getMockClientConfig(storeName, false, false, mock(ScheduledExecutorService.class));
+    TransportClientResponse currentResponse = RequestBasedMetadataTestUtils.buildMetadataResponse(1);
+    MetadataResponseRecord record = FastSerializerDeserializerFactory
+        .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class)
+        .deserialize(currentResponse.getBody());
+    Schema oldSchema = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
+    GenericRecord oldRecord = new GenericData.Record(oldSchema);
+    for (Schema.Field field: oldSchema.getFields()) {
+      oldRecord.put(field.name(), record.get(field.name()));
+    }
+    D2TransportClient transport = mock(D2TransportClient.class);
+    doReturn(
+        CompletableFuture.completedFuture(
+            new TransportClientResponse(
+                5,
+                CompressionStrategy.NO_OP,
+                SerializerDeserializerFactory.getAvroGenericSerializer(oldSchema).serialize(oldRecord))))
+                    .when(transport)
+                    .get(anyString());
+    RouterBackedSchemaReader reader = RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader();
+    doReturn(oldSchema).when(reader).getValueSchema(5);
+    try (RequestBasedMetadata metadata = newRequestBasedMetadata(config, transport)) {
+      metadata.setMetadataResponseSchemaReader(reader);
+      metadata.setD2ServiceDiscovery(getMockD2ServiceDiscovery(transport, storeName));
+      metadata.start();
+      assertEquals(metadata.getCurrentVersionType(), CurrentVersionType.UNKNOWN);
+      for (int wireType: new int[] { 2, 1, 0, 3, -1 }) {
+        record.setCurrentVersionType(wireType);
+        doReturn(
+            CompletableFuture.completedFuture(
+                new TransportClientResponse(
+                    currentResponse.getSchemaId(),
+                    CompressionStrategy.NO_OP,
+                    SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
+                        .serialize(record)))).when(transport).get(anyString());
+        metadata.updateCache(false);
+        assertEquals(
+            metadata.getCurrentVersionType(),
+            wireType == 2
+                ? CurrentVersionType.HYBRID
+                : wireType == 1 ? CurrentVersionType.BATCH_ONLY : CurrentVersionType.UNKNOWN);
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCurrentVersionTypeWhenVersionSwitchIsDeferred() throws Exception {
+    String storeName = "testStore";
+    ClientConfig config = RequestBasedMetadataTestUtils
+        .getMockClientConfig(storeName, false, false, mock(ScheduledExecutorService.class));
+    TransportClientResponse initial = RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION);
+    TransportClientResponse deferred = RequestBasedMetadataTestUtils
+        .buildDeferredSwitchMetadataResponse(CURRENT_VERSION, CURRENT_VERSION + 1, StorageMode.INTERNAL);
+    TransportClientResponse adopted = RequestBasedMetadataTestUtils.buildMetadataResponse(CURRENT_VERSION + 1);
+    D2TransportClient transport = mock(D2TransportClient.class);
+    try (RequestBasedMetadata metadata = newRequestBasedMetadata(config, transport)) {
+      metadata.setMetadataResponseSchemaReader(RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader());
+      metadata.setD2ServiceDiscovery(getMockD2ServiceDiscovery(transport, storeName));
+      for (TransportClientResponse response: new TransportClientResponse[] { initial, deferred, adopted }) {
+        MetadataResponseRecord record = FastSerializerDeserializerFactory
+            .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class)
+            .deserialize(response.getBody());
+        record.setCurrentVersionType(
+            (response == initial ? CurrentVersionType.HYBRID : CurrentVersionType.BATCH_ONLY).getValue());
+        doReturn(
+            CompletableFuture.completedFuture(
+                new TransportClientResponse(
+                    response.getSchemaId(),
+                    CompressionStrategy.NO_OP,
+                    SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
+                        .serialize(record)))).when(transport).get(anyString());
+        if (response == initial) {
+          metadata.start();
+        } else {
+          metadata.updateCache(false).forEach(Runnable::run);
+        }
+        assertEquals(metadata.getCurrentStoreVersion(), response == adopted ? CURRENT_VERSION + 1 : CURRENT_VERSION);
+        assertEquals(
+            metadata.getCurrentVersionType(),
+            response != adopted ? CurrentVersionType.HYBRID : CurrentVersionType.BATCH_ONLY);
+      }
+    }
+  }
 
   /**
    * firstMetadataUpdateFails: If this fails, start() will be blocked until metadata can be fetched.
@@ -1157,8 +1253,14 @@ public class RequestBasedMetadataTest {
       requestBasedMetadata = getMockMetaData(clientConfig, storeName, false);
       List<int[]> received = new java.util.concurrent.CopyOnWriteArrayList<>();
       requestBasedMetadata.registerVersionSwitchListener((prev, next) -> received.add(new int[] { prev, next }));
+      Runnable replacedCallback = mock(Runnable.class);
+      Runnable refreshCallback = mock(Runnable.class);
+      requestBasedMetadata.setRefreshCallback(replacedCallback);
+      requestBasedMetadata.setRefreshCallback(refreshCallback);
       requestBasedMetadata.start();
 
+      verify(replacedCallback, times(0)).run();
+      verify(refreshCallback).run();
       assertEquals(received.size(), 1);
       assertEquals(received.get(0)[0], -1, "first transition's previousVersion must be the sentinel -1");
       assertEquals(received.get(0)[1], CURRENT_VERSION);
