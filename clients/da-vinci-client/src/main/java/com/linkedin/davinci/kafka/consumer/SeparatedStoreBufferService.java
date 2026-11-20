@@ -107,14 +107,6 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
   }
 
   @Override
-  public CompletableFuture<Void> execCheckpointCommandAsync(
-      PubSubTopicPartition topicPartition,
-      StoreIngestionTask ingestionTask,
-      Runnable checkpoint) throws InterruptedException {
-    return getDelegate(ingestionTask).execCheckpointCommandAsync(topicPartition, ingestionTask, checkpoint);
-  }
-
-  @Override
   public CompletableFuture<Void> execSyncGlobalRtDivAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException {
@@ -129,6 +121,21 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       StoreIngestionTask ingestionTask) throws InterruptedException {
     return getDelegate(ingestionTask)
         .execSyncOffsetFromSnapshotAsync(topicPartition, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
+  }
+
+  @Override
+  CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      CompletableFuture<Void> lastRecordPersistedFuture,
+      StoreIngestionTask ingestionTask,
+      CheckpointProgress.Snapshot checkpoint) throws InterruptedException {
+    return getDelegate(ingestionTask).execSyncOffsetFromSnapshotAsync(
+        topicPartition,
+        vtDivSnapshot,
+        lastRecordPersistedFuture,
+        ingestionTask,
+        checkpoint);
   }
 
   @Override

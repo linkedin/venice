@@ -72,7 +72,7 @@ public class RecordDrivenCheckpointTest {
     verify(pcs).setLastLeaderPersistFuture(persisted);
     verify(pcs, never()).initializeCheckpointProgress();
     verify(pcs, never()).getCheckpointProgress();
-    verify(task, never()).enqueueCheckpointSnapshot(any(), any(), any(), any(), any());
+    verify(task, never()).enqueueCheckpointSnapshot(any(), any(), any(), any(), any(), anyBoolean());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = com.linkedin.venice.utils.DataProviderUtils.class)
@@ -178,7 +178,7 @@ public class RecordDrivenCheckpointTest {
 
     verify(writer).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     verify(task, org.mockito.Mockito.times(pendingData ? 1 : 0))
-        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), any(), anyLong(), anyInt());
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), any(), anyLong(), anyInt(), anyBoolean());
     verify(pcs, never()).setLastLeaderPersistFuture(any());
     assertEquals(checkpoint.generation(), pendingData ? 1L : 0L);
   }
@@ -241,7 +241,7 @@ public class RecordDrivenCheckpointTest {
   }
 
   @Test(dataProvider = "nonRtSources")
-  public void testNonRtTimeTriggerUsesExistingDataProduceCallback(String source) {
+  public void testNonRtTimeTriggerUsesExistingDataProduceCallback(String source) throws Exception {
     LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic(source), 0);
@@ -255,7 +255,11 @@ public class RecordDrivenCheckpointTest {
     when(task.checkpointTimeNs()).thenReturn(100L);
     when(pcs.getCheckpointProgress()).thenReturn(progress);
     when(pcs.isSubscribed()).thenReturn(true);
-    when(pcs.getReplicaTopicPartition()).thenReturn(tp);
+    PubSubTopicPartition local = new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic("store_v1"), 0);
+    when(pcs.getReplicaTopicPartition()).thenReturn(local);
+    com.linkedin.venice.offsets.OffsetRecord offsetRecord = mock(com.linkedin.venice.offsets.OffsetRecord.class);
+    when(offsetRecord.getLeaderTopic(any())).thenReturn(tp.getPubSubTopic());
+    when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
     when(task.getVersionTopic()).thenReturn(tp.getPubSubTopic());
     DataIntegrityValidator div = mock(DataIntegrityValidator.class);
     when(task.getConsumerDiv()).thenReturn(div);
@@ -263,6 +267,8 @@ public class RecordDrivenCheckpointTest {
     doCallRealMethod().when(task).isCheckpointDue(any(), any(), any());
     doCallRealMethod().when(task).addVtDivToProducerCallbackIfNeeded(any(), any(), any(), any());
     LeaderProducerCallback callback = mock(LeaderProducerCallback.class);
+    when(task.enqueueCheckpointSnapshot(any(), any(), any(), any(), any(), anyBoolean()))
+        .thenReturn(CompletableFuture.completedFuture(null));
 
     task.addVtDivToProducerCallbackIfNeeded(record, callback, pcs, new CompletableFuture<>());
 
@@ -271,6 +277,17 @@ public class RecordDrivenCheckpointTest {
     verify(task, never()).sendGlobalRtDivMessage(any(), any(), any(), anyInt(), any(), anyLong(), anyInt());
     assertFalse(progress.checkpoints().isDone(), "The existing producer callback owns checkpoint completion");
     assertEquals(checkpoint.generation(), 1L, "Enqueue must not acknowledge pending data");
+    org.mockito.ArgumentCaptor<java.util.function.Consumer<com.linkedin.venice.pubsub.api.PubSubProduceResult>> completion =
+        org.mockito.ArgumentCaptor.forClass(java.util.function.Consumer.class);
+    verify(callback).setOnCompletionCallback(completion.capture());
+    completion.getValue().accept(mock(com.linkedin.venice.pubsub.api.PubSubProduceResult.class));
+    verify(task).enqueueCheckpointSnapshot(
+        org.mockito.ArgumentMatchers.eq(tp),
+        org.mockito.ArgumentMatchers.eq(pcs),
+        any(),
+        any(),
+        any(),
+        org.mockito.ArgumentMatchers.eq(true));
   }
 
   private DefaultPubSubMessage heartbeat(PubSubTopicPartition tp) {

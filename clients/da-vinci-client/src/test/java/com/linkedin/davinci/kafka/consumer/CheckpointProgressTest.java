@@ -55,19 +55,20 @@ public class CheckpointProgressTest {
   }
 
   @Test
-  public void testInvalidationWaitsForExecutingCommand() throws Exception {
+  public void testInvalidationRejectsAdmissionWithoutWaitingForStorage() throws Exception {
     CheckpointProgress progress = new CheckpointProgress();
     CountDownLatch executing = new CountDownLatch(1);
     CountDownLatch finish = new CountDownLatch(1);
     CompletableFuture<Void> command = CompletableFuture.runAsync(() -> {
-      synchronized (progress.executionLock) {
+      progress.executionLock.lock();
+      try {
         executing.countDown();
-        try {
-          assertTrue(finish.await(5, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          throw new AssertionError(e);
-        }
+        assertTrue(finish.await(5, TimeUnit.SECONDS));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError(e);
+      } finally {
+        progress.executionLock.unlock();
       }
     });
     try {
@@ -78,11 +79,12 @@ public class CheckpointProgressTest {
         progress.invalidate();
       });
       assertTrue(invalidating.await(5, TimeUnit.SECONDS));
-      assertFalse(invalidated.isDone());
-      assertTrue(progress.isValid());
+      invalidated.get(5, TimeUnit.SECONDS);
+      assertFalse(progress.isValid());
+      org.testng.Assert.assertNull(progress.admit());
+      assertFalse(progress.executionLock.tryLock(10, TimeUnit.MILLISECONDS));
       finish.countDown();
       command.get(5, TimeUnit.SECONDS);
-      invalidated.get(5, TimeUnit.SECONDS);
       assertFalse(progress.isValid());
     } finally {
       finish.countDown();

@@ -42,12 +42,6 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException;
 
-  /** Executes a guarded periodic checkpoint on the partition's ordered drainer, never on the caller's thread. */
-  public abstract CompletableFuture<Void> execCheckpointCommandAsync(
-      PubSubTopicPartition topicPartition,
-      StoreIngestionTask ingestionTask,
-      Runnable checkpoint) throws InterruptedException;
-
   public abstract CompletableFuture<Void> execSyncGlobalRtDivAsync(
       PubSubTopicPartition topicPartition,
       StoreIngestionTask ingestionTask) throws InterruptedException;
@@ -57,4 +51,11 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       PartitionTracker vtDivSnapshot,
       CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException;
+
+  abstract CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      CompletableFuture<Void> lastRecordPersistedFuture,
+      StoreIngestionTask ingestionTask,
+      CheckpointProgress.Snapshot checkpoint) throws InterruptedException;
 }

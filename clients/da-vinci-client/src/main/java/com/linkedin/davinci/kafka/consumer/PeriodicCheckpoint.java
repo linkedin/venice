@@ -33,6 +33,10 @@ class PeriodicCheckpoint {
     return generation > checkpointedGeneration && nowNs - deadlineNs >= 0 && (inFlight == null || inFlight.isDone());
   }
 
+  synchronized boolean isCoveredGenerationDue(long coveredGeneration, long nowNs) {
+    return coveredGeneration > checkpointedGeneration && nowNs - deadlineNs >= 0;
+  }
+
   synchronized void trackCheckpoint(CompletableFuture<Void> future) {
     inFlight = future;
   }

@@ -1552,6 +1552,40 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) throws InterruptedException {
+    if (isTimeBasedCheckpointEnabled() && isGlobalRtDivEnabled()) {
+      PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
+      if (pcs == null) {
+        return;
+      }
+      CheckpointProgress progress = pcs.initializeCheckpointProgress();
+      // Validation must not run ahead of snapshot preparation, including deferred view writes.
+      synchronized (progress.validationLock) {
+        CompletableFuture<Void> admitted = progress.admit();
+        if (admitted == null) {
+          return;
+        }
+        try {
+          produceToStoreBufferServiceOrKafkaWithValidation(records, topicPartition, kafkaUrl, kafkaClusterId);
+        } catch (RuntimeException e) {
+          reportCheckpointFailure(pcs, e);
+          throw e;
+        } finally {
+          admitted.complete(null);
+        }
+      }
+      return;
+    }
+    produceToStoreBufferServiceOrKafkaWithValidation(records, topicPartition, kafkaUrl, kafkaClusterId);
+  }
+
+  protected void awaitCheckpointProducer(PartitionConsumptionState pcs) throws InterruptedException {
+  }
+
+  private void produceToStoreBufferServiceOrKafkaWithValidation(
+      Iterable<DefaultPubSubMessage> records,
+      PubSubTopicPartition topicPartition,
+      String kafkaUrl,
+      int kafkaClusterId) throws InterruptedException {
     PartitionConsumptionState partitionConsumptionState =
         partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
     if (partitionConsumptionState == null) {
@@ -1563,9 +1597,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Validate and filter out duplicate messages from the real-time topic as early as possible, so that
      * the following batch processing logic won't spend useless efforts on duplicate messages.
       */
-    records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
+    boolean recordAligned = isTimeBasedCheckpointEnabled() && isGlobalRtDivEnabled();
+    if (!recordAligned) {
+      records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
+    }
 
-    if ((isActiveActiveReplicationEnabled || isWriteComputationEnabled)
+    if (!recordAligned && (isActiveActiveReplicationEnabled || isWriteComputationEnabled)
         && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
         && IngestionBatchProcessor.isAllMessagesFromRTTopic(records)) {
       produceToStoreBufferServiceOrKafkaInBatch(
@@ -1582,7 +1619,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
 
     partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
+    // Duplicate filtering removes records through the iterator; reuse a mutable list only in record-aligned mode.
+    List<DefaultPubSubMessage> recordToValidate = recordAligned ? new ArrayList<>(1) : null;
     for (DefaultPubSubMessage record: records) {
+      if (recordAligned) {
+        if (partitionConsumptionState == null || !partitionConsumptionState.getCheckpointProgress().isValid()) {
+          break;
+        }
+        recordToValidate.clear();
+        recordToValidate.add(record);
+        if (!validateAndFilterOutDuplicateMessagesFromLeaderTopic(recordToValidate, kafkaUrl, topicPartition).iterator()
+            .hasNext()) {
+          continue;
+        }
+      }
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       if (!shouldProcessRecord(record)) {
@@ -1602,6 +1652,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
+      if (recordAligned) {
+        awaitCheckpointProducer(partitionConsumptionState);
+      }
       // Key VT bytes (local or remote) by version topic name, and key RT bytes by broker URL.
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
@@ -2245,6 +2298,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           waitForSyncOffsetCmd(syncFuture, topicPartition);
         } catch (InterruptedException e) {
           throw new VeniceException(e);
+        } catch (RuntimeException e) {
+          if (!isTimeBasedCheckpointEnabled()) {
+            throw e;
+          }
+          LOGGER.error("Could not checkpoint replica during shutdown: {}", partitionConsumptionState.getReplicaId(), e);
         }
       }
     };
@@ -2323,7 +2381,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected boolean isCheckpointDue(PartitionConsumptionState pcs, DefaultPubSubMessage record, String kafkaUrl) {
-    if (!isTimeBasedCheckpointEnabled() || pcs == null || pcs.isErrorReported() || !pcs.isSubscribed()) {
+    if (!isTimeBasedCheckpointEnabled() || pcs == null || pcs.isErrorReported() || !pcs.isSubscribed()
+        || getFailedPartitions().contains(pcs.getPartition())) {
       return false;
     }
     CheckpointProgress progress = pcs.getCheckpointProgress();
@@ -2344,46 +2403,82 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState pcs,
       PartitionTracker snapshot,
       CompletableFuture<Void> precedingRecord,
-      Map<PeriodicCheckpoint, Long> coverage) throws InterruptedException {
+      Map<PeriodicCheckpoint, Long> coverage,
+      boolean timeOnly) throws InterruptedException {
     CheckpointProgress progress = pcs.getCheckpointProgress();
-    CompletableFuture<Void> tracked = new CompletableFuture<>();
-    if (progress != null) {
-      progress.trackCheckpoint(tracked);
-      coverage.keySet().forEach(checkpoint -> checkpoint.trackCheckpoint(tracked));
+    CompletableFuture<Void> tracked = progress == null ? null : progress.admit();
+    if (tracked == null) {
+      return CompletableFuture.completedFuture(null);
     }
+    coverage.keySet().forEach(checkpoint -> checkpoint.trackCheckpoint(tracked));
     try {
-      CompletableFuture<Void> command = getStoreBufferService().execCheckpointCommandAsync(topicPartition, this, () -> {
-        if (progress == null) {
+      CompletableFuture<Void> command = getStoreBufferService().execSyncOffsetFromSnapshotAsync(
+          topicPartition,
+          snapshot,
+          precedingRecord,
+          this,
+          new CheckpointProgress.Snapshot(pcs, coverage, timeOnly));
+      command.whenComplete((ignored, failure) -> {
+        completeCheckpoint(pcs, tracked, failure);
+      });
+      return tracked;
+    } catch (InterruptedException | RuntimeException e) {
+      completeCheckpoint(pcs, tracked, e);
+      throw e;
+    }
+  }
+
+  protected void reportCheckpointFailure(PartitionConsumptionState pcs, Throwable failure) {
+    CheckpointProgress progress = pcs.getCheckpointProgress();
+    if (progress == null) {
+      return;
+    }
+    synchronized (progress) {
+      if (progress.isValid() && getPartitionConsumptionState(pcs.getPartition()) == pcs) {
+        setIngestionException(pcs.getPartition(), new VeniceException("Checkpoint failed", failure));
+      }
+    }
+  }
+
+  protected void completeCheckpoint(PartitionConsumptionState pcs, CompletableFuture<Void> tracked, Throwable failure) {
+    try {
+      if (failure != null) {
+        reportCheckpointFailure(pcs, failure);
+      }
+    } finally {
+      if (failure == null) {
+        tracked.complete(null);
+      } else {
+        tracked.completeExceptionally(failure);
+      }
+    }
+  }
+
+  void updateAndSyncOffsetFromSnapshot(
+      PartitionTracker snapshot,
+      PubSubTopicPartition topicPartition,
+      CompletableFuture<Void> precedingRecord,
+      CheckpointProgress.Snapshot checkpoint) {
+    CheckpointProgress progress = checkpoint.progress;
+    progress.executionLock.lock();
+    try {
+      PartitionConsumptionState pcs = checkpoint.pcs;
+      if (!progress.isValid() || getPartitionConsumptionState(pcs.getPartition()) != pcs || !pcs.isSubscribed()
+          || pcs.isErrorReported() || failedPartitions.contains(pcs.getPartition())
+          || !checkpoint.isDue(checkpointTimeNs())) {
+        return;
+      }
+      if (precedingRecord != null) {
+        if (!precedingRecord.isDone()) {
           return;
         }
-        synchronized (progress.executionLock) {
-          if (getPartitionConsumptionState(pcs.getPartition()) != pcs || !pcs.isSubscribed() || pcs.isErrorReported()
-              || failedPartitions.contains(pcs.getPartition()) || !progress.isValid()) {
-            return;
-          }
-          if (precedingRecord != null) {
-            if (!precedingRecord.isDone()) {
-              return;
-            }
-            precedingRecord.join();
-          }
-          if (updateAndSyncOffsetFromSnapshotIfValid(snapshot, topicPartition) && !coverage.isEmpty()) {
-            CheckpointProgress.checkpointSucceeded(coverage);
-          }
-        }
-      });
-      command.whenComplete((ignored, failure) -> {
-        if (failure == null) {
-          tracked.complete(null);
-        } else {
-          tracked.completeExceptionally(failure);
-          setIngestionException(pcs.getPartition(), new VeniceException("Checkpoint snapshot failed", failure));
-        }
-      });
-      return command;
-    } catch (InterruptedException | RuntimeException e) {
-      tracked.completeExceptionally(e);
-      throw e;
+        precedingRecord.join();
+      }
+      if (updateAndSyncOffsetFromSnapshotIfValid(snapshot, topicPartition)) {
+        CheckpointProgress.checkpointSucceeded(checkpoint.coverage);
+      }
+    } finally {
+      progress.executionLock.unlock();
     }
   }
 
@@ -2477,7 +2572,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           topicPartition);
       return;
     }
-    updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
+    if (isTimeBasedCheckpointEnabled()) {
+      updateAndSyncOffsetFromSnapshot(
+          vtDivSnapshot,
+          topicPartition,
+          null,
+          new CheckpointProgress.Snapshot(pcs, captureCheckpointCoverage(pcs, null), false));
+    } else {
+      updateAndSyncOffsetFromSnapshot(vtDivSnapshot, topicPartition);
+    }
   }
 
   protected PartitionTracker getGlobalVtCheckpointSnapshot(PartitionConsumptionState pcs) {
@@ -2540,6 +2643,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Wrapping in synchronized to prevent a race condition on methods reading the value of isRunning.
     synchronized (this) {
       getIsRunning().set(false);
+    }
+
+    if (isTimeBasedCheckpointEnabled()) {
+      // Fence every close path before clearing durable offsets or forgetting partition state.
+      partitionConsumptionStateMap.values().forEach(pcs -> pcs.initializeCheckpointProgress().invalidate());
+      partitionConsumptionStateMap.values().forEach(this::invalidateTimeCheckpoints);
     }
 
     removeAllHeartbeatMonitoring();
@@ -3819,6 +3928,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * @param pcs, the corresponding {@link PartitionConsumptionState} to sync with.
    */
   private boolean syncOffset(PartitionConsumptionState pcs) {
+    if (!isTimeBasedCheckpointEnabled()) {
+      return syncOffsetWithCheckpoint(pcs);
+    }
+    CheckpointProgress progress = pcs.initializeCheckpointProgress();
+    progress.executionLock.lock();
+    try {
+      if (!progress.isValid() || getPartitionConsumptionState(pcs.getPartition()) != pcs) {
+        return false;
+      }
+      return syncOffsetWithCheckpoint(pcs);
+    } finally {
+      progress.executionLock.unlock();
+    }
+  }
+
+  private boolean syncOffsetWithCheckpoint(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
     if (this.storageEngine.isClosed()) {
       LOGGER.warn("Storage engine has been closed. Could not execute sync offset for replica: {}", pcs.getReplicaId());
@@ -6279,7 +6404,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.getCheckpointProgress()
             .checkpoints()
             .get(getServerConfig().getDrainTimeoutMs(), MILLISECONDS);
-      } catch (ExecutionException | TimeoutException e) {
+      } catch (ExecutionException | java.util.concurrent.CancellationException e) {
+        LOGGER.warn("Completed checkpoint failed for {}", topicPartition, e);
+      } catch (TimeoutException e) {
         throw new VeniceException("Could not finish time checkpoints for " + topicPartition, e);
       }
     }
@@ -6338,9 +6465,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void invalidateTimeCheckpoints(PartitionConsumptionState pcs) {
-    if (isTimeBasedCheckpointEnabled() && pcs != null && pcs.getCheckpointProgress() != null) {
-      CheckpointProgress progress = pcs.getCheckpointProgress();
+    if (isTimeBasedCheckpointEnabled() && pcs != null) {
+      CheckpointProgress progress = pcs.initializeCheckpointProgress();
       progress.invalidate();
+      long deadlineNs = System.nanoTime() + MILLISECONDS.toNanos(getServerConfig().getDrainTimeoutMs());
       CompletableFuture<Void> pending = progress.checkpoints();
       try {
         // Include producer-completion snapshots not yet present in the drainer queue.
@@ -6350,9 +6478,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceException("Interrupted while invalidating time checkpoints", e);
       } catch (TimeoutException e) {
         throw new VeniceException("Timed out invalidating time checkpoints", e);
-      } catch (ExecutionException e) {
+      } catch (ExecutionException | java.util.concurrent.CancellationException e) {
         // The operation has terminated. Reset must remain available to recover an already failed replica.
         LOGGER.warn("Invalidated a failed checkpoint for replica: {}", pcs.getReplicaId(), e);
+      }
+      try {
+        if (!progress.executionLock
+            .tryLock(Math.max(0, deadlineNs - System.nanoTime()), java.util.concurrent.TimeUnit.NANOSECONDS)) {
+          throw new VeniceException("Timed out waiting for executing checkpoint: " + pcs.getReplicaId());
+        }
+        progress.executionLock.unlock();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Interrupted waiting for executing checkpoint", e);
       }
     }
   }

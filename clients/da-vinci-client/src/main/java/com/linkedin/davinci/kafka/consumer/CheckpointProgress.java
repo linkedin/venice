@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.locks.ReentrantLock;
 
 
 /**
@@ -11,17 +12,25 @@ import java.util.concurrent.CompletableFuture;
  */
 class CheckpointProgress {
   final Object producerLock = new Object();
-  final Object executionLock = new Object();
+  final Object validationLock = new Object();
+  final ReentrantLock executionLock = new ReentrantLock();
   private volatile boolean valid = true;
 
   boolean isValid() {
     return valid;
   }
 
-  void invalidate() {
-    synchronized (executionLock) {
-      valid = false;
+  synchronized void invalidate() {
+    valid = false;
+  }
+
+  synchronized CompletableFuture<Void> admit() {
+    if (!valid) {
+      return null;
     }
+    CompletableFuture<Void> admitted = new CompletableFuture<>();
+    trackCheckpoint(admitted);
+    return admitted;
   }
 
   private final Map<String, PeriodicCheckpoint> sources = new HashMap<>();
@@ -65,5 +74,25 @@ class CheckpointProgress {
   private static CompletableFuture<Void> combine(CompletableFuture<Void> previous, CompletableFuture<Void> next) {
     // Retain a failure until the PCS is replaced; do not hide it behind a later success.
     return previous.isDone() && !previous.isCompletedExceptionally() ? next : CompletableFuture.allOf(previous, next);
+  }
+
+  static class Snapshot {
+    final PartitionConsumptionState pcs;
+    final CheckpointProgress progress;
+    final Map<PeriodicCheckpoint, Long> coverage;
+    final boolean timeOnly;
+
+    Snapshot(PartitionConsumptionState pcs, Map<PeriodicCheckpoint, Long> coverage, boolean timeOnly) {
+      this.pcs = pcs;
+      this.progress = pcs.initializeCheckpointProgress();
+      this.coverage = coverage;
+      this.timeOnly = timeOnly;
+    }
+
+    boolean isDue(long nowNs) {
+      return !timeOnly || coverage.entrySet()
+          .stream()
+          .anyMatch(entry -> entry.getKey().isCoveredGenerationDue(entry.getValue(), nowNs));
+    }
   }
 }

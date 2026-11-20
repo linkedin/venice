@@ -359,9 +359,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     cmd.executeGuarded(() -> {
-      if (cmd.checkpoint != null) {
-        cmd.checkpoint.run();
-      } else if (pcs == null) {
+      if (pcs == null) {
         LOGGER.warn(
             "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.",
             cmd.getConsumerRecord().getTopicPartition(),
@@ -420,18 +418,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
     return syncOffsetCmd.getExecutedFuture();
   }
 
-  @Override
-  public CompletableFuture<Void> execCheckpointCommandAsync(
-      PubSubTopicPartition topicPartition,
-      StoreIngestionTask ingestionTask,
-      Runnable checkpoint) throws InterruptedException {
-    DefaultPubSubMessage record = new FakePubSubMessage(topicPartition);
-    CommandQueueNode command =
-        new CommandQueueNode(CommandQueueNode.CommandType.SYNC_OFFSET, record, ingestionTask, checkpoint);
-    getDrainerForConsumerRecord(record, topicPartition.getPartitionNumber()).put(command);
-    return command.getExecutedFuture();
-  }
-
   /**
    * Enqueues a waitable {@link SyncGlobalRtDivNode}. The drainer snapshots the VT DIV and syncs it to the OffsetRecord
    * (see {@link StoreIngestionTask#syncGlobalRtDivFromSnapshot}). Unlike the fire-and-forget {@link SyncVtDivNode}, the
@@ -463,8 +449,24 @@ public class StoreBufferService extends AbstractStoreBufferService {
       PartitionTracker vtDivSnapshot,
       CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException {
+    return execSyncOffsetFromSnapshotAsync(
+        topicPartition,
+        vtDivSnapshot,
+        lastRecordPersistedFuture,
+        ingestionTask,
+        null);
+  }
+
+  @Override
+  CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      CompletableFuture<Void> lastRecordPersistedFuture,
+      StoreIngestionTask ingestionTask,
+      CheckpointProgress.Snapshot checkpoint) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
-    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
+    SyncVtDivNode syncDivNode =
+        new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask, checkpoint);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
     return syncDivNode.getExecutedFuture();
   }
@@ -876,23 +878,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     private final CommandType commandType;
-    private final Runnable checkpoint;
 
     public CommandQueueNode(
         CommandType commandType,
         DefaultPubSubMessage consumerRecord,
         StoreIngestionTask ingestionTask) {
-      this(commandType, consumerRecord, ingestionTask, null);
-    }
-
-    CommandQueueNode(
-        CommandType commandType,
-        DefaultPubSubMessage consumerRecord,
-        StoreIngestionTask ingestionTask,
-        Runnable checkpoint) {
       super(consumerRecord, ingestionTask);
       this.commandType = commandType;
-      this.checkpoint = checkpoint;
     }
 
     public CommandType getCommandType() {
@@ -959,19 +951,38 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     private final PartitionTracker vtDivSnapshot;
     private final CompletableFuture<Void> lastRecordPersistedFuture;
+    private final CheckpointProgress.Snapshot checkpoint;
 
     public SyncVtDivNode(
         DefaultPubSubMessage consumerRecord,
         PartitionTracker vtDivSnapshot,
         CompletableFuture<Void> lastRecordPersistedFuture,
         StoreIngestionTask ingestionTask) {
+      this(consumerRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask, null);
+    }
+
+    SyncVtDivNode(
+        DefaultPubSubMessage consumerRecord,
+        PartitionTracker vtDivSnapshot,
+        CompletableFuture<Void> lastRecordPersistedFuture,
+        StoreIngestionTask ingestionTask,
+        CheckpointProgress.Snapshot checkpoint) {
       super(consumerRecord, ingestionTask);
       this.vtDivSnapshot = vtDivSnapshot;
       this.lastRecordPersistedFuture = lastRecordPersistedFuture;
+      this.checkpoint = checkpoint;
     }
 
     public void execute() {
       executeGuarded(() -> {
+        if (checkpoint != null) {
+          getIngestionTask().updateAndSyncOffsetFromSnapshot(
+              vtDivSnapshot,
+              getConsumerRecord().getTopicPartition(),
+              lastRecordPersistedFuture,
+              checkpoint);
+          return;
+        }
         if (!lastRecordPersistedFuture.isDone() || lastRecordPersistedFuture.isCompletedExceptionally()) {
           LOGGER.warn(
               "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed (done={} exception={})",

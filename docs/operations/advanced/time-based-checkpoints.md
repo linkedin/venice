@@ -2,7 +2,8 @@
 
 Time-based checkpoints supplement the existing byte-size and control-message checkpoints. They are disabled by default.
 When enabled, a checkpoint can be triggered by **either bytes or time**; enabling time checkpoints does not change the
-byte thresholds, control-message boundaries, or graceful-shutdown behavior.
+byte thresholds or control-message boundaries. Enabled shutdown checkpoints require successful producer and persistence
+dependencies; an unconfirmed final cursor pair is not persisted.
 
 | Property                                | Default             | Meaning                                                                                                           |
 | --------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -35,7 +36,9 @@ byte/control checkpoints refresh freshness for the user-data generations they ac
 acknowledge newer arrivals or another RT source's progress. Enqueue, producer acknowledgement, cancellation, skipped
 commands and failures never acknowledge progress. Unsubscription, replacement of partition state, errors and task
 shutdown invalidate deferred commands. Teardown awaits executing as well as queued time checkpoints; reset/replacement
-also serializes against executing snapshot commands.
+also serializes against executing snapshot commands and inline drainer syncs. Invalidation rejects new work immediately,
+then waits up to the configured drain timeout. A timeout prevents state replacement or close-time state clearing;
+completed failures remain reported but do not prevent cleanup.
 
 The four existing routes gain a time alternative to their normal predicates:
 
@@ -48,11 +51,15 @@ The four existing routes gain a time alternative to their normal predicates:
 4. A Global local-VT follower or nonproducing leader checks the existing complete-DIV/control/twice-byte threshold OR
    time and enqueues its consumer snapshot after the preceding record's persistence dependency.
 
-Source-specific generations remain necessary because Global byte counters reset on send, before durable success. Global
-producer snapshot capture is serialized with source progress; queued/executing snapshots retain partition-state
-validation and a teardown completion barrier. Independent producer-persistence fences and poll-admission locks are not
-needed. No normal-ingestion checkpoint drains or unsubscribes a consumer. Existing selected-control, Global DIV, manual
-and graceful-shutdown triggers are preserved.
+Source-specific generations remain necessary because Global byte counters reset on send, before durable success. With
+time checkpoints and Global DIV enabled, records are validated and processed one at a time per partition, including
+completion of deferred view-to-VT producer calls before validating the next record. This keeps validator state and the
+snapshot cursor at the same record boundary; whole-poll validation and multi-record parallel batches remain unchanged
+when the feature is off. This enabled-only serialization can reduce throughput and must be measured before rollout.
+Producer admission and queued/executing snapshots retain partition-state validation and a teardown completion barrier.
+Snapshots use the existing typed drainer route, ordered by the source topic (including stream-reprocessing topics).
+Time-only snapshots recheck captured-source coverage and freshness before persistence; byte/control/shutdown checkpoints
+remain mandatory. No normal-ingestion checkpoint drains or unsubscribes a consumer.
 
 ## Validation before enabling
 
