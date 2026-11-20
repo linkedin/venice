@@ -4,7 +4,6 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.*;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
-import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.RejectionReason.NO_REPLICAS_AVAILABLE;
 import static com.linkedin.venice.stats.dimensions.RejectionReason.THROTTLED_BY_LOAD_CONTROLLER;
 import static com.linkedin.venice.stats.dimensions.RequestFanoutType.ORIGINAL;
@@ -16,12 +15,17 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.fastclient.cache.FastClientRecordCache;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
@@ -34,14 +38,34 @@ import org.testng.annotations.Test;
 
 
 public class FastClientStatsTest {
+  @Test
+  public void testCacheMetricsAreNoopsWhenTehutiIsDisabled() {
+    try (VeniceMetricsRepository repository =
+        new VeniceMetricsRepository(new VeniceMetricsConfig.Builder().emitTehutiMetrics(false).build())) {
+      FastClientStats stats = FastClientStats.getClientStats(repository, "", "cache_store", SINGLE_GET, false, false);
+      FastClientRecordCache cache = mock(FastClientRecordCache.class);
+      stats.registerCacheGauges(cache);
+      stats.recordCacheHitLatency(1);
+      stats.recordCacheReadFailure(FastClientStats.CacheReadFailureReason.METADATA);
+      assertTrue(repository.metrics().keySet().stream().noneMatch(name -> name.contains("--cache_")));
+      verifyNoInteractions(cache);
+    }
+  }
+
   private FastClientStats createStats(InMemoryMetricReader inMemoryMetricReader) {
     String storeName = "test_store";
     Set<MetricEntity> allMetricEntities = new HashSet<>(CLIENT_METRIC_ENTITIES);
     for (FastClientMetricEntity entity: FastClientMetricEntity.values()) {
       allMetricEntities.add(entity.getMetricEntity());
     }
-    VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(FAST_CLIENT, allMetricEntities, true, inMemoryMetricReader);
+    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(FAST_CLIENT.getName())
+            .setMetricPrefix(FAST_CLIENT.getMetricsPrefix())
+            .setMetricEntities(allMetricEntities)
+            .setEmitOtelMetrics(true)
+            .setOtelAdditionalMetricsReader(inMemoryMetricReader)
+            .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
+            .build());
     return FastClientStats.getClientStats(metricsRepository, "", storeName, SINGLE_GET);
   }
 

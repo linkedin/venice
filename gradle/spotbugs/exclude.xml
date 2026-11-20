@@ -28,6 +28,13 @@
     <Method name="readBoolean"/>
   </Match>
   <Match>
+    <!--Trusted decoders borrow these bytes without copying. Gzip/Zstd require an array-backed buffer,
+        which a read-only heap buffer does not expose. Callers must not modify the contents.-->
+    <Bug pattern="EI_EXPOSE_BUF"/>
+    <Class name="com.linkedin.venice.fastclient.cache.FastClientRecordCache$CachedValue"/>
+    <Method name="getValue"/>
+  </Match>
+  <Match>
     <Or>
       <Bug category="I18N"/>
       <Bug pattern="INSTANCEOF_GENERICRECORD"/>

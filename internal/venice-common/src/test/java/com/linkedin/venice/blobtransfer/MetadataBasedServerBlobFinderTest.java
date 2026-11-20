@@ -20,6 +20,7 @@ import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.schema.SchemaData;
@@ -446,7 +447,8 @@ public class MetadataBasedServerBlobFinderTest {
         Collections.emptyMap(),
         150,
         0,
-        "");
+        "",
+        CurrentVersionType.UNKNOWN.getValue());
     GenericRecord writerRecord = new GenericData.Record(writerSchema);
     for (Schema.Field field: writerSchema.getFields()) {
       writerRecord.put(field.name(), record.get(field.name()));

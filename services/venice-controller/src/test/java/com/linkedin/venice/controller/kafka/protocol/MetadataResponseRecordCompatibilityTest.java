@@ -24,8 +24,6 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
   public void testV4V5WireCompatibility() throws IOException, InterruptedException {
     Schema v4 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v4/MetadataResponseRecord.avsc");
     Schema v5 = Utils.getSchemaFromResource("avro/MetadataResponseRecord/v5/MetadataResponseRecord.avsc");
-    Assert.assertEquals(MetadataResponseRecord.SCHEMA$, v5);
-    Assert.assertEquals(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion(), 5);
     Map<Integer, Schema> schemaMap = new HashMap<>();
     schemaMap.put(4, v4);
     schemaMap.put(5, v5);
@@ -65,6 +63,10 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
     Assert.assertEquals(v6Reader.get("currentVersionType"), 0);
     Assert.assertEquals(v6Reader.get("batchGetLimit"), 500);
     Assert.assertEquals(v6Reader.get("multiKeyLongTailRetryThresholdsInMs").toString(), "1-:8");
+    MetadataResponseRecord upgradedReader =
+        FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(v5, MetadataResponseRecord.class)
+            .deserialize(v5Bytes);
+    Assert.assertEquals(upgradedReader.getCurrentVersionType(), 0);
   }
 
   @DataProvider
@@ -104,6 +106,7 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
         FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(v6, MetadataResponseRecord.class)
             .deserialize(v6Bytes);
     Assert.assertEquals(specificReader.getBatchGetLimit(), 500);
+    Assert.assertEquals(specificReader.getCurrentVersionType(), currentVersionType);
     Assert.assertEquals(specificReader.getMultiKeyLongTailRetryThresholdsInMs().toString(), "1-:8");
     Assert.assertEquals(specificReader.getVersionMetadata().getCurrentVersion(), 1);
     Assert.assertEquals(specificReader.getVersionMetadata().getPartitionCount(), 1);
@@ -130,6 +133,9 @@ public class MetadataResponseRecordCompatibilityTest extends ProtocolCompatibili
   public void testMetadataResponseRecordCompatibility() throws InterruptedException {
     Map<Integer, Schema> schemaMap = initMetadataResponseRecordSchemaMap();
     Assert.assertFalse(schemaMap.isEmpty());
+    Assert.assertEquals(
+        MetadataResponseRecord.SCHEMA$,
+        schemaMap.get(AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion()));
     testProtocolCompatibility(schemaMap, schemaMap.size());
   }
 
