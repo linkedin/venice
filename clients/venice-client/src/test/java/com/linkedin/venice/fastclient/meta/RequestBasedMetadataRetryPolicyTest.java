@@ -23,6 +23,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
@@ -42,7 +43,7 @@ import org.testng.annotations.Test;
 
 
 public class RequestBasedMetadataRetryPolicyTest {
-  private static final int SCHEMA_ID = 5;
+  private static final int SCHEMA_ID = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
 
   private static class Fixture implements AutoCloseable {
     final ClientConfig config = RequestBasedMetadataTestUtils

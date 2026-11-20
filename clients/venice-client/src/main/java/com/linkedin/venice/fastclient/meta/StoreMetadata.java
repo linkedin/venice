@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.RequestContext;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
@@ -14,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import javax.annotation.Nonnull;
 
 
 /**
@@ -35,6 +37,16 @@ public interface StoreMetadata extends SchemaReader {
   String getStoreName();
 
   int getCurrentStoreVersion();
+
+  /**
+   * Type of the current serving version, or UNKNOWN when unavailable (including older servers).
+   * Store-level configuration changes do not change this status until the serving version changes.
+   * The record cache bypasses caching for unknown status rather than assuming the version is batch-only.
+   */
+  @Nonnull
+  default CurrentVersionType getCurrentVersionType() {
+    return CurrentVersionType.UNKNOWN;
+  }
 
   int getPartitionId(int version, ByteBuffer key);
 
@@ -106,6 +118,18 @@ public interface StoreMetadata extends SchemaReader {
   default void registerVersionSwitchListener(StoreVersionSwitchListener listener) {
     if (listener == null) {
       throw new IllegalArgumentException("StoreVersionSwitchListener must not be null");
+    }
+  }
+
+  /**
+   * Set the record cache's callback, replacing any previous callback. Set before {@link #start()} to observe the
+   * initial load. It runs on the refresh thread after each successful metadata refresh; failed refreshes skip it.
+   *
+   * @throws IllegalArgumentException if {@code callback} is {@code null}
+   */
+  default void setRefreshCallback(Runnable callback) {
+    if (callback == null) {
+      throw new IllegalArgumentException("Refresh callback must not be null");
     }
   }
 

@@ -19,6 +19,8 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.meta.CurrentVersionType;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
@@ -42,6 +44,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.netty.buffer.ByteBuf;
 import io.tehuti.metrics.MetricsRepository;
@@ -149,7 +152,10 @@ public class ServerReadMetadataRepositoryTest {
     // If batch get limit is not set should use {@link Store.DEFAULT_BATCH_GET_LIMIT}
     assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), Store.DEFAULT_BATCH_GET_LIMIT);
     assertEquals(metadataResponse.getResponseRecord().getMultiKeyLongTailRetryThresholdsInMs().toString(), "");
-    assertEquals(metadataResponse.getResponseSchemaIdHeader(), 5);
+    assertEquals(metadataResponse.getResponseSchemaIdHeader(), 6);
+    assertEquals(
+        metadataResponse.getResponseRecord().getCurrentVersionType(),
+        CurrentVersionType.BATCH_ONLY.getValue());
     assertTrue(metricsRepository.getMetric(TEHUTI_INVOKE_METRIC).value() > 0);
     // Failure count is non-zero because the UnsupportedOperationException path (quota not enabled) records a failure
     assertTrue(metricsRepository.getMetric(TEHUTI_FAILURE_METRIC).value() > 0);
@@ -160,6 +166,7 @@ public class ServerReadMetadataRepositoryTest {
     assertEquals(currentVersionResponse.getCurrentVersion(), 2);
 
     mockStore.setBatchGetLimit(300);
+    mockStore.setHybridStoreConfig(new HybridStoreConfigImpl(60, 10, -1, null));
     metadataResponse = serverReadMetadataRepository.getMetadata(storeName);
     assertEquals(metadataResponse.getResponseRecord().getBatchGetLimit(), 300);
     String policy = "1-12:8,13-20:30,21-150:50,151-500:100,501-:500";
@@ -186,6 +193,68 @@ public class ServerReadMetadataRepositoryTest {
         .deserialize(bytes);
     assertEquals(decoded.getMultiKeyLongTailRetryThresholdsInMs().toString(), policy);
     assertEquals(decoded.getBatchGetLimit(), 300);
+    assertEquals(decoded.getCurrentVersionType(), CurrentVersionType.BATCH_ONLY.getValue());
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHybridStatusFollowsAdvertisedVersionDuringStoreConversion(boolean initiallyHybrid) {
+    Store store = new ZKStore(
+        TEST_STORE,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    HybridStoreConfigImpl hybridConfig = new HybridStoreConfigImpl(60, 10, -1, null);
+    store.setStorageNodeReadQuotaEnabled(true);
+    store.setHybridStoreConfig(initiallyHybrid ? hybridConfig : null);
+    store.addVersion(new VersionImpl(TEST_STORE, 1, "first-push"));
+    store.setCurrentVersion(1);
+    doReturn(store).when(mockMetadataRepo).getStoreOrThrow(TEST_STORE);
+    doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepo).getKeySchema(TEST_STORE);
+    doReturn(Collections.singletonList(new SchemaEntry(1, "\"string\""))).when(mockSchemaRepo)
+        .getValueSchemas(TEST_STORE);
+    for (int version = 1; version <= 2; version++) {
+      String topic = Version.composeKafkaTopic(TEST_STORE, version);
+      doReturn(new PartitionAssignment(topic, 1)).when(mockCustomizedViewRepository).getPartitionAssignments(topic);
+    }
+
+    // A config conversion and even a new push must not change the still-serving version's policy.
+    store.setHybridStoreConfig(initiallyHybrid ? null : hybridConfig);
+    Version convertedVersion = new VersionImpl(TEST_STORE, 2, "converted-push");
+    store.addVersion(convertedVersion);
+    Store changingStore = Mockito.spy(store);
+    doReturn(1, 2).when(changingStore).getCurrentVersion();
+    doReturn(changingStore).when(mockMetadataRepo).getStoreOrThrow(TEST_STORE);
+    MetadataResponse response = serverReadMetadataRepository.getMetadata(TEST_STORE);
+    assertFalse(response.isError());
+    assertEquals(response.getResponseRecord().getVersionMetadata().getCurrentVersion(), 1);
+    assertEquals(
+        response.getResponseRecord().getCurrentVersionType(),
+        (initiallyHybrid ? CurrentVersionType.HYBRID : CurrentVersionType.BATCH_ONLY).getValue());
+    Mockito.verify(changingStore, Mockito.times(1)).getCurrentVersion();
+
+    doReturn(store).when(mockMetadataRepo).getStoreOrThrow(TEST_STORE);
+    store.setCurrentVersion(2);
+    response = serverReadMetadataRepository.getMetadata(TEST_STORE);
+    assertFalse(response.isError());
+    assertEquals(response.getResponseRecord().getVersionMetadata().getCurrentVersion(), 2);
+    assertEquals(
+        response.getResponseRecord().getCurrentVersionType(),
+        (initiallyHybrid ? CurrentVersionType.BATCH_ONLY : CurrentVersionType.HYBRID).getValue());
+
+    // Legacy versions can use store-level ingestion config; their per-version fields are not authoritative.
+    convertedVersion.setUseVersionLevelHybridConfig(false);
+    response = serverReadMetadataRepository.getMetadata(TEST_STORE);
+    assertFalse(response.isError());
+    assertEquals(response.getResponseRecord().getCurrentVersionType(), CurrentVersionType.UNKNOWN.getValue());
+
+    store.deleteVersion(2);
+    response = serverReadMetadataRepository.getMetadata(TEST_STORE);
+    assertTrue(response.isError());
+    assertEquals(response.getResponseRecord().getCurrentVersionType(), CurrentVersionType.UNKNOWN.getValue());
   }
 
   /**

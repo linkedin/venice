@@ -41,6 +41,7 @@ import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
@@ -647,6 +648,7 @@ public class TestAdminTool {
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MetadataResponseRecord.SCHEMA$);
     MetadataResponseRecord record = new MetadataResponseRecord();
     record.setMultiKeyLongTailRetryThresholdsInMs("");
+    record.setCurrentVersionType(CurrentVersionType.UNKNOWN.getValue());
     record.setRoutingInfo(Collections.singletonMap("0", Collections.singletonList("host1")));
     record.setVersions(Collections.singletonList(1));
     record.setHelixGroupInfo(Collections.emptyMap());

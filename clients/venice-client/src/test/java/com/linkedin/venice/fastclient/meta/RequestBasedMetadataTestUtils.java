@@ -28,6 +28,7 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StorageMode;
@@ -257,6 +258,20 @@ public class RequestBasedMetadataTestUtils {
       boolean changeMetadata,
       Schema storeKeySchema,
       Schema storeValueSchema) {
+    return getMockD2TransportClient(
+        storeName,
+        changeMetadata,
+        storeKeySchema,
+        storeValueSchema,
+        CurrentVersionType.BATCH_ONLY);
+  }
+
+  public static D2TransportClient getMockD2TransportClient(
+      String storeName,
+      boolean changeMetadata,
+      Schema storeKeySchema,
+      Schema storeValueSchema,
+      CurrentVersionType currentVersionType) {
     D2TransportClient d2TransportClient = mock(D2TransportClient.class);
 
     Map<String, String> partitionerParams = new HashMap<>();
@@ -286,7 +301,8 @@ public class RequestBasedMetadataTestUtils {
         helixGroupMap,
         150,
         ExternalStorageReadMode.VENICE_ONLY.getValue(),
-        "");
+        "",
+        currentVersionType.getValue());
 
     byte[] metadataBody = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
@@ -378,7 +394,8 @@ public class RequestBasedMetadataTestUtils {
         helixGroupMap,
         150,
         ExternalStorageReadMode.VENICE_ONLY.getValue(),
-        "");
+        "",
+        CurrentVersionType.BATCH_ONLY.getValue());
     return SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
   }
@@ -500,7 +517,8 @@ public class RequestBasedMetadataTestUtils {
         helixGroupMap,
         150,
         rawExternalStorageReadMode,
-        "");
+        "",
+        CurrentVersionType.BATCH_ONLY.getValue());
     byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
     int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
@@ -545,7 +563,8 @@ public class RequestBasedMetadataTestUtils {
         helixGroupMap,
         150,
         ExternalStorageReadMode.EXTERNAL_ONLY.getValue(),
-        "");
+        "",
+        CurrentVersionType.BATCH_ONLY.getValue());
     byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
     int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
@@ -582,7 +601,8 @@ public class RequestBasedMetadataTestUtils {
         helixGroupMap,
         150,
         ExternalStorageReadMode.VENICE_ONLY.getValue(),
-        "");
+        "",
+        CurrentVersionType.BATCH_ONLY.getValue());
     byte[] body = SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$)
         .serialize(metadataResponse);
     int metadataResponseSchemaId = AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion();
@@ -609,6 +629,16 @@ public class RequestBasedMetadataTestUtils {
 
   static RequestBasedMetadata newRequestBasedMetadata(ClientConfig clientConfig, D2TransportClient d2TransportClient) {
     return new RequestBasedMetadata(clientConfig, d2TransportClient, newInstanceHealthMonitor(clientConfig));
+  }
+
+  public static RequestBasedMetadata getMockMetaData(
+      ClientConfig clientConfig,
+      String storeName,
+      D2TransportClient d2TransportClient) {
+    RequestBasedMetadata metadata = newRequestBasedMetadata(clientConfig, d2TransportClient);
+    metadata.setMetadataResponseSchemaReader(getMockRouterBackedSchemaReader());
+    metadata.setD2ServiceDiscovery(getMockD2ServiceDiscovery(d2TransportClient, storeName));
+    return metadata;
   }
 
   public static RequestBasedMetadata getMockMetaData(ClientConfig clientConfig, String storeName)

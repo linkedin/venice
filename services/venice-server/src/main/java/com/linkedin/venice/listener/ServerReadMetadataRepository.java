@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
@@ -183,6 +184,13 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
       response.setRoutingInfo(routingInfo);
       response.setHelixGroupInfo(helixGroupInfo);
+      // Legacy versions without authoritative per-version hybrid config cannot safely be classified as batch-only.
+      response.setCurrentVersionType(
+          !currentVersion.isUseVersionLevelHybridConfig()
+              ? CurrentVersionType.UNKNOWN.getValue()
+              : currentVersion.isHybrid()
+                  ? CurrentVersionType.HYBRID.getValue()
+                  : CurrentVersionType.BATCH_ONLY.getValue());
       response.setMultiKeyLongTailRetryThresholdsInMs(multiKeyLongTailRetryThresholdsInMs);
       if (store.getBatchGetLimit() > 0) {
         response.setBatchGetLimit(store.getBatchGetLimit());

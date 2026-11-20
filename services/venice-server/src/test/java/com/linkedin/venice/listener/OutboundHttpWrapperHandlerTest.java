@@ -22,6 +22,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcOutboundResponseHandler;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -59,7 +60,9 @@ public class OutboundHttpWrapperHandlerTest {
 
     when(mockCtx.writeAndFlush(any())).then(i -> {
       FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
-      Assert.assertEquals(actualResponse.headers().getInt(HttpConstants.VENICE_SCHEMA_ID).intValue(), 5);
+      Assert.assertEquals(
+          actualResponse.headers().getInt(HttpConstants.VENICE_SCHEMA_ID).intValue(),
+          AvroProtocolDefinition.SERVER_METADATA_RESPONSE.getCurrentProtocolVersion());
       Assert.assertEquals(actualResponse.content(), response.content());
       Assert.assertTrue(actualResponse.headers().equals(response.headers()));
       Assert.assertTrue(actualResponse.equals(response));
