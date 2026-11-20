@@ -1054,6 +1054,13 @@ public class ConfigKeys {
   public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE =
       "server.database.sync.bytes.interval.for.deferred.write.mode";
 
+  /** Opt-in time checkpoints, independent of the existing byte and control-message triggers. */
+  public static final String SERVER_DATABASE_SYNC_INTERVAL_ENABLED = "server.database.sync.interval.enabled";
+  /** Minimum freshness interval in seconds. Defaults to two hours. */
+  public static final String SERVER_DATABASE_SYNC_INTERVAL_SECONDS = "server.database.sync.interval.seconds";
+  /** Stable per-source staggering window in seconds. Defaults to ten minutes; zero disables staggering. */
+  public static final String SERVER_DATABASE_SYNC_SPREAD_SECONDS = "server.database.sync.spread.seconds";
+
   /**
    * When load balance happens, a replica could be moved to another storage node.
    * When dropping the existing replica through Helix state transition: 'ONLINE' -> 'OFFLINE' and 'OFFLINE' -> 'DROPPED',

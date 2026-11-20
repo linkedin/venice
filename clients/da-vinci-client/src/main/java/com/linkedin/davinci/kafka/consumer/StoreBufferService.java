@@ -449,8 +449,24 @@ public class StoreBufferService extends AbstractStoreBufferService {
       PartitionTracker vtDivSnapshot,
       CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException {
+    return execSyncOffsetFromSnapshotAsync(
+        topicPartition,
+        vtDivSnapshot,
+        lastRecordPersistedFuture,
+        ingestionTask,
+        null);
+  }
+
+  @Override
+  CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
+      PubSubTopicPartition topicPartition,
+      PartitionTracker vtDivSnapshot,
+      CompletableFuture<Void> lastRecordPersistedFuture,
+      StoreIngestionTask ingestionTask,
+      CheckpointProgress.Snapshot checkpoint) throws InterruptedException {
     DefaultPubSubMessage fakeRecord = new FakePubSubMessage(topicPartition);
-    SyncVtDivNode syncDivNode = new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask);
+    SyncVtDivNode syncDivNode =
+        new SyncVtDivNode(fakeRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask, checkpoint);
     getDrainerForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber()).put(syncDivNode);
     return syncDivNode.getExecutedFuture();
   }
@@ -846,8 +862,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * Issues a command to the drainer thread. Today the only command is {@link CommandType#SYNC_OFFSET}, the
-   * non-Global-RT-DIV graceful-shutdown OffsetRecord sync.
+   * Issues an ordered checkpoint command for a captured snapshot or graceful-shutdown OffsetRecord sync.
    */
   private static class CommandQueueNode extends WaitableQueueNode {
     /**
@@ -936,19 +951,38 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     private final PartitionTracker vtDivSnapshot;
     private final CompletableFuture<Void> lastRecordPersistedFuture;
+    private final CheckpointProgress.Snapshot checkpoint;
 
     public SyncVtDivNode(
         DefaultPubSubMessage consumerRecord,
         PartitionTracker vtDivSnapshot,
         CompletableFuture<Void> lastRecordPersistedFuture,
         StoreIngestionTask ingestionTask) {
+      this(consumerRecord, vtDivSnapshot, lastRecordPersistedFuture, ingestionTask, null);
+    }
+
+    SyncVtDivNode(
+        DefaultPubSubMessage consumerRecord,
+        PartitionTracker vtDivSnapshot,
+        CompletableFuture<Void> lastRecordPersistedFuture,
+        StoreIngestionTask ingestionTask,
+        CheckpointProgress.Snapshot checkpoint) {
       super(consumerRecord, ingestionTask);
       this.vtDivSnapshot = vtDivSnapshot;
       this.lastRecordPersistedFuture = lastRecordPersistedFuture;
+      this.checkpoint = checkpoint;
     }
 
     public void execute() {
       executeGuarded(() -> {
+        if (checkpoint != null) {
+          getIngestionTask().updateAndSyncOffsetFromSnapshot(
+              vtDivSnapshot,
+              getConsumerRecord().getTopicPartition(),
+              lastRecordPersistedFuture,
+              checkpoint);
+          return;
+        }
         if (!lastRecordPersistedFuture.isDone() || lastRecordPersistedFuture.isCompletedExceptionally()) {
           LOGGER.warn(
               "event=globalRtDiv Skipping SyncVtDivNode for {} because preceding record failed (done={} exception={})",

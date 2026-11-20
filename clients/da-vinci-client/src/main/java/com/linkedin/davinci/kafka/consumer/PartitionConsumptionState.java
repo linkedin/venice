@@ -108,6 +108,18 @@ public class PartitionConsumptionState {
    * since the SIT thread might want to shortcircuit this future when closing {@link LeaderFollowerStoreIngestionTask}.
    */
   private volatile CompletableFuture<Void> lastVTProduceCallFuture;
+  private volatile CheckpointProgress checkpointProgress;
+
+  CheckpointProgress getCheckpointProgress() {
+    return checkpointProgress;
+  }
+
+  synchronized CheckpointProgress initializeCheckpointProgress() {
+    if (checkpointProgress == null) {
+      checkpointProgress = new CheckpointProgress();
+    }
+    return checkpointProgress;
+  }
 
   /**
    * State machine that can only transition to LATCH_CREATED if LatchStatus is NONE, and transition to LATCH_RELEASED
