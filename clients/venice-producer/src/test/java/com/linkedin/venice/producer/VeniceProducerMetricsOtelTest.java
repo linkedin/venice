@@ -97,24 +97,30 @@ public class VeniceProducerMetricsOtelTest {
         { VeniceProducerMetricEntity.PRODUCE_TO_DURABLE_BUFFER_TIME,
             VeniceProducerTehutiMetricName.PRODUCE_TO_DURABLE_BUFFER_LATENCY,
             (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m
-                .recordSuccessfulRequestWithLatency(UPDATE, latency) },
+                .recordSuccessfulRequestWithLatency(UPDATE, latency),
+            null },
         { VeniceProducerMetricEntity.PREPROCESSING_TIME, VeniceProducerTehutiMetricName.PREPROCESSING_LATENCY,
-            (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m.recordPreprocessingLatency(UPDATE, latency) },
+            (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m.recordPreprocessingLatency(UPDATE, latency),
+            null },
         { VeniceProducerMetricEntity.QUEUE_WAIT_TIME, VeniceProducerTehutiMetricName.QUEUE_WAIT_LATENCY,
-            (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m.recordQueueWaitLatency(UPDATE, latency) },
+            (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m.recordQueueWaitLatency(UPDATE, latency),
+            null },
         { VeniceProducerMetricEntity.CALLER_TO_PUBSUB_PRODUCER_BUFFER_TIME,
             VeniceProducerTehutiMetricName.CALLER_TO_PUBSUB_PRODUCER_BUFFER_LATENCY,
             (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m
-                .recordCallerToPubSubBufferLatency(UPDATE, latency) },
+                .recordCallerToPubSubBufferLatency(UPDATE, latency),
+            null },
         { VeniceProducerMetricEntity.CALL_TIME, VeniceProducerTehutiMetricName.END_TO_END_LATENCY,
-            (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m.recordEndToEndLatency(UPDATE, latency) } };
+            (BiConsumer<VeniceProducerMetrics, Double>) (m, latency) -> m.recordEndToEndLatency(UPDATE, latency),
+            SUCCESS } };
   }
 
   @Test(dataProvider = "latencyMetrics")
   public void testLatencyMetrics(
       VeniceProducerMetricEntity metricEntity,
       VeniceProducerTehutiMetricName tehutiMetricName,
-      BiConsumer<VeniceProducerMetrics, Double> recorder) {
+      BiConsumer<VeniceProducerMetrics, Double> recorder,
+      VeniceResponseStatusCategory expectedStatusCategory) {
     recorder.accept(producerMetrics, 100.0);
     recorder.accept(producerMetrics, 300.0);
 
@@ -124,7 +130,9 @@ public class VeniceProducerMetricsOtelTest {
         300.0,
         2,
         400.0,
-        operationAttributes(UPDATE),
+        expectedStatusCategory == null
+            ? operationAttributes(UPDATE)
+            : operationAndStatusAttributes(UPDATE, expectedStatusCategory),
         metricEntity.getMetricEntity().getMetricName(),
         otelMetricPrefix);
 
@@ -155,30 +163,21 @@ public class VeniceProducerMetricsOtelTest {
   }
 
   @Test
-  public void testQueueTaskCountGauges() {
-    PartitionedProducerExecutor executor = new PartitionedProducerExecutor(4, 100, 2, 100, STORE_NAME, null);
-    try {
-      producerMetrics.registerQueueMetrics(executor);
+  public void testPendingCallCountAfterProducerIsRecreated() {
+    producerMetrics.recordPutRequest();
+    producerMetrics.recordPutRequest();
+    producerMetrics.close();
 
-      validateLongPointDataFromGauge(
-          inMemoryMetricReader,
-          0,
-          producerMetrics.getBaseAttributes(),
-          VeniceProducerMetricEntity.WORKER_QUEUE_TASK_COUNT.getMetricEntity().getMetricName(),
-          otelMetricPrefix);
-      validateLongPointDataFromGauge(
-          inMemoryMetricReader,
-          0,
-          producerMetrics.getBaseAttributes(),
-          VeniceProducerMetricEntity.CALLBACK_QUEUE_TASK_COUNT.getMetricEntity().getMetricName(),
-          otelMetricPrefix);
+    // A producer recreated for the same store on the same repository must report its own pending count
+    VeniceProducerMetrics recreatedMetrics = new VeniceProducerMetrics(metricsRepository, STORE_NAME);
+    recreatedMetrics.recordPutRequest();
 
-      // Tehuti gauges are kept with the same names as before
-      assertNotNull(metricsRepository.getMetric(TEHUTI_PREFIX + "total_worker_queue_size.Gauge"));
-      assertNotNull(metricsRepository.getMetric(TEHUTI_PREFIX + "callback_queue_size.Gauge"));
-    } finally {
-      executor.shutdown();
-    }
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        1,
+        recreatedMetrics.getBaseAttributes(),
+        VeniceProducerMetricEntity.PENDING_CALL_COUNT.getMetricEntity().getMetricName(),
+        otelMetricPrefix);
   }
 
   @Test
@@ -196,6 +195,7 @@ public class VeniceProducerMetricsOtelTest {
       assertTrue(tehutiOnlyRepository.getMetric(TEHUTI_PREFIX + "success_write_operation.OccurrenceRate").value() > 0);
       assertTrue(tehutiOnlyRepository.getMetric(TEHUTI_PREFIX + "failed_write_operation.OccurrenceRate").value() > 0);
       assertNotNull(tehutiOnlyRepository.getMetric(TEHUTI_PREFIX + "end_to_end_latency.50thPercentile"));
+      metrics.close();
     }
   }
 
@@ -203,14 +203,10 @@ public class VeniceProducerMetricsOtelTest {
       VeniceProducerOperation operation,
       VeniceResponseStatusCategory statusCategory,
       long expectedCount) {
-    Attributes expectedAttributes = Attributes.builder()
-        .putAll(operationAttributes(operation))
-        .put(VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(), statusCategory.getDimensionValue())
-        .build();
     validateLongPointDataFromCounter(
         inMemoryMetricReader,
         expectedCount,
-        expectedAttributes,
+        operationAndStatusAttributes(operation, statusCategory),
         VeniceProducerMetricEntity.CALL_COUNT.getMetricEntity().getMetricName(),
         otelMetricPrefix);
   }
@@ -219,6 +215,15 @@ public class VeniceProducerMetricsOtelTest {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), STORE_NAME)
         .put(VENICE_PRODUCER_OPERATION.getDimensionNameInDefaultFormat(), operation.getDimensionValue())
+        .build();
+  }
+
+  private Attributes operationAndStatusAttributes(
+      VeniceProducerOperation operation,
+      VeniceResponseStatusCategory statusCategory) {
+    return Attributes.builder()
+        .putAll(operationAttributes(operation))
+        .put(VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(), statusCategory.getDimensionValue())
         .build();
   }
 

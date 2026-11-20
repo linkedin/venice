@@ -631,6 +631,9 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     }
 
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
+    if (producerMetrics != null) {
+      producerMetrics.close();
+    }
   }
 
   protected boolean isClosed() {

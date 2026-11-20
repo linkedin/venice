@@ -16,14 +16,17 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateTwoEnums;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
+import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
+import java.io.Closeable;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -33,7 +36,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Metrics are emitted to Tehuti and, when the {@link MetricsRepository} is an OpenTelemetry enabled
  * {@link com.linkedin.venice.stats.VeniceMetricsRepository}, also to OpenTelemetry. The Tehuti sensor names are
- * unchanged. The OpenTelemetry metrics are defined in {@link VeniceProducerMetricEntity}.</p>
+ * unchanged. The OpenTelemetry metrics are defined in {@link VeniceProducerMetricEntity} and are emitted with the
+ * metric prefix of the given repository, so the repository should be dedicated to the producer and created for
+ * {@link com.linkedin.venice.stats.ClientType#ONLINE_PRODUCER} with {@link #PRODUCER_METRIC_ENTITIES}.</p>
  *
  * <h3>Latency Metrics</h3>
  * <ul>
@@ -45,26 +50,31 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       OTel: {@code produce_to_durable_buffer_time}</li>
  *   <li><b>caller_to_pubsub_producer_buffer_latency</b>: Caller submit to PubSub producer buffer.
  *       OTel: {@code caller_to_pubsub_producer_buffer_time}</li>
- *   <li><b>end_to_end_latency</b>: Caller submit to future completion (full round-trip). OTel: {@code call_time}</li>
+ *   <li><b>end_to_end_latency</b>: Caller submit to future completion (full round-trip).
+ *       OTel: {@code call_time} with the response status category dimension</li>
  * </ul>
  *
  * <h3>Operation Counters</h3>
  * <ul>
- *   <li><b>write_operation</b>: Total write operations (put + delete + update). Tehuti only</li>
- *   <li><b>put_operation</b>, <b>delete_operation</b>, <b>update_operation</b>: Per-type counters. Tehuti only;
- *       OTel {@code call_count} carries the operation type as a dimension</li>
+ *   <li><b>write_operation</b>: Total write operations (put + delete + update) at submission. Tehuti only</li>
+ *   <li><b>put_operation</b>, <b>delete_operation</b>, <b>update_operation</b>: Per-type counters at submission.
+ *       Tehuti only; OTel {@code call_count} carries the operation type but counts completed writes, so submitted
+ *       writes are {@code call_count} plus {@code pending_call_count}</li>
  *   <li><b>success_write_operation</b>, <b>failed_write_operation</b>: Outcome counters.
  *       OTel: {@code call_count} with the response status category dimension</li>
  *   <li><b>pending_write_operation</b>: Current in-flight operations (gauge). OTel: {@code pending_call_count}</li>
  * </ul>
  *
  * <h3>Queue Size Gauges</h3>
+ * Tehuti only. In OTel they are covered by the {@link ThreadPoolOtelMetricEntity} metrics of the producer worker and
+ * callback thread pools, which {@link PartitionedProducerExecutor} registers through
+ * {@link com.linkedin.venice.stats.ThreadPoolStats}.
  * <ul>
- *   <li><b>total_worker_queue_size</b>: Sum of all worker queue depths. OTel: {@code worker.queue.task_count}</li>
- *   <li><b>callback_queue_size</b>: Callback executor queue depth. OTel: {@code callback.queue.task_count}</li>
+ *   <li><b>total_worker_queue_size</b>: Sum of all worker queue depths</li>
+ *   <li><b>callback_queue_size</b>: Callback executor queue depth</li>
  * </ul>
  */
-public class VeniceProducerMetrics extends AbstractVeniceStats {
+public class VeniceProducerMetrics extends AbstractVeniceStats implements Closeable {
   /** All the OpenTelemetry metric entities emitted by the producer, including its thread pool stats */
   public static final Collection<MetricEntity> PRODUCER_METRIC_ENTITIES =
       getUniqueMetricEntities(Arrays.asList(VeniceProducerMetricEntity.class, ThreadPoolOtelMetricEntity.class));
@@ -88,7 +98,8 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   private MetricEntityStateOneEnum<VeniceProducerOperation> queueWaitLatencyMetric = null;
   private MetricEntityStateOneEnum<VeniceProducerOperation> callerToPubSubBufferLatencyMetric = null;
   // Total time: submission to future completion
-  private MetricEntityStateOneEnum<VeniceProducerOperation> endToEndLatencyMetric = null;
+  private MetricEntityStateTwoEnums<VeniceProducerOperation, VeniceResponseStatusCategory> endToEndLatencyMetric = null;
+  private AsyncMetricEntityStateBase pendingCallCountMetric = null;
 
   private VeniceOpenTelemetryMetricsRepository otelRepository = null;
   private Map<VeniceMetricsDimensions, String> baseDimensionsMap = null;
@@ -155,15 +166,22 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
 
       pendingOperationSensor =
           registerSensor(VeniceProducerTehutiMetricName.PENDING_WRITE_OPERATION.getMetricName(), new Gauge());
-      AsyncMetricEntityStateBase.create(
+      pendingCallCountMetric = AsyncMetricEntityStateBase.create(
           VeniceProducerMetricEntity.PENDING_CALL_COUNT.getMetricEntity(),
           otelRepository,
           baseDimensionsMap,
           baseAttributes,
           () -> pendingOperationCounter.get());
 
-      endToEndLatencyMetric =
-          createLatencyMetric(VeniceProducerMetricEntity.CALL_TIME, VeniceProducerTehutiMetricName.END_TO_END_LATENCY);
+      endToEndLatencyMetric = MetricEntityStateTwoEnums.create(
+          VeniceProducerMetricEntity.CALL_TIME.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          VeniceProducerTehutiMetricName.END_TO_END_LATENCY,
+          getLatencyTehutiStats(VeniceProducerTehutiMetricName.END_TO_END_LATENCY),
+          baseDimensionsMap,
+          VeniceProducerOperation.class,
+          VeniceResponseStatusCategory.class);
     } else {
       enableMetrics = false;
     }
@@ -180,11 +198,14 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         tehutiMetricName,
-        Collections.singletonList(
-            TehutiUtils
-                .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + tehutiMetricName.getMetricName())),
+        getLatencyTehutiStats(tehutiMetricName),
         baseDimensionsMap,
         VeniceProducerOperation.class);
+  }
+
+  private List<MeasurableStat> getLatencyTehutiStats(VeniceProducerTehutiMetricName tehutiMetricName) {
+    return Collections.singletonList(
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + tehutiMetricName.getMetricName()));
   }
 
   /**
@@ -199,33 +220,18 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
     this.executor = executor;
 
     // Register queue size gauges - the sensors are kept alive by the metrics repository
+    // Tehuti only: OTel gets the queue sizes from the thread pool metrics of the producer executor
     // Total worker queue size (sum of all worker queues)
-    AsyncMetricEntityStateBase.create(
-        VeniceProducerMetricEntity.WORKER_QUEUE_TASK_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        VeniceProducerTehutiMetricName.TOTAL_WORKER_QUEUE_SIZE,
-        Collections.singletonList(
-            new AsyncGauge(
-                (config, now) -> this.executor.getTotalWorkerQueueSize(),
-                VeniceProducerTehutiMetricName.TOTAL_WORKER_QUEUE_SIZE.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        () -> this.executor.getTotalWorkerQueueSize());
+    registerSensor(
+        new AsyncGauge(
+            (config, now) -> this.executor.getTotalWorkerQueueSize(),
+            VeniceProducerTehutiMetricName.TOTAL_WORKER_QUEUE_SIZE.getMetricName()));
 
     // Callback queue size
-    AsyncMetricEntityStateBase.create(
-        VeniceProducerMetricEntity.CALLBACK_QUEUE_TASK_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        VeniceProducerTehutiMetricName.CALLBACK_QUEUE_SIZE,
-        Collections.singletonList(
-            new AsyncGauge(
-                (config, now) -> this.executor.getCallbackQueueSize(),
-                VeniceProducerTehutiMetricName.CALLBACK_QUEUE_SIZE.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        () -> this.executor.getCallbackQueueSize());
+    registerSensor(
+        new AsyncGauge(
+            (config, now) -> this.executor.getCallbackQueueSize(),
+            VeniceProducerTehutiMetricName.CALLBACK_QUEUE_SIZE.getMetricName()));
   }
 
   private void recordRequest() {
@@ -285,7 +291,7 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
    */
   public void recordEndToEndLatency(VeniceProducerOperation operation, double latencyMs) {
     if (enableMetrics) {
-      endToEndLatencyMetric.record(latencyMs, operation);
+      endToEndLatencyMetric.record(latencyMs, operation, VeniceResponseStatusCategory.SUCCESS);
     }
   }
 
@@ -313,6 +319,19 @@ public class VeniceProducerMetrics extends AbstractVeniceStats {
   public void recordCallerToPubSubBufferLatency(VeniceProducerOperation operation, double latencyMs) {
     if (enableMetrics) {
       callerToPubSubBufferLatencyMetric.record(latencyMs, operation);
+    }
+  }
+
+  /**
+   * Stops the OTel callbacks that read this producer's state, so a producer recreated for the same store on the same
+   * repository reports its own values. Tehuti sensors are kept as before.
+   */
+  @Override
+  public void close() {
+    if (otelRepository != null && pendingCallCountMetric != null) {
+      otelRepository.closeObservableInstrument(
+          VeniceProducerMetricEntity.PENDING_CALL_COUNT.getMetricEntity(),
+          pendingCallCountMetric.getOtelMetric());
     }
   }
 

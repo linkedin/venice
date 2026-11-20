@@ -184,6 +184,7 @@ public class VeniceProducerMetricsTest {
 
     // Register queue metrics with null executor should also not throw
     metrics.registerQueueMetrics(null);
+    metrics.close();
   }
 
   @Test

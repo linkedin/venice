@@ -33,7 +33,7 @@ public enum VeniceProducerMetricEntity implements ModuleMetricEntityInterface {
   CALL_TIME(
       "call_time", MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
       "End-to-end latency of successful write requests from submission to future completion",
-      setOf(VENICE_STORE_NAME, VENICE_PRODUCER_OPERATION)
+      setOf(VENICE_STORE_NAME, VENICE_PRODUCER_OPERATION, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),
 
   /**
@@ -78,22 +78,6 @@ public enum VeniceProducerMetricEntity implements ModuleMetricEntityInterface {
   PENDING_CALL_COUNT(
       "pending_call_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
       "Count of write requests that were submitted but are not completed yet", setOf(VENICE_STORE_NAME)
-  ),
-
-  /**
-   * Total count of tasks queued across all the producer workers.
-   */
-  WORKER_QUEUE_TASK_COUNT(
-      "worker.queue.task_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
-      "Total count of tasks queued across all the producer workers", setOf(VENICE_STORE_NAME)
-  ),
-
-  /**
-   * Count of tasks queued in the producer callback executor.
-   */
-  CALLBACK_QUEUE_TASK_COUNT(
-      "callback.queue.task_count", MetricType.ASYNC_GAUGE, MetricUnit.NUMBER,
-      "Count of tasks queued in the producer callback executor", setOf(VENICE_STORE_NAME)
   );
 
   private final MetricEntity entity;
