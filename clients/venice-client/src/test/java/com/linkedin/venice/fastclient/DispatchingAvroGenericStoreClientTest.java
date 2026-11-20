@@ -798,6 +798,48 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStartupFailureDisablesCacheAndLeavesNoGauges() {
+    MetricsRepository repository =
+        new MetricsRepository(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig());
+    try {
+      ClientConfig<?, ?, ?> config = spy(
+          new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
+              .setR2Client(getMockR2Client(false))
+              .setD2Client(mock(D2Client.class))
+              .setClusterDiscoveryD2Service("test_server_discovery")
+              .setMetricsRepository(repository)
+              .setMaxCacheSizeInBytes(1024)
+              .build());
+      FastClientStats stats = spy(config.getStats(RequestType.SINGLE_GET));
+      doReturn(stats).when(config).getStats(RequestType.SINGLE_GET);
+      StoreMetadata metadata = mock(StoreMetadata.class);
+      doReturn(STORE_NAME).when(metadata).getStoreName();
+      doReturn(CurrentVersionType.BATCH_ONLY).when(metadata).getCurrentVersionType();
+      VeniceClientException failure = new VeniceClientException("metadata startup failed");
+      doThrow(failure).when(metadata).start();
+
+      try (DispatchingAvroGenericStoreClient<String, GenericRecord> client =
+          new DispatchingAvroGenericStoreClient<>(metadata, config, mock(TransportClient.class))) {
+        assertSame(expectThrows(VeniceClientException.class, client::start), failure);
+        ArgumentCaptor<FastClientRecordCache> cacheCaptor = ArgumentCaptor.forClass(FastClientRecordCache.class);
+        verify(stats).unregisterCacheGauges(cacheCaptor.capture());
+        FastClientRecordCache cache = cacheCaptor.getValue();
+        cache.onMetadataRefresh();
+        ByteBuffer key = ByteBuffer.wrap(new byte[] { 1 });
+        cache.put(key, new byte[] { 2 }, 1, 1);
+        assertEquals(cache.getEntryCount(), 0);
+        assertNull(cache.get(key));
+        String gaugePrefix = ".test_store--cache_";
+        assertNull(repository.getMetric(gaugePrefix + "estimated_entry_count.Gauge"));
+        assertNull(repository.getMetric(gaugePrefix + "estimated_weight_in_bytes.Gauge"));
+        assertNull(repository.getMetric(gaugePrefix + "configured_budget_in_bytes.Gauge"));
+      }
+    } finally {
+      repository.close();
+    }
+  }
+
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testCloseAndRecreateCacheWithSharedMetricsRepository(boolean reuseConfig, boolean metadataCloseFails)
       throws Exception {
