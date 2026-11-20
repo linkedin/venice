@@ -851,7 +851,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
     enableServerAllowList = serverProperties.getBoolean(ENABLE_SERVER_ALLOW_LIST, false);
     maxLeaderFollowerStateTransitionThreadNumber =
-        serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
+        serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 300);
 
     blobTransferManagerEnabled = serverProperties.getBoolean(BLOB_TRANSFER_MANAGER_ENABLED, false);
     blobTransferReceiverServerPolicy = ConfigCommonUtils.ActivationState.valueOf(
@@ -928,7 +928,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
           String.format("Invalid leader follower thread pool strategy: %s", lfThreadPoolStrategyStr));
     }
     maxFutureVersionLeaderFollowerStateTransitionThreadNumber =
-        serverProperties.getInt(MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 10);
+        serverProperties.getInt(MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
     writePathThreadPriority = serverProperties.getInt(WRITE_PATH_THREAD_PRIORITY, DEFAULT_WRITE_PATH_THREAD_PRIORITY);
     if (writePathThreadPriority < Thread.MIN_PRIORITY || writePathThreadPriority > Thread.MAX_PRIORITY) {
