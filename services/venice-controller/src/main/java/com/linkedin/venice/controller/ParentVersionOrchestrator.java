@@ -54,11 +54,20 @@ class ParentVersionOrchestrator {
         parent.getMultiClusterConfigs().getControllerConfig(systemSchemaClusterName);
 
     if (fabricName.isPresent()) {
-      StoreResponse response = controllerClients.get(fabricName.get()).getStore(storeName);
+      ControllerClient client = controllerClients.get(fabricName.get());
+      if (client == null) {
+        throw new VeniceException(
+            "Could not find controller client for colo: " + fabricName.get() + " for cluster: " + clusterName);
+      }
+      StoreResponse response = client.getStore(storeName);
       if (response.isError()) {
         throw new VeniceException(
             "Could not query store from colo: " + fabricName.get() + " for cluster: " + clusterName + ". "
                 + response.getError());
+      }
+      if (response.getStore() == null) {
+        throw new VeniceException(
+            "Could not find store: " + storeName + " in colo " + fabricName.get() + " for cluster: " + clusterName);
       }
       return RepushInfo.createRepushInfo(
           response.getStore()
@@ -82,6 +91,11 @@ class ParentVersionOrchestrator {
         colo = mapEntry.getKey();
       }
     }
+    if (colo == null || largestVersion <= 0 || !controllerClients.containsKey(colo)) {
+      throw new VeniceException(
+          "Could not find any child colo with valid version info for store: " + storeName + " for cluster: "
+              + clusterName);
+    }
     // Before extraction, this no-fabric path still referred back to fabricName.get() in the largest-colo error path,
     // which would throw because fabricName is absent here. Use the child colo selected from currentVersionsMap for both
     // diagnostics and child-controller D2 lookup instead.
@@ -91,6 +105,11 @@ class ParentVersionOrchestrator {
       throw new VeniceException(
           "Could not query store from largest version colo: " + largestVersionColo + " for cluster: " + clusterName
               + ". " + response.getError());
+    }
+    if (response.getStore() == null) {
+      throw new VeniceException(
+          "Could not find store: " + storeName + " in largest version colo " + largestVersionColo + " for cluster: "
+              + clusterName);
     }
     return RepushInfo.createRepushInfo(
         response.getStore()
@@ -150,7 +169,9 @@ class ParentVersionOrchestrator {
             clusterName,
             1,
             controllerClient -> controllerClient.getStore(storeName),
-            response -> response.getStore().getCurrentVersion(),
+            response -> (response != null && response.getStore() != null)
+                ? response.getStore().getCurrentVersion()
+                : IGNORED_CURRENT_VERSION,
             IGNORED_CURRENT_VERSION);
   }
 
@@ -232,7 +253,7 @@ class ParentVersionOrchestrator {
           response.getError());
       return -1;
     }
-    return response.getStore().getCurrentVersion();
+    return (response != null && response.getStore() != null) ? response.getStore().getCurrentVersion() : -1;
   }
 
   void updateStoreVersionStatus(String clusterName, String storeName, int version, VersionStatus status) {
