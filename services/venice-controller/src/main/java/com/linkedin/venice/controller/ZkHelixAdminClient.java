@@ -1,11 +1,14 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_ADMIN_CLASS;
+
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
@@ -30,6 +33,7 @@ import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.RESTConfig;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.helix.zookeeper.api.client.HelixZkClient;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -49,6 +53,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   static final String HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG = "PARTICIPANT_DEREGISTRATION_TIMEOUT";
 
   private final HelixAdmin helixAdmin;
+  private final ZkClient helixAdminZkClient;
   private final ConfigAccessor helixConfigAccessor;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
@@ -60,15 +65,48 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
-    ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
-    helixAdminZkClient
-        .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
-    helixAdminZkClient.setZkSerializer(new ZNRecordSerializer());
-    if (!helixAdminZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
-      throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
+    String adminClassName =
+        multiClusterConfigs.getCommonConfig().getProps().getString(CONTROLLER_HELIX_ADMIN_CLASS, "");
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      String clusterAdminClass =
+          multiClusterConfigs.getControllerConfig(clusterName).getProps().getString(CONTROLLER_HELIX_ADMIN_CLASS, "");
+      if (!adminClassName.equals(clusterAdminClass)) {
+        throw new VeniceException(CONTROLLER_HELIX_ADMIN_CLASS + " must be identical across controller clusters");
+      }
     }
-    helixAdmin = new ZKHelixAdmin(helixAdminZkClient);
-    helixConfigAccessor = new ConfigAccessor(helixAdminZkClient);
+    helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
+    try {
+      helixAdminZkClient
+          .subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
+      helixAdminZkClient.setZkSerializer(new ZNRecordSerializer());
+      if (!helixAdminZkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+        throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
+      }
+      helixAdmin = createHelixAdmin(adminClassName);
+      helixConfigAccessor = new ConfigAccessor(helixAdminZkClient);
+    } catch (RuntimeException e) {
+      try {
+        helixAdminZkClient.close();
+      } catch (RuntimeException closeException) {
+        e.addSuppressed(closeException);
+      }
+      throw e;
+    }
+  }
+
+  private HelixAdmin createHelixAdmin(String className) {
+    if (className.isEmpty()) {
+      return new ZKHelixAdmin(helixAdminZkClient);
+    }
+    try {
+      Class<? extends HelixAdmin> adminClass = ReflectUtils.loadClass(className).asSubclass(HelixAdmin.class);
+      return ReflectUtils.callConstructor(
+          adminClass,
+          new Class<?>[] { HelixZkClient.class, VeniceControllerMultiClusterConfig.class },
+          new Object[] { helixAdminZkClient, multiClusterConfigs });
+    } catch (RuntimeException e) {
+      throw new VeniceException("Failed to create configured Helix admin: " + className, e);
+    }
   }
 
   /**
@@ -442,7 +480,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
    */
   @Override
   public void close() {
-    helixAdmin.close();
+    try {
+      helixAdmin.close();
+    } finally {
+      helixAdminZkClient.close();
+    }
   }
 
   /**
