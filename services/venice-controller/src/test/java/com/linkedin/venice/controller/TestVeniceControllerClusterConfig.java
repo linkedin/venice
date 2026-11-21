@@ -105,7 +105,7 @@ public class TestVeniceControllerClusterConfig {
     Properties props = getBaseSingleRegionProperties(false);
     VeniceControllerMultiClusterConfig config =
         new VeniceControllerMultiClusterConfig(Collections.singletonList(new VeniceProperties(props)));
-    assertEquals(config.getDeprecatedRealTimeTopicRetentionMs(), TimeUnit.HOURS.toMillis(23));
+    assertEquals(config.getDeprecatedRealTimeTopicRetentionMs(), TimeUnit.DAYS.toMillis(1));
     assertEquals(config.getDeprecatedJobTopicRetentionMs(), TimeUnit.SECONDS.toMillis(15));
     assertEquals(config.getDeprecatedJobTopicMaxRetentionMs(), TimeUnit.SECONDS.toMillis(60));
     assertEquals(config.getFatalDataValidationFailureRetentionMs(), TimeUnit.DAYS.toMillis(2));
