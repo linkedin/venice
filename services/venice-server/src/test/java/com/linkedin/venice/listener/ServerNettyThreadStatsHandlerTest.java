@@ -56,6 +56,7 @@ public class ServerNettyThreadStatsHandlerTest {
                 ModuleMetricEntityInterface
                     .getUniqueMetricEntities(Collections.singletonList(ThreadPoolOtelMetricEntity.class)))
             .setEmitOtelMetrics(true)
+            .setUseOtelExponentialHistogram(false)
             .setOtelAdditionalMetricsReader(reader)
             .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());

@@ -42,6 +42,7 @@ public class ThreadPoolStatsOtelTest {
         new VeniceMetricsConfig.Builder().setMetricPrefix(TEST_METRIC_PREFIX)
             .setMetricEntities(metricEntities)
             .setEmitOtelMetrics(true)
+            .setUseOtelExponentialHistogram(false)
             .setOtelAdditionalMetricsReader(inMemoryMetricReader)
             .setTehutiMetricConfig(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig())
             .build());
