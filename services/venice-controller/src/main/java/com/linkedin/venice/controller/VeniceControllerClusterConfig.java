@@ -1053,7 +1053,7 @@ public class VeniceControllerClusterConfig {
     // The default retention will allow Kafka remove as much data as possible.
     this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(15));
     this.deprecatedRealTimeTopicRetentionMs =
-        props.getLong(DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, TimeUnit.HOURS.toMillis(23));
+        props.getLong(DEPRECATED_REAL_TIME_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(1));
     if (this.deprecatedRealTimeTopicRetentionMs <= 0
         || this.deprecatedRealTimeTopicRetentionMs >= DEFAULT_TOPIC_RETENTION_POLICY_MS) {
       throw new VeniceException(
