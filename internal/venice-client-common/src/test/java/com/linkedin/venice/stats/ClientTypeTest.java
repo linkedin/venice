@@ -13,13 +13,14 @@ public class ClientTypeTest {
     assertEquals(ClientType.THIN_CLIENT.getName(), "thin-client");
     assertEquals(ClientType.FAST_CLIENT.getName(), "fast-client");
     assertEquals(ClientType.DAVINCI_CLIENT.getName(), "davinci-client");
-
+    assertEquals(ClientType.ONLINE_PRODUCER.getName(), "online-producer");
     assertEquals(ClientType.THIN_CLIENT.getMetricsPrefix(), "thin_client");
     assertEquals(ClientType.FAST_CLIENT.getMetricsPrefix(), "fast_client");
     assertEquals(ClientType.DAVINCI_CLIENT.getMetricsPrefix(), "davinci_client");
-
+    assertEquals(ClientType.ONLINE_PRODUCER.getMetricsPrefix(), "online_producer");
     assertTrue(ClientType.isDavinciClient(ClientType.DAVINCI_CLIENT));
     assertFalse(ClientType.isDavinciClient(ClientType.THIN_CLIENT));
     assertFalse(ClientType.isDavinciClient(ClientType.FAST_CLIENT));
+    assertFalse(ClientType.isDavinciClient(ClientType.ONLINE_PRODUCER));
   }
 }

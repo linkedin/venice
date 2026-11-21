@@ -2,7 +2,7 @@ package com.linkedin.venice.stats;
 
 public enum ClientType {
   THIN_CLIENT("thin-client"), FAST_CLIENT("fast-client"), DAVINCI_CLIENT("davinci-client"),
-  CHANGE_DATA_CAPTURE_CLIENT("change-data-capture-client");
+  CHANGE_DATA_CAPTURE_CLIENT("change-data-capture-client"), ONLINE_PRODUCER("online-producer");
 
   private final String name;
 
