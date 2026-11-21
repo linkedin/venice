@@ -17,8 +17,8 @@ public class OnlineProducerFactory {
    * <p>Producer metrics are recorded in the metrics repository of {@code storeClientConfig}. To emit OpenTelemetry
    * metrics, use a {@link com.linkedin.venice.stats.VeniceMetricsRepository} dedicated to the producer, created for
    * {@link com.linkedin.venice.stats.ClientType#ONLINE_PRODUCER} with
-   * {@link com.linkedin.venice.producer.VeniceProducerMetrics#PRODUCER_METRIC_ENTITIES}. A repository shared with a
-   * store client would emit the producer metrics under the store client's metric prefix.</p>
+   * {@link com.linkedin.venice.producer.VeniceProducerMetrics#PRODUCER_METRIC_ENTITIES}. With any other repository,
+   * e.g. one shared with a store client, only Tehuti metrics are emitted for the producer.</p>
    *
    * @param writerHook the writer hook, or {@code null} to preserve hook-free behavior
    */

@@ -2,7 +2,9 @@ package com.linkedin.venice.producer;
 
 import static com.linkedin.venice.producer.VeniceProducerMetrics.PRODUCER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.ClientType.ONLINE_PRODUCER;
+import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_PRODUCER_OPERATION;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -15,6 +17,7 @@ import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExpon
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
@@ -195,6 +198,31 @@ public class VeniceProducerMetricsOtelTest {
       assertTrue(tehutiOnlyRepository.getMetric(TEHUTI_PREFIX + "success_write_operation.OccurrenceRate").value() > 0);
       assertTrue(tehutiOnlyRepository.getMetric(TEHUTI_PREFIX + "failed_write_operation.OccurrenceRate").value() > 0);
       assertNotNull(tehutiOnlyRepository.getMetric(TEHUTI_PREFIX + "end_to_end_latency.50thPercentile"));
+      metrics.close();
+    }
+  }
+
+  @Test
+  public void testOtelDisabledForRepositoryOfAnotherClientType() {
+    InMemoryMetricReader sharedReader = InMemoryMetricReader.create();
+    try (VeniceMetricsRepository sharedRepository =
+        getVeniceMetricsRepository(THIN_CLIENT, PRODUCER_METRIC_ENTITIES, true, sharedReader)) {
+      VeniceProducerMetrics metrics = new VeniceProducerMetrics(sharedRepository, STORE_NAME);
+      assertNull(metrics.getBaseAttributes());
+
+      metrics.recordPutRequest();
+      metrics.recordSuccessfulRequestWithLatency(PUT, 10);
+      metrics.recordEndToEndLatency(PUT, 10);
+
+      // Tehuti is still emitted, but no producer metric is mixed into the store client's OTel metrics
+      assertTrue(sharedRepository.getMetric(TEHUTI_PREFIX + "success_write_operation.OccurrenceRate").value() > 0);
+      assertFalse(
+          sharedReader.collectAllMetrics()
+              .stream()
+              .anyMatch(
+                  metricData -> metricData.getName()
+                      .startsWith(DEFAULT_METRIC_PREFIX + THIN_CLIENT.getMetricsPrefix())),
+          "Producer metrics should not be emitted under the store client's metric prefix");
       metrics.close();
     }
   }

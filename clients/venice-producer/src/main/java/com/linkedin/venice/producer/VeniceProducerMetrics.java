@@ -3,9 +3,11 @@ package com.linkedin.venice.producer;
 import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ThreadPoolOtelMetricEntity;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceProducerOperation;
@@ -35,10 +37,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Metrics for Venice Producer operations.
  *
  * <p>Metrics are emitted to Tehuti and, when the {@link MetricsRepository} is an OpenTelemetry enabled
- * {@link com.linkedin.venice.stats.VeniceMetricsRepository}, also to OpenTelemetry. The Tehuti sensor names are
- * unchanged. The OpenTelemetry metrics are defined in {@link VeniceProducerMetricEntity} and are emitted with the
- * metric prefix of the given repository, so the repository should be dedicated to the producer and created for
- * {@link com.linkedin.venice.stats.ClientType#ONLINE_PRODUCER} with {@link #PRODUCER_METRIC_ENTITIES}.</p>
+ * {@link VeniceMetricsRepository}, also to OpenTelemetry. The Tehuti sensor names are unchanged. The OpenTelemetry
+ * metrics are defined in {@link VeniceProducerMetricEntity} and are only emitted when the repository was created for
+ * {@link ClientType#ONLINE_PRODUCER} with {@link #PRODUCER_METRIC_ENTITIES}. With any other repository, e.g. one
+ * shared with a store client, only Tehuti metrics are emitted so that producer metrics like {@code call_count} are
+ * not mixed with the store client metrics of the same name.</p>
  *
  * <h3>Latency Metrics</h3>
  * <ul>
@@ -116,6 +119,7 @@ public class VeniceProducerMetrics extends AbstractVeniceStats implements Closea
 
       OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo otelData =
           OpenTelemetryMetricsSetup.builder(metricsRepository)
+              .setOtelEnabledOverride(isOnlineProducerMetricsRepository(metricsRepository))
               // set all base dimensions for this stats class and build
               .setStoreName(storeName)
               .build();
@@ -185,6 +189,11 @@ public class VeniceProducerMetrics extends AbstractVeniceStats implements Closea
     } else {
       enableMetrics = false;
     }
+  }
+
+  private static boolean isOnlineProducerMetricsRepository(MetricsRepository metricsRepository) {
+    return metricsRepository instanceof VeniceMetricsRepository && ClientType.ONLINE_PRODUCER.getMetricsPrefix()
+        .equals(((VeniceMetricsRepository) metricsRepository).getVeniceMetricsConfig().getMetricPrefix());
   }
 
   /**
