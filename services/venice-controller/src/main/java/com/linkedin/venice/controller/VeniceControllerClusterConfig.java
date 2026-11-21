@@ -813,7 +813,7 @@ public class VeniceControllerClusterConfig {
     if (pushJobSlaMs <= 0) {
       throw new ConfigurationException(CONTROLLER_PUSH_JOB_SLA_MS + " must be greater than 0.");
     }
-    this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.MINUTES.toMillis(30));
+    this.delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, TimeUnit.HOURS.toMillis(1));
     if (props.containsKey(PERSISTENCE_TYPE)) {
       this.persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
     } else {
