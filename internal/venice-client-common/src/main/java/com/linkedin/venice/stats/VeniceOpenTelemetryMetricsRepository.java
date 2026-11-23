@@ -318,6 +318,15 @@ public class VeniceOpenTelemetryMetricsRepository {
     return createFullMetricPrefix(metricPrefix);
   }
 
+  /**
+   * Returns whether this repository emits its metrics under {@code metricPrefix}. A repository created by
+   * {@link #cloneWithNewMetricPrefix(String)} emits under its new prefix, while it keeps the parent's
+   * {@link VeniceMetricsConfig} and so its {@link VeniceMetricsConfig#getMetricPrefix()}.
+   */
+  public boolean hasMetricPrefix(String metricPrefix) {
+    return metricPrefix != null && metricPrefix.equals(this.metricPrefix);
+  }
+
   String getMetricPrefix(MetricEntity metricEntity) {
     return (metricEntity.getCustomMetricPrefix() == null
         ? getMetricPrefix()

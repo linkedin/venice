@@ -39,8 +39,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>Metrics are emitted to Tehuti and, when the {@link MetricsRepository} is an OpenTelemetry enabled
  * {@link VeniceMetricsRepository}, also to OpenTelemetry. The Tehuti sensor names are unchanged. The OpenTelemetry
- * metrics are defined in {@link VeniceProducerMetricEntity} and are only emitted when the repository was created for
- * {@link ClientType#ONLINE_PRODUCER} with {@link #PRODUCER_METRIC_ENTITIES}. With any other repository, e.g. one
+ * metrics are defined in {@link VeniceProducerMetricEntity} and are only emitted when the repository emits under the
+ * {@link ClientType#ONLINE_PRODUCER} prefix, e.g. one created for that client type with
+ * {@link #PRODUCER_METRIC_ENTITIES}. With any other repository, e.g. one
  * shared with a store client, only Tehuti metrics are emitted so that producer metrics like {@code call_count} are
  * not mixed with the store client metrics of the same name.</p>
  *
@@ -194,9 +195,19 @@ public class VeniceProducerMetrics extends AbstractVeniceStats implements Closea
     }
   }
 
+  /**
+   * Whether the repository emits OpenTelemetry metrics under the {@link ClientType#ONLINE_PRODUCER} prefix. The prefix
+   * is read from the OpenTelemetry repository and not from the config, as a repository created by
+   * {@link VeniceMetricsRepository#cloneWithNewMetricPrefix(String)} keeps the parent's config.
+   */
   private static boolean isOnlineProducerMetricsRepository(MetricsRepository metricsRepository) {
-    return metricsRepository instanceof VeniceMetricsRepository && ClientType.ONLINE_PRODUCER.getMetricsPrefix()
-        .equals(((VeniceMetricsRepository) metricsRepository).getVeniceMetricsConfig().getMetricPrefix());
+    if (!(metricsRepository instanceof VeniceMetricsRepository)) {
+      return false;
+    }
+    VeniceOpenTelemetryMetricsRepository otelMetricsRepository =
+        ((VeniceMetricsRepository) metricsRepository).getOpenTelemetryMetricsRepository();
+    return otelMetricsRepository != null
+        && otelMetricsRepository.hasMetricPrefix(ClientType.ONLINE_PRODUCER.getMetricsPrefix());
   }
 
   /**

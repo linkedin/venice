@@ -227,6 +227,52 @@ public class VeniceProducerMetricsOtelTest {
     }
   }
 
+  @Test
+  public void testOtelEnabledForRepositoryClonedToProducerPrefix() {
+    InMemoryMetricReader sharedReader = InMemoryMetricReader.create();
+    try (
+        VeniceMetricsRepository clientRepository =
+            getVeniceMetricsRepository(THIN_CLIENT, PRODUCER_METRIC_ENTITIES, true, sharedReader);
+        VeniceMetricsRepository clonedRepository =
+            clientRepository.cloneWithNewMetricPrefix(ONLINE_PRODUCER.getMetricsPrefix())) {
+      VeniceProducerMetrics metrics = new VeniceProducerMetrics(clonedRepository, STORE_NAME);
+      assertNotNull(metrics.getBaseAttributes());
+
+      metrics.recordPutRequest();
+      metrics.recordSuccessfulRequestWithLatency(PUT, 10);
+
+      validateLongPointDataFromCounter(
+          sharedReader,
+          1,
+          operationAndStatusAttributes(PUT, SUCCESS),
+          VeniceProducerMetricEntity.CALL_COUNT.getMetricEntity().getMetricName(),
+          otelMetricPrefix);
+      metrics.close();
+    }
+  }
+
+  @Test
+  public void testOtelDisabledForRepositoryClonedToAnotherPrefix() {
+    try (VeniceMetricsRepository clonedRepository =
+        metricsRepository.cloneWithNewMetricPrefix(THIN_CLIENT.getMetricsPrefix())) {
+      VeniceProducerMetrics metrics = new VeniceProducerMetrics(clonedRepository, STORE_NAME);
+      assertNull(metrics.getBaseAttributes());
+
+      metrics.recordPutRequest();
+      metrics.recordSuccessfulRequestWithLatency(PUT, 10);
+
+      assertTrue(clonedRepository.getMetric(TEHUTI_PREFIX + "success_write_operation.OccurrenceRate").value() > 0);
+      assertFalse(
+          inMemoryMetricReader.collectAllMetrics()
+              .stream()
+              .anyMatch(
+                  metricData -> metricData.getName()
+                      .startsWith(DEFAULT_METRIC_PREFIX + THIN_CLIENT.getMetricsPrefix())),
+          "Producer metrics should not be emitted under the cloned repository's metric prefix");
+      metrics.close();
+    }
+  }
+
   @SuppressWarnings("deprecation")
   @Test
   public void testDeprecatedRecordMethodsRecordTehutiOnly() {
