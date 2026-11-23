@@ -15,7 +15,9 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -160,8 +163,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   }
 
   /**
-   * Similar to {@link #internalSeekToEndOfPush} exception in addition to finding the EOP of each partition we will also
-   * be looking for the first relevant version swap. This can also be optimized later for a faster find.
+   * Finds the first relevant version swap in each partition, retaining EOP checkpoints encountered along the way.
+   * The opt-in timestamp search falls back to the original full scan for unresolved partitions after its deadline.
    */
   @Override
   protected CompletableFuture<Void> internalFindNewVersionCheckpoints(
@@ -172,9 +175,12 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     if (partitions.isEmpty()) {
       return CompletableFuture.completedFuture(null);
     }
+    VersionSwapMessageState state = versionSwapMessageState;
+    boolean optimize = versionSwapByControlMessage && changelogClientConfig.isVersionSwapSeekOptimizationEnabled();
     return CompletableFuture.supplyAsync(() -> {
       boolean lockAcquired = false;
-      Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
+      Map<Integer, VeniceChangeCoordinate> checkpoints =
+          optimize ? state.getFoundVersionSwapCheckpoints() : new HashMap<>();
       Map<Integer, VeniceChangeCoordinate> eopCheckpoints = new HashMap<>();
       try {
         synchronized (internalSeekConsumer) {
@@ -183,15 +189,25 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledResults;
           Map<Integer, Boolean> versionSwapConsumedPerPartitionMap = new HashMap<>();
           for (Integer partition: partitions) {
-            versionSwapConsumedPerPartitionMap.put(partition, false);
+            versionSwapConsumedPerPartitionMap.put(partition, checkpoints.containsKey(partition));
           }
           List<PubSubTopicPartition> topicPartitionList = getPartitionListToSubscribe(
               partitions,
               Collections.EMPTY_SET,
               pubSubTopicRepository.getTopic(newVersionTopic));
 
+          Set<PubSubTopicPartition> optimizedPartitions = new HashSet<>();
+          if (optimize) {
+            state.getOrStartSeekTimeNs(time.getNanoseconds());
+          }
           for (PubSubTopicPartition topicPartition: topicPartitionList) {
-            consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
+            if (!checkpoints.containsKey(topicPartition.getPartitionNumber())) {
+              if (optimize && subscribeForOptimizedSwap(consumerAdapter, topicPartition, state)) {
+                optimizedPartitions.add(topicPartition);
+              } else if (!optimize) {
+                consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
+              }
+            }
           }
 
           // Poll until we receive the desired version swap message in the new version topic for each partition
@@ -201,9 +217,42 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               generationId,
               partitions);
           while (!areAllTrue(versionSwapConsumedPerPartitionMap.values())) {
-            polledResults = consumerAdapter.poll(5000L);
+            if (Thread.currentThread().isInterrupted()) {
+              throw new VeniceException("Interrupted while finding version swap checkpoints");
+            }
+            if (optimize) {
+              removeUnsubscribedSwapPartitions(consumerAdapter, state, versionSwapConsumedPerPartitionMap.keySet());
+              optimizedPartitions
+                  .removeIf(p -> !versionSwapConsumedPerPartitionMap.containsKey(p.getPartitionNumber()));
+              if (areAllTrue(versionSwapConsumedPerPartitionMap.values())) {
+                break;
+              }
+            }
+            fallbackExpiredSwapSeek(consumerAdapter, optimizedPartitions, state);
+            long pollTimeout =
+                optimizedPartitions.isEmpty() ? 5000L : Math.max(1, Math.min(5000L, remainingSwapSeekTimeMs(state)));
+            try {
+              polledResults = consumerAdapter.poll(pollTimeout);
+            } catch (RuntimeException e) {
+              if (optimize) {
+                LOGGER.warn(
+                    "Checkpoint polling failed for version swap generation {} in {} at targetTimestampMs={}, timestampSeekingPartitions={}; propagating for retry with the original search deadline",
+                    generationId,
+                    newVersionTopic,
+                    swapSeekTimestamp(state),
+                    optimizedPartitions,
+                    e);
+              }
+              throw e;
+            }
+            // A broker poll can overrun its timeout. Discard that batch for partitions we rewind.
+            Set<PubSubTopicPartition> expiredPartitions =
+                fallbackExpiredSwapSeek(consumerAdapter, optimizedPartitions, state);
             for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledResults.entrySet()) {
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+              if (expiredPartitions.contains(pubSubTopicPartition)) {
+                continue;
+              }
               List<DefaultPubSubMessage> messageList = entry.getValue();
               for (DefaultPubSubMessage message: messageList) {
                 if (message.getKey().isControlMessage()) {
@@ -215,6 +264,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                         message.getPosition(),
                         pubSubTopicPartition.getPartitionNumber());
                     eopCheckpoints.put(pubSubTopicPartition.getPartitionNumber(), eopCoordinate);
+                    if (optimize) {
+                      state.recordEOPCheckpoint(eopCoordinate);
+                    }
                     LOGGER.info(
                         "Found EOP for version swap message with generation id: {} for partition: {}",
                         generationId,
@@ -234,6 +286,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                           message.getPosition(),
                           pubSubTopicPartition.getPartitionNumber());
                       checkpoints.put(pubSubTopicPartition.getPartitionNumber(), coordinate);
+                      if (optimize) {
+                        state.recordVersionSwapCheckpoint(coordinate);
+                        optimizedPartitions.remove(pubSubTopicPartition);
+                      }
                       // We are done with this partition
                       consumerAdapter.unSubscribe(pubSubTopicPartition);
                       LOGGER.info(
@@ -253,6 +309,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               generationId,
               partitions);
         }
+        if (optimize) {
+          // The captured state owns the results across retries; no primary subscription changes are made here.
+          return null;
+        }
         // We cannot change the subscription here because the consumer might not finish polling all the messages in the
         // old version topic yet. We can acquire the lock and update the VersionSwapMessageState.
         subscriptionLock.writeLock().lock();
@@ -265,6 +325,199 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         }
       }
       return null;
+    }, seekExecutorService);
+  }
+
+  private long remainingSwapSeekTimeMs(VersionSwapMessageState state) {
+    long nowNs = time.getNanoseconds();
+    long elapsedMs = TimeUnit.NANOSECONDS.toMillis(nowNs - state.getOrStartSeekTimeNs(nowNs));
+    return Math.max(0, changelogClientConfig.getVersionSwapSeekOptimizationTimeoutInMs() - elapsedMs);
+  }
+
+  private Set<PubSubTopicPartition> fallbackExpiredSwapSeek(
+      PubSubConsumerAdapter consumer,
+      Set<PubSubTopicPartition> optimizedPartitions,
+      VersionSwapMessageState state) {
+    if (optimizedPartitions.isEmpty() || remainingSwapSeekTimeMs(state) > 0) {
+      return Collections.emptySet();
+    }
+    Set<PubSubTopicPartition> expired = new HashSet<>(optimizedPartitions);
+    for (PubSubTopicPartition partition: expired) {
+      fallbackSwapSeek(consumer, partition, state, "timestamp search deadline expired");
+    }
+    optimizedPartitions.clear();
+    return expired;
+  }
+
+  private void removeUnsubscribedSwapPartitions(
+      PubSubConsumerAdapter consumer,
+      VersionSwapMessageState state,
+      Collection<Integer> partitions) {
+    Set<Integer> removed = new HashSet<>(partitions);
+    removed.removeAll(state.getAssignedPartitions());
+    for (PubSubTopicPartition partition: getPartitionListToSubscribe(
+        removed,
+        Collections.emptySet(),
+        pubSubTopicRepository.getTopic(state.getNewVersionTopic()))) {
+      consumer.unSubscribe(partition);
+      partitions.remove(partition.getPartitionNumber());
+      LOGGER.info(
+          "Stopped checkpoint search for version swap generation {} in {} because the partition was unsubscribed",
+          state.getVersionSwapGenerationId(),
+          partition);
+    }
+  }
+
+  private long swapSeekTimestamp(VersionSwapMessageState state) {
+    long timestamp = state.getTriggeringMessageTimestamp();
+    return timestamp <= 0
+        ? 0
+        : Math.max(0, timestamp - changelogClientConfig.getVersionSwapSeekOptimizationBufferInMs());
+  }
+
+  private boolean subscribeForOptimizedSwap(
+      PubSubConsumerAdapter consumer,
+      PubSubTopicPartition partition,
+      VersionSwapMessageState state) {
+    if (state.isSeekFallback(partition.getPartitionNumber())) {
+      fallbackSwapSeek(consumer, partition, state, "retaining EARLIEST fallback from a previous attempt");
+      return false;
+    }
+    if (remainingSwapSeekTimeMs(state) == 0) {
+      fallbackSwapSeek(consumer, partition, state, "timestamp search deadline expired");
+      return false;
+    }
+    if (state.getTriggeringMessageTimestamp() <= 0) {
+      fallbackSwapSeek(consumer, partition, state, "invalid trigger timestamp");
+      return false;
+    }
+    long timestamp = swapSeekTimestamp(state);
+    long remainingMs = remainingSwapSeekTimeMs(state);
+    LOGGER.info(
+        "Looking up timestamp for version swap generation {} from {} to {}: targetTimestampMs={}, triggerTimestampMs={}, bufferMs={}, remainingBudgetMs={}",
+        state.getVersionSwapGenerationId(),
+        state.getOldVersionTopic(),
+        partition,
+        timestamp,
+        state.getTriggeringMessageTimestamp(),
+        changelogClientConfig.getVersionSwapSeekOptimizationBufferInMs(),
+        remainingMs);
+    PubSubPosition position;
+    try {
+      position = consumer.getPositionByTimestamp(partition, timestamp, Duration.ofMillis(Math.max(1, remainingMs)));
+    } catch (PubSubOpTimeoutException e) {
+      fallbackSwapSeek(consumer, partition, state, "timestamp lookup timed out", e);
+      return false;
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Timestamp lookup failed for version swap generation {} in {} at targetTimestampMs={}; propagating for retry with the original search deadline",
+          state.getVersionSwapGenerationId(),
+          partition,
+          timestamp,
+          e);
+      throw e;
+    }
+    if (remainingSwapSeekTimeMs(state) == 0) {
+      fallbackSwapSeek(consumer, partition, state, "timestamp search deadline expired during lookup");
+      return false;
+    }
+    if (position == null) {
+      fallbackSwapSeek(consumer, partition, state, "no position found for target timestamp");
+      return false;
+    }
+    LOGGER.info(
+        "Searching for version swap generation {} in {} from timestamp {} at position {}",
+        state.getVersionSwapGenerationId(),
+        partition,
+        timestamp,
+        position);
+    try {
+      consumer.subscribe(partition, position, true);
+    } catch (RuntimeException e) {
+      LOGGER.warn(
+          "Timestamp subscription failed for version swap generation {} in {} at targetTimestampMs={}, position={}; propagating for retry with the original search deadline",
+          state.getVersionSwapGenerationId(),
+          partition,
+          timestamp,
+          position,
+          e);
+      throw e;
+    }
+    return true;
+  }
+
+  private void fallbackSwapSeek(
+      PubSubConsumerAdapter consumer,
+      PubSubTopicPartition partition,
+      VersionSwapMessageState state,
+      String reason) {
+    fallbackSwapSeek(consumer, partition, state, reason, null);
+  }
+
+  private void fallbackSwapSeek(
+      PubSubConsumerAdapter consumer,
+      PubSubTopicPartition partition,
+      VersionSwapMessageState state,
+      String reason,
+      Throwable cause) {
+    state.markSeekFallback(partition.getPartitionNumber());
+    LOGGER.warn(
+        "Falling back to EARLIEST for version swap generation {} from {} to {}: {}; targetTimestampMs={}, triggerTimestampMs={}, bufferMs={}, searchTimeoutMs={}, remainingBudgetMs={}",
+        state.getVersionSwapGenerationId(),
+        state.getOldVersionTopic(),
+        partition,
+        reason,
+        swapSeekTimestamp(state),
+        state.getTriggeringMessageTimestamp(),
+        changelogClientConfig.getVersionSwapSeekOptimizationBufferInMs(),
+        changelogClientConfig.getVersionSwapSeekOptimizationTimeoutInMs(),
+        remainingSwapSeekTimeMs(state),
+        cause);
+    consumer.unSubscribe(partition);
+    consumer.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+  }
+
+  @Override
+  protected CompletableFuture<Void> internalFindNewVersionEOPCheckpoints(
+      VersionSwapMessageState state,
+      Set<Integer> partitions) {
+    return CompletableFuture.runAsync(() -> {
+      synchronized (internalSeekConsumer) {
+        PubSubConsumerAdapter consumer = internalSeekConsumer.get();
+        consumer.batchUnsubscribe(consumer.getAssignment());
+        Set<Integer> remaining = new HashSet<>(partitions);
+        for (PubSubTopicPartition partition: getPartitionListToSubscribe(
+            remaining,
+            Collections.emptySet(),
+            pubSubTopicRepository.getTopic(state.getNewVersionTopic()))) {
+          LOGGER.info("Recovering EOP from EARLIEST for timed-out version swap in {}", partition);
+          consumer.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+        }
+        while (!remaining.isEmpty()) {
+          if (Thread.currentThread().isInterrupted()) {
+            throw new VeniceException("Interrupted while recovering version swap EOP checkpoints");
+          }
+          removeUnsubscribedSwapPartitions(consumer, state, remaining);
+          if (remaining.isEmpty()) {
+            break;
+          }
+          for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: consumer.poll(5000L).entrySet()) {
+            for (DefaultPubSubMessage message: entry.getValue()) {
+              if (message.getKey().isControlMessage() && ControlMessageType
+                  .valueOf((ControlMessage) message.getValue().getPayloadUnion()) == ControlMessageType.END_OF_PUSH) {
+                state.recordEOPCheckpoint(
+                    new VeniceChangeCoordinate(
+                        state.getNewVersionTopic(),
+                        message.getPosition(),
+                        message.getPartition()));
+                remaining.remove(message.getPartition());
+                consumer.unSubscribe(entry.getKey());
+                break;
+              }
+            }
+          }
+        }
+      }
     }, seekExecutorService);
   }
 

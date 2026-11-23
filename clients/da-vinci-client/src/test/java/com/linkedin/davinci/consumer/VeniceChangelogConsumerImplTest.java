@@ -119,6 +119,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -148,6 +149,7 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1967,6 +1969,482 @@ public class VeniceChangelogConsumerImplTest {
     subscribeDuringVersionSwapFuture.get(pollTimeoutMs, TimeUnit.MILLISECONDS);
     Assert.assertFalse(veniceChangeLogConsumer.getPartitionToBootstrapState().get(0));
     Assert.assertNull(veniceChangeLogConsumer.getVersionSwapMessageState());
+  }
+
+  @DataProvider
+  public Object[][] swapSeekBuffers() {
+    return new Object[][] { { 10_000L, 90_000L }, { 200_000L, 0L }, { 0L, 100_000L } };
+  }
+
+  @Test(dataProvider = "swapSeekBuffers")
+  public void testOptimizedSwapUsesTriggerPubSubTimestamp(long buffer, long expectedTimestamp) throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationBufferInMs(buffer);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+      PubSubTopicPartition oldPartition = new PubSubTopicPartitionImpl(oldVersionTopic, 0);
+      PubSubTopicPartition newPartition = new PubSubTopicPartitionImpl(newTopic, 0);
+      DefaultPubSubMessage trigger = swapRecord(oldVersionTopic, newTopic, 0, 10, 100_000L);
+      when(mockPubSubConsumer.getAssignment()).thenReturn(Collections.singleton(oldPartition));
+      when(mockPubSubConsumer.poll(anyLong()))
+          .thenReturn(Collections.singletonMap(oldPartition, Collections.singletonList(trigger)));
+      when(helper.getPositionByTimestamp(eq(newPartition), eq(expectedTimestamp), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(50));
+      when(helper.poll(anyLong())).thenReturn(
+          Collections.singletonMap(
+              newPartition,
+              Arrays.asList(
+                  constructVersionSwapMessage(
+                      newTopic,
+                      oldVersionTopic.getName(),
+                      newTopic.getName(),
+                      "region1",
+                      "region1",
+                      3L,
+                      0,
+                      Collections.emptyList()),
+                  constructVersionSwapMessage(
+                      newTopic,
+                      oldVersionTopic.getName(),
+                      newTopic.getName(),
+                      "region2",
+                      "region1",
+                      2L,
+                      0,
+                      Collections.emptyList()),
+                  constructVersionSwapMessage(
+                      newTopic,
+                      "another_store_v1",
+                      newTopic.getName(),
+                      "region1",
+                      "region1",
+                      2L,
+                      0,
+                      Collections.emptyList()),
+                  constructVersionSwapMessage(
+                      newTopic,
+                      oldVersionTopic.getName(),
+                      "another_store_v2",
+                      "region1",
+                      "region1",
+                      2L,
+                      0,
+                      Collections.emptyList()),
+                  swapRecord(newTopic, newTopic, 0, 50, 100_000L))));
+
+      consumer.poll(1);
+      VersionSwapMessageState state = consumer.getVersionSwapMessageState();
+      state.getFindNewTopicCheckpointFuture().get(5, TimeUnit.SECONDS);
+      assertEquals(state.getTriggeringMessageTimestamp(), 100_000L);
+      assertEquals(trigger.getValue().getProducerMetadata().getMessageTimestamp(), 1000L);
+      verify(helper).getPositionByTimestamp(eq(newPartition), eq(expectedTimestamp), any(Duration.class));
+      verify(helper).subscribe(newPartition, ApacheKafkaOffsetPosition.of(50), true);
+      verify(helper, never()).subscribe(newPartition, PubSubSymbolicPosition.EARLIEST);
+      assertEquals(
+          state.getNewTopicVersionSwapCheckpoints().iterator().next().getPosition(),
+          ApacheKafkaOffsetPosition.of(50));
+    }
+  }
+
+  @Test
+  public void testOptimizedSwapFallsBackOnlyUnresolvedPartitionsAndRetainsRetryBudget() throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      AtomicLong elapsedMs = new AtomicLong();
+      Time clock = mock(Time.class);
+      when(clock.getNanoseconds()).thenAnswer(ignored -> TimeUnit.MILLISECONDS.toNanos(elapsedMs.get()));
+      consumer.time = clock;
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationTimeoutInMs(100);
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0, 1);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(newTopic, 0);
+      PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(newTopic, 1);
+      when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(50));
+      AtomicInteger polls = new AtomicInteger();
+      when(helper.poll(anyLong())).thenAnswer(ignored -> {
+        switch (polls.getAndIncrement()) {
+          case 0:
+            return Collections
+                .singletonMap(p0, Collections.singletonList(swapRecord(newTopic, newTopic, 0, 50, 100_000L)));
+          case 1:
+            elapsedMs.set(100);
+            return Collections.emptyMap();
+          case 2:
+            throw new VeniceException("failure after fallback");
+          default:
+            return Collections
+                .singletonMap(p1, Collections.singletonList(swapRecord(newTopic, newTopic, 1, 70, 100_000L)));
+        }
+      });
+      CompletableFuture<Void> first = findSwapCheckpoints(consumer, state);
+      expectThrows(ExecutionException.class, () -> first.get(5, TimeUnit.SECONDS));
+      assertTrue(state.isSeekFallback(1));
+      assertFalse(state.isSeekFallback(0));
+      findSwapCheckpoints(consumer, state).get(5, TimeUnit.SECONDS);
+      assertEquals(state.getFoundVersionSwapCheckpoints().size(), 2);
+      verify(helper, times(1)).getPositionByTimestamp(eq(p0), anyLong(), any(Duration.class));
+      verify(helper, times(1)).getPositionByTimestamp(eq(p1), anyLong(), any(Duration.class));
+      verify(helper, never()).subscribe(p0, PubSubSymbolicPosition.EARLIEST);
+      verify(helper, times(2)).subscribe(p1, PubSubSymbolicPosition.EARLIEST);
+      verify(helper, times(1)).subscribe(p0, ApacheKafkaOffsetPosition.of(50), true);
+    }
+  }
+
+  @Test
+  public void testOptimizedSwapLookupFailureDoesNotResetDeadline() throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      AtomicLong elapsedMs = new AtomicLong();
+      Time clock = mock(Time.class);
+      when(clock.getNanoseconds()).thenAnswer(ignored -> TimeUnit.MILLISECONDS.toNanos(elapsedMs.get()));
+      consumer.time = clock;
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationTimeoutInMs(100);
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(newTopic, 0);
+      when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class))).thenAnswer(ignored -> {
+        elapsedMs.set(100);
+        throw new VeniceException("broker error");
+      });
+      expectThrows(ExecutionException.class, () -> findSwapCheckpoints(consumer, state).get(5, TimeUnit.SECONDS));
+      when(helper.poll(anyLong())).thenReturn(
+          Collections
+              .singletonMap(partition, Collections.singletonList(swapRecord(newTopic, newTopic, 0, 50, 100_000L))));
+      findSwapCheckpoints(consumer, state).get(5, TimeUnit.SECONDS);
+      verify(helper, times(1)).getPositionByTimestamp(eq(partition), anyLong(), any(Duration.class));
+      verify(helper).subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+    }
+  }
+
+  @Test
+  public void testOptimizedSwapDiscardsPollResultsAfterDeadline() throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    List<LogEvent> logs = new CopyOnWriteArrayList<>();
+    try (AutoCloseable capture = captureSwapSeekLogs(logs);
+        VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      AtomicLong elapsedMs = new AtomicLong();
+      Time clock = mock(Time.class);
+      when(clock.getNanoseconds()).thenAnswer(ignored -> TimeUnit.MILLISECONDS.toNanos(elapsedMs.get()));
+      consumer.time = clock;
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationTimeoutInMs(100)
+          .setVersionSwapSeekOptimizationBufferInMs(10_000);
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(newTopic, 0);
+      when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(70));
+      AtomicInteger polls = new AtomicInteger();
+      when(helper.poll(anyLong())).thenAnswer(ignored -> {
+        if (polls.getAndIncrement() == 0) {
+          elapsedMs.set(100);
+          return Collections
+              .singletonMap(partition, Collections.singletonList(swapRecord(newTopic, newTopic, 0, 70, 100_000L)));
+        }
+        return Collections
+            .singletonMap(partition, Collections.singletonList(swapRecord(newTopic, newTopic, 0, 50, 90_000L)));
+      });
+
+      findSwapCheckpoints(consumer, state).get(5, TimeUnit.SECONDS);
+
+      assertEquals(state.getFoundVersionSwapCheckpoints().get(0).getPosition(), ApacheKafkaOffsetPosition.of(50));
+      verify(helper).subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+      assertTrue(
+          logs.stream()
+              .anyMatch(
+                  event -> event.getLevel() == Level.WARN
+                      && event.getMessage().getFormattedMessage().contains("timestamp search deadline expired")
+                      && event.getMessage().getFormattedMessage().contains("targetTimestampMs=90000")
+                      && event.getMessage().getFormattedMessage().contains("remainingBudgetMs=0")));
+    }
+  }
+
+  @DataProvider
+  public Object[][] swapSeekScanTypes() {
+    return new Object[][] { { false }, { true } };
+  }
+
+  @Test(dataProvider = "swapSeekScanTypes")
+  public void testUnsubscribeDuringOptimizedSwapScan(boolean recoverEOP) throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    CountDownLatch polling = new CountDownLatch(1);
+    CountDownLatch releasePoll = new CountDownLatch(1);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0, 1);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(newTopic, 0);
+      PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(newTopic, 1);
+      when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(50));
+      AtomicInteger polls = new AtomicInteger();
+      when(helper.poll(anyLong())).thenAnswer(ignored -> {
+        assertEquals(polls.getAndIncrement(), 0, "Do not wait for a marker from an unsubscribed partition");
+        polling.countDown();
+        assertTrue(releasePoll.await(5, TimeUnit.SECONDS));
+        return Collections.singletonMap(
+            p0,
+            Collections.singletonList(
+                recoverEOP
+                    ? constructEndOfPushMessage(newTopic, 0, 20L)
+                    : swapRecord(newTopic, newTopic, 0, 50, 100_000L)));
+      });
+      CompletableFuture<Void> scan = recoverEOP
+          ? consumer.internalFindNewVersionEOPCheckpoints(state, state.getAssignedPartitions())
+          : findSwapCheckpoints(consumer, state);
+      try {
+        assertTrue(polling.await(5, TimeUnit.SECONDS));
+        consumer.unsubscribe(Collections.singleton(1));
+      } finally {
+        releasePoll.countDown();
+      }
+      scan.get(5, TimeUnit.SECONDS);
+
+      assertEquals(state.getAssignedPartitions(), Collections.singleton(0));
+      verify(helper).unSubscribe(p1);
+      if (recoverEOP) {
+        assertTrue(state.getPartitionsMissingEOP().isEmpty());
+      } else {
+        assertEquals(state.getFoundVersionSwapCheckpoints().keySet(), Collections.singleton(0));
+      }
+    } finally {
+      releasePoll.countDown();
+    }
+  }
+
+  @DataProvider
+  public Object[][] swapSeekFailureStages() {
+    return new Object[][] { { "lookup" }, { "subscription" }, { "polling" } };
+  }
+
+  @Test(dataProvider = "swapSeekFailureStages")
+  public void testOptimizedSwapLogsSeekFailuresBeforeRetry(String stage) throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    List<LogEvent> logs = new CopyOnWriteArrayList<>();
+    try (AutoCloseable capture = captureSwapSeekLogs(logs);
+        VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationBufferInMs(10_000);
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(newTopic, 0);
+      VeniceException failure = new VeniceException("broker failure");
+      String failureMessage;
+      if (stage.equals("lookup")) {
+        failureMessage = "Timestamp lookup failed";
+        when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class))).thenThrow(failure);
+      } else {
+        when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class)))
+            .thenReturn(ApacheKafkaOffsetPosition.of(50));
+        if (stage.equals("subscription")) {
+          failureMessage = "Timestamp subscription failed";
+          doThrow(failure).when(helper).subscribe(partition, ApacheKafkaOffsetPosition.of(50), true);
+        } else {
+          failureMessage = "Checkpoint polling failed";
+          when(helper.poll(anyLong())).thenThrow(failure);
+        }
+      }
+
+      ExecutionException thrown =
+          expectThrows(ExecutionException.class, () -> findSwapCheckpoints(consumer, state).get(5, TimeUnit.SECONDS));
+
+      assertSame(thrown.getCause(), failure);
+      assertTrue(
+          logs.stream()
+              .anyMatch(
+                  event -> event.getLevel() == Level.INFO
+                      && event.getMessage().getFormattedMessage().contains("Looking up timestamp")
+                      && event.getMessage().getFormattedMessage().contains("targetTimestampMs=90000")
+                      && event.getMessage().getFormattedMessage().contains("triggerTimestampMs=100000")
+                      && event.getMessage().getFormattedMessage().contains("bufferMs=10000")));
+      assertTrue(
+          logs.stream()
+              .anyMatch(
+                  event -> event.getLevel() == Level.WARN && event.getThrown() == failure
+                      && event.getMessage().getFormattedMessage().contains(failureMessage)
+                      && event.getMessage().getFormattedMessage().contains(newTopic.getName())
+                      && event.getMessage().getFormattedMessage().contains("targetTimestampMs=90000")));
+      verify(helper, never()).subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+    }
+  }
+
+  @DataProvider
+  public Object[][] swapSeekFallbacks() {
+    return new Object[][] { { false, 100_000L, false }, { true, -1L, false }, { true, 100_000L, false },
+        { true, 100_000L, true } };
+  }
+
+  @Test(dataProvider = "swapSeekFallbacks")
+  public void testSwapSeekDisabledInvalidAndUnavailableTimestamp(boolean enabled, long timestamp, boolean lookupTimeout)
+      throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    List<LogEvent> logs = new CopyOnWriteArrayList<>();
+    try (AutoCloseable capture = captureSwapSeekLogs(logs);
+        VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationEnabled(enabled);
+      VersionSwapMessageState state = initializeSwapState(consumer, timestamp, 0);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(newTopic, 0);
+      if (lookupTimeout) {
+        when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class)))
+            .thenThrow(new PubSubOpTimeoutException("lookup timeout"));
+      }
+      when(helper.poll(anyLong())).thenReturn(
+          Collections.singletonMap(
+              partition,
+              Arrays.asList(
+                  constructEndOfPushMessage(newTopic, 0, 20L),
+                  swapRecord(newTopic, newTopic, 0, 50, timestamp))));
+      findSwapCheckpoints(consumer, state).get(5, TimeUnit.SECONDS);
+      verify(helper).subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+      verify(helper, never()).subscribe(any(), any(), eq(true));
+      if (!enabled || timestamp <= 0) {
+        verify(helper, never()).getPositionByTimestamp(any(), anyLong(), any(Duration.class));
+      }
+      if (enabled) {
+        String reason = timestamp <= 0
+            ? "invalid trigger timestamp"
+            : lookupTimeout ? "timestamp lookup timed out" : "no position found for target timestamp";
+        assertTrue(
+            logs.stream()
+                .anyMatch(
+                    event -> event.getLevel() == Level.WARN
+                        && event.getMessage().getFormattedMessage().contains("Falling back to EARLIEST")
+                        && event.getMessage().getFormattedMessage().contains(reason)
+                        && event.getMessage().getFormattedMessage().contains("targetTimestampMs=")
+                        && event.getMessage().getFormattedMessage().contains(newTopic.getName())
+                        && (!lookupTimeout || event.getThrown() instanceof PubSubOpTimeoutException)));
+      }
+    }
+  }
+
+  @Test
+  public void testOptimizedSwapRecoversEOPOnOverallTimeout() throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      Time clock = mock(Time.class);
+      when(clock.getMilliseconds()).thenReturn(changelogClientConfig.getVersionSwapTimeoutInMs() + 1);
+      consumer.time = clock;
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0, 1);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(newTopic, 0);
+      PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(newTopic, 1);
+      state.handleVersionSwap(
+          (VersionSwap) ((ControlMessage) swapRecord(oldVersionTopic, newTopic, 0, 10, 100_000L).getValue()
+              .getPayloadUnion()).getControlMessageUnion(),
+          new PubSubTopicPartitionImpl(oldVersionTopic, 0),
+          ApacheKafkaOffsetPosition.of(10));
+      when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(50));
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> markers = new HashMap<>();
+      markers.put(p0, Collections.singletonList(swapRecord(newTopic, newTopic, 0, 50, 100_000L)));
+      markers.put(p1, Collections.singletonList(swapRecord(newTopic, newTopic, 1, 50, 100_000L)));
+      when(helper.poll(anyLong())).thenReturn(markers);
+      findSwapCheckpoints(consumer, state).get(5, TimeUnit.SECONDS);
+      verify(helper, never()).subscribe(any(), eq(PubSubSymbolicPosition.EARLIEST));
+      assertEquals(state.getPartitionsMissingEOP(), Collections.singleton(1));
+      when(helper.poll(anyLong())).thenThrow(new VeniceException("EOP recovery failure"))
+          .thenReturn(
+              Collections.singletonMap(p1, Collections.singletonList(constructEndOfPushMessage(newTopic, 1, 20L))));
+      when(mockPubSubConsumer.poll(anyLong())).thenReturn(Collections.emptyMap());
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        consumer.poll(1);
+        Assert.assertNull(consumer.getVersionSwapMessageState());
+      });
+      verify(helper, times(2)).subscribe(p1, PubSubSymbolicPosition.EARLIEST);
+      verify(helper, never()).subscribe(p0, PubSubSymbolicPosition.EARLIEST);
+      verify(mockPubSubConsumer).subscribe(p0, ApacheKafkaOffsetPosition.of(50), true);
+      verify(mockPubSubConsumer).subscribe(p1, ApacheKafkaOffsetPosition.of(20), true);
+    }
+  }
+
+  private VeniceAfterImageConsumerImpl<String, Utf8> newOptimizedSwapConsumer(PubSubConsumerAdapter helper) {
+    changelogClientConfig.setVersionSwapByControlMessageEnabled(true)
+        .setClientRegionName("region1")
+        .setTotalRegionCount(1)
+        .setVersionSwapSeekOptimizationEnabled(true);
+    VeniceAfterImageConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
+        changelogClientConfig,
+        mockPubSubConsumer,
+        Lazy.of(() -> helper),
+        PubSubMessageDeserializer.createDefaultDeserializer(),
+        veniceChangelogConsumerClientFactory);
+    consumer.setStoreRepository(mockRepository);
+    return consumer;
+  }
+
+  private AutoCloseable captureSwapSeekLogs(List<LogEvent> logs) {
+    org.apache.logging.log4j.core.Logger logger =
+        (org.apache.logging.log4j.core.Logger) LogManager.getLogger(VeniceAfterImageConsumerImpl.class);
+    Appender appender = mock(Appender.class);
+    when(appender.getName()).thenReturn("swapSeekTest");
+    when(appender.isStarted()).thenReturn(true);
+    doAnswer(invocation -> {
+      LogEvent event = invocation.getArgument(0);
+      logs.add(event.toImmutable());
+      return null;
+    }).when(appender).append(any(LogEvent.class));
+    Level previousLevel = logger.getLevel();
+    logger.setLevel(Level.INFO);
+    logger.addAppender(appender);
+    return () -> {
+      logger.removeAppender(appender);
+      logger.setLevel(previousLevel);
+    };
+  }
+
+  private VersionSwapMessageState initializeSwapState(
+      VeniceAfterImageConsumerImpl<String, Utf8> consumer,
+      long timestamp,
+      Integer... partitions) {
+    PubSubTopic newTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    DefaultPubSubMessage record = swapRecord(oldVersionTopic, newTopic, partitions[0], 10, timestamp);
+    Set<PubSubTopicPartition> assignment = new HashSet<>();
+    for (Integer partition: partitions) {
+      assignment.add(new PubSubTopicPartitionImpl(oldVersionTopic, partition));
+    }
+    VersionSwapMessageState state = new VersionSwapMessageState(
+        (VersionSwap) ((ControlMessage) record.getValue().getPayloadUnion()).getControlMessageUnion(),
+        1,
+        assignment,
+        0,
+        timestamp);
+    consumer.versionSwapMessageState = state;
+    return state;
+  }
+
+  private CompletableFuture<Void> findSwapCheckpoints(
+      VeniceAfterImageConsumerImpl<String, Utf8> consumer,
+      VersionSwapMessageState state) {
+    CompletableFuture<Void> future = consumer.internalFindNewVersionCheckpoints(
+        state.getOldVersionTopic(),
+        state.getNewVersionTopic(),
+        state.getVersionSwapGenerationId(),
+        state.getAssignedPartitions());
+    state.setFindNewTopicCheckpointFuture(future, false);
+    return future;
+  }
+
+  private DefaultPubSubMessage swapRecord(
+      PubSubTopic topic,
+      PubSubTopic newTopic,
+      int partition,
+      long offset,
+      long pubSubTimestamp) {
+    DefaultPubSubMessage record = constructVersionSwapMessage(
+        topic,
+        oldVersionTopic.getName(),
+        newTopic.getName(),
+        "region1",
+        "region1",
+        2L,
+        partition,
+        Collections.emptyList());
+    return new ImmutablePubSubMessage(
+        record.getKey(),
+        record.getValue(),
+        record.getTopicPartition(),
+        ApacheKafkaOffsetPosition.of(offset),
+        pubSubTimestamp,
+        0);
   }
 
   private void prepareVersionTopicRecordsToBePolled(

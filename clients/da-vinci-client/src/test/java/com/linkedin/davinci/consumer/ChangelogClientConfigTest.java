@@ -33,6 +33,24 @@ import org.testng.annotations.Test;
 public class ChangelogClientConfigTest {
   private static final String GLOBAL_STORE = "global_store";
 
+  @Test
+  public void testVersionSwapSeekOptimizationConfig() {
+    ChangelogClientConfig config = new ChangelogClientConfig(GLOBAL_STORE);
+    Assert.assertFalse(config.isVersionSwapSeekOptimizationEnabled());
+    Assert.assertEquals(config.getVersionSwapSeekOptimizationTimeoutInMs(), TimeUnit.MINUTES.toMillis(15));
+    Assert.assertEquals(config.getVersionSwapSeekOptimizationBufferInMs(), TimeUnit.MINUTES.toMillis(15));
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setVersionSwapSeekOptimizationTimeoutInMs(0));
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setVersionSwapSeekOptimizationTimeoutInMs(-1));
+    Assert.assertThrows(IllegalArgumentException.class, () -> config.setVersionSwapSeekOptimizationBufferInMs(-1));
+    config.setVersionSwapSeekOptimizationEnabled(true)
+        .setVersionSwapSeekOptimizationTimeoutInMs(123L)
+        .setVersionSwapSeekOptimizationBufferInMs(0);
+    ChangelogClientConfig clone = ChangelogClientConfig.cloneConfig(config);
+    Assert.assertTrue(clone.isVersionSwapSeekOptimizationEnabled());
+    Assert.assertEquals(clone.getVersionSwapSeekOptimizationTimeoutInMs(), 123L);
+    Assert.assertEquals(clone.getVersionSwapSeekOptimizationBufferInMs(), 0L);
+  }
+
   /**
    * Deterministic (single-threaded) regression test.
    *

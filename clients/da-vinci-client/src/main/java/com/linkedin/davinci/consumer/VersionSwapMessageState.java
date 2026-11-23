@@ -32,7 +32,11 @@ public class VersionSwapMessageState {
   private final Set<Integer> assignedPartitions;
   private final Set<Integer> completedPartitions;
   private final long versionSwapStartTimestamp;
+  private final long triggeringMessageTimestamp;
+  private Long seekStartTimeNs;
+  private final Set<Integer> seekFallbackPartitions = new HashSet<>();
   private CompletableFuture<Void> findNewTopicCheckpointFuture;
+  private CompletableFuture<Void> findNewTopicEOPCheckpointFuture;
   private Map<Integer, VeniceChangeCoordinate> newTopicVersionSwapCheckpoints = new HashMap<>();
   private Map<Integer, VeniceChangeCoordinate> newTopicEOPCheckpoints = new HashMap<>();
 
@@ -41,6 +45,15 @@ public class VersionSwapMessageState {
       int totalRegionCount,
       Set<PubSubTopicPartition> currentAssignment,
       long versionSwapStartTimestamp) {
+    this(versionSwap, totalRegionCount, currentAssignment, versionSwapStartTimestamp, -1);
+  }
+
+  public VersionSwapMessageState(
+      VersionSwap versionSwap,
+      int totalRegionCount,
+      Set<PubSubTopicPartition> currentAssignment,
+      long versionSwapStartTimestamp,
+      long triggeringMessageTimestamp) {
     this.oldVersionTopic = versionSwap.getOldServingVersionTopic().toString();
     this.newVersionTopic = versionSwap.getNewServingVersionTopic().toString();
     this.versionSwapGenerationId = versionSwap.getGenerationId();
@@ -56,6 +69,52 @@ public class VersionSwapMessageState {
     this.partitionToVersionSwapLowWatermarkPositionMap = new HashMap<>();
     this.completedPartitions = new HashSet<>();
     this.versionSwapStartTimestamp = versionSwapStartTimestamp;
+    this.triggeringMessageTimestamp = triggeringMessageTimestamp;
+  }
+
+  public long getTriggeringMessageTimestamp() {
+    return triggeringMessageTimestamp;
+  }
+
+  public synchronized long getOrStartSeekTimeNs(long nowNs) {
+    if (seekStartTimeNs == null) {
+      seekStartTimeNs = nowNs;
+    }
+    return seekStartTimeNs;
+  }
+
+  public synchronized void markSeekFallback(int partition) {
+    seekFallbackPartitions.add(partition);
+  }
+
+  public synchronized boolean isSeekFallback(int partition) {
+    return seekFallbackPartitions.contains(partition);
+  }
+
+  public synchronized Map<Integer, VeniceChangeCoordinate> getFoundVersionSwapCheckpoints() {
+    return new HashMap<>(newTopicVersionSwapCheckpoints);
+  }
+
+  public synchronized void recordVersionSwapCheckpoint(VeniceChangeCoordinate checkpoint) {
+    newTopicVersionSwapCheckpoints.put(checkpoint.getPartition(), checkpoint);
+  }
+
+  public synchronized void recordEOPCheckpoint(VeniceChangeCoordinate checkpoint) {
+    newTopicEOPCheckpoints.put(checkpoint.getPartition(), checkpoint);
+  }
+
+  public synchronized Set<Integer> getPartitionsMissingEOP() {
+    Set<Integer> missing = getIncompletePartitions();
+    missing.removeAll(newTopicEOPCheckpoints.keySet());
+    return missing;
+  }
+
+  public synchronized CompletableFuture<Void> getFindNewTopicEOPCheckpointFuture() {
+    return findNewTopicEOPCheckpointFuture;
+  }
+
+  public synchronized void setFindNewTopicEOPCheckpointFuture(CompletableFuture<Void> future) {
+    findNewTopicEOPCheckpointFuture = future;
   }
 
   /**
@@ -89,9 +148,17 @@ public class VersionSwapMessageState {
   }
 
   public synchronized void setFindNewTopicCheckpointFuture(CompletableFuture<Void> findNewTopicCheckpointFuture) {
+    setFindNewTopicCheckpointFuture(findNewTopicCheckpointFuture, true);
+  }
+
+  public synchronized void setFindNewTopicCheckpointFuture(
+      CompletableFuture<Void> findNewTopicCheckpointFuture,
+      boolean resetCheckpoints) {
     this.findNewTopicCheckpointFuture = findNewTopicCheckpointFuture;
-    this.newTopicEOPCheckpoints.clear();
-    this.newTopicVersionSwapCheckpoints.clear();
+    if (resetCheckpoints) {
+      this.newTopicEOPCheckpoints.clear();
+      this.newTopicVersionSwapCheckpoints.clear();
+    }
   }
 
   public synchronized CompletableFuture<Void> getFindNewTopicCheckpointFuture() {
@@ -139,7 +206,7 @@ public class VersionSwapMessageState {
   }
 
   public synchronized Set<Integer> getAssignedPartitions() {
-    return Collections.unmodifiableSet(assignedPartitions);
+    return Collections.unmodifiableSet(new HashSet<>(assignedPartitions));
   }
 
   public synchronized Set<Integer> getIncompletePartitions() {

@@ -1014,7 +1014,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             if (!getTopicAssignment().isEmpty()) {
               internalUnsubscribe(versionSwapMessageState.getIncompletePartitions(), true);
             }
-            if (isNewVersionCheckpointsReady(timeoutInMs)) {
+            if (isNewVersionCheckpointsReady(timeoutInMs)
+                && (!changelogClientConfig.isVersionSwapSeekOptimizationEnabled()
+                    || isNewVersionEOPCheckpointsReady(timeoutInMs))) {
               synchronousSeekToCheckpoint(versionSwapMessageState.getNewTopicCheckpointsWithEOPAsBackup());
               LOGGER.info(
                   "Version swap completed after timeout from topic: {} to topic: {}, generation id: {}. Partitions: {} are seeked to EOP positions.",
@@ -1060,7 +1062,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                   pubSubTopicPartition,
                   message.getKey().getKey(),
                   message.getValue().getProducerMetadata().getMessageTimestamp(),
-                  message.getPosition())) {
+                  message.getPosition(),
+                  message.getPubSubMessageTime())) {
                 break;
               }
               if (includeControlMessage) {
@@ -1165,10 +1168,39 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               versionSwapMessageState.getOldVersionTopic(),
               versionSwapMessageState.getNewVersionTopic(),
               versionSwapMessageState.getVersionSwapGenerationId(),
-              versionSwapMessageState.getAssignedPartitions()));
+              versionSwapMessageState.getAssignedPartitions()),
+          !changelogClientConfig.isVersionSwapSeekOptimizationEnabled());
       return false;
     }
     return true;
+  }
+
+  private boolean isNewVersionEOPCheckpointsReady(long timeoutInMs) throws InterruptedException {
+    Set<Integer> missing = versionSwapMessageState.getPartitionsMissingEOP();
+    if (missing.isEmpty()) {
+      return true;
+    }
+    CompletableFuture<Void> future = versionSwapMessageState.getFindNewTopicEOPCheckpointFuture();
+    if (future == null) {
+      future = internalFindNewVersionEOPCheckpoints(versionSwapMessageState, missing);
+      versionSwapMessageState.setFindNewTopicEOPCheckpointFuture(future);
+    }
+    try {
+      future.get(timeoutInMs, TimeUnit.MILLISECONDS);
+    } catch (TimeoutException e) {
+      return false;
+    } catch (ExecutionException e) {
+      LOGGER.warn("Failed to recover EOP checkpoints for version swap; retrying partitions: {}", missing, e);
+      versionSwapMessageState.setFindNewTopicEOPCheckpointFuture(null);
+      return false;
+    }
+    return versionSwapMessageState.getPartitionsMissingEOP().isEmpty();
+  }
+
+  protected CompletableFuture<Void> internalFindNewVersionEOPCheckpoints(
+      VersionSwapMessageState state,
+      Set<Integer> partitions) {
+    throw new UnsupportedOperationException("EOP recovery not supported by VeniceChangelogConsumerImpl");
   }
 
   void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {
@@ -1198,6 +1230,16 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       byte[] key,
       long timestamp,
       PubSubPosition position) {
+    return handleControlMessage(controlMessage, pubSubTopicPartition, key, timestamp, position, timestamp);
+  }
+
+  protected boolean handleControlMessage(
+      ControlMessage controlMessage,
+      PubSubTopicPartition pubSubTopicPartition,
+      byte[] key,
+      long timestamp,
+      PubSubPosition position,
+      long pubSubTimestamp) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
       LOGGER.info(
@@ -1209,7 +1251,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
     if (versionSwapByControlMessage && controlMessageType.equals(ControlMessageType.VERSION_SWAP)
         && Version.isVersionTopic(pubSubTopicPartition.getTopicName())) {
-      return handleVersionSwapMessageInVT(controlMessage, pubSubTopicPartition, position);
+      return handleVersionSwapMessageInVT(controlMessage, pubSubTopicPartition, position, pubSubTimestamp);
     }
 
     if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
@@ -1342,14 +1384,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected boolean handleVersionSwapMessageInVT(
       ControlMessage controlMessage,
       PubSubTopicPartition pubSubTopicPartition,
-      PubSubPosition position) {
+      PubSubPosition position,
+      long pubSubTimestamp) {
     VersionSwap versionSwap = (VersionSwap) controlMessage.getControlMessageUnion();
     if (VersionSwapMessageState
         .isVersionSwapRelevant(pubSubTopicPartition.getTopicName(), clientRegionName, versionSwap)) {
       if (versionSwapMessageState == null) {
         Set<PubSubTopicPartition> currentAssignment = getTopicAssignment();
-        versionSwapMessageState =
-            new VersionSwapMessageState(versionSwap, totalRegionCount, currentAssignment, time.getMilliseconds());
+        versionSwapMessageState = new VersionSwapMessageState(
+            versionSwap,
+            totalRegionCount,
+            currentAssignment,
+            time.getMilliseconds(),
+            pubSubTimestamp);
         onGoingVersionSwapSignal.set(new CompletableFuture<>());
         LOGGER.info(
             "New version detected for store: {} through version swap messages. Performing version swap from topic: {} to topic: {}, generation id: {}",
@@ -1362,7 +1409,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 versionSwapMessageState.getOldVersionTopic(),
                 versionSwapMessageState.getNewVersionTopic(),
                 versionSwapMessageState.getVersionSwapGenerationId(),
-                versionSwapMessageState.getAssignedPartitions()));
+                versionSwapMessageState.getAssignedPartitions()),
+            !changelogClientConfig.isVersionSwapSeekOptimizationEnabled());
       }
       if (versionSwapMessageState.handleVersionSwap(versionSwap, pubSubTopicPartition, position)) {
         // Stop consuming from the old topic for this partition since we have consumed all the version swap messages.
