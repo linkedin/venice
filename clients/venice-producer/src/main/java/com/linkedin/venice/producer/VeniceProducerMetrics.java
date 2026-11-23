@@ -85,11 +85,13 @@ public class VeniceProducerMetrics extends AbstractVeniceStats implements Closea
 
   private final boolean enableMetrics;
 
-  // Tehuti only sensors: OTel CALL_COUNT carries the operation type and outcome as dimensions
+  // Tehuti only sensors counted at submission: OTel CALL_COUNT carries the operation type and outcome as dimensions,
+  // and the submitted writes are CALL_COUNT plus PENDING_CALL_COUNT
   private Sensor operationSensor = null;
   private Sensor putOperationSensor = null;
   private Sensor deleteOperationSensor = null;
   private Sensor updateOperationSensor = null;
+  // Tehuti gauge of the in-flight writes: OTel PENDING_CALL_COUNT reads the same pendingOperationCounter
   private Sensor pendingOperationSensor = null;
   private final AtomicInteger pendingOperationCounter = new AtomicInteger(0);
 
