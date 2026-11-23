@@ -12,6 +12,7 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceProducerOperation;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.stats.metrics.AsyncMetricEntityState;
 import com.linkedin.venice.stats.metrics.AsyncMetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
@@ -328,6 +329,88 @@ public class VeniceProducerMetrics extends AbstractVeniceStats implements Closea
   public void recordCallerToPubSubBufferLatency(VeniceProducerOperation operation, double latencyMs) {
     if (enableMetrics) {
       callerToPubSubBufferLatencyMetric.record(latencyMs, operation);
+    }
+  }
+
+  /**
+   * @deprecated Records the Tehuti metrics only. Please use
+   *             {@link #recordSuccessfulRequestWithLatency(VeniceProducerOperation, double)} to also record the
+   *             OpenTelemetry metrics, which need the operation type.
+   */
+  @Deprecated
+  public void recordSuccessfulRequestWithLatency(double latencyMs) {
+    if (enableMetrics) {
+      recordTehutiOnly(successOperationMetric, 1);
+      recordTehutiOnly(produceLatencyMetric, latencyMs);
+      pendingOperationSensor.record(pendingOperationCounter.decrementAndGet());
+    }
+  }
+
+  /**
+   * @deprecated Records the Tehuti metrics only. Please use {@link #recordFailedRequest(VeniceProducerOperation)} to
+   *             also record the OpenTelemetry metrics, which need the operation type.
+   */
+  @Deprecated
+  public void recordFailedRequest() {
+    if (enableMetrics) {
+      recordTehutiOnly(failedOperationMetric, 1);
+      pendingOperationSensor.record(pendingOperationCounter.decrementAndGet());
+    }
+  }
+
+  /**
+   * @deprecated Records the Tehuti metric only. Please use
+   *             {@link #recordPreprocessingLatency(VeniceProducerOperation, double)} to also record the OpenTelemetry
+   *             metric, which needs the operation type.
+   */
+  @Deprecated
+  public void recordPreprocessingLatency(double latencyMs) {
+    if (enableMetrics) {
+      recordTehutiOnly(preprocessingLatencyMetric, latencyMs);
+    }
+  }
+
+  /**
+   * @deprecated Records the Tehuti metric only. Please use
+   *             {@link #recordEndToEndLatency(VeniceProducerOperation, double)} to also record the OpenTelemetry
+   *             metric, which needs the operation type.
+   */
+  @Deprecated
+  public void recordEndToEndLatency(double latencyMs) {
+    if (enableMetrics) {
+      recordTehutiOnly(endToEndLatencyMetric, latencyMs);
+    }
+  }
+
+  /**
+   * @deprecated Records the Tehuti metric only. Please use
+   *             {@link #recordQueueWaitLatency(VeniceProducerOperation, double)} to also record the OpenTelemetry
+   *             metric, which needs the operation type.
+   */
+  @Deprecated
+  public void recordQueueWaitLatency(double latencyMs) {
+    if (enableMetrics) {
+      recordTehutiOnly(queueWaitLatencyMetric, latencyMs);
+    }
+  }
+
+  /**
+   * @deprecated Records the Tehuti metric only. Please use
+   *             {@link #recordCallerToPubSubBufferLatency(VeniceProducerOperation, double)} to also record the
+   *             OpenTelemetry metric, which needs the operation type.
+   */
+  @Deprecated
+  public void recordCallerToPubSubBufferLatency(double latencyMs) {
+    if (enableMetrics) {
+      recordTehutiOnly(callerToPubSubBufferLatencyMetric, latencyMs);
+    }
+  }
+
+  /** Records only the Tehuti sensor of a joint Tehuti and OTel metric, for the deprecated record methods. */
+  private static void recordTehutiOnly(AsyncMetricEntityState metric, double value) {
+    Sensor tehutiSensor = metric.getTehutiSensor();
+    if (tehutiSensor != null) {
+      tehutiSensor.record(value);
     }
   }
 

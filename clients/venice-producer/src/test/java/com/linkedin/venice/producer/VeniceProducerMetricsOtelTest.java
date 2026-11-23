@@ -227,6 +227,49 @@ public class VeniceProducerMetricsOtelTest {
     }
   }
 
+  @SuppressWarnings("deprecation")
+  @Test
+  public void testDeprecatedRecordMethodsRecordTehutiOnly() {
+    producerMetrics.recordPutRequest();
+    producerMetrics.recordPutRequest();
+    producerMetrics.recordSuccessfulRequestWithLatency(10);
+    producerMetrics.recordFailedRequest();
+    producerMetrics.recordPreprocessingLatency(20);
+    producerMetrics.recordEndToEndLatency(30);
+    producerMetrics.recordQueueWaitLatency(40);
+    producerMetrics.recordCallerToPubSubBufferLatency(50);
+
+    // Same Tehuti sensors as the operation-aware methods
+    assertTehutiRateRecorded(VeniceProducerTehutiMetricName.SUCCESS_WRITE_OPERATION);
+    assertTehutiRateRecorded(VeniceProducerTehutiMetricName.FAILED_WRITE_OPERATION);
+    for (VeniceProducerTehutiMetricName latency: new VeniceProducerTehutiMetricName[] {
+        VeniceProducerTehutiMetricName.PRODUCE_TO_DURABLE_BUFFER_LATENCY,
+        VeniceProducerTehutiMetricName.PREPROCESSING_LATENCY, VeniceProducerTehutiMetricName.END_TO_END_LATENCY,
+        VeniceProducerTehutiMetricName.QUEUE_WAIT_LATENCY,
+        VeniceProducerTehutiMetricName.CALLER_TO_PUBSUB_PRODUCER_BUFFER_LATENCY }) {
+      String metricName = TEHUTI_PREFIX + latency.getMetricName() + ".50thPercentile";
+      assertTrue(metricsRepository.getMetric(metricName).value() > 0, metricName + " should be recorded");
+    }
+    assertEquals(metricsRepository.getMetric(TEHUTI_PREFIX + "pending_write_operation.Gauge").value(), 0.0);
+
+    // No operation type, so no OpenTelemetry call or latency metric; the pending count still follows the counter
+    String otelPrefix = DEFAULT_METRIC_PREFIX + otelMetricPrefix + ".";
+    String pendingCallCount = VeniceProducerMetricEntity.PENDING_CALL_COUNT.getMetricEntity().getMetricName();
+    assertFalse(
+        inMemoryMetricReader.collectAllMetrics()
+            .stream()
+            .anyMatch(
+                metricData -> metricData.getName().startsWith(otelPrefix)
+                    && !metricData.getName().equals(otelPrefix + pendingCallCount)),
+        "Deprecated record methods should not emit OpenTelemetry call or latency metrics");
+    validateLongPointDataFromGauge(
+        inMemoryMetricReader,
+        0,
+        producerMetrics.getBaseAttributes(),
+        pendingCallCount,
+        otelMetricPrefix);
+  }
+
   private void validateCallCount(
       VeniceProducerOperation operation,
       VeniceResponseStatusCategory statusCategory,
