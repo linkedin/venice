@@ -21,6 +21,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.InMemoryLogAppender;
 import com.linkedin.venice.utils.Utils;
@@ -34,10 +35,55 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class LeaderProducerCallbackTest {
+  @DataProvider
+  public Object[][] callbackFailures() {
+    return new Object[][] { { "hook", false }, { "chunks", false }, { "enqueue", false }, { "enqueue", true },
+        { "interrupt", true } };
+  }
+
+  @Test(dataProvider = "callbackFailures")
+  public void testSuccessfulAckCallbackFailureSettlesPersistence(String route, boolean endOfPush) throws Exception {
+    LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
+    doReturn(true).when(task).isTimeBasedCheckpointEnabled();
+    doReturn(true).when(task).isUserSystemStore();
+    DefaultPubSubMessage record = mock(DefaultPubSubMessage.class);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(endOfPush).when(pcs).isEndOfPushReceived();
+    CompletableFuture<Void> persisted = new CompletableFuture<>();
+    LeaderProducedRecordContext context = LeaderProducedRecordContext
+        .newPutRecordWithFuture(0, mock(PubSubPosition.class), new byte[0], mock(Put.class), persisted);
+    LeaderProducerCallback callback = new LeaderProducerCallback(task, record, pcs, context, 0, "test-broker", 0);
+    RuntimeException failure = new VeniceException("test callback failure");
+    if ("hook".equals(route)) {
+      callback.setOnCompletionFunction(ignored -> {
+        throw failure;
+      });
+    } else if ("chunks".equals(route)) {
+      callback.setChunkingInfo(new byte[0], null, new ChunkedValueManifest(), null, null, null, null);
+    } else {
+      org.mockito.Mockito.doThrow("interrupt".equals(route) ? new InterruptedException("test interruption") : failure)
+          .when(task)
+          .produceToStoreBufferService(any(), any(), anyInt(), any(), anyLong(), anyLong());
+    }
+    try {
+      callback.onCompletion(mock(PubSubProduceResult.class), null);
+      assertTrue("enqueue".equals(route), "Other failures must retain their original propagation");
+    } catch (RuntimeException expected) {
+      assertTrue(!"enqueue".equals(route));
+    } finally {
+      if ("interrupt".equals(route)) {
+        assertTrue(Thread.interrupted(), "Interrupted enqueue must restore the interrupt flag");
+      }
+    }
+    assertTrue(persisted.isCompletedExceptionally());
+    assertTrue(callback.getCallbackCompleted().isDone());
+  }
+
   @Test
   public void testOnCompletionWithNonNullException() {
     LeaderFollowerStoreIngestionTask ingestionTaskMock = mock(LeaderFollowerStoreIngestionTask.class);

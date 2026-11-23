@@ -885,7 +885,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         if (v == null || !v.isIngestionTaskActive()) {
           if (v != null) {
             // The old task's cleanup is version-wide, so it must finish before the replacement adds state.
-            v.waitForShutdown(serverConfig.getShutdownSitWaitTimeSeconds());
+            boolean finished = v.waitForShutdown(serverConfig.getShutdownSitWaitTimeSeconds());
+            if (!finished && v.isTimeBasedCheckpointEnabled()) {
+              throw new VeniceException("Cannot replace ingestion task with incomplete shutdown: " + topic);
+            }
           }
           createNewStoreIngestionTask.set(true);
           return createStoreIngestionTask(veniceStore, partitionId, createPaused);
@@ -951,9 +954,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   public void shutdownStoreIngestionTask(String topicName) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
-      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
+      StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.get(topicName);
       if (storeIngestionTask != null) {
-        storeIngestionTask.shutdownAndWait(serverConfig.getShutdownSitWaitTimeSeconds());
+        boolean fencedShutdown = storeIngestionTask.isTimeBasedCheckpointEnabled();
+        if (!fencedShutdown) {
+          topicNameToIngestionTaskMap.remove(topicName);
+        }
+        boolean finished = storeIngestionTask.shutdownAndWait(serverConfig.getShutdownSitWaitTimeSeconds());
+        if (!finished && fencedShutdown) {
+          throw new VeniceException("Ingestion task shutdown incomplete; retaining ownership: " + topicName);
+        }
+        topicNameToIngestionTaskMap.remove(topicName, storeIngestionTask);
         LOGGER.info("Successfully shut down ingestion task for {}", topicName);
       } else {
         LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);

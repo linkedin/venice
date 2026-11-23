@@ -1068,24 +1068,18 @@ public class LeaderFollowerStoreIngestionTaskTest {
     setUp();
     CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
     CompletableFuture<Void> tracked = progress.admit();
-    doAnswer(invocation -> {
-      assertFalse(tracked.isDone(), "Failure reporting belongs inside the teardown barrier");
-      return null;
-    }).when(leaderFollowerStoreIngestionTask).setIngestionException(anyInt(), any());
+    tracked.whenComplete(
+        (ignored, failure) -> assertNotNull(
+            leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0),
+            "Failure reporting belongs inside the teardown barrier"));
     leaderFollowerStoreIngestionTask
         .completeCheckpoint(mockPartitionConsumptionState, tracked, new VeniceException("old checkpoint"));
     assertTrue(tracked.isCompletedExceptionally());
-    verify(leaderFollowerStoreIngestionTask).setIngestionException(eq(0), any());
-    CompletableFuture<Void> reportingFailure = progress.admit();
-    doThrow(new VeniceException("reporter failed")).when(leaderFollowerStoreIngestionTask)
-        .setIngestionException(anyInt(), any());
-    org.testng.Assert.assertThrows(
-        VeniceException.class,
-        () -> leaderFollowerStoreIngestionTask.completeCheckpoint(
-            mockPartitionConsumptionState,
-            reportingFailure,
-            new VeniceException("checkpoint failed")));
-    assertTrue(reportingFailure.isCompletedExceptionally(), "A failing reporter must not strand teardown");
+    Exception original = leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0).getException();
+    assertTrue(original.getMessage().contains("old checkpoint"));
+    leaderFollowerStoreIngestionTask
+        .reportCheckpointFailure(mockPartitionConsumptionState, new VeniceException("secondary"));
+    assertSame(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0).getException(), original);
     clearInvocations(leaderFollowerStoreIngestionTask);
     progress.invalidate();
     PartitionConsumptionState replacement = mock(PartitionConsumptionState.class);
@@ -1094,7 +1088,28 @@ public class LeaderFollowerStoreIngestionTaskTest {
     leaderFollowerStoreIngestionTask
         .completeCheckpoint(mockPartitionConsumptionState, lateFailure, new VeniceException("late callback"));
     assertTrue(lateFailure.isCompletedExceptionally());
-    verify(leaderFollowerStoreIngestionTask, never()).setIngestionException(anyInt(), any());
+    assertSame(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0).getException(), original);
+  }
+
+  @Test
+  public void testCheckpointReporterPreservesDrainerRootAndConsumedFailure() throws Exception {
+    setUp();
+    VeniceException root = new VeniceException("test storage checksum failure");
+    leaderFollowerStoreIngestionTask.setIngestionException(0, root);
+    CompletableFuture
+        .allOf(
+            CompletableFuture.runAsync(
+                () -> leaderFollowerStoreIngestionTask.reportCheckpointFailure(mockPartitionConsumptionState, root)),
+            CompletableFuture.runAsync(
+                () -> leaderFollowerStoreIngestionTask
+                    .reportCheckpointFailure(mockPartitionConsumptionState, new VeniceException("relay", root))))
+        .get(5, TimeUnit.SECONDS);
+    assertSame(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0).getException(), root);
+    leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().set(0, null);
+    leaderFollowerStoreIngestionTask
+        .reportCheckpointFailure(mockPartitionConsumptionState, new VeniceException("late"));
+    assertNull(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0));
+    assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(0));
   }
 
   @Test
@@ -1135,24 +1150,58 @@ public class LeaderFollowerStoreIngestionTaskTest {
     org.mockito.Mockito.verifyNoInteractions(producer);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = com.linkedin.venice.utils.DataProviderUtils.class)
-  public void testInternalCloseFencesExecutingCheckpointWithoutFinalCheckpoint(boolean doFlush) throws Exception {
+  @Test
+  public void testCloseRetainsResourcesUntilExecutingWorkTerminates() throws Exception {
     setUp();
     doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
     doReturn(false).when(mockVeniceServerConfig).isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     doReturn(20L).when(mockVeniceServerConfig).getDrainTimeoutMs();
     CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
     CompletableFuture<Void> executing = progress.admit();
-    java.lang.reflect.Method close = StoreIngestionTask.class.getDeclaredMethod("internalClose", boolean.class);
-    close.setAccessible(true);
-    java.lang.reflect.InvocationTargetException failure = org.testng.Assert.expectThrows(
-        java.lang.reflect.InvocationTargetException.class,
-        () -> close.invoke(leaderFollowerStoreIngestionTask, doFlush));
-    assertTrue(failure.getCause() instanceof VeniceException);
-    assertFalse(progress.isValid());
-    assertSame(leaderFollowerStoreIngestionTask.getPartitionConsumptionState(0), mockPartitionConsumptionState);
-    verify(mockStorageMetadataService, never()).clearOffset(any(), anyInt());
-    executing.complete(null);
+    leaderFollowerStoreIngestionTask.close();
+    CompletableFuture<Void> closing = CompletableFuture.runAsync(leaderFollowerStoreIngestionTask::run);
+    try {
+      verify(leaderFollowerStoreIngestionTask.aggKafkaConsumerService, timeout(5000))
+          .unsubscribeAll(leaderFollowerStoreIngestionTask.getVersionTopic());
+      assertFalse(leaderFollowerStoreIngestionTask.waitForShutdown(0));
+      assertFalse(progress.isValid());
+      assertSame(leaderFollowerStoreIngestionTask.getPartitionConsumptionState(0), mockPartitionConsumptionState);
+      verify(mockStorageMetadataService, never()).clearOffset(any(), anyInt());
+      verify(leaderFollowerStoreIngestionTask, never()).closeVeniceWriters(anyBoolean());
+      verify(leaderFollowerStoreIngestionTask, never()).closeVeniceViewWriters(anyBoolean());
+    } finally {
+      executing.complete(null);
+      closing.get(5, TimeUnit.SECONDS);
+    }
+    assertTrue(leaderFollowerStoreIngestionTask.waitForShutdown(0));
+    assertTrue(leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().isEmpty());
+    verify(leaderFollowerStoreIngestionTask).closeVeniceWriters(true);
+    verify(leaderFollowerStoreIngestionTask).closeVeniceViewWriters(true);
+  }
+
+  @Test
+  public void testResetFenceFailureIsVisibleForCompletedReplica() throws Exception {
+    setUp();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
+    doReturn(10L).when(mockVeniceServerConfig).getDrainTimeoutMs();
+    doReturn(true).when(mockPartitionConsumptionState).isCompletionReported();
+    CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
+    CompletableFuture<Void> executing = progress.admit();
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(leaderFollowerStoreIngestionTask.getVersionTopic(), 0);
+    try {
+      org.testng.Assert.expectThrows(
+          VeniceException.class,
+          () -> leaderFollowerStoreIngestionTask
+              .processCommonConsumerAction(new ConsumerAction(ConsumerActionType.RESET_OFFSET, tp, 1, true)));
+      assertFalse(progress.isValid());
+      assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(0));
+      assertNotNull(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0));
+      verify(mockPartitionConsumptionState).errorReported();
+      verify(mockStorageMetadataService, never()).clearOffset(any(), anyInt());
+      assertSame(leaderFollowerStoreIngestionTask.getPartitionConsumptionState(0), mockPartitionConsumptionState);
+    } finally {
+      executing.complete(null);
+    }
   }
 
   @Test

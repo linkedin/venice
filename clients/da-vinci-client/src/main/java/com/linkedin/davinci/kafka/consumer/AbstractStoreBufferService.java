@@ -52,10 +52,13 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask) throws InterruptedException;
 
-  abstract CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
+  CompletableFuture<Void> execSyncOffsetFromSnapshotAsync(
       PubSubTopicPartition topicPartition,
       PartitionTracker vtDivSnapshot,
       CompletableFuture<Void> lastRecordPersistedFuture,
       StoreIngestionTask ingestionTask,
-      CheckpointProgress.Snapshot checkpoint) throws InterruptedException;
+      CheckpointProgress.Snapshot checkpoint) throws InterruptedException {
+    throw new UnsupportedOperationException(
+        getClass().getName() + " does not support ordered time-based checkpoint snapshots");
+  }
 }

@@ -313,7 +313,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * The exception for the corresponding partition will only been cleaned up when resetting the partition,
    * or re-subscribing the partition.
    */
-  private final List<PartitionExceptionInfo> partitionIngestionExceptionList = new SparseConcurrentList<>();
+  private final SparseConcurrentList<PartitionExceptionInfo> partitionIngestionExceptionList =
+      new SparseConcurrentList<>();
   /**
    * Do not remove partition from this set unless Helix explicitly sends an unsubscribe action for the partition to
    * remove it from the node, or Helix sends a subscribe action for the partition to re-subscribe it to the node.
@@ -1581,6 +1582,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void awaitCheckpointProducer(PartitionConsumptionState pcs) throws InterruptedException {
   }
 
+  static class CheckpointDependencyException extends VeniceException {
+    CheckpointDependencyException(String message, Throwable cause) {
+      super(message, cause);
+    }
+  }
+
   private void produceToStoreBufferServiceOrKafkaWithValidation(
       Iterable<DefaultPubSubMessage> records,
       PubSubTopicPartition topicPartition,
@@ -1623,7 +1630,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     List<DefaultPubSubMessage> recordToValidate = recordAligned ? new ArrayList<>(1) : null;
     for (DefaultPubSubMessage record: records) {
       if (recordAligned) {
-        if (partitionConsumptionState == null || !partitionConsumptionState.getCheckpointProgress().isValid()) {
+        if (partitionConsumptionState == null || !partitionConsumptionState.getCheckpointProgress().isValid()
+            || getPartitionConsumptionState(topicPartition.getPartitionNumber()) != partitionConsumptionState
+            || failedPartitions.contains(topicPartition.getPartitionNumber())
+            || partitionConsumptionState.isErrorReported()) {
           break;
         }
         recordToValidate.clear();
@@ -1653,7 +1663,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
       if (recordAligned) {
-        awaitCheckpointProducer(partitionConsumptionState);
+        try {
+          awaitCheckpointProducer(partitionConsumptionState);
+        } catch (CheckpointDependencyException e) {
+          reportCheckpointFailure(partitionConsumptionState, e);
+          break; // This partition cannot validate another record; unrelated ingestion exceptions still propagate.
+        }
       }
       // Key VT bytes (local or remote) by version topic name, and key RT bytes by broker URL.
       PubSubTopic topic = topicPartition.getPubSubTopic();
@@ -2198,12 +2213,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // subscribes to the same version topic while the old SIT's internalClose.unsubscribeAll() is
       // still running — subscriptions are keyed by (versionTopic, partition) with no SIT identity,
       // so the old cleanup would destroy the new consumer's subscriptions.
+      boolean cleanupComplete = false;
       try {
         internalClose(doFlush);
+        cleanupComplete = true;
       } catch (Throwable t) {
         LOGGER.error("{}: unexpected error in internalClose during shutdown", ingestionTaskName, t);
       } finally {
-        shutdownLatch.countDown();
+        if (cleanupComplete || !isTimeBasedCheckpointEnabled()) {
+          shutdownLatch.countDown();
+        }
       }
     }
   }
@@ -2216,7 +2235,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Batch-unsubscribe all partitions upfront, before the per-partition checkpoint futures.
     // Partitions are grouped by SharedKafkaConsumer and unsubscribed in parallel.
     try {
-      consumerBatchUnsubscribeAllTopics();
+      if (isTimeBasedCheckpointEnabled()) {
+        // Consumer-only detach: producer callbacks may still need their writer partitions.
+        aggKafkaConsumerService.unsubscribeAll(versionTopic);
+      } else {
+        consumerBatchUnsubscribeAllTopics();
+      }
     } catch (Exception e) {
       LOGGER.error("{}: batch unsubscribe failed, proceeding with per-partition checkpoint", ingestionTaskName, e);
     }
@@ -2435,7 +2459,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     synchronized (progress) {
       if (progress.isValid() && getPartitionConsumptionState(pcs.getPartition()) == pcs) {
-        setIngestionException(pcs.getPartition(), new VeniceException("Checkpoint failed", failure));
+        int partition = pcs.getPartition();
+        partitionIngestionExceptionList.computeIfAbsent(partition, ignored -> {
+          if (failedPartitions.contains(partition)) {
+            return null; // An earlier failure has already been consumed by the ingestion thread.
+          }
+          return new PartitionExceptionInfo(
+              new VeniceException("Checkpoint failed for " + pcs.getReplicaId() + ": " + failure, failure),
+              partition,
+              pcs.isCompletionReported());
+        });
+        failedPartitions.add(partition);
       }
     }
   }
@@ -2645,18 +2679,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       getIsRunning().set(false);
     }
 
-    if (isTimeBasedCheckpointEnabled()) {
-      // Fence every close path before clearing durable offsets or forgetting partition state.
-      partitionConsumptionStateMap.values().forEach(pcs -> pcs.initializeCheckpointProgress().invalidate());
-      partitionConsumptionStateMap.values().forEach(this::invalidateTimeCheckpoints);
-    }
-
     removeAllHeartbeatMonitoring();
     this.missingSOPCheckExecutor.shutdownNow();
 
     // Only reset Offset and Drop Partition Messages are important, subscribe/unsubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     this.storeRepository.unregisterStoreDataChangedListener(this.storageUtilizationManager);
+    if (isTimeBasedCheckpointEnabled()) {
+      finishTimeCheckpointWork();
+    }
     // Remove all the actions out of the queue in order
     while (!consumerActionsQueue.isEmpty()) {
       ConsumerAction message = consumerActionsQueue.poll();
@@ -2723,7 +2754,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       closeQuietlyWithErrorLogged(closeable);
     }
 
-    close();
+    if (isTimeBasedCheckpointEnabled()) {
+      closeRecordTransformer();
+    } else {
+      close();
+    }
 
     synchronized (this) {
       notifyAll();
@@ -2736,6 +2771,47 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void closeVeniceViewWriters(boolean doFlush) {
+  }
+
+  /**
+   * The SIT thread retains cleanup ownership after a caller's bounded wait expires. Do not release resources or
+   * the successful-shutdown latch until admitted callbacks AND their drainer handoffs really terminate.
+   */
+  private void finishTimeCheckpointWork() {
+    partitionConsumptionStateMap.values().forEach(pcs -> pcs.initializeCheckpointProgress().invalidate());
+    boolean interrupted = Thread.interrupted();
+    try {
+      boolean detached = false;
+      while (!detached) {
+        try {
+          aggKafkaConsumerService.unsubscribeAll(versionTopic);
+          detached = true;
+        } catch (Exception e) {
+          LOGGER.error("Consumer detach incomplete for {}; retaining cleanup ownership", kafkaVersionTopic, e);
+          try {
+            Thread.sleep(Math.max(1, getServerConfig().getDrainTimeoutMs()));
+          } catch (InterruptedException interruptedException) {
+            interrupted = true;
+          }
+        }
+      }
+      for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+        boolean finished = false;
+        while (!finished) {
+          try {
+            invalidateTimeCheckpoints(pcs);
+            finished = true;
+          } catch (VeniceException e) {
+            LOGGER.warn("Shutdown incomplete for {}; retaining resources until work terminates", pcs.getReplicaId(), e);
+            interrupted |= Thread.interrupted();
+          }
+        }
+      }
+    } finally {
+      if (interrupted) {
+        Thread.currentThread().interrupt();
+      }
+    }
   }
 
   /**
@@ -3430,7 +3506,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void resetOffset(int partition, PubSubTopicPartition topicPartition, boolean restartIngestion) {
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
     // Wait for executing checkpoint commands and invalidate queued ones before clearing/replacing durable state.
-    invalidateTimeCheckpoints(partitionConsumptionState);
+    try {
+      invalidateTimeCheckpoints(partitionConsumptionState);
+    } catch (VeniceException e) {
+      if (partitionConsumptionState != null && getPartitionConsumptionState(partition) == partitionConsumptionState) {
+        // Unlike checkpoint callbacks, this action owns the now-invalid PCS. Completed replicas must not fail silently.
+        setIngestionException(partition, e);
+        reportError(Collections.emptyList(), partition, "Reset checkpoint fence failed: " + e.getMessage(), e);
+        partitionConsumptionState.errorReported();
+      }
+      throw e;
+    }
 
     if (partitionConsumptionState != null
         && (restartIngestion || consumerHasSubscription(topicPartition.getPubSubTopic(), partitionConsumptionState))) {
@@ -6103,6 +6189,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // This method signals the run method to end, which closes the
     // resources before exiting.
 
+    if (!isTimeBasedCheckpointEnabled()) {
+      closeRecordTransformer();
+    }
+  }
+
+  private void closeRecordTransformer() {
     if (recordTransformer != null) {
       // shut down the threadpool first, since tasks running in it may require a valid recordTransformer object
       this.recordTransformerOnRecoveryThreadPool.shutdownNow();
@@ -6149,6 +6241,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     } catch (Exception e) {
       LOGGER.error("Caught exception while waiting for ingestion task of topic: {} shutdown.", kafkaVersionTopic);
+      if (isTimeBasedCheckpointEnabled()) {
+        timelyShutDown = false;
+        if (e instanceof InterruptedException) {
+          Thread.currentThread().interrupt();
+        }
+      }
     }
     return timelyShutDown;
   }
@@ -6469,19 +6567,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       CheckpointProgress progress = pcs.initializeCheckpointProgress();
       progress.invalidate();
       long deadlineNs = System.nanoTime() + MILLISECONDS.toNanos(getServerConfig().getDrainTimeoutMs());
-      CompletableFuture<Void> pending = progress.checkpoints();
-      try {
-        // Include producer-completion snapshots not yet present in the drainer queue.
-        pending.get(getServerConfig().getDrainTimeoutMs(), MILLISECONDS);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new VeniceException("Interrupted while invalidating time checkpoints", e);
-      } catch (TimeoutException e) {
-        throw new VeniceException("Timed out invalidating time checkpoints", e);
-      } catch (ExecutionException | java.util.concurrent.CancellationException e) {
-        // The operation has terminated. Reset must remain available to recover an already failed replica.
-        LOGGER.warn("Invalidated a failed checkpoint for replica: {}", pcs.getReplicaId(), e);
-      }
+      CompletableFuture<Void> pending;
+      do {
+        pending = progress.checkpoints();
+        try {
+          // An admitted callback can hand off drainer work after invalidation. Re-read until that handoff is stable.
+          pending.get(Math.max(0, deadlineNs - System.nanoTime()), java.util.concurrent.TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new VeniceException("Interrupted while invalidating time checkpoints", e);
+        } catch (TimeoutException e) {
+          throw new VeniceException("Timed out invalidating time checkpoints", e);
+        } catch (ExecutionException | java.util.concurrent.CancellationException e) {
+          LOGGER.warn("Invalidated a failed checkpoint for replica: {}", pcs.getReplicaId(), e);
+        }
+      } while (pending != progress.checkpoints());
       try {
         if (!progress.executionLock
             .tryLock(Math.max(0, deadlineNs - System.nanoTime()), java.util.concurrent.TimeUnit.NANOSECONDS)) {
