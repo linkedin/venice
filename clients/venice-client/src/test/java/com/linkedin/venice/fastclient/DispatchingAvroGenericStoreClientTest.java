@@ -13,6 +13,7 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
@@ -55,7 +56,6 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
-import com.linkedin.venice.fastclient.stats.FastClientStats.CacheReadFailureReason;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.meta.CurrentVersionType;
@@ -768,6 +768,8 @@ public class DispatchingAvroGenericStoreClientTest {
         doReturn(CompletableFuture.completedFuture(response)).when(mockedTransportClient).post(any(), any(), any());
         Map<?, ?> values = (Map<?, ?>) statsAvroGenericStoreClient.batchGet(Collections.singleton(key)).get();
         assertEquals(values.get(key), SINGLE_GET_VALUE_RESPONSE);
+        // The optimized batch decoder shares this response array; admitted cache entries must own separate bytes.
+        Arrays.fill(response.getBody(), (byte) 0);
       } else {
         doReturn(
             CompletableFuture
@@ -787,7 +789,7 @@ public class DispatchingAvroGenericStoreClientTest {
       verify(mockedTransportClient, times(batchGet ? 1 : 0)).post(any(), any(), any());
       for (RequestType type: new RequestType[] { RequestType.SINGLE_GET, RequestType.MULTI_GET_STREAMING }) {
         verify(clientConfig.getStats(type)).recordCacheHitLatency(anyDouble());
-        verify(clientConfig.getStats(type), never()).recordCacheReadFailure(any());
+        verify(clientConfig.getStats(type), never()).recordCacheReadFailure();
         String prefix = ClientTestUtils.getMetricPrefix(STORE_NAME, type);
         assertTrue(metrics.get(prefix + "cache_hit_latency.Avg").value() >= 0);
         assertTrue(metrics.get(prefix + "cache_hit_latency.50thPercentile").value() >= 0);
@@ -826,10 +828,10 @@ public class DispatchingAvroGenericStoreClientTest {
         verify(stats).unregisterCacheGauges(cacheCaptor.capture());
         FastClientRecordCache cache = cacheCaptor.getValue();
         cache.onMetadataRefresh();
-        ByteBuffer key = ByteBuffer.wrap(new byte[] { 1 });
+        byte[] key = new byte[] { 1 };
         cache.put(key, new byte[] { 2 }, 1, 1);
         assertEquals(cache.getEntryCount(), 0);
-        assertNull(cache.get(key));
+        assertNull(cache.get(key, 1));
         String gaugePrefix = ".test_store--cache_";
         assertNull(repository.getMetric(gaugePrefix + "estimated_entry_count.Gauge"));
         assertNull(repository.getMetric(gaugePrefix + "estimated_weight_in_bytes.Gauge"));
@@ -895,11 +897,7 @@ public class DispatchingAvroGenericStoreClientTest {
       assertNotNull(newGauge);
       assertTrue(newGauge != oldGauge);
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> assertEquals(newGauge.value(), 2.0));
-      Metric budgetGauge = repository.getMetric(gaugePrefix + "configured_budget_in_bytes.Gauge");
-      TestUtils.waitForNonDeterministicAssertion(
-          5,
-          TimeUnit.SECONDS,
-          () -> assertEquals(budgetGauge.value(), reuseConfig ? 1024.0 * 1024 : 2048.0));
+      assertNull(repository.getMetric(gaugePrefix + "configured_budget_in_bytes.Gauge"));
     } finally {
       tearDown();
       if (repository != null) {
@@ -910,9 +908,10 @@ public class DispatchingAvroGenericStoreClientTest {
 
   @DataProvider
   public Object[][] cacheReadFailures() {
-    return new Object[][] { { "metadata", false }, { "metadata", true }, { "compressor", false },
-        { "missing-compressor", false }, { "decompression", false }, { "deserializer-metadata", false },
-        { "deserialization", false } };
+    return DataProviderUtils.allPermutationGenerator(
+        new Object[] { "metadata", "metadata-runtime", "metadata-checked", "compressor", "missing-compressor",
+            "decompression", "deserializer-metadata", "deserialization" },
+        new Object[] { "value", "error", "missing" });
   }
 
   private ScheduledExecutorService captureMetadataRefresh(AtomicReference<Runnable> refresh) {
@@ -1161,6 +1160,41 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testBatchPinsVersionBeforeCacheScanAndKeepsItForRouting() throws Exception {
+    try {
+      setUpRecordCache();
+      String hit = "test_key_1";
+      String miss = "test_key_2";
+      assertEquals(statsAvroGenericStoreClient.get(hit).get(), SINGLE_GET_VALUE_RESPONSE);
+      doAnswer(ignored -> {
+        // Metadata changes while decoding the first cache hit, before the missed key is routed.
+        doReturn(2).when(storeMetadata).getCurrentStoreVersion();
+        return CompressionStrategy.NO_OP;
+      }).when(storeMetadata).getCompressionStrategy(1);
+      CompletableFuture<TransportClientResponse> remote = new CompletableFuture<>();
+      doReturn(remote).when(mockedTransportClient).post(any(), any(), any());
+      BatchGetRequestContext<String, GenericRecord> context = new BatchGetRequestContext<>(2, false);
+      CacheTestCallback callback = new CacheTestCallback();
+      statsAvroGenericStoreClient.streamingBatchGet(context, new LinkedHashSet<>(Arrays.asList(hit, miss)), callback);
+      assertEquals(callback.values, Collections.singletonMap(hit, SINGLE_GET_VALUE_RESPONSE));
+      assertEquals(context.getCurrentVersion(), 1);
+      assertEquals(storeMetadata.getCurrentStoreVersion(), 2);
+      assertEquals(context.getKeys(), Collections.singleton(miss));
+      verify(mockedTransportClient).post(contains("/test_store_v1"), any(), any());
+      remote.complete(
+          new TransportClientResponse(
+              1,
+              CompressionStrategy.NO_OP,
+              serializeCacheTestBatchResponse(VALUE_SERIALIZER.serialize(SINGLE_GET_VALUE_RESPONSE))));
+      callback.completion.get(1, TimeUnit.SECONDS);
+      assertEquals(callback.values.size(), 2);
+      assertEquals(callback.completionCount, 1);
+    } finally {
+      tearDown();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testBatchGetLimitIncludesCachedKeys() throws Exception {
     try {
       setUpRecordCache();
@@ -1326,6 +1360,14 @@ public class DispatchingAvroGenericStoreClientTest {
             .when(storeMetadata)
             .getCompressionStrategy(1);
         break;
+      case "metadata-runtime":
+      case "metadata-checked":
+        doAnswer(invocation -> {
+          throw failure.equals("metadata-checked")
+              ? new Exception("Cache metadata unavailable")
+              : new IllegalStateException("Cache metadata unavailable");
+        }).doReturn(CompressionStrategy.NO_OP).when(storeMetadata).getCompressionStrategy(1);
+        break;
       case "compressor":
         doThrow(new VeniceClientException("No dictionary available")).doReturn(compressor)
             .when(storeMetadata)
@@ -1362,25 +1404,16 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  private void assertCacheFailureMetrics(RequestType type, String failure) {
-    CacheReadFailureReason expected = "decompression".equals(failure)
-        ? CacheReadFailureReason.DECOMPRESSION
-        : "deserialization".equals(failure) ? CacheReadFailureReason.DESERIALIZATION : CacheReadFailureReason.METADATA;
+  private void assertCacheFailureMetrics(RequestType type) {
     FastClientStats stats = clientConfig.getStats(type);
-    for (CacheReadFailureReason reason: CacheReadFailureReason.values()) {
-      verify(stats, times(reason == expected ? 1 : 0)).recordCacheReadFailure(reason);
-    }
-    String metricReason = expected == CacheReadFailureReason.METADATA ? "metadata" : failure;
+    verify(stats).recordCacheReadFailure();
     assertTrue(
-        metrics
-            .get(
-                ClientTestUtils.getMetricPrefix(STORE_NAME, type) + "cache_read_failure_" + metricReason
-                    + ".OccurrenceRate")
+        metrics.get(ClientTestUtils.getMetricPrefix(STORE_NAME, type) + "cache_read_failure.OccurrenceRate")
             .value() > 0);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testCacheFailureAndVersionMismatchLogsAreThrottled() throws Exception {
+  public void testCacheFailureLogsAreThrottledAndPinnedVersionHitsAreSilent() throws Exception {
     Logger logger = (Logger) LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
     Level previousLevel = logger.getLevel();
     InMemoryLogAppender appender = new InMemoryLogAppender.Builder().build();
@@ -1404,7 +1437,7 @@ public class DispatchingAvroGenericStoreClientTest {
                   serializeBatchGetResponse(Collections.singleton(key))))).when(mockedTransportClient)
                       .post(any(), any(), any());
 
-      // Pin the transport request to v1 while varying the version expected by the cache scan.
+      // A retry pinned to v1 must use the v1 cache entry, regardless of the latest metadata version.
       for (int version = 2; version <= 3; version++) {
         doReturn(version).when(storeMetadata).getCurrentStoreVersion();
         BatchGetRequestContext<String, GenericRecord> context = new BatchGetRequestContext<>(1, false);
@@ -1412,7 +1445,7 @@ public class DispatchingAvroGenericStoreClientTest {
         CacheTestCallback callback = new CacheTestCallback();
         dispatchingAvroGenericStoreClient.streamingBatchGet(context, Collections.singleton(key), callback);
         callback.completion.get(1, TimeUnit.SECONDS);
-        assertEquals(callback.values.get(key), BATCH_GET_VALUE_RESPONSE.get(key));
+        assertEquals(callback.values.get(key), SINGLE_GET_VALUE_RESPONSE);
         assertEquals(callback.calls.get(key), Integer.valueOf(1));
       }
       List<String> cacheLogs = new ArrayList<>();
@@ -1421,13 +1454,12 @@ public class DispatchingAvroGenericStoreClientTest {
           cacheLogs.add(message);
         }
       }
-      assertEquals(cacheLogs.size(), 2);
+      assertEquals(cacheLogs.size(), 1);
       assertTrue(cacheLogs.get(0).contains("reason METADATA"));
-      assertTrue(cacheLogs.get(1).contains("entry version 1, expected version 2"));
-      verify(clientConfig.getStats(RequestType.SINGLE_GET), times(2))
-          .recordCacheReadFailure(CacheReadFailureReason.METADATA);
-      verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING), never()).recordCacheReadFailure(any());
-      verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING), never()).recordCacheHitLatency(anyDouble());
+      verify(clientConfig.getStats(RequestType.SINGLE_GET), times(2)).recordCacheReadFailure();
+      verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING), never()).recordCacheReadFailure();
+      verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING), times(2)).recordCacheHitLatency(anyDouble());
+      verify(mockedTransportClient, never()).post(any(), any(), any());
     } finally {
       logger.removeAppender(appender);
       logger.setLevel(previousLevel);
@@ -1437,7 +1469,7 @@ public class DispatchingAvroGenericStoreClientTest {
   }
 
   @Test(dataProvider = "cacheReadFailures", timeOut = TEST_TIMEOUT)
-  public void testSingleGetCacheReadFailureFallsBack(String failure, boolean transportFails) throws Exception {
+  public void testSingleGetCacheReadFailureFallsBack(String failure, String remoteOutcome) throws Exception {
     try {
       setUpRecordCache();
       String key = "test_key";
@@ -1457,7 +1489,7 @@ public class DispatchingAvroGenericStoreClientTest {
       verify(clientConfig.getStats(RequestType.SINGLE_GET), never()).recordCacheHitLatency(anyDouble());
       assertTrue(Double.isNaN(metrics.get(prefix + "cache_hit_latency.Avg").value()));
 
-      if (transportFails) {
+      if ("error".equals(remoteOutcome)) {
         VeniceClientException transportFailure = new VeniceClientException("Fallback transport failed");
         transport.completeExceptionally(transportFailure);
         assertSame(
@@ -1466,6 +1498,9 @@ public class DispatchingAvroGenericStoreClientTest {
         assertTrue(context.resultFuture.isCompletedExceptionally());
         assertEquals(context.successRequestKeyCount.get(), 0);
         assertTrue(metrics.get(prefix + "unhealthy_request.OccurrenceRate").value() > 0);
+      } else if ("missing".equals(remoteOutcome)) {
+        transport.complete(null);
+        assertNull(result.get(1, TimeUnit.SECONDS));
       } else {
         transport.complete(
             new TransportClientResponse(
@@ -1477,9 +1512,28 @@ public class DispatchingAvroGenericStoreClientTest {
         assertEquals(statsAvroGenericStoreClient.get(key).get(), SINGLE_GET_VALUE_RESPONSE);
         verify(mockedTransportClient, times(2)).get(any());
       }
-      assertCacheFailureMetrics(RequestType.SINGLE_GET, failure);
+      assertCacheFailureMetrics(RequestType.SINGLE_GET);
+      if (!"value".equals(remoteOutcome)) {
+        assertCacheEntryAfterFailedRead(key, failure);
+      }
     } finally {
       tearDown();
+    }
+  }
+
+  private void assertCacheEntryAfterFailedRead(String key, String failure) throws Exception {
+    CompletableFuture<TransportClientResponse> nextRemote = new CompletableFuture<>();
+    doReturn(nextRemote).when(mockedTransportClient).get(any());
+    CompletableFuture<GenericRecord> nextRead = statsAvroGenericStoreClient.get(key);
+    if ("decompression".equals(failure) || "deserialization".equals(failure)) {
+      assertFalse(nextRead.isDone(), "Failed bytes must be removed even if the fallback returned no value");
+      nextRemote.complete(null);
+      assertNull(nextRead.get(1, TimeUnit.SECONDS));
+    } else {
+      assertEquals(
+          nextRead.get(1, TimeUnit.SECONDS),
+          SINGLE_GET_VALUE_RESPONSE,
+          "Transient metadata failures must preserve usable cached bytes");
     }
   }
 
@@ -1506,8 +1560,9 @@ public class DispatchingAvroGenericStoreClientTest {
     }
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
-  public void testBatchGetCacheReadFailureFallsBack(boolean transportFails) throws Exception {
+  @Test(dataProvider = "cacheReadFailures", timeOut = TEST_TIMEOUT)
+  public void testBatchGetCacheReadFailureFallsBack(String failure, String remoteOutcome) throws Exception {
+    boolean transportFails = "error".equals(remoteOutcome);
     try {
       setUpRecordCache();
       String failedKey = "test_key_1";
@@ -1516,7 +1571,7 @@ public class DispatchingAvroGenericStoreClientTest {
       for (String key: keys) {
         assertEquals(statsAvroGenericStoreClient.get(key).get(), SINGLE_GET_VALUE_RESPONSE);
       }
-      failNextCacheRead("metadata");
+      failNextCacheRead(failure);
       CompletableFuture<TransportClientResponse> transport = new CompletableFuture<>();
       doReturn(transport).when(mockedTransportClient).post(any(), any(), any());
       BatchGetRequestContext<String, GenericRecord> context = new BatchGetRequestContext<>(keys.size(), false);
@@ -1548,6 +1603,12 @@ public class DispatchingAvroGenericStoreClientTest {
         assertTrue(context.resultFuture.isCompletedExceptionally());
         assertEquals(context.successRequestKeyCount.get(), 1);
         assertEquals(callback.calls, Collections.singletonMap(cachedKey, 1));
+      } else if ("missing".equals(remoteOutcome)) {
+        transport
+            .complete(new TransportClientResponse(1, CompressionStrategy.NO_OP, serializeCacheTestBatchResponse()));
+        callback.completion.get(1, TimeUnit.SECONDS);
+        assertTrue(callback.values.containsKey(failedKey));
+        assertNull(callback.values.get(failedKey));
       } else {
         transport.complete(
             new TransportClientResponse(
@@ -1571,8 +1632,11 @@ public class DispatchingAvroGenericStoreClientTest {
       assertTrue(
           metrics.get(prefix + (transportFails ? "unhealthy" : "healthy") + "_request.OccurrenceRate").value() > 0);
       verify(mockedTransportClient).post(any(), any(), any());
-      assertCacheFailureMetrics(RequestType.MULTI_GET_STREAMING, "metadata");
+      assertCacheFailureMetrics(RequestType.MULTI_GET_STREAMING);
       verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING)).recordCacheHitLatency(anyDouble());
+      if (!"value".equals(remoteOutcome)) {
+        assertCacheEntryAfterFailedRead(failedKey, failure);
+      }
     } finally {
       tearDown();
     }
@@ -1644,7 +1708,7 @@ public class DispatchingAvroGenericStoreClientTest {
       verify(callback).onRecordReceived(key, SINGLE_GET_VALUE_RESPONSE);
       verify(callback, never()).onCompletion(any());
       verify(mockedTransportClient, never()).post(any(), any(), any());
-      verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING), never()).recordCacheReadFailure(any());
+      verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING), never()).recordCacheReadFailure();
       verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING)).recordCacheHitLatency(anyDouble());
     } finally {
       tearDown();

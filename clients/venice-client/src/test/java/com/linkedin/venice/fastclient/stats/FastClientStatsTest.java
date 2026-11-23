@@ -18,9 +18,12 @@ import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongP
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.fastclient.cache.FastClientRecordCache;
+import com.linkedin.venice.fastclient.utils.ClientTestUtils;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.OpenTelemetryMetricsSetup;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -30,6 +33,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
@@ -39,6 +43,30 @@ import org.testng.annotations.Test;
 
 public class FastClientStatsTest {
   @Test
+  public void testCacheReadFailureUsesOneRatePerSupportedRequestType() {
+    MetricsRepository repository =
+        new MetricsRepository(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig());
+    try {
+      for (RequestType type: RequestType.values()) {
+        FastClientStats stats = FastClientStats.getClientStats(repository, "", "cache_store", type, false, false);
+        stats.recordCacheReadFailure();
+        Metric metric = repository
+            .getMetric(ClientTestUtils.getMetricPrefix("cache_store", type) + "cache_read_failure.OccurrenceRate");
+        if (type == SINGLE_GET || type == RequestType.MULTI_GET_STREAMING) {
+          assertTrue(metric.value() > 0);
+        } else {
+          assertNull(metric);
+        }
+      }
+      assertEquals(
+          repository.metrics().keySet().stream().filter(name -> name.contains("cache_read_failure")).count(),
+          2L);
+    } finally {
+      repository.close();
+    }
+  }
+
+  @Test
   public void testCacheMetricsAreNoopsWhenTehutiIsDisabled() {
     try (VeniceMetricsRepository repository =
         new VeniceMetricsRepository(new VeniceMetricsConfig.Builder().emitTehutiMetrics(false).build())) {
@@ -46,7 +74,7 @@ public class FastClientStatsTest {
       FastClientRecordCache cache = mock(FastClientRecordCache.class);
       stats.registerCacheGauges(cache);
       stats.recordCacheHitLatency(1);
-      stats.recordCacheReadFailure(FastClientStats.CacheReadFailureReason.METADATA);
+      stats.recordCacheReadFailure();
       assertTrue(repository.metrics().keySet().stream().noneMatch(name -> name.contains("--cache_")));
       verifyNoInteractions(cache);
     }

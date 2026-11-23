@@ -43,7 +43,6 @@ import com.linkedin.venice.serialization.StoreDeserializerCache;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.serializer.VeniceSerializationException;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -79,7 +78,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private final String BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
   private final String COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
   private final Map<CacheReadFailureReason, String> cacheReadExceptionFilterMessages;
-  private final String cacheVersionMismatchFilterMessage;
 
   protected final StoreMetadata metadata;
 
@@ -143,7 +141,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     for (CacheReadFailureReason reason: CacheReadFailureReason.values()) {
       cacheReadExceptionFilterMessages.put(reason, "Record cache read exception for " + storeName + ": " + reason);
     }
-    cacheVersionMismatchFilterMessage = "Record cache version mismatch for " + storeName;
 
     // Use custom value deserializer factory if provided, otherwise use default Avro deserializer
     Optional<DeserializerFactory<V>> valueDeserializerFactoryOptional = config.getValueDeserializerFactory();
@@ -314,11 +311,16 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                 LatencyUtils.getElapsedTimeFromNSToMS(nanoTsBeforeDeserialization);
             // Retain the compressed bytes only after the record has decoded successfully.
             if (recordCache != null) {
-              recordCache.put(
-                  ByteBuffer.wrap(requestContext.getSerializedKey()),
+              Runnable cacheWrite = () -> recordCache.put(
+                  requestContext.getSerializedKey(),
                   compressedValue,
                   response.getSchemaId(),
                   requestContext.currentVersion);
+              if (requestContext.deferCacheWrite) {
+                requestContext.cacheWrite = cacheWrite;
+              } else {
+                cacheWrite.run();
+              }
             }
             requestContext.successRequestKeyCount.incrementAndGet();
             valueFuture.complete(value);
@@ -382,7 +384,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                     metadata.getBatchGetLimit())));
         return;
       }
-      keysToFetch = serveBatchGetFromCache(keys, guardedCallback);
+      if (requestContext.getCurrentVersion() <= 0) {
+        requestContext.setCurrentVersion(metadata.getCurrentStoreVersion());
+      }
+      keysToFetch = serveBatchGetFromCache(keys, requestContext.getCurrentVersion(), guardedCallback);
       if (keysToFetch.isEmpty()) {
         guardedCallback.onCompletion(Optional.empty());
         return;
@@ -411,8 +416,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
    * serialized here for the lookup; the ones that miss are serialized again by the routing layer, which is a small
    * CPU cost in exchange for skipping the server round trip on a hit.
    */
-  private Set<K> serveBatchGetFromCache(Set<K> keys, StreamingCallback<K, V> callback) {
-    int currentVersion = metadata.getCurrentStoreVersion();
+  private Set<K> serveBatchGetFromCache(Set<K> keys, int currentVersion, StreamingCallback<K, V> callback) {
     Set<K> missedKeys = new HashSet<>(keys.size());
     int hitCount = 0;
     FastClientStats stats = config.getStats(RequestType.MULTI_GET_STREAMING);
@@ -439,26 +443,17 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   private V getFromCache(byte[] serializedKey, int currentVersion, FastClientStats stats) {
     long lookupStartNs = System.nanoTime();
     CacheReadFailureReason failureReason = CacheReadFailureReason.METADATA;
+    FastClientRecordCache.CachedValue cached = null;
     try {
-      FastClientRecordCache.CachedValue cached = recordCache.get(ByteBuffer.wrap(serializedKey));
+      cached = recordCache.get(serializedKey, currentVersion);
       if (cached == null) {
         return null;
       }
-      if (cached.getVersion() != currentVersion) {
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(cacheVersionMismatchFilterMessage)) {
-          LOGGER.info(
-              "Record cache version mismatch for store {}; entry version {}, expected version {}; fetching from server",
-              getStoreName(),
-              cached.getVersion(),
-              currentVersion);
-        }
-        return null;
-      }
-      CompressionStrategy compressionStrategy = metadata.getCompressionStrategy(cached.getVersion());
-      VeniceCompressor compressor = metadata.getCompressor(compressionStrategy, cached.getVersion());
+      CompressionStrategy compressionStrategy = metadata.getCompressionStrategy(currentVersion);
+      VeniceCompressor compressor = metadata.getCompressor(compressionStrategy, currentVersion);
       // A missing compressor is a metadata availability failure; preserve decompressRecord's existing exception.
       failureReason = compressor == null ? CacheReadFailureReason.METADATA : CacheReadFailureReason.DECOMPRESSION;
-      ByteBuffer data = decompressRecord(compressionStrategy, cached.getValue(), cached.getVersion(), compressor);
+      ByteBuffer data = decompressRecord(compressionStrategy, cached.getValue(), currentVersion, compressor);
       failureReason = CacheReadFailureReason.METADATA;
       RecordDeserializer<V> deserializer = getDataRecordDeserializer(cached.getSchemaId());
       failureReason = CacheReadFailureReason.DESERIALIZATION;
@@ -468,8 +463,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         stats.recordCacheHitLatency(LatencyUtils.getElapsedTimeFromNSToMS(lookupStartNs));
       }
       return value;
-    } catch (VeniceClientException | VeniceSerializationException e) {
-      stats.recordCacheReadFailure(failureReason);
+    } catch (Exception e) {
+      // Cache failures fall back to the server; application callbacks stay outside this guard.
+      if (cached != null && failureReason != CacheReadFailureReason.METADATA) {
+        recordCache.invalidate(serializedKey, currentVersion, cached);
+      }
+      stats.recordCacheReadFailure();
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(cacheReadExceptionFilterMessages.get(failureReason))) {
         LOGGER.warn(
             "Record cache read failed for store {} version {}, reason {}; fetching from server",
@@ -711,7 +710,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     for (MultiGetResponseRecordV1 r: records) {
       MultiKeyRequestContext.KeyInfo<K> k = keyInfos.get(r.keyIndex);
       // Preserve the wire bytes before decoding consumes the buffer, but cache only validated records.
-      byte[] compressedValue = recordCache == null ? null : copyRemaining(r.value);
+      byte[] compressedValue =
+          recordCache != null && recordCache.canAdmit(k.getSerializedKey().length, r.value.remaining())
+              ? copyRemaining(r.value)
+              : null;
       long nanoTsBeforeDecompression = System.nanoTime();
 
       ByteBuffer decompressRecord = decompressRecord(
@@ -727,12 +729,15 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       requestContext.recordRecordDeserializationTime(
           transportClientResponse.getRouteId(),
           getLatencyInNS(nanoTsBeforeDeserialization));
-      if (recordCache != null) {
-        recordCache.put(
-            ByteBuffer.wrap(k.getSerializedKey()),
-            compressedValue,
-            r.getSchemaId(),
-            requestContext.currentVersion);
+      if (compressedValue != null) {
+        int schemaId = r.getSchemaId();
+        Runnable cacheWrite =
+            () -> recordCache.put(k.getSerializedKey(), compressedValue, schemaId, requestContext.currentVersion);
+        if (requestContext.cacheWrites == null) {
+          cacheWrite.run();
+        } else {
+          requestContext.cacheWrites.put(k.getKey(), cacheWrite);
+        }
       }
       keysSeen.add(r.keyIndex);
       callback.onRecordReceived(k.getKey(), deserializedValue);

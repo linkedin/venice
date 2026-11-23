@@ -759,6 +759,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
      * cleared on observed version swaps. These are cache residence limits, not end-to-end freshness guarantees.
      * These policies follow the current serving version, not store-level configuration changes.
      * Caching is bypassed until server metadata identifies whether that version is hybrid.
+     * The budget bounds estimated entry weight (payload bytes plus overhead), not total JVM heap usage.
      */
     public ClientConfigBuilder<K, V, T> setMaxCacheSizeInBytes(long maxCacheSizeInBytes) {
       this.maxCacheSizeInBytes = maxCacheSizeInBytes;

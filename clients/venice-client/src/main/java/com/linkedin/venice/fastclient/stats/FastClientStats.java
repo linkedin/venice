@@ -34,7 +34,6 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -57,8 +56,7 @@ public class FastClientStats extends ClientStats {
   private final Sensor cacheHitKeyCountSensor;
   private final Sensor cacheHitLatencySensor;
   private CacheGauges cacheGauges;
-  private final Map<CacheReadFailureReason, Sensor> cacheReadFailureSensors =
-      new EnumMap<>(CacheReadFailureReason.class);
+  private final Sensor cacheReadFailureSensor;
   private volatile MetricEntityStateOneEnum<RejectionReason> rejectionRatio;
 
   // OTel metrics
@@ -143,13 +141,9 @@ public class FastClientStats extends ClientStats {
     this.cacheHitLatencySensor = cacheRequestType
         ? registerSensorWithDetailedPercentiles("cache_hit_latency", new Avg(), new Max())
         : metricsRepository.getNoopSensor("cache_hit_latency");
-    for (CacheReadFailureReason reason: CacheReadFailureReason.values()) {
-      cacheReadFailureSensors.put(
-          reason,
-          cacheRequestType
-              ? registerSensor("cache_read_failure_" + reason.metricSuffix, new OccurrenceRate())
-              : metricsRepository.getNoopSensor("cache_read_failure"));
-    }
+    this.cacheReadFailureSensor = cacheRequestType
+        ? registerSensor("cache_read_failure", new OccurrenceRate())
+        : metricsRepository.getNoopSensor("cache_read_failure");
   }
 
   /**
@@ -183,10 +177,6 @@ public class FastClientStats extends ClientStats {
       registerSensor(new AsyncGauge((ignored, ignored2) -> cache.getEntryCount(), "cache_estimated_entry_count"));
       registerSensor(
           new AsyncGauge((ignored, ignored2) -> cache.getEstimatedWeightInBytes(), "cache_estimated_weight_in_bytes"));
-      registerSensor(
-          new AsyncGauge(
-              (ignored, ignored2) -> cache.getConfiguredBudgetInBytes(),
-              "cache_configured_budget_in_bytes"));
     }
 
     private void close() {
@@ -202,20 +192,14 @@ public class FastClientStats extends ClientStats {
     cacheHitLatencySensor.record(latencyInMs);
   }
 
-  /** One occurrence per failed cache read, exposed as failures/second, separately for each bounded phase. */
-  public void recordCacheReadFailure(CacheReadFailureReason reason) {
-    cacheReadFailureSensors.get(reason).record();
+  /** One occurrence per failed cache read, exposed as failures/second. Logs retain the failure phase. */
+  public void recordCacheReadFailure() {
+    cacheReadFailureSensor.record();
   }
 
   /** Bounded execution phases, not exception classes or messages. Metadata includes compressor/deserializer resolution. */
   public enum CacheReadFailureReason {
-    METADATA("metadata"), DECOMPRESSION("decompression"), DESERIALIZATION("deserialization");
-
-    private final String metricSuffix;
-
-    CacheReadFailureReason(String metricSuffix) {
-      this.metricSuffix = metricSuffix;
-    }
+    METADATA, DECOMPRESSION, DESERIALIZATION
   }
 
   public void recordCacheHitKeyCount(int keyCount) {

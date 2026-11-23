@@ -6,6 +6,7 @@ import com.github.benmanes.caffeine.cache.Ticker;
 import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -14,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * A memory-bounded cache of value bytes exactly as they arrived from the server, keyed by serialized key bytes.
+ * A weight-bounded cache of value bytes exactly as they arrived from the server, keyed by version and serialized key.
  *
  * <p>The cache is enabled only when a positive byte budget is configured on
  * {@link com.linkedin.venice.fastclient.ClientConfig}; otherwise it is never instantiated.
@@ -27,24 +28,25 @@ import org.apache.logging.log4j.Logger;
  *
  * <p>Values are retained compressed and serialized. Keeping them compressed fits more keys into the same budget for
  * stores that enable compression, at the cost of decompressing on each hit. Keeping them serialized means the memory
- * bound is measured in real bytes, and that concurrent callers never share a mutable record instance.
+ * estimate includes the retained byte lengths, and concurrent callers never share a mutable record instance.
  *
- * <p>Each entry retains its source store version because an in-flight response from the previous version may
- * populate the cache after a version swap clears it. Callers reject entries whose version does not match the
- * current store version.
+ * <p>Versioned keys isolate late responses from previous versions, even after a version-swap clear. Callers use
+ * their request-pinned version for both lookups and fills.
  */
 public class FastClientRecordCache {
   private static final Logger LOGGER = LogManager.getLogger(FastClientRecordCache.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
   /**
-   * Flat per-entry allowance for the map node, the key and value object headers, and the byte[] headers. This is an
-   * approximation: it keeps the configured budget in the right ballpark without reflective sizing on the read path.
+   * Conservative allowance for the map/node, key/value objects, array headers and alignment. This is an estimate,
+   * Java 17 instrumentation of Caffeine 2.8.5 measured 184 bytes for a one-byte key/value with compressed pointers,
+   * and 264 without them (including both map and eviction nodes). Allow 320 bytes plus payload for headroom.
+   * This is not a hard heap cap: shared cache structures and transient request allocations are not weighed.
    */
-  private static final int ENTRY_OVERHEAD_IN_BYTES = 64;
+  static final int ENTRY_OVERHEAD_IN_BYTES = 320;
   private static final long HYBRID_ENTRY_AGE_IN_SECONDS = 120;
 
-  private final Cache<ByteBuffer, CachedValue> cache;
+  private final Cache<CacheKey, CachedValue> cache;
   private final long configuredBudgetInBytes;
   private final String storeName;
   private final String notInitializedFilterKey;
@@ -72,30 +74,50 @@ public class FastClientRecordCache {
         .ticker(ticker)
         .expireAfterWrite(HYBRID_ENTRY_AGE_IN_SECONDS, TimeUnit.SECONDS)
         .maximumWeight(maxSizeInBytes)
-        .weigher(
-            (
-                ByteBuffer key,
-                CachedValue value) -> (int) Math
-                    .min(Integer.MAX_VALUE, (long) key.remaining() + value.size() + ENTRY_OVERHEAD_IN_BYTES))
+        .weigher((CacheKey key, CachedValue value) -> (int) entryWeight(key.serializedKeyBytes.length, value.size()))
         .build();
   }
 
   /**
    * @return the cached entry, or null if absent.
    */
-  public CachedValue get(ByteBuffer serializedKey) {
-    return isConfiguredForCurrentVersion() ? cache.getIfPresent(serializedKey) : null;
+  public CachedValue get(byte[] serializedKey, int version) {
+    return isConfiguredForCurrentVersion() ? cache.getIfPresent(new CacheKey(version, serializedKey)) : null;
   }
 
-  public void put(ByteBuffer serializedKey, byte[] value, int schemaId, int version) {
-    if (!isConfiguredForCurrentVersion()) {
+  /** Call before copying batch response bytes; put rechecks eligibility when a retry winner eventually fills. */
+  public boolean canAdmit(int keyLength, int valueLength) {
+    long weight = entryWeight(keyLength, valueLength);
+    try {
+      return weight <= configuredBudgetInBytes && weight <= Integer.MAX_VALUE && isConfiguredForCurrentVersion();
+    } catch (Exception e) {
+      // Failed eligibility checks skip caching, not delivery of the server value.
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException("Record cache admission failed for " + storeName)) {
+        LOGGER.warn("Record cache admission failed for store {}; skipping cache write", storeName, e);
+      }
+      return false;
+    }
+  }
+
+  private static long entryWeight(int keyLength, int valueLength) {
+    return (long) keyLength + valueLength + ENTRY_OVERHEAD_IN_BYTES;
+  }
+
+  /** Value bytes must be independently owned, not a slice of a batch response, and must not be mutated after insertion. */
+  public void put(byte[] serializedKey, byte[] value, int schemaId, int version) {
+    if (!canAdmit(serializedKey.length, value.length)) {
       return;
     }
-    cache.put(serializedKey, new CachedValue(value, schemaId, version));
+    CacheKey key = new CacheKey(version, Arrays.copyOf(serializedKey, serializedKey.length));
+    cache.put(key, new CachedValue(value, schemaId));
     // Close may have cleared the cache after the eligibility check but before this insertion.
     if (closed) {
-      cache.invalidate(serializedKey);
+      cache.invalidate(key);
     }
+  }
+
+  public void invalidate(byte[] serializedKey, int version, CachedValue expectedValue) {
+    cache.asMap().remove(new CacheKey(version, serializedKey), expectedValue);
   }
 
   private boolean isConfiguredForCurrentVersion() {
@@ -195,33 +217,23 @@ public class FastClientRecordCache {
     return cache.policy().eviction().get().weightedSize().getAsLong();
   }
 
-  /** The requested byte budget, not Caffeine's potentially capped internal maximum or actual heap allocation. */
-  public long getConfiguredBudgetInBytes() {
-    return configuredBudgetInBytes;
-  }
-
   /** Force pending eviction work to run. Visible for testing. */
   void cleanUp() {
     cache.cleanUp();
   }
 
   /**
-   * A compressed, serialized value with its writer schema id and source store version. Records within the same
+   * A compressed, serialized value with its writer schema id. Records within the same
    * version may use different writer schemas; metadata supplies their definitions, but the schema id identifies
    * which schema encoded these bytes.
-   *
-   * <p>The source version lets lookups reject superseded-version entries, including late responses cached after a
-   * clear, and resolve that version's compression strategy and dictionary from metadata.
    */
   public static final class CachedValue {
     private final byte[] value;
     private final int schemaId;
-    private final int version;
 
-    CachedValue(byte[] value, int schemaId, int version) {
+    CachedValue(byte[] value, int schemaId) {
       this.value = value;
       this.schemaId = schemaId;
-      this.version = version;
     }
 
     /**
@@ -237,12 +249,36 @@ public class FastClientRecordCache {
       return schemaId;
     }
 
-    public int getVersion() {
-      return version;
-    }
-
     int size() {
       return value.length;
+    }
+  }
+
+  private static final class CacheKey {
+    private final int storeVersion;
+    private final byte[] serializedKeyBytes;
+
+    // Retained keys own a copy; lookup-only keys borrow the request's bytes for the duration of the lookup.
+    private CacheKey(int storeVersion, byte[] serializedKeyBytes) {
+      this.storeVersion = storeVersion;
+      this.serializedKeyBytes = serializedKeyBytes;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (!(other instanceof CacheKey)) {
+        return false;
+      }
+      CacheKey that = (CacheKey) other;
+      return storeVersion == that.storeVersion && Arrays.equals(serializedKeyBytes, that.serializedKeyBytes);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * storeVersion + Arrays.hashCode(serializedKeyBytes);
     }
   }
 }

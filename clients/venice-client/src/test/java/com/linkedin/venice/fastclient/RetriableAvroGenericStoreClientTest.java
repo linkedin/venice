@@ -39,6 +39,7 @@ import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -47,6 +48,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -1137,7 +1139,8 @@ public class RetriableAvroGenericStoreClientTest {
     return DataProviderUtils.allPermutationGenerator(
         new Object[] { "get", "batch", "compute" },
         new Object[] { "direct", "original-only", "original-wins", "retry-wins", "error-retry",
-            "retry-install-failure" });
+            "retry-install-failure" },
+        new Object[] { false, true });
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
@@ -1204,15 +1207,18 @@ public class RetriableAvroGenericStoreClientTest {
 
   @DataProvider
   public Object[][] keyDeliveryRaces() {
-    return DataProviderUtils.allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
+    return DataProviderUtils
+        .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN);
   }
 
   @Test(dataProvider = "keyDeliveryRaces", timeOut = TEST_TIMEOUT)
-  public void testCompletionWaitsForKeyRemovedByAnotherWorker(boolean compute, boolean retry) throws Exception {
-    try (ContextFixture fixture = new ContextFixture(2, 2)) {
+  public void testCompletionWaitsForKeyRemovedByAnotherWorker(boolean compute, boolean retry, boolean cacheEnabled)
+      throws Exception {
+    try (ContextFixture fixture = new ContextFixture(2, 2, cacheEnabled)) {
       fixture.pauseKeyCompletion = true;
       ContextCallback callback = fixture.startRequest("request", compute ? "compute" : "batch", true);
       ExecutorService secondWorker = Executors.newSingleThreadExecutor();
+      callback.verifyCacheOnRecord = cacheEnabled && !compute;
       Future<?> first = null;
       try {
         if (compute) {
@@ -1238,7 +1244,9 @@ public class RetriableAvroGenericStoreClientTest {
         callback.assertSuccess();
         if (retry) {
           secondWorker.submit(() -> fixture.inContext("second-worker", () -> {
-            fixture.attempts.get(1).complete(fixture.streamingResponse(compute, 1));
+            GenericRecord losing = GenericData.get().deepCopy(STORE_VALUE_SCHEMA, SINGLE_GET_VALUE_RESPONSE);
+            losing.put("name", "losing-value");
+            fixture.attempts.get(1).complete(fixture.streamingResponse(compute, 1, losing));
             if (compute) {
               fixture.deserialization.remove().run();
             }
@@ -1247,6 +1255,19 @@ public class RetriableAvroGenericStoreClientTest {
           callback.assertSuccess();
         }
         assertEquals(fixture.dispatchContexts, Collections.nCopies(retry ? 3 : 2, "request"));
+        if (cacheEnabled && !compute) {
+          fixture.startRequest("cached-winners", "batch", false).assertSuccess();
+          assertEquals(
+              fixture.attempts.size(),
+              retry ? 3 : 2,
+              "Each key must retain its own winner, even when different attempts win different keys");
+          for (RequestContext request: fixture.requests) {
+            if (request instanceof MultiKeyRequestContext) {
+              Map<?, ?> writes = ((MultiKeyRequestContext<?, ?>) request).cacheWrites;
+              assertTrue(writes == null || writes.isEmpty());
+            }
+          }
+        }
       } finally {
         fixture.releaseKeyCompletion.complete(null);
         if (first != null) {
@@ -1266,8 +1287,8 @@ public class RetriableAvroGenericStoreClientTest {
   }
 
   @Test(dataProvider = "executionContextWinners", timeOut = TEST_TIMEOUT)
-  public void testRequestExecutionContext(String operation, String winner) throws Exception {
-    try (ContextFixture fixture = new ContextFixture()) {
+  public void testRequestExecutionContext(String operation, String winner, boolean cacheEnabled) throws Exception {
+    try (ContextFixture fixture = new ContextFixture(1, 1, cacheEnabled)) {
       boolean withRetry = !"direct".equals(winner);
       fixture.failedScope = "retry-install-failure".equals(winner) ? 1 : -1;
       ContextCallback callback = fixture.startRequest("request", operation, withRetry);
@@ -1278,11 +1299,17 @@ public class RetriableAvroGenericStoreClientTest {
         fixture.drainDeserialization();
       }
       if (retry) {
+        fixture.currentVersion.set(2);
         fixture.onWorker(() -> fixture.scheduled.get(0).run());
       }
       int attempts = retry && fixture.failedScope == -1 ? 2 : 1;
       assertEquals(fixture.dispatchContexts, Collections.nCopies(attempts, "request"));
       int winningAttempt = "error-retry".equals(winner) || "retry-wins".equals(winner) ? 1 : 0;
+      fixture.requests.forEach(
+          request -> assertEquals(
+              request.getCurrentVersion(),
+              1,
+              "Retries must preserve the version used by the initial lookup and routing"));
       fixture.complete(winningAttempt, fixture.response(operation));
       callback.assertSuccess();
       assertFalse(fixture.requests.get(winningAttempt).resultFuture.isCompletedExceptionally());
@@ -1290,7 +1317,7 @@ public class RetriableAvroGenericStoreClientTest {
         assertEquals(fixture.deserializationContexts, Collections.singletonList("request"));
       }
       if (attempts == 2 && !"error-retry".equals(winner)) {
-        fixture.complete(1 - winningAttempt, fixture.response(operation));
+        fixture.complete(1 - winningAttempt, fixture.response(operation, true));
         callback.assertSuccess();
       }
       if (withRetry) {
@@ -1301,6 +1328,26 @@ public class RetriableAvroGenericStoreClientTest {
       assertEquals(fixture.contextCaptures.get(), 1, "Original and retry must share one snapshot");
       if ("get".equals(operation) && fixture.failedScope == -1) {
         assertEquals(fixture.contextScopes.get(), retry ? 3 : 1);
+      }
+      if (cacheEnabled) {
+        fixture.currentVersion.set(1);
+        fixture.failedScope = -1;
+        ContextCallback cached = fixture.startRequest("cache-read", operation, false);
+        if ("compute".equals(operation)) {
+          assertFalse(cached.completion.isDone(), "Compute must remain uncached");
+          fixture.complete(attempts, fixture.response(operation));
+        } else {
+          assertEquals(fixture.attempts.size(), attempts, "A losing response must not overwrite the cached winner");
+        }
+        cached.assertSuccess();
+        for (RequestContext request: fixture.requests) {
+          if (request instanceof GetRequestContext) {
+            assertNull(((GetRequestContext<?>) request).cacheWrite);
+          } else {
+            Map<?, ?> writes = ((MultiKeyRequestContext<?, ?>) request).cacheWrites;
+            assertTrue(writes == null || writes.isEmpty(), "Attempt-local writes must be drained, including losers");
+          }
+        }
       }
     }
   }
@@ -1347,6 +1394,49 @@ public class RetriableAvroGenericStoreClientTest {
       fixture.complete(0, fixture.singleResponse());
       assertTrue(cancelled.isCancelled());
       assertEquals(fixture.dispatchContexts, Collections.nCopies(2, "cancelled-request"));
+    }
+  }
+
+  @DataProvider
+  public Object[][] cacheAdmissionFailures() {
+    return DataProviderUtils.allPermutationGenerator(
+        new Object[] { "get", "batch-admission", "batch-fill" },
+        new Object[] { false, true },
+        new Object[] { new IllegalStateException("Cache write metadata unavailable"),
+            new Exception("Cache write metadata unavailable") });
+  }
+
+  @Test(dataProvider = "cacheAdmissionFailures", timeOut = TEST_TIMEOUT)
+  public void testCacheAdmissionFailureStillDeliversServerValue(String phase, boolean withRetry, Exception failure)
+      throws Exception {
+    try (ContextFixture fixture = new ContextFixture(1, 1, true)) {
+      boolean batchGet = !"get".equals(phase);
+      String operation = batchGet ? "batch" : "get";
+      ContextCallback callback = fixture.startRequest("request", operation, withRetry);
+      if ("batch-fill".equals(phase)) {
+        // Admit the response bytes, then fail when the chosen per-key winner attempts its write.
+        doReturn(CurrentVersionType.BATCH_ONLY).doAnswer(invocation -> {
+          throw failure;
+        }).when(fixture.metadata).getCurrentVersionType();
+      } else {
+        doAnswer(invocation -> {
+          throw failure;
+        }).when(fixture.metadata).getCurrentVersionType();
+      }
+      fixture.complete(0, fixture.response(operation));
+      callback.assertSuccess();
+      RequestContext request = fixture.requests.get(0);
+      if (batchGet) {
+        Map<?, ?> writes = ((MultiKeyRequestContext<?, ?>) request).cacheWrites;
+        assertTrue(writes == null || writes.isEmpty());
+      } else {
+        assertNull(((GetRequestContext<?>) request).cacheWrite);
+      }
+      doReturn(CurrentVersionType.BATCH_ONLY).when(fixture.metadata).getCurrentVersionType();
+      ContextCallback recovered = fixture.startRequest("recovered", operation, false);
+      assertEquals(fixture.attempts.size(), 2, "Failed admission must not retain the response in the cache");
+      fixture.complete(1, fixture.response(operation));
+      recovered.assertSuccess();
     }
   }
 
@@ -1484,11 +1574,20 @@ public class RetriableAvroGenericStoreClientTest {
       this.compute = compute;
     }
 
+    private boolean verifyCacheOnRecord;
+
     @Override
     public void onRecordReceived(String key, Object value) {
       recordCount++;
       assertEquals(fixture.context.get(), request);
       assertNull(records.put(key, value), "Each record must be delivered exactly once");
+      if (verifyCacheOnRecord) {
+        GetRequestContext<String> cachedContext = new GetRequestContext<>();
+        cachedContext.setCurrentVersion(1);
+        CompletableFuture<GenericRecord> cached = fixture.dispatchClient.get(cachedContext, key);
+        assertTrue(cached.isDone(), "Winning bytes must be cached before delivering the record");
+        assertEquals(cached.join(), value);
+      }
       fixture.inContext("callback-local", () -> assertEquals(fixture.context.get(), "callback-local"));
       assertEquals(fixture.context.get(), request);
     }
@@ -1555,13 +1654,20 @@ public class RetriableAvroGenericStoreClientTest {
     private final List<CompletableFuture<Void>> retryDone = new ArrayList<>();
     private final DispatchingAvroGenericStoreClient<String, GenericRecord> dispatchClient;
     private final RetriableAvroGenericStoreClient<String, GenericRecord> retryClient;
-    private final MetricsRepository repository = new MetricsRepository();
+    private final MetricsRepository repository =
+        new MetricsRepository(MetricsRepositoryUtils.createDefaultSingleThreadedMetricConfig());
+    private final AtomicInteger currentVersion = new AtomicInteger(1);
+    private final StoreMetadata metadata = mock(StoreMetadata.class);
 
     ContextFixture() throws IOException {
       this(1, 1);
     }
 
     ContextFixture(int keyCount, int routeCount) throws IOException {
+      this(keyCount, routeCount, false);
+    }
+
+    ContextFixture(int keyCount, int routeCount, boolean cacheEnabled) throws IOException {
       for (int i = 0; i < keyCount; i++) {
         keys.add(keyCount == 1 ? "test_key" : "test_key-" + i);
       }
@@ -1586,10 +1692,18 @@ public class RetriableAvroGenericStoreClientTest {
               .setD2Client(mock(D2Client.class))
               .setClusterDiscoveryD2Service("discovery")
               .setMetricsRepository(repository)
+              .setMaxCacheSizeInBytes(cacheEnabled ? 1024 * 1024 : 0)
               .setExecutionContextProvider(provider)
               .setDeserializationExecutor(deserialization::add)
               .build();
-      StoreMetadata metadata = mock(StoreMetadata.class);
+      doAnswer(ignored -> currentVersion.get()).when(metadata).getCurrentStoreVersion();
+      doReturn(CurrentVersionType.BATCH_ONLY).when(metadata).getCurrentVersionType();
+      doReturn(CompressionStrategy.NO_OP).when(metadata).getCompressionStrategy(anyInt());
+      AtomicReference<Runnable> refresh = new AtomicReference<>();
+      doAnswer(invocation -> {
+        refresh.set(invocation.getArgument(0));
+        return null;
+      }).when(metadata).setRefreshCallback(any());
       doReturn(true).when(metadata).isReady();
       doReturn(STORE_NAME).when(metadata).getStoreName();
       doReturn(Schema.create(Schema.Type.STRING)).when(metadata).getKeySchema();
@@ -1606,21 +1720,29 @@ public class RetriableAvroGenericStoreClientTest {
       doAnswer(invocation -> {
         RequestContext request = invocation.getArgument(0);
         requests.add(request);
-        request.setCurrentVersion(1);
+        if (request.getCurrentVersion() <= 0) {
+          request.setCurrentVersion(currentVersion.get());
+        }
         String route = request.isRetryRequest() ? "http://retry" : "http://original";
         routeKeyCounts.clear();
         if (request instanceof GetRequestContext) {
           GetRequestContext<?> get = (GetRequestContext<?>) request;
           get.setRoute(route);
           get.setPartitionId(0);
-          get.setSerializedKey(new byte[] { 1 });
+          get.setSerializedKey(
+              FastSerializerDeserializerFactory.getFastAvroGenericSerializer(metadata.getKeySchema())
+                  .serialize(get.getKey()));
           routeKeyCounts.put(route, 1);
         } else {
           MultiKeyRequestContext<String, GenericRecord> multi = invocation.getArgument(0);
           int index = 0;
           for (String key: multi.getKeys()) {
             String keyRoute = routeCount == 1 ? route : route + "-" + index++ % routeCount;
-            multi.addKey(keyRoute, key, new byte[] { 1 }, 0);
+            multi.addKey(
+                keyRoute,
+                key,
+                FastSerializerDeserializerFactory.getFastAvroGenericSerializer(metadata.getKeySchema()).serialize(key),
+                0);
             routeKeyCounts.merge(keyRoute, 1, Integer::sum);
           }
         }
@@ -1649,6 +1771,9 @@ public class RetriableAvroGenericStoreClientTest {
         return future;
       }).when(timer).schedule(any(), org.mockito.ArgumentMatchers.anyLong(), any());
       dispatchClient = new DispatchingAvroGenericStoreClient<>(metadata, config, transport);
+      if (cacheEnabled) {
+        refresh.get().run();
+      }
       retryClient = new RetriableAvroGenericStoreClient<String, GenericRecord>(dispatchClient, config, timer) {
         @Override
         <RESPONSE> CompletableFuture<RESPONSE> newKeyCompletionFuture() {
@@ -1733,11 +1858,14 @@ public class RetriableAvroGenericStoreClientTest {
     }
 
     TransportClientResponse singleResponse() {
+      return singleResponse(SINGLE_GET_VALUE_RESPONSE);
+    }
+
+    TransportClientResponse singleResponse(GenericRecord value) {
       return new TransportClientResponse(
           1,
           CompressionStrategy.NO_OP,
-          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(STORE_VALUE_SCHEMA)
-              .serialize(SINGLE_GET_VALUE_RESPONSE));
+          FastSerializerDeserializerFactory.getFastAvroGenericSerializer(STORE_VALUE_SCHEMA).serialize(value));
     }
 
     CompletableFuture<GenericRecord> startGet(String request, boolean withRetry) {
@@ -1747,19 +1875,29 @@ public class RetriableAvroGenericStoreClientTest {
     }
 
     TransportClientResponse response(String operation) {
-      return "get".equals(operation) ? singleResponse() : streamingResponse("compute".equals(operation));
+      return response(operation, false);
+    }
+
+    TransportClientResponse response(String operation, boolean losing) {
+      GenericRecord value = GenericData.get().deepCopy(STORE_VALUE_SCHEMA, SINGLE_GET_VALUE_RESPONSE);
+      if (losing) {
+        value.put("name", "losing-value");
+      }
+      return "get".equals(operation)
+          ? singleResponse(value)
+          : streamingResponse("compute".equals(operation), keys.size(), value);
     }
 
     @SuppressWarnings({ "rawtypes", "unchecked" })
     ContextCallback startRequest(String request, String operation, boolean withRetry) {
       ContextCallback callback = new ContextCallback(this, request, "compute".equals(operation));
       if ("get".equals(operation)) {
-        startGet(request, withRetry).whenComplete((value, error) -> {
+        inContext(request, () -> startGet(request, withRetry).whenComplete((value, error) -> {
           if (error == null) {
             callback.onRecordReceived("test_key", value);
           }
           callback.onCompletion(Optional.ofNullable((Exception) error));
-        });
+        }));
       } else {
         inContext(request, () -> {
           InternalAvroStoreClient<String, GenericRecord> client = withRetry ? retryClient : dispatchClient;
@@ -1794,8 +1932,12 @@ public class RetriableAvroGenericStoreClientTest {
     }
 
     TransportClientResponse streamingResponse(boolean compute, int keyCount) {
+      return streamingResponse(compute, keyCount, SINGLE_GET_VALUE_RESPONSE);
+    }
+
+    TransportClientResponse streamingResponse(boolean compute, int keyCount, GenericRecord batchValue) {
       Schema envelope = compute ? ComputeResponseRecordV1.SCHEMA$ : MultiGetResponseRecordV1.SCHEMA$;
-      GenericRecord value = compute ? COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1") : SINGLE_GET_VALUE_RESPONSE;
+      GenericRecord value = compute ? COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1") : batchValue;
       byte[] serializedValue =
           FastSerializerDeserializerFactory.getFastAvroGenericSerializer(value.getSchema()).serialize(value);
       List<GenericRecord> records = new ArrayList<>();

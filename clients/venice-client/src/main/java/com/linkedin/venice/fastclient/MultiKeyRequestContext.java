@@ -49,6 +49,8 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   private int fanoutSize;
 
   private Set<K> keys;
+  // Attempt-local writes, present only for retriable batch cache reads; compute remains uncached.
+  Map<K, Runnable> cacheWrites;
 
   public MultiKeyRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
     this.routeRequests = new VeniceConcurrentHashMap<>();
@@ -147,6 +149,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     // Used to choose a different helix group id in retry request.
     retryContext.helixGroupId = this.helixGroupId;
     retryContext.retryRequest = true;
+    if (cacheWrites != null) {
+      retryContext.cacheWrites = new VeniceConcurrentHashMap<>();
+    }
   }
 
   void recordDecompressionTime(String routeId, long latencyInNS) {

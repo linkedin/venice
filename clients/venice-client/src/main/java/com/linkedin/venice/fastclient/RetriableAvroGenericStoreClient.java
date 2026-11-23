@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.BatchGetConfigUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.MultiKeyLongTailRetryThresholds;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Map;
@@ -160,12 +161,18 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
     ExecutionContextProvider.CapturedContext executionContext =
         requestContext.getOrCaptureExecutionContext(executionContextProvider);
+    requestContext.deferCacheWrite = getClientConfig().isCacheEnabled();
     final CompletableFuture<V> originalRequestFuture = super.get(requestContext, key);
     if (singleKeyLongTailRetryManager != null) {
       singleKeyLongTailRetryManager.recordRequest();
     }
     final CompletableFuture<V> retryFuture = new CompletableFuture<>();
-    final CompletableFuture<V> finalFuture = new CompletableFuture<>();
+    // Arbitrate before writing, then publish the winning value. Keep the cache-disabled completion path unchanged.
+    final CompletableFuture<Supplier<V>> cacheWinner =
+        requestContext.deferCacheWrite ? new CompletableFuture<>() : null;
+    final CompletableFuture<V> finalFuture =
+        cacheWinner == null ? new CompletableFuture<>() : cacheWinner.thenApply(Supplier::get);
+    final CompletableFuture<?> winnerFuture = cacheWinner == null ? finalFuture : cacheWinner;
 
     AtomicReference<Throwable> savedException = new AtomicReference<>();
     // create a retry task
@@ -184,13 +191,18 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
             retryFuture.completeExceptionally(throwable);
           } else {
             retryFuture.complete(value);
-            if (finalFuture.isDone() == false) {
+            if (winnerFuture.isDone() == false) {
               /**
                * Setting flag before completing {@link finalFuture} for the counters to be incremented properly.
                */
               requestContext.retryContext.retryWin = true;
-              finalFuture.complete(value);
+              if (cacheWinner == null) {
+                finalFuture.complete(value);
+              } else {
+                cacheWinner.complete(cacheWinningValue(retryRequestContext, value));
+              }
             }
+            retryRequestContext.cacheWrite = null;
           }
         });
       } else {
@@ -220,7 +232,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         if (!timeoutFuture.isDone()) {
           timeoutFuture.cancel();
         }
-        if (finalFuture.complete(value)) {
+        if (cacheWinner == null
+            ? finalFuture.complete(value)
+            : cacheWinner.complete(cacheWinningValue(requestContext, value))) {
           // original request is faster: Resetting it even though the default is false to be accurate as
           // retryWin is set to true in the above block before completing the future, so there can be a race.
           requestContext.retryContext.retryWin = false;
@@ -256,11 +270,34 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
          * If none of the futures completes with a successful result, {@link finalFuture} must haven't completed
          * yet, so {@link finalFuture} will be completed with an exception thrown by either future.
          */
-        finalFuture.completeExceptionally(throwable);
+        winnerFuture.completeExceptionally(throwable);
       }
     });
 
     return finalFuture;
+  }
+
+  private Supplier<V> cacheWinningValue(GetRequestContext<K> requestContext, V value) {
+    Runnable cacheWrite = requestContext.cacheWrite;
+    requestContext.cacheWrite = null;
+    return () -> {
+      runCacheWrite(cacheWrite);
+      return value;
+    };
+  }
+
+  private void runCacheWrite(Runnable cacheWrite) {
+    if (cacheWrite != null) {
+      try {
+        cacheWrite.run();
+      } catch (Exception e) {
+        // A cache-write failure must not prevent delivery of the server value.
+        if (!RedundantExceptionFilter.getRedundantExceptionFilter()
+            .isRedundantException("Record cache write failed for " + getStoreName())) {
+          LOGGER.warn("Record cache write failed for store {}; returning the server value", getStoreName(), e);
+        }
+      }
+    }
   }
 
   @Override
@@ -274,6 +311,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     }
     int longTailRetryThresholdForBatchGetInMicroSeconds =
         getLongTailRetryThresholdForBatchGetInMicroSeconds(keys.size());
+    if (getClientConfig().isCacheEnabled()) {
+      requestContext.cacheWrites = new VeniceConcurrentHashMap<>();
+    }
     retryStreamingMultiKeyRequest(
         requestContext,
         keys,
@@ -349,7 +389,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     VeniceConcurrentHashMap<K, CompletableFuture<RESPONSE>> pendingKeysFuture = new VeniceConcurrentHashMap<>();
     for (K key: keys) {
       CompletableFuture<RESPONSE> originalCompletion = newKeyCompletionFuture();
-      originalCompletion.whenComplete((value, throwable) -> {
+      originalCompletion.thenAccept(value -> {
         originalCallback.onRecordReceived(key, value);
       });
       pendingKeysFuture.put(key, originalCompletion);
@@ -478,18 +518,21 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     return new StreamingCallback<K, RESPONSE>() {
       @Override
       public void onRecordReceived(K key, RESPONSE value) {
+        // Drain even a late record rejected by the completion guard, so losing attempts do not retain value bytes.
+        Runnable cacheWrite = requestContext.cacheWrites == null ? null : requestContext.cacheWrites.remove(key);
         if (completionGuard == null) {
-          deliverRecord(key, value);
+          deliverRecord(key, value, cacheWrite);
         } else {
           // Reserve the delivery before removing its key so completion cannot overtake it.
-          completionGuard.runRecord(() -> deliverRecord(key, value));
+          completionGuard.runRecord(() -> deliverRecord(key, value, cacheWrite));
         }
       }
 
-      private void deliverRecord(K key, RESPONSE value) {
+      private void deliverRecord(K key, RESPONSE value, Runnable cacheWrite) {
         // Remove the key and if successful , mark it as complete
         CompletableFuture<RESPONSE> removed = pendingKeysFuture.remove(key);
         if (removed != null) {
+          runCacheWrite(cacheWrite);
           removed.complete(value); // This will invoke the onRecordReceived callback of the original request
           requestContext.numKeysCompleted.incrementAndGet();
         }
