@@ -928,7 +928,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     ArgumentCaptor<CheckpointProgress.Snapshot> command = ArgumentCaptor.forClass(CheckpointProgress.Snapshot.class);
     CompletableFuture<Void> executed = new CompletableFuture<>();
     doAnswer(invocation -> {
-      assertFalse(progress.checkpoints().isDone(), "Teardown must see a reservation before enqueue");
       return executed;
     }).when(mockStoreBufferService).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any(), command.capture());
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_store_v1"), 0);
@@ -940,7 +939,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
         precedingRecord.complete(null);
       }
     }
-    leaderFollowerStoreIngestionTask.enqueueCheckpointSnapshot(
+    CompletableFuture<Void> commandFuture = leaderFollowerStoreIngestionTask.enqueueCheckpointSnapshot(
         tp,
         mockPartitionConsumptionState,
         mock(PartitionTracker.class),
@@ -957,11 +956,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     } else {
       leaderFollowerStoreIngestionTask
           .updateAndSyncOffsetFromSnapshot(mock(PartitionTracker.class), tp, precedingRecord, command.getValue());
-      assertFalse(progress.checkpoints().isDone(), "Execution remains fenced until its completion future settles");
+      assertFalse(commandFuture.isDone(), "The snapshot command owns its completion");
       executed.complete(null);
     }
-    assertTrue(progress.checkpoints().isDone());
-    assertEquals(progress.checkpoints().isCompletedExceptionally(), failure);
+    assertSame(commandFuture, executed);
+    assertTrue(commandFuture.isDone());
+    assertEquals(commandFuture.isCompletedExceptionally(), failure);
     boolean successful =
         "success".equals(outcome) || "covered-mandatory".equals(outcome) || "time-only-success".equals(outcome);
     assertEquals(checkpoint.isDue(100), !successful && !covered);
@@ -973,11 +973,39 @@ public class LeaderFollowerStoreIngestionTaskTest {
     }
   }
 
-  @Test
-  public void testReplacementTimesOutWithoutReplacingExecutingCheckpoint() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSnapshotEnqueueFailureDoesNotSuppressSource(boolean interrupted) throws Exception {
+    setUp();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
+    CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
+    PeriodicCheckpoint checkpoint = progress.source("source", new PeriodicCheckpoint(100, 0, 0));
+    checkpoint.recordUserData();
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(leaderFollowerStoreIngestionTask.getVersionTopic(), 0);
+    Exception failure =
+        interrupted ? new InterruptedException("enqueue interrupted") : new VeniceException("enqueue failed");
+    doThrow(failure).when(mockStoreBufferService).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any(), any());
+
+    assertSame(
+        org.testng.Assert.expectThrows(
+            failure.getClass(),
+            () -> leaderFollowerStoreIngestionTask.enqueueCheckpointSnapshot(
+                tp,
+                mockPartitionConsumptionState,
+                mock(PartitionTracker.class),
+                CompletableFuture.completedFuture(null),
+                progress.capture("source"),
+                true)),
+        failure);
+    assertTrue(checkpoint.isDue(100), "A rejected command must leave its source eligible");
+    assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(0));
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStateChangeTimesOutWithoutClearingExecutingCheckpoint(boolean reset) throws Exception {
     setUp();
     doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
     doReturn(20L).when(mockVeniceServerConfig).getDrainTimeoutMs();
+    doReturn(true).when(mockPartitionConsumptionState).isCompletionReported();
     CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
     java.util.concurrent.CountDownLatch executing = new java.util.concurrent.CountDownLatch(1);
     java.util.concurrent.CountDownLatch finish = new java.util.concurrent.CountDownLatch(1);
@@ -1001,13 +1029,23 @@ public class LeaderFollowerStoreIngestionTaskTest {
               new VeniceException("producer failed while sync is stalled")))
           .get(5, TimeUnit.SECONDS);
       assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(0));
-      VeniceException failure = org.testng.Assert.expectThrows(
-          VeniceException.class,
-          () -> leaderFollowerStoreIngestionTask.setPartitionConsumptionState(0, replacement));
+      VeniceException failure = org.testng.Assert.expectThrows(VeniceException.class, () -> {
+        if (reset) {
+          PubSubTopicPartition tp = new PubSubTopicPartitionImpl(leaderFollowerStoreIngestionTask.getVersionTopic(), 0);
+          leaderFollowerStoreIngestionTask
+              .processCommonConsumerAction(new ConsumerAction(ConsumerActionType.RESET_OFFSET, tp, 1, true));
+        } else {
+          leaderFollowerStoreIngestionTask.setPartitionConsumptionState(0, replacement);
+        }
+      });
       assertTrue(failure.getMessage().contains("Timed out"));
       assertSame(leaderFollowerStoreIngestionTask.getPartitionConsumptionState(0), mockPartitionConsumptionState);
       assertFalse(progress.isValid());
-      assertNull(progress.admit());
+      if (reset) {
+        assertNotNull(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0));
+        verify(mockPartitionConsumptionState).errorReported();
+        verify(mockStorageMetadataService, never()).clearOffset(any(), anyInt());
+      }
     } finally {
       finish.countDown();
       command.get(5, TimeUnit.SECONDS);
@@ -1017,64 +1055,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   @Test
-  public void testCompletedFailuresAllowDrainAndReplacementButPendingProducerDoesNot() throws Exception {
-    setUp();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
-    doReturn(20L).when(mockVeniceServerConfig).getDrainTimeoutMs();
-    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_store_v1"), 0);
-    CompletableFuture<Void> failed = new CompletableFuture<>();
-    failed.completeExceptionally(new VeniceException("finished failure"));
-    mockPartitionConsumptionState.getCheckpointProgress().trackCheckpoint(failed);
-    doReturn(failed).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
-    doReturn(failed).when(mockPartitionConsumptionState).getLastLeaderPersistFuture();
-    doReturn(failed).when(mockPartitionConsumptionState).getLastQueuedRecordPersistedFuture();
-    leaderFollowerStoreIngestionTask
-        .waitForAllMessageToBeProcessedFromTopicPartition(tp, mockPartitionConsumptionState);
-    assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(0));
-    CompletableFuture<Void> pending = new CompletableFuture<>();
-    doReturn(pending).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
-    org.testng.Assert.assertThrows(
-        VeniceException.class,
-        () -> leaderFollowerStoreIngestionTask
-            .waitForAllMessageToBeProcessedFromTopicPartition(tp, mockPartitionConsumptionState));
-    pending.complete(null);
-    PartitionConsumptionState replacement = mock(PartitionConsumptionState.class);
-    leaderFollowerStoreIngestionTask.setPartitionConsumptionState(0, replacement);
-    assertSame(leaderFollowerStoreIngestionTask.getPartitionConsumptionState(0), replacement);
-  }
-
-  @Test
-  public void testFirstDeferredProducerIsAwaitedBeforeReadingCheckpointProgress() throws Exception {
-    setUp();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
-    doReturn(20L).when(mockVeniceServerConfig).getDrainTimeoutMs();
-    doReturn(null).when(mockPartitionConsumptionState).getCheckpointProgress();
-    CompletableFuture<Void> pending = new CompletableFuture<>();
-    doReturn(pending).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
-    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_store_v1"), 0);
-    org.testng.Assert.assertThrows(
-        VeniceException.class,
-        () -> leaderFollowerStoreIngestionTask
-            .waitForAllMessageToBeProcessedFromTopicPartition(tp, mockPartitionConsumptionState));
-    verify(mockStoreBufferService, never()).drainBufferedRecordsFromTopicPartition(any(), anyLong());
-    pending.complete(null);
-    leaderFollowerStoreIngestionTask
-        .waitForAllMessageToBeProcessedFromTopicPartition(tp, mockPartitionConsumptionState);
-    verify(mockStoreBufferService).drainBufferedRecordsFromTopicPartition(eq(tp), anyLong());
-  }
-
-  @Test
-  public void testFailureIsReportedBeforeReservationSettlesAndCannotPoisonReplacement() throws Exception {
+  public void testCheckpointFailurePreservesRootAndCannotPoisonReplacement() throws Exception {
     setUp();
     CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
-    CompletableFuture<Void> tracked = progress.admit();
-    tracked.whenComplete(
-        (ignored, failure) -> assertNotNull(
-            leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0),
-            "Failure reporting belongs inside the teardown barrier"));
     leaderFollowerStoreIngestionTask
-        .completeCheckpoint(mockPartitionConsumptionState, tracked, new VeniceException("old checkpoint"));
-    assertTrue(tracked.isCompletedExceptionally());
+        .reportCheckpointFailure(mockPartitionConsumptionState, new VeniceException("old checkpoint"));
     Exception original = leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0).getException();
     assertTrue(original.getMessage().contains("old checkpoint"));
     leaderFollowerStoreIngestionTask
@@ -1084,10 +1069,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     progress.invalidate();
     PartitionConsumptionState replacement = mock(PartitionConsumptionState.class);
     leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, replacement);
-    CompletableFuture<Void> lateFailure = new CompletableFuture<>();
     leaderFollowerStoreIngestionTask
-        .completeCheckpoint(mockPartitionConsumptionState, lateFailure, new VeniceException("late callback"));
-    assertTrue(lateFailure.isCompletedExceptionally());
+        .reportCheckpointFailure(mockPartitionConsumptionState, new VeniceException("late callback"));
     assertSame(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0).getException(), original);
   }
 
@@ -1110,98 +1093,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .reportCheckpointFailure(mockPartitionConsumptionState, new VeniceException("late"));
     assertNull(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0));
     assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(0));
-  }
-
-  @Test
-  public void testProducerAdmissionIsReservedBeforeInvalidationCapturesBarrier() throws Exception {
-    setUp();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
-    CheckpointProgress progress = spy(new CheckpointProgress());
-    doReturn(progress).when(mockPartitionConsumptionState).getCheckpointProgress();
-    java.util.concurrent.CountDownLatch admitted = new java.util.concurrent.CountDownLatch(1);
-    doAnswer(invocation -> {
-      Object reservation = invocation.callRealMethod();
-      admitted.countDown();
-      return reservation;
-    }).when(progress).admit();
-    java.util.function.BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> producer =
-        mock(java.util.function.BiConsumer.class);
-    CompletableFuture<Void> producing;
-    CompletableFuture<Void> barrier;
-    synchronized (progress.producerLock) {
-      producing = CompletableFuture.runAsync(
-          () -> leaderFollowerStoreIngestionTask.produceToLocalKafka(
-              mock(DefaultPubSubMessage.class),
-              mockPartitionConsumptionState,
-              mock(LeaderProducedRecordContext.class),
-              producer,
-              0,
-              "broker",
-              0,
-              0));
-      assertTrue(admitted.await(5, TimeUnit.SECONDS));
-      progress.invalidate();
-      barrier = progress.checkpoints();
-      assertFalse(barrier.isDone(), "An admitted producer cannot appear after teardown's barrier");
-    }
-    producing.get(5, TimeUnit.SECONDS);
-    barrier.get(5, TimeUnit.SECONDS);
-    org.mockito.Mockito.verifyNoInteractions(producer);
-  }
-
-  @Test
-  public void testCloseRetainsResourcesUntilExecutingWorkTerminates() throws Exception {
-    setUp();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
-    doReturn(false).when(mockVeniceServerConfig).isServerIngestionCheckpointDuringGracefulShutdownEnabled();
-    doReturn(20L).when(mockVeniceServerConfig).getDrainTimeoutMs();
-    CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
-    CompletableFuture<Void> executing = progress.admit();
-    leaderFollowerStoreIngestionTask.close();
-    CompletableFuture<Void> closing = CompletableFuture.runAsync(leaderFollowerStoreIngestionTask::run);
-    try {
-      verify(leaderFollowerStoreIngestionTask.aggKafkaConsumerService, timeout(5000))
-          .unsubscribeAll(leaderFollowerStoreIngestionTask.getVersionTopic());
-      assertFalse(leaderFollowerStoreIngestionTask.waitForShutdown(0));
-      assertFalse(progress.isValid());
-      assertSame(leaderFollowerStoreIngestionTask.getPartitionConsumptionState(0), mockPartitionConsumptionState);
-      verify(mockStorageMetadataService, never()).clearOffset(any(), anyInt());
-      verify(leaderFollowerStoreIngestionTask, never()).closeVeniceWriters(anyBoolean());
-      verify(leaderFollowerStoreIngestionTask, never()).closeVeniceViewWriters(anyBoolean());
-    } finally {
-      executing.complete(null);
-      closing.get(5, TimeUnit.SECONDS);
-    }
-    assertTrue(leaderFollowerStoreIngestionTask.waitForShutdown(0));
-    assertTrue(leaderFollowerStoreIngestionTask.getPartitionConsumptionStateMap().isEmpty());
-    verify(leaderFollowerStoreIngestionTask).closeVeniceWriters(true);
-    verify(leaderFollowerStoreIngestionTask).closeVeniceViewWriters(true);
-  }
-
-  @Test
-  public void testResetFenceFailureIsVisibleForCompletedReplica() throws Exception {
-    setUp();
-    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
-    doReturn(10L).when(mockVeniceServerConfig).getDrainTimeoutMs();
-    doReturn(true).when(mockPartitionConsumptionState).isCompletionReported();
-    CheckpointProgress progress = mockPartitionConsumptionState.getCheckpointProgress();
-    CompletableFuture<Void> executing = progress.admit();
-    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(leaderFollowerStoreIngestionTask.getVersionTopic(), 0);
-    try {
-      org.testng.Assert.expectThrows(
-          VeniceException.class,
-          () -> leaderFollowerStoreIngestionTask
-              .processCommonConsumerAction(new ConsumerAction(ConsumerActionType.RESET_OFFSET, tp, 1, true)));
-      assertFalse(progress.isValid());
-      assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(0));
-      assertNotNull(leaderFollowerStoreIngestionTask.getPartitionIngestionExceptionList().get(0));
-      verify(mockPartitionConsumptionState).errorReported();
-      verify(mockStorageMetadataService, never()).clearOffset(any(), anyInt());
-      assertSame(leaderFollowerStoreIngestionTask.getPartitionConsumptionState(0), mockPartitionConsumptionState);
-    } finally {
-      executing.complete(null);
-    }
   }
 
   @Test
@@ -1426,7 +1317,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     VeniceException failure = new VeniceException(outcome);
     StorageEngine engine = leaderFollowerStoreIngestionTask.getStorageEngine();
     doAnswer(invocation -> {
-      // Byte-only mode registers before preparation, even when preparation throws. Time mode must not strand a fence.
+      // Byte-only mode registers before preparation, including when preparation throws.
       verify(createdCallback.get(), times(periodic ? 0 : 1)).setOnCompletionCallback(any());
       if ("prepare-failure".equals(outcome)) {
         throw failure;
@@ -1438,7 +1329,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
       doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
       doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
       doReturn(true).when(leaderFollowerStoreIngestionTask).shouldProduceToVersionTopic(mockPartitionConsumptionState);
-      doReturn(new CheckpointProgress()).when(mockPartitionConsumptionState).getCheckpointProgress();
+      CheckpointProgress progress = new CheckpointProgress();
+      PeriodicCheckpoint checkpoint = progress.source(
+          StoreIngestionTask.checkpointSource(mockTopicPartition, brokerUrl),
+          new PeriodicCheckpoint(100, 0, 0));
+      checkpoint.recordUserData();
+      doReturn(progress).when(mockPartitionConsumptionState).getCheckpointProgress();
       doReturn(true).when(mockPartitionConsumptionState).isSubscribed();
       doReturn(partition).when(mockPartitionConsumptionState).getPartition();
       leaderFollowerStoreIngestionTask.addPartitionConsumptionState(partition, mockPartitionConsumptionState);
@@ -1468,9 +1364,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
               0L,
               0));
       if (periodic) {
-        CompletableFuture<Void> checkpoints = mockPartitionConsumptionState.getCheckpointProgress().checkpoints();
-        assertTrue(checkpoints.isDone(), "Preparation/produce failure must not strand a checkpoint reservation");
-        assertEquals(checkpoints.isCompletedExceptionally(), "produce-failure".equals(outcome));
+        assertTrue(leaderFollowerStoreIngestionTask.getFailedPartitions().contains(partition));
+        assertTrue(
+            mockPartitionConsumptionState.getCheckpointProgress()
+                .source(StoreIngestionTask.checkpointSource(mockTopicPartition, brokerUrl))
+                .isDue(100),
+            "Preparation/produce failure must not strand source snapshot coalescing");
       } else {
         verify(mockPartitionConsumptionState, never()).initializeCheckpointProgress();
         verify(mockPartitionConsumptionState, never()).getCheckpointProgress();

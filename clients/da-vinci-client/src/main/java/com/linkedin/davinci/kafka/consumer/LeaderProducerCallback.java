@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -44,7 +43,6 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
   protected final LeaderProducedRecordContext leaderProducedRecordContext;
   private final long produceTimeNs;
   private final long beforeProcessingRecordTimestampNs;
-  private final CompletableFuture<Void> callbackCompleted;
 
   /**
    * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
@@ -76,7 +74,6 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     this.leaderProducedRecordContext = leaderProducedRecordContext;
     this.produceTimeNs = ingestionTask.isUserSystemStore() ? 0 : System.nanoTime();
     this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
-    this.callbackCompleted = ingestionTask.isTimeBasedCheckpointEnabled() ? new CompletableFuture<>() : null;
   }
 
   LeaderProducedRecordContext getLeaderProducedRecordContext() {
@@ -85,26 +82,6 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
 
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
-    if (callbackCompleted == null) {
-      onCompletionInternal(produceResult, e);
-      return;
-    }
-    try {
-      onCompletionInternal(produceResult, e);
-    } catch (RuntimeException failure) {
-      leaderProducedRecordContext.completePersistedToDBFuture(failure);
-      throw failure;
-    } finally {
-      // Persistence may fail (or even finish) before the callback stops enqueueing chunks/deletions.
-      callbackCompleted.complete(null);
-    }
-  }
-
-  CompletableFuture<Void> getCallbackCompleted() {
-    return callbackCompleted;
-  }
-
-  private void onCompletionInternal(PubSubProduceResult produceResult, Exception e) {
     this.onCompletionFunction.accept(produceResult);
     if (e != null) {
       ingestionTask.getVersionedDIVStats()
@@ -266,9 +243,6 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         }
         this.onCompletionCallback.accept(produceResult);
       } catch (Exception oe) {
-        if (callbackCompleted != null) {
-          leaderProducedRecordContext.completePersistedToDBFuture(oe);
-        }
         boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
         LOGGER.error(
             "{} received exception in kafka callback thread; EOP received: {}, {}, Offset: {}",

@@ -278,14 +278,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
        * end-to-end completeness when producing to local Kafka is needed.
        */
       CompletableFuture<Void> recordFuture = new CompletableFuture<>();
-      putRecord(
+      getDrainerForConsumerRecord(consumerRecord, partition).put(
           new FollowerQueueNode(
               consumerRecord,
               ingestionTask,
               kafkaUrl,
               beforeProcessingRecordTimestampNs,
-              recordFuture),
-          partition);
+              recordFuture));
 
       // Setup the last queued record's future
       PartitionConsumptionState partitionConsumptionState =
@@ -321,43 +320,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
       int partition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    putRecord(
+    getDrainerForConsumerRecord(consumerRecord, partition).put(
         new LeaderQueueNode(
             consumerRecord,
             ingestionTask,
             kafkaUrl,
             beforeProcessingRecordTimestamp,
-            leaderProducedRecordContext),
-        partition);
-  }
-
-  private void putRecord(QueueNode node, int partition) throws InterruptedException {
-    StoreIngestionTask task = node.getIngestionTask();
-    if (task.isTimeBasedCheckpointEnabled()) {
-      PartitionConsumptionState pcs = task.getPartitionConsumptionState(partition);
-      if (pcs != null) {
-        CheckpointProgress progress = pcs.initializeCheckpointProgress();
-        if (node.getLeaderProducedRecordContext() == null) {
-          node.workCompleted = progress.admit();
-          if (node.workCompleted == null) {
-            node.getQueuedRecordPersistedFuture().complete(null);
-            return;
-          }
-        } else {
-          // A previously admitted producer may still enqueue after invalidation. Its callback fences this handoff.
-          node.workCompleted = new CompletableFuture<>();
-          progress.trackCheckpoint(node.workCompleted);
-        }
-      }
-    }
-    try {
-      getDrainerForConsumerRecord(node.getConsumerRecord(), partition).put(node);
-    } catch (InterruptedException | RuntimeException e) {
-      if (node.workCompleted != null) {
-        node.workCompleted.complete(null); // Nothing was queued.
-      }
-      throw e;
-    }
+            leaderProducedRecordContext));
   }
 
   private static void processRecord(
@@ -694,7 +663,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
     private final long beforeProcessingRecordTimestampNs;
-    private CompletableFuture<Void> workCompleted;
 
     public QueueNode(
         DefaultPubSubMessage consumerRecord,
@@ -1206,10 +1174,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
             break;
           }
         } finally {
-          if (node != null && node.workCompleted != null) {
-            // Separate physical termination from a persistence future which a callback may have failed earlier.
-            node.workCompleted.complete(null);
-          }
           /**
            * Also covers the three early {@code continue} branches above; without it they would leave the marker
            * set and report a drainer that is in fact looping normally as stalled.

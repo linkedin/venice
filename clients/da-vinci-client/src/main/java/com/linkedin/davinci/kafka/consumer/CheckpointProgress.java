@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 
 
@@ -11,6 +10,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * reset on send, before durability. Source tokens are captured with the corresponding immutable DIV snapshot.
  */
 class CheckpointProgress {
+  // Synchronous snapshot/cursor ordering only. These locks do not reserve asynchronous producer or queue work.
   final Object producerLock = new Object();
   final Object validationLock = new Object();
   final ReentrantLock executionLock = new ReentrantLock();
@@ -24,17 +24,7 @@ class CheckpointProgress {
     valid = false;
   }
 
-  synchronized CompletableFuture<Void> admit() {
-    if (!valid) {
-      return null;
-    }
-    CompletableFuture<Void> admitted = new CompletableFuture<>();
-    trackCheckpoint(admitted);
-    return admitted;
-  }
-
   private final Map<String, PeriodicCheckpoint> sources = new HashMap<>();
-  private CompletableFuture<Void> checkpoints = CompletableFuture.completedFuture(null);
 
   synchronized PeriodicCheckpoint source(String key) {
     return sources.get(key);
@@ -61,19 +51,6 @@ class CheckpointProgress {
   static void checkpointSucceeded(Map<PeriodicCheckpoint, Long> coverage) {
     long now = System.nanoTime();
     coverage.forEach((checkpoint, generation) -> checkpoint.checkpointSucceeded(generation, now));
-  }
-
-  synchronized void trackCheckpoint(CompletableFuture<Void> future) {
-    checkpoints = combine(checkpoints, future);
-  }
-
-  synchronized CompletableFuture<Void> checkpoints() {
-    return checkpoints;
-  }
-
-  private static CompletableFuture<Void> combine(CompletableFuture<Void> previous, CompletableFuture<Void> next) {
-    // Retain a failure until the PCS is replaced; do not hide it behind a later success.
-    return previous.isDone() && !previous.isCompletedExceptionally() ? next : CompletableFuture.allOf(previous, next);
   }
 
   static class Snapshot {

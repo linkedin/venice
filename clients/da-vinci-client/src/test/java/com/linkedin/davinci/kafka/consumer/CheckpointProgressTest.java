@@ -29,33 +29,27 @@ public class CheckpointProgressTest {
   }
 
   @Test
-  public void testCheckpointFenceRetainsFailure() {
+  public void testEmptyCoverageDoesNotAcknowledgePendingSources() {
     CheckpointProgress progress = new CheckpointProgress();
-    CompletableFuture<Void> first = new CompletableFuture<>();
-    CompletableFuture<Void> second = new CompletableFuture<>();
-    progress.trackCheckpoint(first);
-    progress.trackCheckpoint(second);
-    second.complete(null);
-    assertFalse(progress.checkpoints().isDone());
-    first.completeExceptionally(new IllegalStateException("failed persistence"));
-    assertTrue(progress.checkpoints().isCompletedExceptionally());
-    progress.trackCheckpoint(CompletableFuture.completedFuture(null));
-    assertTrue(progress.checkpoints().isCompletedExceptionally());
+    PeriodicCheckpoint checkpoint = progress.source("source", new PeriodicCheckpoint(100, 0, 0));
+    checkpoint.recordUserData();
+    CheckpointProgress.checkpointSucceeded(progress.capture("absent"));
+    assertTrue(checkpoint.isDue(100));
   }
 
   @Test
-  public void testCheckpointFenceIncludesExecutingWork() {
+  public void testInvalidationDisablesDueChecksWithoutDiscardingSourceCoverage() {
     CheckpointProgress progress = new CheckpointProgress();
-    CompletableFuture<Void> executing = new CompletableFuture<>();
-    progress.trackCheckpoint(executing);
-    progress.trackCheckpoint(CompletableFuture.completedFuture(null));
-    assertFalse(progress.checkpoints().isDone());
-    executing.complete(null);
-    assertTrue(progress.checkpoints().isDone());
+    PeriodicCheckpoint checkpoint = progress.source("source", new PeriodicCheckpoint(100, 0, 0));
+    checkpoint.recordUserData();
+    assertTrue(progress.isDue(100));
+    progress.invalidate();
+    assertFalse(progress.isDue(100));
+    org.testng.Assert.assertEquals(progress.capture("source").get(checkpoint).longValue(), 1L);
   }
 
   @Test
-  public void testInvalidationRejectsAdmissionWithoutWaitingForStorage() throws Exception {
+  public void testInvalidationDoesNotWaitForExecutingStorage() throws Exception {
     CheckpointProgress progress = new CheckpointProgress();
     CountDownLatch executing = new CountDownLatch(1);
     CountDownLatch finish = new CountDownLatch(1);
@@ -81,7 +75,6 @@ public class CheckpointProgressTest {
       assertTrue(invalidating.await(5, TimeUnit.SECONDS));
       invalidated.get(5, TimeUnit.SECONDS);
       assertFalse(progress.isValid());
-      org.testng.Assert.assertNull(progress.admit());
       assertFalse(progress.executionLock.tryLock(10, TimeUnit.MILLISECONDS));
       finish.countDown();
       command.get(5, TimeUnit.SECONDS);

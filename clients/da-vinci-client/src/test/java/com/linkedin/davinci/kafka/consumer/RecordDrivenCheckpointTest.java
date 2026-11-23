@@ -36,14 +36,15 @@ import org.testng.annotations.Test;
 
 
 public class RecordDrivenCheckpointTest {
-  @Test
-  public void testDisabledProducerFailureRetainsOriginalCallbackAndPersistenceFuture() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = com.linkedin.venice.utils.DataProviderUtils.class)
+  public void testProducerFailureUsesExistingPersistenceFuture(boolean periodic) throws Exception {
     LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     PubSubTopicPartition tp = new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic("store_v1"), 0);
     DefaultPubSubMessage record = heartbeat(tp);
     when(record.getKey()).thenReturn(new KafkaKey(MessageType.PUT, new byte[0]));
     when(task.isGlobalRtDivEnabled()).thenReturn(true);
+    when(task.isTimeBasedCheckpointEnabled()).thenReturn(periodic);
     when(task.getVersionTopic()).thenReturn(tp.getPubSubTopic());
     when(task.shouldSendGlobalRtDiv(record, pcs, "store_v1")).thenReturn(true);
     when(pcs.getReplicaTopicPartition()).thenReturn(tp);
@@ -55,6 +56,17 @@ public class RecordDrivenCheckpointTest {
     LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
     CompletableFuture<Void> persisted = new CompletableFuture<>();
     when(context.getPersistedToDBFuture()).thenReturn(persisted);
+    PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 0, 0);
+    if (periodic) {
+      CheckpointProgress progress = new CheckpointProgress();
+      progress.source(StoreIngestionTask.checkpointSource(tp, "remote-broker"), checkpoint);
+      checkpoint.recordUserData();
+      when(pcs.initializeCheckpointProgress()).thenReturn(progress);
+      when(pcs.getCheckpointProgress()).thenReturn(progress);
+      when(task.getPartitionConsumptionState(0)).thenReturn(pcs);
+      when(pcs.getOffsetRecord()).thenReturn(mock(com.linkedin.venice.offsets.OffsetRecord.class));
+      doCallRealMethod().when(task).captureCheckpointCoverage(any(), any());
+    }
     doCallRealMethod().when(task).produceToLocalKafka(any(), any(), any(), any(), anyInt(), any(), anyInt(), anyLong());
     VeniceException failure = new VeniceException("produce failed");
 
@@ -68,10 +80,14 @@ public class RecordDrivenCheckpointTest {
             }, 0, "remote-broker", 0, 0)),
         failure);
 
-    assertFalse(persisted.isDone(), "Byte-only mode must not add failure completion of the original persist future");
+    assertEquals(persisted.isCompletedExceptionally(), periodic);
     verify(pcs).setLastLeaderPersistFuture(persisted);
-    verify(pcs, never()).initializeCheckpointProgress();
-    verify(pcs, never()).getCheckpointProgress();
+    if (periodic) {
+      assertTrue(checkpoint.isDue(100), "A synchronous producer failure must release source snapshot coalescing");
+    } else {
+      verify(pcs, never()).initializeCheckpointProgress();
+      verify(pcs, never()).getCheckpointProgress();
+    }
     verify(task, never()).enqueueCheckpointSnapshot(any(), any(), any(), any(), any(), anyBoolean());
   }
 
@@ -265,6 +281,7 @@ public class RecordDrivenCheckpointTest {
     when(task.getConsumerDiv()).thenReturn(div);
     when(div.cloneVtProducerStates(anyInt(), anyBoolean(), anyLong())).thenReturn(mock(PartitionTracker.class));
     doCallRealMethod().when(task).isCheckpointDue(any(), any(), any());
+    doCallRealMethod().when(task).captureCheckpointCoverage(any(), any());
     doCallRealMethod().when(task).addVtDivToProducerCallbackIfNeeded(any(), any(), any(), any());
     LeaderProducerCallback callback = mock(LeaderProducerCallback.class);
     when(task.enqueueCheckpointSnapshot(any(), any(), any(), any(), any(), anyBoolean()))
@@ -275,7 +292,7 @@ public class RecordDrivenCheckpointTest {
     verify(callback).setOnCompletionCallback(any());
     verify(pcs).resetConsumedBytesSinceLastGlobalRtDivSync(source);
     verify(task, never()).sendGlobalRtDivMessage(any(), any(), any(), anyInt(), any(), anyLong(), anyInt());
-    assertFalse(progress.checkpoints().isDone(), "The existing producer callback owns checkpoint completion");
+    assertFalse(checkpoint.isDue(100), "The source's outstanding snapshot suppresses another time attempt");
     assertEquals(checkpoint.generation(), 1L, "Enqueue must not acknowledge pending data");
     org.mockito.ArgumentCaptor<java.util.function.Consumer<com.linkedin.venice.pubsub.api.PubSubProduceResult>> completion =
         org.mockito.ArgumentCaptor.forClass(java.util.function.Consumer.class);

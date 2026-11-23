@@ -2,8 +2,8 @@
 
 Time-based checkpoints supplement the existing byte-size and control-message checkpoints. They are disabled by default.
 When enabled, a checkpoint can be triggered by **either bytes or time**; enabling time checkpoints does not change the
-byte thresholds or control-message boundaries. Enabled shutdown checkpoints require successful producer and persistence
-dependencies; an unconfirmed final cursor pair is not persisted.
+byte thresholds or control-message boundaries. With time checkpoints enabled, the Global shutdown fallback checks the
+existing producer-dispatch and leader-persistence futures before pairing the final upstream and local VT cursors.
 
 | Property                                | Default             | Meaning                                                                                                           |
 | --------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -35,10 +35,12 @@ throttling, and missing records can delay attempts. Missed intervals are not rep
 byte/control checkpoints refresh freshness for the user-data generations they actually cover. A snapshot cannot
 acknowledge newer arrivals or another RT source's progress. Enqueue, producer acknowledgement, cancellation, skipped
 commands and failures never acknowledge progress. Unsubscription, replacement of partition state, errors and task
-shutdown invalidate deferred commands. Teardown awaits executing as well as queued time checkpoints; reset/replacement
-also serializes against executing snapshot commands and inline drainer syncs. Invalidation rejects new work immediately,
-then waits up to the configured drain timeout. A timeout prevents state replacement or close-time state clearing;
-completed failures remain reported but do not prevent cleanup.
+shutdown invalidate deferred snapshot commands. Reset/replacement and close-time state clearing serialize against
+executing snapshot commands and inline drainer syncs, bounded by the configured drain timeout. Invalidation and
+partition identity checks prevent stale snapshots from checkpointing replacement state. This is a synchronous execution
+fence, not an asynchronous admission or lifetime barrier. Producer, view, buffer-drain and shutdown coordination use the
+existing byte-checkpoint mechanisms and completion futures. They do not guarantee that every callback or partial view
+fanout has terminated; their existing failure/timeout and cleanup limitations remain.
 
 The four existing routes gain a time alternative to their normal predicates:
 
@@ -56,7 +58,7 @@ time checkpoints and Global DIV enabled, records are validated and processed one
 completion of deferred view-to-VT producer calls before validating the next record. This keeps validator state and the
 snapshot cursor at the same record boundary; whole-poll validation and multi-record parallel batches remain unchanged
 when the feature is off. This enabled-only serialization can reduce throughput and must be measured before rollout.
-Producer admission and queued/executing snapshots retain partition-state validation and a teardown completion barrier.
+Producer dispatch and queued/executing snapshots retain partition-state validation without reserving unfinished work.
 Snapshots use the existing typed drainer route, ordered by the source topic (including stream-reprocessing topics).
 Time-only snapshots recheck captured-source coverage and freshness before persistence; byte/control/shutdown checkpoints
 remain mandatory. No normal-ingestion checkpoint drains or unsubscribes a consumer.
