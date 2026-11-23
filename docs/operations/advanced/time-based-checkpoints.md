@@ -53,15 +53,16 @@ The four existing routes gain a time alternative to their normal predicates:
 4. A Global local-VT follower or nonproducing leader checks the existing complete-DIV/control/twice-byte threshold OR
    time and enqueues its consumer snapshot after the preceding record's persistence dependency.
 
-Source-specific generations remain necessary because Global byte counters reset on send, before durable success. With
-time checkpoints and Global DIV enabled, records are validated and processed one at a time per partition, including
-completion of deferred view-to-VT producer calls before validating the next record. This keeps validator state and the
-snapshot cursor at the same record boundary; whole-poll validation and multi-record parallel batches remain unchanged
-when the feature is off. This enabled-only serialization can reduce throughput and must be measured before rollout.
-Producer dispatch and queued/executing snapshots retain partition-state validation without reserving unfinished work.
-Snapshots use the existing typed drainer route, ordered by the source topic (including stream-reprocessing topics).
-Time-only snapshots recheck captured-source coverage and freshness before persistence; byte/control/shutdown checkpoints
-remain mandatory. No normal-ingestion checkpoint drains or unsubscribes a consumer.
+Source-specific generations remain necessary because Global byte counters reset on send, before durable success.
+Enabling time checkpoints retains whole-poll validation, duplicate filtering, AA/WC parallel batching and asynchronous
+view-to-VT dispatch, just like byte checkpoints. There is no per-record producer wait or validation lock. Time is
+another trigger at the existing checkpoint locations, not a new synchronization model. Snapshot capture, producer
+callbacks and drainer ordering reuse the byte-checkpoint paths; this does not add a record-aligned validator/snapshot
+guarantee or fix existing snapshot-alignment risks. Producer dispatch and queued/executing snapshots retain
+partition-state validation without reserving unfinished work. Snapshots use the existing typed drainer route, ordered by
+the source topic (including stream-reprocessing topics). Time-only snapshots recheck captured-source coverage and
+freshness before persistence; byte/control/shutdown checkpoints remain mandatory. No normal-ingestion checkpoint drains
+or unsubscribes a consumer.
 
 ## Validation before enabling
 

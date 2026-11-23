@@ -12,7 +12,6 @@ import java.util.concurrent.locks.ReentrantLock;
 class CheckpointProgress {
   // Synchronous snapshot/cursor ordering only. These locks do not reserve asynchronous producer or queue work.
   final Object producerLock = new Object();
-  final Object validationLock = new Object();
   final ReentrantLock executionLock = new ReentrantLock();
   private volatile boolean valid = true;
 

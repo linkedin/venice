@@ -534,8 +534,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     }
   }
 
-  @Test
-  public void testQueueUpVersionTopicWritesWithViewWriters() throws InterruptedException {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testQueueUpVersionTopicWritesWithViewWriters(boolean periodic) throws InterruptedException {
     mockVeniceViewWriterFactory = mock(VeniceViewWriterFactory.class);
     Map<String, VeniceViewWriter> viewWriterMap = new HashMap<>();
     MaterializedViewWriter materializedViewWriter = mock(MaterializedViewWriter.class);
@@ -545,6 +545,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     CompletableFuture<Void> viewWriterFuture = new CompletableFuture<>();
     when(materializedViewWriter.processRecord(any(), any(), anyInt(), any(), any())).thenReturn(viewWriterFuture);
     setUp();
+    doReturn(periodic).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
     WriteComputeResultWrapper mockResult = mock(WriteComputeResultWrapper.class);
     Put put = new Put();
     put.schemaId = 1;
@@ -1142,8 +1143,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     org.mockito.Mockito.verifyNoInteractions(producer);
   }
 
-  @Test
-  public void testGlobalPollSnapshotsDoNotIncludeLaterRecordsOrDeferredViewValidation() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10000)
+  public void testTimeCheckpointsRetainWholePollValidationWithoutProducerWait(boolean failedProducer) throws Exception {
     setUp();
     doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
     doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
@@ -1163,62 +1164,71 @@ public class LeaderFollowerStoreIngestionTaskTest {
       doReturn(tp).when(record).getTopicPartition();
       doReturn(new KafkaKey(MessageType.PUT, new byte[0])).when(record).getKey();
     }
-    PubSubPosition firstPosition = InMemoryPubSubPosition.of(1);
-    PubSubPosition secondPosition = InMemoryPubSubPosition.of(2);
-    java.util.concurrent.atomic.AtomicReference<PubSubPosition> validated =
-        new java.util.concurrent.atomic.AtomicReference<>();
     CompletableFuture<Void> deferredView = new CompletableFuture<>();
+    if (failedProducer) {
+      deferredView.completeExceptionally(new VeniceException("deferred producer failed"));
+    }
     doReturn(deferredView).when(mockPartitionConsumptionState).getLastVTProduceCallFuture();
+    List<DefaultPubSubMessage> poll = new ArrayList<>(Arrays.asList(first, duplicate, second));
     doAnswer(invocation -> {
       Iterable<DefaultPubSubMessage> records = invocation.getArgument(0);
+      assertSame(records, poll, "Duplicate filtering must validate the whole poll, not singleton records");
       Iterator<DefaultPubSubMessage> iterator = records.iterator();
       while (iterator.hasNext()) {
         DefaultPubSubMessage record = iterator.next();
         if (record == duplicate) {
           iterator.remove();
-          continue;
         }
-        if (record == second) {
-          assertTrue(deferredView.isDone(), "The next record must not validate ahead of a deferred producer snapshot");
-        }
-        validated.set(record == first ? firstPosition : secondPosition);
       }
       return records;
     }).when(leaderFollowerStoreIngestionTask).validateAndFilterOutDuplicateMessagesFromLeaderTopic(any(), any(), any());
     DataIntegrityValidator div = mock(DataIntegrityValidator.class);
     doReturn(div).when(leaderFollowerStoreIngestionTask).getConsumerDiv();
-    doAnswer(invocation -> {
-      PartitionTracker snapshot = mock(PartitionTracker.class);
-      doReturn(validated.get()).when(snapshot).getLatestConsumedVtPosition();
-      return snapshot;
-    }).when(div).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
-    java.util.concurrent.CountDownLatch firstSnapshot = new java.util.concurrent.CountDownLatch(1);
-    List<PubSubPosition> persistedBoundaries = new java.util.concurrent.CopyOnWriteArrayList<>();
-    doAnswer(invocation -> {
-      PartitionTracker snapshot = invocation.getArgument(1);
-      persistedBoundaries.add(snapshot.getLatestConsumedVtPosition());
-      firstSnapshot.countDown();
-      return CompletableFuture.completedFuture(null);
-    }).when(mockStoreBufferService).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any(), any());
-    CompletableFuture<Void> processing = CompletableFuture.runAsync(() -> {
-      try {
-        leaderFollowerStoreIngestionTask
-            .produceToStoreBufferServiceOrKafka(Arrays.asList(first, duplicate, second), tp, "broker", 0);
-      } catch (InterruptedException e) {
-        throw new AssertionError(e);
-      }
-    });
-    try {
-      assertTrue(firstSnapshot.await(5, TimeUnit.SECONDS));
-      assertEquals(persistedBoundaries, Collections.singletonList(firstPosition));
-      assertEquals(validated.get(), firstPosition);
-      deferredView.complete(null);
-      processing.get(5, TimeUnit.SECONDS);
-      assertEquals(persistedBoundaries, Arrays.asList(firstPosition, secondPosition));
-    } finally {
-      deferredView.complete(null);
-      processing.get(5, TimeUnit.SECONDS);
-    }
+    doReturn(mock(PartitionTracker.class)).when(div).cloneVtProducerStates(anyInt(), anyBoolean(), anyLong());
+    doReturn(CompletableFuture.completedFuture(null)).when(mockStoreBufferService)
+        .execSyncOffsetFromSnapshotAsync(any(), any(), any(), any(), any());
+
+    leaderFollowerStoreIngestionTask.produceToStoreBufferServiceOrKafka(poll, tp, "broker", 0);
+
+    verify(leaderFollowerStoreIngestionTask).validateAndFilterOutDuplicateMessagesFromLeaderTopic(poll, "broker", tp);
+    org.mockito.InOrder order = inOrder(leaderFollowerStoreIngestionTask);
+    order.verify(leaderFollowerStoreIngestionTask)
+        .validateAndFilterOutDuplicateMessagesFromLeaderTopic(poll, "broker", tp);
+    order.verify(leaderFollowerStoreIngestionTask).shouldProcessRecord(first);
+    order.verify(leaderFollowerStoreIngestionTask).shouldProcessRecord(second);
+    verify(leaderFollowerStoreIngestionTask, never()).shouldProcessRecord(duplicate);
+    verify(mockStoreBufferService, times(2)).execSyncOffsetFromSnapshotAsync(any(), any(), any(), any(), any());
+    verify(mockPartitionConsumptionState, never()).getLastVTProduceCallFuture();
+    assertEquals(deferredView.isDone(), failedProducer);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testTimeCheckpointsRetainAaAndWriteComputeBatching(boolean activeActive) throws Exception {
+    setUp();
+    setField(leaderFollowerStoreIngestionTask, "isActiveActiveReplicationEnabled", activeActive);
+    setField(leaderFollowerStoreIngestionTask, "isWriteComputationEnabled", !activeActive);
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isTimeBasedCheckpointEnabled();
+    doReturn(true).when(leaderFollowerStoreIngestionTask).isGlobalRtDivEnabled();
+    doReturn(true).when(mockVeniceServerConfig).isAAWCWorkloadParallelProcessingEnabled();
+    PubSubTopicPartition tp = new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic("test_store_rt"), 0);
+    DefaultPubSubMessage first = mock(DefaultPubSubMessage.class);
+    DefaultPubSubMessage second = mock(DefaultPubSubMessage.class);
+    doReturn(tp).when(first).getTopicPartition();
+    doReturn(tp).when(second).getTopicPartition();
+    List<DefaultPubSubMessage> poll = Arrays.asList(first, second);
+    doReturn(poll).when(leaderFollowerStoreIngestionTask)
+        .validateAndFilterOutDuplicateMessagesFromLeaderTopic(poll, "broker", tp);
+    doNothing().when(leaderFollowerStoreIngestionTask)
+        .produceToStoreBufferServiceOrKafkaInBatch(poll, tp, mockPartitionConsumptionState, "broker", 0);
+
+    leaderFollowerStoreIngestionTask.produceToStoreBufferServiceOrKafka(poll, tp, "broker", 0);
+
+    org.mockito.InOrder order = inOrder(leaderFollowerStoreIngestionTask);
+    order.verify(leaderFollowerStoreIngestionTask)
+        .validateAndFilterOutDuplicateMessagesFromLeaderTopic(poll, "broker", tp);
+    order.verify(leaderFollowerStoreIngestionTask)
+        .produceToStoreBufferServiceOrKafkaInBatch(poll, tp, mockPartitionConsumptionState, "broker", 0);
+    verify(mockPartitionConsumptionState, never()).getLastVTProduceCallFuture();
   }
 
   @Test

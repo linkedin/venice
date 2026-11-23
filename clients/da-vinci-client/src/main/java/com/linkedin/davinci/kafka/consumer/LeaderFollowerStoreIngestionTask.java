@@ -4126,13 +4126,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  @Override
-  protected void awaitCheckpointProducer(PartitionConsumptionState pcs) throws InterruptedException {
-    awaitSuccessfulCheckpointWork(pcs.getLastVTProduceCallFuture(), pcs);
-  }
-
-  protected long checkpointProducerWaitMs() {
-    return WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED;
+  private static class CheckpointDependencyException extends VeniceException {
+    CheckpointDependencyException(String message, Throwable cause) {
+      super(message, cause);
+    }
   }
 
   private void awaitSuccessfulCheckpointWork(Future<Void> future, PartitionConsumptionState pcs)
@@ -4141,7 +4138,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return;
     }
     try {
-      future.get(checkpointProducerWaitMs(), MILLISECONDS);
+      future.get(WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED, MILLISECONDS);
     } catch (ExecutionException | java.util.concurrent.CancellationException | TimeoutException e) {
       throw new CheckpointDependencyException("Checkpoint dependency failed for " + pcs.getReplicaId(), e);
     }

@@ -1553,43 +1553,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) throws InterruptedException {
-    if (isTimeBasedCheckpointEnabled() && isGlobalRtDivEnabled()) {
-      PartitionConsumptionState pcs = getPartitionConsumptionState(topicPartition.getPartitionNumber());
-      if (pcs == null) {
-        return;
-      }
-      CheckpointProgress progress = pcs.initializeCheckpointProgress();
-      // Validation must not run ahead of snapshot preparation, including deferred view writes.
-      synchronized (progress.validationLock) {
-        if (!progress.isValid() || getPartitionConsumptionState(pcs.getPartition()) != pcs) {
-          return;
-        }
-        try {
-          produceToStoreBufferServiceOrKafkaWithValidation(records, topicPartition, kafkaUrl, kafkaClusterId);
-        } catch (RuntimeException e) {
-          reportCheckpointFailure(pcs, e);
-          throw e;
-        }
-      }
-      return;
-    }
-    produceToStoreBufferServiceOrKafkaWithValidation(records, topicPartition, kafkaUrl, kafkaClusterId);
-  }
-
-  protected void awaitCheckpointProducer(PartitionConsumptionState pcs) throws InterruptedException {
-  }
-
-  static class CheckpointDependencyException extends VeniceException {
-    CheckpointDependencyException(String message, Throwable cause) {
-      super(message, cause);
-    }
-  }
-
-  private void produceToStoreBufferServiceOrKafkaWithValidation(
-      Iterable<DefaultPubSubMessage> records,
-      PubSubTopicPartition topicPartition,
-      String kafkaUrl,
-      int kafkaClusterId) throws InterruptedException {
     PartitionConsumptionState partitionConsumptionState =
         partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
     if (partitionConsumptionState == null) {
@@ -1601,12 +1564,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Validate and filter out duplicate messages from the real-time topic as early as possible, so that
      * the following batch processing logic won't spend useless efforts on duplicate messages.
       */
-    boolean recordAligned = isTimeBasedCheckpointEnabled() && isGlobalRtDivEnabled();
-    if (!recordAligned) {
-      records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
-    }
+    records = validateAndFilterOutDuplicateMessagesFromLeaderTopic(records, kafkaUrl, topicPartition);
 
-    if (!recordAligned && (isActiveActiveReplicationEnabled || isWriteComputationEnabled)
+    if ((isActiveActiveReplicationEnabled || isWriteComputationEnabled)
         && serverConfig.isAAWCWorkloadParallelProcessingEnabled()
         && IngestionBatchProcessor.isAllMessagesFromRTTopic(records)) {
       produceToStoreBufferServiceOrKafkaInBatch(
@@ -1623,23 +1583,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long beforeProcessingBatchRecordsTimestampMs = System.currentTimeMillis();
 
     partitionConsumptionState = partitionConsumptionStateMap.get(topicPartition.getPartitionNumber());
-    // Duplicate filtering removes records through the iterator; reuse a mutable list only in record-aligned mode.
-    List<DefaultPubSubMessage> recordToValidate = recordAligned ? new ArrayList<>(1) : null;
     for (DefaultPubSubMessage record: records) {
-      if (recordAligned) {
-        if (partitionConsumptionState == null || !partitionConsumptionState.getCheckpointProgress().isValid()
-            || getPartitionConsumptionState(topicPartition.getPartitionNumber()) != partitionConsumptionState
-            || failedPartitions.contains(topicPartition.getPartitionNumber())
-            || partitionConsumptionState.isErrorReported()) {
-          break;
-        }
-        recordToValidate.clear();
-        recordToValidate.add(record);
-        if (!validateAndFilterOutDuplicateMessagesFromLeaderTopic(recordToValidate, kafkaUrl, topicPartition).iterator()
-            .hasNext()) {
-          continue;
-        }
-      }
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       if (!shouldProcessRecord(record)) {
@@ -1659,14 +1603,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           beforeProcessingBatchRecordsTimestampMs,
           elapsedTimeForPuttingIntoQueue);
       totalBytesRead += recordSize;
-      if (recordAligned) {
-        try {
-          awaitCheckpointProducer(partitionConsumptionState);
-        } catch (CheckpointDependencyException e) {
-          reportCheckpointFailure(partitionConsumptionState, e);
-          break; // This partition cannot validate another record; unrelated ingestion exceptions still propagate.
-        }
-      }
       // Key VT bytes (local or remote) by version topic name, and key RT bytes by broker URL.
       PubSubTopic topic = topicPartition.getPubSubTopic();
       if (isGlobalRtDivEnabled() && (versionTopic.equals(topic) || topic.isRealTime())) {
