@@ -209,6 +209,10 @@ public class VersionSwapMessageState {
     return Collections.unmodifiableSet(new HashSet<>(assignedPartitions));
   }
 
+  public synchronized boolean isPartitionAssigned(int partition) {
+    return assignedPartitions.contains(partition);
+  }
+
   public synchronized Set<Integer> getIncompletePartitions() {
     Set<Integer> incompletePartitions = new HashSet<>(assignedPartitions);
     incompletePartitions.removeAll(completedPartitions);

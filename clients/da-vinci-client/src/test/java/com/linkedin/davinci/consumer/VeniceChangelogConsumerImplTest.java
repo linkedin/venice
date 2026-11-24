@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
@@ -662,7 +663,8 @@ public class VeniceChangelogConsumerImplTest {
           oldPartition,
           KafkaKey.HEART_BEAT.getKey(),
           123L,
-          ApacheKafkaOffsetPosition.of(4L));
+          ApacheKafkaOffsetPosition.of(4L),
+          456L);
       registeredListener.get().handleStoreChanged(store);
       verify(mockInternalSeekConsumer).getPositionByTimestamp(newPartition, 123L);
       verify(mockPubSubConsumer, times(2)).subscribe(newPartition, heartbeatPosition, true);
@@ -2161,15 +2163,16 @@ public class VeniceChangelogConsumerImplTest {
 
   @DataProvider
   public Object[][] swapSeekScanTypes() {
-    return new Object[][] { { false }, { true } };
+    return new Object[][] { { false, false }, { true, false }, { true, true } };
   }
 
   @Test(dataProvider = "swapSeekScanTypes")
-  public void testUnsubscribeDuringOptimizedSwapScan(boolean recoverEOP) throws Exception {
+  public void testUnsubscribeDuringSwapScan(boolean enabled, boolean recoverEOP) throws Exception {
     PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
     CountDownLatch polling = new CountDownLatch(1);
     CountDownLatch releasePoll = new CountDownLatch(1);
     try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationEnabled(enabled);
       VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0, 1);
       PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
       PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(newTopic, 0);
@@ -2208,6 +2211,163 @@ public class VeniceChangelogConsumerImplTest {
       }
     } finally {
       releasePoll.countDown();
+    }
+  }
+
+  @DataProvider
+  public Object[][] swapSeekStartupUnsubscribes() {
+    return new Object[][] { { false, false, false }, { false, false, true }, { true, false, false },
+        { true, false, true }, { true, true, false }, { true, true, true } };
+  }
+
+  @Test(dataProvider = "swapSeekStartupUnsubscribes")
+  public void testUnsubscribeBeforeSwapScanStarts(boolean enabled, boolean recoverEOP, boolean removeAll)
+      throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    Lazy<PubSubConsumerAdapter> seekConsumer = Lazy.of(() -> helper);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(seekConsumer)) {
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationEnabled(enabled);
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0, 1);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(newTopic, 0);
+      PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(newTopic, 1);
+      when(helper.getPositionByTimestamp(any(), anyLong(), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(50));
+      when(helper.poll(anyLong())).thenReturn(
+          Collections.singletonMap(
+              p0,
+              Collections.singletonList(
+                  recoverEOP
+                      ? constructEndOfPushMessage(newTopic, 0, 20L)
+                      : swapRecord(newTopic, newTopic, 0, 50, 100_000L))));
+      CompletableFuture<Void> scan;
+      synchronized (seekConsumer) {
+        scan = recoverEOP
+            ? consumer.internalFindNewVersionEOPCheckpoints(state, state.getAssignedPartitions())
+            : findSwapCheckpoints(consumer, state);
+        consumer.unsubscribe(removeAll ? state.getAssignedPartitions() : Collections.singleton(1));
+      }
+      scan.get(5, TimeUnit.SECONDS);
+
+      verify(helper, never()).getPositionByTimestamp(eq(p1), anyLong(), any(Duration.class));
+      verify(helper, never()).subscribe(eq(p1), any());
+      verify(helper, never()).subscribe(eq(p1), any(), anyBoolean());
+      if (removeAll) {
+        verify(helper, never()).poll(anyLong());
+        verify(helper, never()).subscribe(any(), any());
+        verify(helper, never()).subscribe(any(), any(), anyBoolean());
+      } else if (recoverEOP) {
+        assertTrue(state.getPartitionsMissingEOP().isEmpty());
+      } else {
+        assertEquals(state.getFoundVersionSwapCheckpoints().keySet(), Collections.singleton(0));
+      }
+    }
+  }
+
+  @DataProvider
+  public Object[][] swapSeekLookupUnsubscribes() {
+    return new Object[][] { { false, false }, { true, false }, { true, true } };
+  }
+
+  @Test(dataProvider = "swapSeekLookupUnsubscribes")
+  public void testUnsubscribeDuringTimestampLookup(boolean removeCurrentPartition, boolean nullPosition)
+      throws Exception {
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    CountDownLatch lookingUp = new CountDownLatch(1);
+    CountDownLatch releaseLookup = new CountDownLatch(1);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0, 1);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(newTopic, 0);
+      PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(newTopic, 1);
+      when(helper.getPositionByTimestamp(eq(p0), anyLong(), any(Duration.class))).thenAnswer(ignored -> {
+        lookingUp.countDown();
+        assertTrue(releaseLookup.await(5, TimeUnit.SECONDS));
+        return nullPosition ? null : ApacheKafkaOffsetPosition.of(50);
+      });
+      when(helper.getPositionByTimestamp(eq(p1), anyLong(), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(50));
+      PubSubTopicPartition remaining = removeCurrentPartition ? p1 : p0;
+      PubSubTopicPartition removed = removeCurrentPartition ? p0 : p1;
+      when(helper.poll(anyLong())).thenReturn(
+          Collections.singletonMap(
+              remaining,
+              Collections.singletonList(swapRecord(newTopic, newTopic, remaining.getPartitionNumber(), 50, 100_000L))));
+
+      CompletableFuture<Void> scan = findSwapCheckpoints(consumer, state, new LinkedHashSet<>(Arrays.asList(0, 1)));
+      try {
+        assertTrue(lookingUp.await(5, TimeUnit.SECONDS));
+        consumer.unsubscribe(Collections.singleton(removed.getPartitionNumber()));
+      } finally {
+        releaseLookup.countDown();
+      }
+      scan.get(5, TimeUnit.SECONDS);
+
+      verify(helper, never()).subscribe(eq(removed), any());
+      verify(helper, never()).subscribe(eq(removed), any(), anyBoolean());
+      if (!removeCurrentPartition) {
+        verify(helper, never()).getPositionByTimestamp(eq(removed), anyLong(), any(Duration.class));
+      }
+      assertEquals(
+          state.getFoundVersionSwapCheckpoints().keySet(),
+          Collections.singleton(remaining.getPartitionNumber()));
+    } finally {
+      releaseLookup.countDown();
+    }
+  }
+
+  @DataProvider
+  public Object[][] swapSeekLookupTimeouts() {
+    return new Object[][] { { null, 900_000L, 60_000L, true }, { 250, 1_000L, 250L, true },
+        { 250, 100L, 100L, false } };
+  }
+
+  @Test(dataProvider = "swapSeekLookupTimeouts")
+  public void testTimestampLookupCapPreservesSharedBudget(
+      Integer apiTimeoutMs,
+      long searchTimeoutMs,
+      long expectedLookupTimeoutMs,
+      boolean remainingBudget) throws Exception {
+    if (apiTimeoutMs != null) {
+      changelogClientConfig.getConsumerProperties()
+          .setProperty(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, apiTimeoutMs.toString());
+    }
+    PubSubConsumerAdapter helper = mock(PubSubConsumerAdapter.class);
+    try (VeniceAfterImageConsumerImpl<String, Utf8> consumer = newOptimizedSwapConsumer(helper)) {
+      AtomicLong elapsedMs = new AtomicLong();
+      Time clock = mock(Time.class);
+      when(clock.getNanoseconds()).thenAnswer(ignored -> TimeUnit.MILLISECONDS.toNanos(elapsedMs.get()));
+      consumer.time = clock;
+      consumer.changelogClientConfig.setVersionSwapSeekOptimizationTimeoutInMs(searchTimeoutMs);
+      VersionSwapMessageState state = initializeSwapState(consumer, 100_000L, 0, 1);
+      PubSubTopic newTopic = pubSubTopicRepository.getTopic(state.getNewVersionTopic());
+      PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(newTopic, 0);
+      PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(newTopic, 1);
+      when(helper.getPositionByTimestamp(eq(p0), anyLong(), any(Duration.class))).thenAnswer(invocation -> {
+        Duration timeout = invocation.getArgument(2);
+        assertEquals(timeout.toMillis(), expectedLookupTimeoutMs);
+        elapsedMs.addAndGet(timeout.toMillis());
+        throw new PubSubOpTimeoutException("stalled partition lookup");
+      });
+      when(helper.getPositionByTimestamp(eq(p1), anyLong(), any(Duration.class)))
+          .thenReturn(ApacheKafkaOffsetPosition.of(50));
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> records = new HashMap<>();
+      records.put(p0, Collections.singletonList(swapRecord(newTopic, newTopic, 0, 40, 90_000L)));
+      records.put(p1, Collections.singletonList(swapRecord(newTopic, newTopic, 1, 50, 100_000L)));
+      when(helper.poll(anyLong())).thenReturn(records);
+
+      findSwapCheckpoints(consumer, state, new LinkedHashSet<>(Arrays.asList(0, 1))).get(5, TimeUnit.SECONDS);
+
+      assertEquals(state.getFoundVersionSwapCheckpoints().size(), 2);
+      verify(helper).subscribe(p0, PubSubSymbolicPosition.EARLIEST);
+      if (remainingBudget) {
+        verify(helper).getPositionByTimestamp(eq(p1), anyLong(), eq(Duration.ofMillis(expectedLookupTimeoutMs)));
+        verify(helper).subscribe(p1, ApacheKafkaOffsetPosition.of(50), true);
+        verify(helper, never()).subscribe(p1, PubSubSymbolicPosition.EARLIEST);
+      } else {
+        verify(helper, never()).getPositionByTimestamp(eq(p1), anyLong(), any(Duration.class));
+        verify(helper).subscribe(p1, PubSubSymbolicPosition.EARLIEST);
+      }
     }
   }
 
@@ -2357,6 +2517,11 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   private VeniceAfterImageConsumerImpl<String, Utf8> newOptimizedSwapConsumer(PubSubConsumerAdapter helper) {
+    return newOptimizedSwapConsumer(Lazy.of(() -> helper));
+  }
+
+  private VeniceAfterImageConsumerImpl<String, Utf8> newOptimizedSwapConsumer(
+      Lazy<PubSubConsumerAdapter> seekConsumer) {
     changelogClientConfig.setVersionSwapByControlMessageEnabled(true)
         .setClientRegionName("region1")
         .setTotalRegionCount(1)
@@ -2364,7 +2529,7 @@ public class VeniceChangelogConsumerImplTest {
     VeniceAfterImageConsumerImpl<String, Utf8> consumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
         mockPubSubConsumer,
-        Lazy.of(() -> helper),
+        seekConsumer,
         PubSubMessageDeserializer.createDefaultDeserializer(),
         veniceChangelogConsumerClientFactory);
     consumer.setStoreRepository(mockRepository);
@@ -2414,11 +2579,18 @@ public class VeniceChangelogConsumerImplTest {
   private CompletableFuture<Void> findSwapCheckpoints(
       VeniceAfterImageConsumerImpl<String, Utf8> consumer,
       VersionSwapMessageState state) {
+    return findSwapCheckpoints(consumer, state, state.getAssignedPartitions());
+  }
+
+  private CompletableFuture<Void> findSwapCheckpoints(
+      VeniceAfterImageConsumerImpl<String, Utf8> consumer,
+      VersionSwapMessageState state,
+      Set<Integer> partitions) {
     CompletableFuture<Void> future = consumer.internalFindNewVersionCheckpoints(
         state.getOldVersionTopic(),
         state.getNewVersionTopic(),
         state.getVersionSwapGenerationId(),
-        state.getAssignedPartitions());
+        partitions);
     state.setFindNewTopicCheckpointFuture(future, false);
     return future;
   }

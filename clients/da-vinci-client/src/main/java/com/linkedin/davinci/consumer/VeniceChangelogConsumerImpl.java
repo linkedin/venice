@@ -1229,15 +1229,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       PubSubTopicPartition pubSubTopicPartition,
       byte[] key,
       long timestamp,
-      PubSubPosition position) {
-    return handleControlMessage(controlMessage, pubSubTopicPartition, key, timestamp, position, timestamp);
-  }
-
-  protected boolean handleControlMessage(
-      ControlMessage controlMessage,
-      PubSubTopicPartition pubSubTopicPartition,
-      byte[] key,
-      long timestamp,
       PubSubPosition position,
       long pubSubTimestamp) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);

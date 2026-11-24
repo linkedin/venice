@@ -1,5 +1,8 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS;
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE;
+
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -16,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.time.Duration;
 import java.util.Collection;
@@ -39,6 +43,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
   // swap is produced to VT, then we should remove this as it's no longer needed.
   private final Lazy<PubSubConsumerAdapter> internalSeekConsumer;
+  private final long versionSwapSeekLookupTimeoutInMs;
   /*
    * Used to track if the version swap thread encountered an exception. If so, the exception will be reflected
    * in the next call to poll to prevent silent thread termination and fail the process.
@@ -74,6 +79,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory) {
     super(changelogClientConfig, consumer, pubSubMessageDeserializer, veniceChangelogConsumerClientFactory);
     internalSeekConsumer = seekConsumer;
+    versionSwapSeekLookupTimeoutInMs = new VeniceProperties(changelogClientConfig.getConsumerProperties())
+        .getInt(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS, PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE);
     versionSwapListener = new VersionSwapDataChangeListener<K, V>(
         this,
         storeRepository,
@@ -201,6 +208,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             state.getOrStartSeekTimeNs(time.getNanoseconds());
           }
           for (PubSubTopicPartition topicPartition: topicPartitionList) {
+            if (!isSwapPartitionAssigned(state, topicPartition)) {
+              versionSwapConsumedPerPartitionMap.remove(topicPartition.getPartitionNumber());
+              continue;
+            }
             if (!checkpoints.containsKey(topicPartition.getPartitionNumber())) {
               if (optimize && subscribeForOptimizedSwap(consumerAdapter, topicPartition, state)) {
                 optimizedPartitions.add(topicPartition);
@@ -220,13 +231,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             if (Thread.currentThread().isInterrupted()) {
               throw new VeniceException("Interrupted while finding version swap checkpoints");
             }
-            if (optimize) {
-              removeUnsubscribedSwapPartitions(consumerAdapter, state, versionSwapConsumedPerPartitionMap.keySet());
-              optimizedPartitions
-                  .removeIf(p -> !versionSwapConsumedPerPartitionMap.containsKey(p.getPartitionNumber()));
-              if (areAllTrue(versionSwapConsumedPerPartitionMap.values())) {
-                break;
-              }
+            removeUnsubscribedSwapPartitions(consumerAdapter, state, versionSwapConsumedPerPartitionMap.keySet());
+            optimizedPartitions.removeIf(p -> !versionSwapConsumedPerPartitionMap.containsKey(p.getPartitionNumber()));
+            if (areAllTrue(versionSwapConsumedPerPartitionMap.values())) {
+              break;
             }
             fallbackExpiredSwapSeek(consumerAdapter, optimizedPartitions, state);
             long pollTimeout =
@@ -245,12 +253,15 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               }
               throw e;
             }
+            removeUnsubscribedSwapPartitions(consumerAdapter, state, versionSwapConsumedPerPartitionMap.keySet());
+            optimizedPartitions.removeIf(p -> !versionSwapConsumedPerPartitionMap.containsKey(p.getPartitionNumber()));
             // A broker poll can overrun its timeout. Discard that batch for partitions we rewind.
             Set<PubSubTopicPartition> expiredPartitions =
                 fallbackExpiredSwapSeek(consumerAdapter, optimizedPartitions, state);
             for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: polledResults.entrySet()) {
               PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-              if (expiredPartitions.contains(pubSubTopicPartition)) {
+              if (expiredPartitions.contains(pubSubTopicPartition)
+                  || !state.isPartitionAssigned(pubSubTopicPartition.getPartitionNumber())) {
                 continue;
               }
               List<DefaultPubSubMessage> messageList = entry.getValue();
@@ -368,6 +379,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     }
   }
 
+  private boolean isSwapPartitionAssigned(VersionSwapMessageState state, PubSubTopicPartition partition) {
+    if (state.isPartitionAssigned(partition.getPartitionNumber())) {
+      return true;
+    }
+    LOGGER.info(
+        "Skipping checkpoint search for version swap generation {} in {} because the partition was unsubscribed",
+        state.getVersionSwapGenerationId(),
+        partition);
+    return false;
+  }
+
   private long swapSeekTimestamp(VersionSwapMessageState state) {
     long timestamp = state.getTriggeringMessageTimestamp();
     return timestamp <= 0
@@ -393,18 +415,20 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     }
     long timestamp = swapSeekTimestamp(state);
     long remainingMs = remainingSwapSeekTimeMs(state);
+    long lookupTimeoutMs = Math.min(versionSwapSeekLookupTimeoutInMs, remainingMs);
     LOGGER.info(
-        "Looking up timestamp for version swap generation {} from {} to {}: targetTimestampMs={}, triggerTimestampMs={}, bufferMs={}, remainingBudgetMs={}",
+        "Looking up timestamp for version swap generation {} from {} to {}: targetTimestampMs={}, triggerTimestampMs={}, bufferMs={}, remainingBudgetMs={}, lookupTimeoutMs={}",
         state.getVersionSwapGenerationId(),
         state.getOldVersionTopic(),
         partition,
         timestamp,
         state.getTriggeringMessageTimestamp(),
         changelogClientConfig.getVersionSwapSeekOptimizationBufferInMs(),
-        remainingMs);
+        remainingMs,
+        lookupTimeoutMs);
     PubSubPosition position;
     try {
-      position = consumer.getPositionByTimestamp(partition, timestamp, Duration.ofMillis(Math.max(1, remainingMs)));
+      position = consumer.getPositionByTimestamp(partition, timestamp, Duration.ofMillis(lookupTimeoutMs));
     } catch (PubSubOpTimeoutException e) {
       fallbackSwapSeek(consumer, partition, state, "timestamp lookup timed out", e);
       return false;
@@ -416,6 +440,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           timestamp,
           e);
       throw e;
+    }
+    if (!isSwapPartitionAssigned(state, partition)) {
+      return false;
     }
     if (remainingSwapSeekTimeMs(state) == 0) {
       fallbackSwapSeek(consumer, partition, state, "timestamp search deadline expired during lookup");
@@ -460,6 +487,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       VersionSwapMessageState state,
       String reason,
       Throwable cause) {
+    if (!isSwapPartitionAssigned(state, partition)) {
+      return;
+    }
     state.markSeekFallback(partition.getPartitionNumber());
     LOGGER.warn(
         "Falling back to EARLIEST for version swap generation {} from {} to {}: {}; targetTimestampMs={}, triggerTimestampMs={}, bufferMs={}, searchTimeoutMs={}, remainingBudgetMs={}",
@@ -474,7 +504,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         remainingSwapSeekTimeMs(state),
         cause);
     consumer.unSubscribe(partition);
-    consumer.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+    if (isSwapPartitionAssigned(state, partition)) {
+      consumer.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
+    }
   }
 
   @Override
@@ -490,6 +522,10 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             remaining,
             Collections.emptySet(),
             pubSubTopicRepository.getTopic(state.getNewVersionTopic()))) {
+          if (!isSwapPartitionAssigned(state, partition)) {
+            remaining.remove(partition.getPartitionNumber());
+            continue;
+          }
           LOGGER.info("Recovering EOP from EARLIEST for timed-out version swap in {}", partition);
           consumer.subscribe(partition, PubSubSymbolicPosition.EARLIEST);
         }
@@ -502,6 +538,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             break;
           }
           for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: consumer.poll(5000L).entrySet()) {
+            if (!state.isPartitionAssigned(entry.getKey().getPartitionNumber())) {
+              continue;
+            }
             for (DefaultPubSubMessage message: entry.getValue()) {
               if (message.getKey().isControlMessage() && ControlMessageType
                   .valueOf((ControlMessage) message.getValue().getPayloadUnion()) == ControlMessageType.END_OF_PUSH) {
