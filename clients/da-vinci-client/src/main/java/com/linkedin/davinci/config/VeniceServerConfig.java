@@ -150,6 +150,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHE
 import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_INTERNAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INACTIVE_TOPIC_PARTITION_CHECKER_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INCREMENTAL_PUSH_STATUS_WRITE_MODE;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DIAGNOSTICS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_INFO_LOG_LINE_LIMIT;
@@ -610,6 +611,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableLiveConfigBasedKafkaThrottling;
 
   private final boolean serverIngestionCheckpointDuringGracefulShutdownEnabled;
+  private final boolean ingestionCheckpointDiagnosticsEnabled;
   private final long shutdownSyncOffsetTimeoutMs;
   private final long drainTimeoutMs;
   private final long shutdownPartitionStateTimeoutMs;
@@ -1161,6 +1163,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      */
     serverIngestionCheckpointDuringGracefulShutdownEnabled =
         serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
+    ingestionCheckpointDiagnosticsEnabled =
+        serverProperties.getBoolean(SERVER_INGESTION_CHECKPOINT_DIAGNOSTICS_ENABLED, false);
     shutdownSyncOffsetTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS, 2000);
     drainTimeoutMs = serverProperties.getLong(SERVER_DRAIN_TIMEOUT_MS, 2000);
     shutdownPartitionStateTimeoutMs = serverProperties.getLong(SERVER_SHUTDOWN_PARTITION_STATE_TIMEOUT_MS, 5000);
@@ -1968,6 +1972,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isServerIngestionCheckpointDuringGracefulShutdownEnabled() {
     return serverIngestionCheckpointDuringGracefulShutdownEnabled;
+  }
+
+  public boolean isIngestionCheckpointDiagnosticsEnabled() {
+    return ingestionCheckpointDiagnosticsEnabled;
   }
 
   public long getShutdownSyncOffsetTimeoutMs() {

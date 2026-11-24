@@ -7049,6 +7049,77 @@ public abstract class StoreIngestionTaskTest {
     shutdownExecutor.shutdown();
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testShutdownDiagnosticsOnlyObserveMetadataAfterSuccessfulPut(boolean failPut) throws Exception {
+    Map<String, Object> properties = new HashMap<>();
+    properties.put(SERVER_INGESTION_CHECKPOINT_DURING_GRACEFUL_SHUTDOWN_ENABLED, true);
+    properties.put(com.linkedin.venice.ConfigKeys.SERVER_INGESTION_CHECKPOINT_DIAGNOSTICS_ENABLED, true);
+    properties.put(com.linkedin.venice.ConfigKeys.SERVER_PARALLEL_RESOURCE_SHUTDOWN_ENABLED, false);
+    properties.put(com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_SYNC_OFFSET_TIMEOUT_MS, 0);
+    StoreIngestionTaskFactory factory = getIngestionTaskFactoryBuilder(
+        new RandomPollStrategy(),
+        Utils.setOf(PARTITION_FOO),
+        Optional.empty(),
+        properties,
+        false,
+        null,
+        null,
+        mockStorageService).build();
+    MockStoreVersionConfigs configs =
+        setupStoreAndVersionMocks(PARTITION_COUNT, new PartitionerConfigImpl(), Optional.empty(), false, false, AA_OFF);
+    StoreIngestionTask task = spy(
+        factory.getNewIngestionTask(
+            mockStorageService,
+            configs.store,
+            configs.version,
+            new Properties(),
+            isCurrentVersion,
+            configs.storeVersionConfig,
+            PARTITION_FOO,
+            Optional.empty(),
+            null,
+            null));
+    OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer(), pubSubContext);
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(PARTITION_FOO).when(pcs).getPartition();
+    doReturn(fooTopicPartition).when(pcs).getReplicaTopicPartition();
+    doReturn(record).when(pcs).getOffsetRecord();
+    task.setPartitionConsumptionState(PARTITION_FOO, pcs);
+    doNothing().when(task).consumerBatchUnsubscribeAllTopics();
+    doNothing().when(task).waitForAllMessageToBeProcessedFromTopicPartition(any(), any());
+    doNothing().when(task).updateOffsetMetadataInOffsetRecord(any());
+    doReturn(123L).when(task).measureHybridHeartbeatTimestamp(any(), anyBoolean());
+    doReturn(Collections.emptyMap()).when(mockAbstractStorageEngine).sync(PARTITION_FOO);
+    StoreBufferService buffer = mock(StoreBufferService.class);
+    doReturn(buffer).when(task).getStoreBufferService();
+    doAnswer(invocation -> {
+      task.updateOffsetMetadataAndSync(PARTITION_FOO);
+      return new CompletableFuture<Void>();
+    }).when(buffer).execSyncOffsetCommandAsync(any(), any());
+
+    try (ShutdownCheckpointDiagnosticsTest.Logs logs =
+        new ShutdownCheckpointDiagnosticsTest.Logs(StoreIngestionTask.class)) {
+      doAnswer(invocation -> {
+        assertTrue(logs.diagnostics().isEmpty(), "Do not log a mutable snapshot before persistence");
+        if (failPut) {
+          throw new VeniceException("test metadata write failure");
+        }
+        return null;
+      }).when(mockStorageMetadataService).put(eq(topic), eq(PARTITION_FOO), any());
+      if (failPut) {
+        assertThrows(VeniceException.class, task::shutdownPartitionConsumptionStates);
+        assertTrue(logs.diagnostics().get(1).contains("observedPersistedHeartbeat/checkpoint=unavailable"));
+      } else {
+        task.shutdownPartitionConsumptionStates();
+        assertTrue(
+            logs.diagnostics()
+                .get(1)
+                .contains("observedPersistedHeartbeat/checkpoint=123/" + record.getLastCheckpointTimestamp()));
+      }
+      assertTrue(logs.diagnostics().get(0).contains("commandCompleted=0, skipped=0, unfinished=1"));
+    }
+  }
+
   /**
    * With Global RT DIV enabled, the graceful-shutdown path must drive {@link StoreIngestionTask#flushGlobalRtDivCheckpoint}
    * (instead of the drainer SYNC_OFFSET command). Crucially, it must drain the produce frontier
