@@ -2453,6 +2453,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           case SUBSCRIBE:
             pendingSubscriptionActionCount.decrementAndGet();
           default:
+            if (isReplicaDropUnsubscribe(message)) {
+              message.getFuture()
+                  .completeExceptionally(new VeniceException("Ingestion task closed before completing " + message));
+            }
             LOGGER.info("Ignore and cleanup the Message: {} Replica: {}", message, replica);
             break;
         }
@@ -2531,7 +2535,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             action,
             LatencyUtils.getElapsedTimeFromMsToMs(action.getCreateTimestampInMs()));
         action.incrementAttempt();
+        boolean replicaDrop = isReplicaDropUnsubscribe(action);
+        if (replicaDrop && action.getReplicaDropUnsubscribeTopics() == null && action.getAttemptsCount() == 1
+            && consumerActionsQueue.size() > 1) {
+          tryBatchReplicaDropUnsubscribe(action);
+        }
         processConsumerAction(action, store);
+        if (replicaDrop && Thread.interrupted()) {
+          throw new InterruptedException("Interrupted before acknowledging " + action);
+        }
         action.getFuture().complete(null);
         // Remove the action that is processed recently (not necessarily the head of consumerActionsQueue).
         if (consumerActionsQueue.remove(action)) {
@@ -2557,6 +2569,78 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     versionedIngestionStats.recordConsumerActionTime(storeName, versionNumber, actionLatency);
     if (isEmitTehutiMetricsEnabled()) {
       hostLevelIngestionStats.recordProcessConsumerActionLatency(actionLatency);
+    }
+  }
+
+  private boolean isReplicaDropUnsubscribe(ConsumerAction action) {
+    return action.getType() == UNSUBSCRIBE && action.isHelixTriggeredAction() && !isDaVinciClient
+        && serverConfig.isReplicaDropBatchUnsubscribeEnabled();
+  }
+
+  static List<ConsumerAction> getReplicaDropUnsubscribeBatch(Collection<ConsumerAction> queue, ConsumerAction head) {
+    ConsumerAction[] ordered = queue.toArray(new ConsumerAction[0]);
+    // The priority queue's iteration order is not its execution order.
+    Arrays.sort(ordered);
+    if (ordered.length == 0 || ordered[0] != head) {
+      return Collections.emptyList();
+    }
+    List<ConsumerAction> batch = new ArrayList<>();
+    Set<Integer> partitions = new HashSet<>();
+    for (ConsumerAction action: ordered) {
+      if (action.getType() != UNSUBSCRIBE || !action.isHelixTriggeredAction()
+          || !partitions.add(action.getPartition())) {
+        break;
+      }
+      batch.add(action);
+    }
+    return batch;
+  }
+
+  private void tryBatchReplicaDropUnsubscribe(ConsumerAction head) throws InterruptedException {
+    List<ConsumerAction> batch = getReplicaDropUnsubscribeBatch(consumerActionsQueue, head);
+    if (batch.size() < 2) {
+      return;
+    }
+    try {
+      Set<PubSubTopicPartition> topics = new HashSet<>();
+      for (ConsumerAction action: batch) {
+        topics.addAll(prepareReplicaDropUnsubscribe(action));
+      }
+      if (!topics.isEmpty()) {
+        aggKafkaConsumerService.batchUnsubscribeForReplicaDrop(versionTopic, topics);
+      }
+      batch.forEach(action -> action.setReplicaDropUnsubscribeTopics(Collections.emptySet()));
+    } catch (RuntimeException e) {
+      // Unfinished assignments remain discoverable by the strict detach path. Retry in queue order to isolate failures.
+      LOGGER.warn("Batch detach failed for {}; processing replica drops individually", versionTopic, e);
+    }
+  }
+
+  private Set<PubSubTopicPartition> prepareReplicaDropUnsubscribe(ConsumerAction action) {
+    Set<PubSubTopicPartition> topics = action.getReplicaDropUnsubscribeTopics();
+    if (topics != null) {
+      return topics;
+    }
+
+    PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
+    topics = new HashSet<>();
+    if (state != null) {
+      preparePartitionUnsubscribe(state);
+      forEachSubscribedTopicPartition(state, topics::add);
+    }
+    action.setReplicaDropUnsubscribeTopics(topics);
+    return topics;
+  }
+
+  private void preparePartitionUnsubscribe(PartitionConsumptionState state) {
+    if (state != null) {
+      if (blobTransferHelper != null
+          && blobTransferHelper.shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
+        blobTransferHelper.requestPendingBlobTransferCancellation(state);
+      }
+      // A completed recovery result must not resubscribe a partition being dropped.
+      state.setPendingRecordTransformerRecovery(null);
+      state.setPostRecordTransformerConsumerAction(null);
     }
   }
 
@@ -2749,23 +2833,23 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case UNSUBSCRIBE:
         LOGGER.info("{} Unsubscribing to: {}", ingestionTaskName, topicPartition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
-        forceUnSubscribedCount--;
-        subscribedCount--;
-
-        // Cancel any pending blob transfer before unsubscribing
-        if (consumptionState != null && blobTransferHelper != null && blobTransferHelper
-            .shouldEnableBlobTransfer(storeRepository.getStoreOrThrow(storeName), isDaVinciClient)) {
-          blobTransferHelper.requestPendingBlobTransferCancellation(consumptionState);
-        }
-        // Clear any pending record transformer recovery — the thread pool task will complete
-        // but its result will be ignored since the PCS is being unsubscribed.
-        if (consumptionState != null) {
-          consumptionState.setPendingRecordTransformerRecovery(null);
-          consumptionState.setPostRecordTransformerConsumerAction(null);
-        }
-
-        if (consumptionState != null) {
-          consumerUnSubscribeAllTopics(consumptionState);
+        boolean replicaDrop = isReplicaDropUnsubscribe(consumerAction);
+        if (replicaDrop) {
+          Set<PubSubTopicPartition> topics = prepareReplicaDropUnsubscribe(consumerAction);
+          if (!topics.isEmpty()) {
+            aggKafkaConsumerService.batchUnsubscribeForReplicaDrop(versionTopic, topics);
+            consumerAction.setReplicaDropUnsubscribeTopics(Collections.emptySet());
+          }
+          if (consumptionState != null) {
+            closePartitionWriter(consumptionState);
+          }
+        } else {
+          forceUnSubscribedCount--;
+          subscribedCount--;
+          preparePartitionUnsubscribe(consumptionState);
+          if (consumptionState != null) {
+            consumerUnSubscribeAllTopics(consumptionState);
+          }
         }
         /**
          * The subscribed flag is turned off, so that drainer thread will skip messages for this partition.
@@ -2825,6 +2909,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // happens due to internal errors.
         if (consumerAction.isHelixTriggeredAction()) {
           failedPartitions.remove(partition);
+        }
+        if (replicaDrop) {
+          forceUnSubscribedCount--;
+          subscribedCount--;
         }
         break;
       case RESET_OFFSET:
@@ -5025,6 +5113,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public abstract void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState);
+
+  protected abstract void forEachSubscribedTopicPartition(
+      PartitionConsumptionState state,
+      Consumer<PubSubTopicPartition> consumer);
+
+  protected static void closePartitionWriter(PartitionConsumptionState state) {
+    if (state.getVeniceWriterLazyRef() != null) {
+      int partition = state.getPartition();
+      state.getVeniceWriterLazyRef().ifPresent(writer -> writer.closePartition(partition));
+    }
+  }
 
   /**
    * Batch-unsubscribes all partitions from shared Kafka consumers at once. Called in

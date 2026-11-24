@@ -210,6 +210,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BO
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_TIMESTAMP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_REPLICA_DROP_BATCH_UNSUBSCRIBE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REQUIRE_LEADER_COMPLETE_FOR_CATCH_UP_VT_RTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESTORE_DROP_BAD_PARTITION_ENABLED;
@@ -473,6 +474,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean backupVersionGracefulDropEnabled;
 
   private final int stopConsumptionTimeoutInSeconds;
+  private final boolean replicaDropBatchUnsubscribeEnabled;
   private final long leakedResourceCleanUpIntervalInMS;
 
   private final boolean quotaEnforcementEnabled;
@@ -1006,6 +1008,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30);
     backupVersionGracefulDropEnabled = serverProperties.getBoolean(SERVER_BACKUP_VERSION_GRACEFUL_DROP_ENABLED, true);
     stopConsumptionTimeoutInSeconds = serverProperties.getInt(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, 180);
+    replicaDropBatchUnsubscribeEnabled =
+        serverProperties.getBoolean(SERVER_REPLICA_DROP_BATCH_UNSUBSCRIBE_ENABLED, false);
     leakedResourceCleanUpIntervalInMS =
         TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10));
     quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
@@ -1683,6 +1687,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getStopConsumptionTimeoutInSeconds() {
     return stopConsumptionTimeoutInSeconds;
+  }
+
+  public boolean isReplicaDropBatchUnsubscribeEnabled() {
+    return replicaDropBatchUnsubscribeEnabled;
   }
 
   public long getLeakedResourceCleanUpIntervalInMS() {

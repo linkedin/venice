@@ -7,6 +7,7 @@ import static org.testng.Assert.assertNotEquals;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -72,6 +73,22 @@ public class ConsumerActionTest {
                   + "an action with smaller sequence number somehow ends up at the back of the queue.");
         }
       }
+    }
+  }
+
+  @Test
+  public void testReplicaDropBatchStopsAtDuplicatePartitionOrDifferentAction() {
+    PubSubTopicPartition firstPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("replica_drop_store_v1"), 0);
+    PubSubTopicPartition secondPartition = new PubSubTopicPartitionImpl(firstPartition.getPubSubTopic(), 1);
+    ConsumerAction first = new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, firstPartition, 1, true);
+    ConsumerAction second = new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, secondPartition, 2, true);
+    ConsumerAction later = new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, secondPartition, 4, true);
+    for (ConsumerActionType type: Arrays.asList(ConsumerActionType.UNSUBSCRIBE, ConsumerActionType.SUBSCRIBE)) {
+      ConsumerAction boundary = new ConsumerAction(type, firstPartition, 3, true);
+      assertEquals(
+          StoreIngestionTask.getReplicaDropUnsubscribeBatch(Arrays.asList(first, later, boundary, second), first),
+          Arrays.asList(first, second));
     }
   }
 

@@ -205,6 +205,31 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     }, DEFAULT_MAX_WAIT_MS);
   }
 
+  synchronized void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
+      throws InterruptedException {
+    if (Thread.interrupted()) {
+      throw new InterruptedException("Interrupted before detaching replica-drop subscriptions");
+    }
+    for (PubSubTopicPartition topicPartition: topicPartitions) {
+      PubSubTopic owner = subscribedTopicPartitionToVersionTopic.get(topicPartition);
+      if (owner != null && !versionTopic.equals(owner)) {
+        throw new VeniceException("Cannot detach " + topicPartition + " for " + versionTopic + "; owned by " + owner);
+      }
+    }
+    long pollsBeforeDetach = pollTimes;
+    delegate.batchUnsubscribe(topicPartitions);
+    updateCurrentAssignment(delegate.getAssignment());
+    if (!awaitNextPoll(pollsBeforeDetach, topicPartitions, DEFAULT_MAX_WAIT_MS)) {
+      throw new VeniceException(
+          "Timed out waiting for poll after detaching replica-drop subscriptions: " + topicPartitions);
+    }
+    for (PubSubTopicPartition topicPartition: topicPartitions) {
+      if (subscribedTopicPartitionToVersionTopic.remove(topicPartition, versionTopic)) {
+        unsubscriptionListener.call(this, versionTopic, topicPartition);
+      }
+    }
+  }
+
   /**
    * This function encapsulates the logging, bookkeeping and required waiting period surrounding the action of
    * unsubscribing some partition(s).
@@ -230,42 +255,44 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       long currentPollTimes,
       Set<PubSubTopicPartition> topicPartitions,
       long timeoutMs) {
+    try {
+      awaitNextPoll(currentPollTimes, topicPartitions, timeoutMs);
+    } catch (InterruptedException e) {
+      LOGGER.info("Wait for poll request in `unsubscribe` function got interrupted.");
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private boolean awaitNextPoll(long currentPollTimes, Set<PubSubTopicPartition> topicPartitions, long timeoutMs)
+      throws InterruptedException {
     // This clause is only for unit test purposes, for when the timeout needs to be set to 0.
     if (timeoutMsOverride != -1) {
       timeoutMs = timeoutMsOverride;
     }
 
-    currentPollTimes++;
+    long nextPoll = currentPollTimes + 1;
     waitingForPoll.set(true);
-    // Wait for the next poll or maximum 10 seconds. Interestingly wait api does not provide any indication if wait
-    // returned
-    // due to timeout. So an explicit time check is necessary.
     final long startTimeMs = time.getMilliseconds();
     final long endTimeMs = startTimeMs + timeoutMs;
-    try {
-      while (currentPollTimes > pollTimes) {
-        final long waitMs = endTimeMs - time.getMilliseconds();
-        if (waitMs <= 0) {
-          LOGGER.warn(
-              "Wait for poll request after unsubscribe topic partition(s) ({}) timed out after {} seconds",
-              topicPartitions,
-              TimeUnit.MILLISECONDS.toSeconds(timeoutMs));
-          break;
-        }
-        wait(waitMs);
-      }
-      final long elapsedSeconds = TimeUnit.MILLISECONDS.toSeconds(getElapsedTimeFromMsToMs(startTimeMs));
-      if (elapsedSeconds > 15) {
+    while (pollTimes < nextPoll) {
+      final long waitMs = endTimeMs - time.getMilliseconds();
+      if (waitMs <= 0) {
         LOGGER.warn(
-            "Wait for poll request after unsubscribe topic partition(s) ({}) took {} seconds",
+            "Wait for poll request after unsubscribe topic partition(s) ({}) timed out after {} seconds",
             topicPartitions,
-            elapsedSeconds);
+            TimeUnit.MILLISECONDS.toSeconds(timeoutMs));
+        break;
       }
-      // no action to take actually, just return;
-    } catch (InterruptedException e) {
-      LOGGER.info("Wait for poll request in `unsubscribe` function got interrupted.");
-      Thread.currentThread().interrupt();
+      wait(waitMs);
     }
+    final long elapsedSeconds = TimeUnit.MILLISECONDS.toSeconds(getElapsedTimeFromMsToMs(startTimeMs));
+    if (elapsedSeconds > 15) {
+      LOGGER.warn(
+          "Wait for poll request after unsubscribe topic partition(s) ({}) took {} seconds",
+          topicPartitions,
+          elapsedSeconds);
+    }
+    return pollTimes >= nextPoll;
   }
 
   // Only for testing.

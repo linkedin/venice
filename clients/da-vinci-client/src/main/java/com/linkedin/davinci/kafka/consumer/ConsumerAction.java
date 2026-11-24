@@ -6,6 +6,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import io.tehuti.utils.Utils;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -20,6 +21,8 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private final PubSubTopicPartition topicPartition;
   private final int sequenceNumber;
   private PubSubPosition pubSubPosition;
+  // Keep the original selection across partial detach failures, including separate RT after RT is detached.
+  private Set<PubSubTopicPartition> replicaDropUnsubscribeTopics;
   private final LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker;
 
   private int attempts = 0;
@@ -100,6 +103,14 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public boolean isHelixTriggeredAction() {
     return isHelixTriggeredAction;
+  }
+
+  Set<PubSubTopicPartition> getReplicaDropUnsubscribeTopics() {
+    return replicaDropUnsubscribeTopics;
+  }
+
+  void setReplicaDropUnsubscribeTopics(Set<PubSubTopicPartition> topics) {
+    replicaDropUnsubscribeTopics = topics;
   }
 
   @Override

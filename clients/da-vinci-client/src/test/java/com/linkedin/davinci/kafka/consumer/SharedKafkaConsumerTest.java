@@ -1,13 +1,16 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -15,6 +18,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SystemTime;
 import java.util.Collections;
 import java.util.HashMap;
@@ -100,5 +104,33 @@ public class SharedKafkaConsumerTest {
     // This is to test that if the poll time is not incremented when the consumer is unsubscribed the correct log can
     // be found in the logs.
     Assert.assertEquals(pollTimesBeforeUnsubscribe, sharedKafkaConsumer.getPollTimes());
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testReplicaDropCannotCompleteWithoutNextPoll(boolean interruptAtPollBarrier) {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("replica_drop_store_v1");
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    Set<PubSubTopicPartition> partitions = Collections.singleton(partition);
+    SharedKafkaConsumer.UnsubscriptionListener listener = mock(SharedKafkaConsumer.UnsubscriptionListener.class);
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, () -> {}, listener, "test", 0);
+    when(consumer.getAssignment()).thenReturn(partitions, Collections.emptySet());
+    sharedConsumer.subscribe(versionTopic, partition, PubSubSymbolicPosition.EARLIEST, false);
+    if (interruptAtPollBarrier) {
+      doAnswer(invocation -> {
+        Thread.currentThread().interrupt();
+        return null;
+      }).when(consumer).batchUnsubscribe(partitions);
+    } else {
+      sharedConsumer.setTimeoutMsOverride(0);
+    }
+
+    Class<? extends Exception> expected = interruptAtPollBarrier ? InterruptedException.class : VeniceException.class;
+    try {
+      Assert.assertThrows(expected, () -> sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions));
+      verify(consumer).batchUnsubscribe(partitions);
+      verify(listener, never()).call(sharedConsumer, versionTopic, partition);
+    } finally {
+      Thread.interrupted();
+    }
   }
 }

@@ -1282,6 +1282,10 @@ public class ConfigKeys {
    */
   public static final String SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS = "server.stop.consumption.timeout.in.seconds";
 
+  /** Opt-in trial: coalesce consecutive Helix replica-drop unsubscribes within an ingestion task. */
+  public static final String SERVER_REPLICA_DROP_BATCH_UNSUBSCRIBE_ENABLED =
+      "server.replica.drop.batch.unsubscribe.enabled";
+
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED =
       "server.db.read.only.for.batch.only.store.enabled";
   public static final String SERVER_RESET_ERROR_REPLICA_ENABLED = "server.reset.error.replica.enabled";

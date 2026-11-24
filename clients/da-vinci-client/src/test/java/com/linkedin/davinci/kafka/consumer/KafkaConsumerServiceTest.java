@@ -10,6 +10,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -19,6 +20,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
@@ -753,6 +755,26 @@ public class KafkaConsumerServiceTest {
     Assert.assertThrows(
         RejectedExecutionException.class,
         () -> service.batchUnsubscribe(versionTopic, Collections.singleton(tp)));
+  }
+
+  @Test
+  public void testReplicaDropBatchRetainsAssignmentsUntilDetachSucceeds() throws InterruptedException {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("replica_drop_store_v1");
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(versionTopic, 0);
+    Set<PubSubTopicPartition> partitions = Collections.singleton(partition);
+    SharedKafkaConsumer consumer = mock(SharedKafkaConsumer.class);
+    KafkaConsumerService service =
+        createServiceWithConsumers(Collections.singletonMap(consumer, partitions), versionTopic);
+    doThrow(new VeniceException("poll barrier failed")).doNothing()
+        .when(consumer)
+        .batchUnsubscribeForReplicaDrop(versionTopic, partitions);
+
+    Assert.assertThrows(VeniceException.class, () -> service.batchUnsubscribeForReplicaDrop(versionTopic, partitions));
+    Assert.assertSame(service.getConsumerAssignedToVersionTopicPartition(versionTopic, partition), consumer);
+
+    service.batchUnsubscribeForReplicaDrop(versionTopic, partitions);
+    verify(consumer, times(2)).batchUnsubscribeForReplicaDrop(versionTopic, partitions);
+    Assert.assertNull(service.getConsumerAssignedToVersionTopicPartition(versionTopic, partition));
   }
 
   private KafkaConsumerService createServiceWithConsumers(

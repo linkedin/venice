@@ -143,6 +143,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -4116,6 +4117,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
+    forEachSubscribedTopicPartition(
+        partitionConsumptionState,
+        topicPartition -> aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, topicPartition));
+    closePartitionWriter(partitionConsumptionState);
+  }
+
+  @Override
+  protected void forEachSubscribedTopicPartition(
+      PartitionConsumptionState partitionConsumptionState,
+      Consumer<PubSubTopicPartition> consumer) {
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
 
@@ -4124,27 +4135,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // currently subscribed; consumerHasSubscription() avoids redundant work when a topic isn't
     // attached.
     if (consumerHasSubscription(versionTopic, partitionConsumptionState)) {
-      aggKafkaConsumerService
-          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partitionId));
+      consumer.accept(new PubSubTopicPartitionImpl(versionTopic, partitionId));
     }
     if (leaderTopic != null && !leaderTopic.equals(versionTopic)
         && consumerHasSubscription(leaderTopic, partitionConsumptionState)) {
-      aggKafkaConsumerService
-          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(leaderTopic, partitionId));
+      consumer.accept(new PubSubTopicPartitionImpl(leaderTopic, partitionId));
       // Gate sep-RT unsubscribe on actual subscription to avoid WARN spam from the consumer
       // delegator when sep-RT isn't currently attached (common during transitions).
       if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime() && separateRealTimeTopic != null
           && consumerHasSubscription(separateRealTimeTopic, partitionConsumptionState)) {
-        aggKafkaConsumerService
-            .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
+        consumer.accept(new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
       }
-    }
-
-    /**
-     * Leader of the user partition should close all subPartitions it is producing to.
-     */
-    if (partitionConsumptionState.getVeniceWriterLazyRef() != null) {
-      partitionConsumptionState.getVeniceWriterLazyRef().ifPresent(vw -> vw.closePartition(partitionId));
     }
   }
 

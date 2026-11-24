@@ -511,6 +511,13 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
+  void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
+      throws InterruptedException {
+    for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
+      consumerService.batchUnsubscribeForReplicaDrop(versionTopic, topicPartitions);
+    }
+  }
+
   public ConsumedDataReceiver<List<DefaultPubSubMessage>> subscribeConsumerFor(
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,

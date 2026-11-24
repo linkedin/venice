@@ -331,17 +331,9 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
   @Override
   public void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
-    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
-    SharedKafkaConsumer consumer;
-    for (PubSubTopicPartition topicPartition: topicPartitionsToUnSub) {
-      consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
-      if (consumer != null) {
-        Set<PubSubTopicPartition> topicPartitionSet =
-            consumerUnSubTopicPartitionSet.computeIfAbsent(consumer, k -> new HashSet<>());
-        topicPartitionSet.add(topicPartition);
-      }
-      consumerPollTracker.removeTopicPartition(topicPartition);
-    }
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet =
+        groupByAssignedConsumer(versionTopic, topicPartitionsToUnSub);
+    topicPartitionsToUnSub.forEach(consumerPollTracker::removeTopicPartition);
     /**
      * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
      * Per-consumer locks are independent, so unsubscriptions on different SharedKafkaConsumers run
@@ -384,6 +376,51 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     } catch (ExecutionException e) {
       futures.forEach(f -> f.cancel(true));
       LOGGER.error("Batch unsubscribe for {} failed", versionTopic, e);
+    }
+  }
+
+  private Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> groupByAssignedConsumer(
+      PubSubTopic versionTopic,
+      Set<PubSubTopicPartition> topicPartitions) {
+    Map<SharedKafkaConsumer, Set<PubSubTopicPartition>> groups = new HashMap<>();
+    for (PubSubTopicPartition topicPartition: topicPartitions) {
+      SharedKafkaConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
+      if (consumer != null) {
+        groups.computeIfAbsent(consumer, ignored -> new HashSet<>()).add(topicPartition);
+      }
+    }
+    return groups;
+  }
+
+  @Override
+  void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
+      throws InterruptedException {
+    // Keep this on the ingestion thread so failures and interrupts can't leave a detach running behind a retry.
+    for (Map.Entry<SharedKafkaConsumer, Set<PubSubTopicPartition>> group: groupByAssignedConsumer(
+        versionTopic,
+        topicPartitions).entrySet()) {
+      SharedKafkaConsumer consumer = group.getKey();
+      Set<PubSubTopicPartition> partitions = group.getValue();
+      ReentrantLock lock = consumerToLocks.get(consumer);
+      lock.lockInterruptibly();
+      try {
+        partitions
+            .removeIf(partition -> getConsumerAssignedToVersionTopicPartition(versionTopic, partition) != consumer);
+        if (partitions.isEmpty()) {
+          continue;
+        }
+        consumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions);
+        for (PubSubTopicPartition partition: partitions) {
+          removeTopicPartitionFromConsumptionTask(consumer, partition);
+          consumerPollTracker.removeTopicPartition(partition);
+        }
+        versionTopicToTopicPartitionToConsumer.computeIfPresent(versionTopic, (topic, assignments) -> {
+          partitions.forEach(partition -> assignments.remove(partition, consumer));
+          return assignments.isEmpty() ? null : assignments;
+        });
+      } finally {
+        lock.unlock();
+      }
     }
   }
 

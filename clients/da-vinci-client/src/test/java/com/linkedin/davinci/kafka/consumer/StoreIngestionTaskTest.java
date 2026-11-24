@@ -29,6 +29,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RECORD_LEVEL_METRICS_WHEN_BOOTSTRAPPING_CURRENT_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_CONSUMER_CONFIG_PREFIX;
+import static com.linkedin.venice.ConfigKeys.SERVER_REPLICA_DROP_BATCH_UNSUBSCRIBE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
@@ -2485,6 +2486,37 @@ public abstract class StoreIngestionTaskTest {
       storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition);
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).stopped(anyString(), anyInt(), any());
     }, aaConfig);
+  }
+
+  protected void verifyReplicaDropBurstSharesOneConsumerDetach() throws Exception {
+    Set<PubSubTopicPartition> partitions = Utils.setOf(fooTopicPartition, barTopicPartition);
+    List<CompletableFuture<Void>> drops = new ArrayList<>();
+    StoreIngestionTaskTestConfig config =
+        new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
+          CompletableFuture<Void> allDrops = CompletableFuture.allOf(drops.get(0), drops.get(1));
+          waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> assertTrue(allDrops.isDone()));
+          allDrops.join();
+          verify(mockLocalKafkaConsumer).batchUnsubscribe(partitions);
+          verify(mockLogNotifier).stopped(eq(topic), eq(PARTITION_FOO), any());
+          verify(mockLogNotifier).stopped(eq(topic), eq(PARTITION_BAR), any());
+        }, AAConfig.AA_OFF);
+    config.setExtraServerProperties(Collections.singletonMap(SERVER_REPLICA_DROP_BATCH_UNSUBSCRIBE_ENABLED, true));
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        doAnswer(invocation -> {
+          assertFalse(drops.get(0).isDone());
+          assertFalse(drops.get(1).isDone());
+          localKafkaConsumerService.batchUnsubscribeForReplicaDrop(pubSubTopic, invocation.getArgument(1));
+          return null;
+        }).when(aggKafkaConsumerService).batchUnsubscribeForReplicaDrop(eq(pubSubTopic), eq(partitions));
+      } catch (InterruptedException e) {
+        throw new AssertionError(e);
+      }
+      drops.add(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
+      drops.add(storeIngestionTaskUnderTest.unSubscribePartition(barTopicPartition));
+    });
+
+    runTest(config);
   }
 
   @Test(dataProvider = "aaConfigProvider")

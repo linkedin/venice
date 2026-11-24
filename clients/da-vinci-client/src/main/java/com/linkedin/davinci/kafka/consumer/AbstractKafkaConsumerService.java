@@ -28,6 +28,9 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
 
   public abstract void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub);
 
+  abstract void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
+      throws InterruptedException;
+
   public abstract boolean hasAnySubscriptionFor(PubSubTopic versionTopic);
 
   public abstract long getMaxElapsedTimeMSSinceLastPollInConsumerPool();
