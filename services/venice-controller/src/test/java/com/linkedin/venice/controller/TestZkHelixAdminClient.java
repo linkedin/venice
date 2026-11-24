@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_ADMIN_CLASS;
 import static com.linkedin.venice.controller.ZkHelixAdminClient.HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -12,15 +13,21 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -28,17 +35,24 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.controller.rebalancer.waged.WagedRebalancer;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.RESTConfig;
 import org.apache.helix.model.StateModelDefinition;
+import org.apache.helix.zookeeper.api.client.HelixZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.mockito.MockedStatic;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -48,6 +62,122 @@ public class TestZkHelixAdminClient {
   private ConfigAccessor mockHelixConfigAccessor;
   private VeniceControllerMultiClusterConfig mockMultiClusterConfigs;
   private static final String VENICE_CONTROLLER_CLUSTER = "venice-controller-cluster";
+
+  @Test
+  public void testDefaultAdminOwnsClientLifecycle() {
+    ZkClient zkClient = connectedZkClient();
+    ZkHelixAdminClient client = constructClient("", zkClient);
+    assertEquals(client.getHelixAdmin().getClass(), ZKHelixAdmin.class);
+    client.close();
+    verify(zkClient).close();
+  }
+
+  @Test
+  public void testConfiguredAdminReceivesClientAndConfiguration() {
+    ZkClient zkClient = connectedZkClient();
+    ZkHelixAdminClient client = constructClient(ConfiguredAdmin.class.getName(), zkClient);
+    assertSame(((ConfiguredAdmin) client.getHelixAdmin()).client, zkClient);
+    assertTrue(client.isVeniceControllerClusterCreated());
+    verify(zkClient).setZkSerializer(any(ZNRecordSerializer.class));
+    verify(zkClient).waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS);
+    client.close();
+    verify(zkClient).close();
+  }
+
+  @DataProvider
+  public Object[][] invalidAdminClasses() {
+    return new Object[][] { { "not.a.real.HelixAdmin", IllegalArgumentException.class },
+        { String.class.getName(), ClassCastException.class },
+        { ZKHelixAdmin.class.getName(), IllegalArgumentException.class },
+        { FailingAdmin.class.getName(), IllegalStateException.class } };
+  }
+
+  @Test(dataProvider = "invalidAdminClasses")
+  public void testInvalidAdminFailsWithoutDefaultFallback(String className, Class<?> causeType) {
+    ZkClient zkClient = connectedZkClient();
+    VeniceException failure = expectThrows(VeniceException.class, () -> constructClient(className, zkClient));
+    assertTrue(failure.getMessage().contains("Failed to create configured Helix admin: " + className));
+    assertEquals(failure.getCause().getClass(), causeType);
+    verify(zkClient).close();
+  }
+
+  @Test
+  public void testConflictingAdminClassesFailBeforeOpeningClient() {
+    VeniceControllerMultiClusterConfig configs = configsFor(ConfiguredAdmin.class.getName());
+    when(configs.getClusters()).thenReturn(Collections.singleton("other-cluster"));
+    VeniceControllerClusterConfig other = mock(VeniceControllerClusterConfig.class);
+    when(other.getProps()).thenReturn(new VeniceProperties());
+    when(configs.getControllerConfig("other-cluster")).thenReturn(other);
+    MetricsRepository metrics = new MetricsRepository();
+    try (MockedStatic<ZkClientFactory> factory = mockStatic(ZkClientFactory.class)) {
+      VeniceException failure = expectThrows(VeniceException.class, () -> new ZkHelixAdminClient(configs, metrics));
+      assertTrue(failure.getMessage().contains(CONTROLLER_HELIX_ADMIN_CLASS));
+      factory.verifyNoInteractions();
+    } finally {
+      metrics.close();
+    }
+  }
+
+  @Test
+  public void testCleanupFailureDoesNotHideInitializationFailure() {
+    ZkClient zkClient = connectedZkClient();
+    IllegalStateException closeFailure = new IllegalStateException("close failed");
+    doThrow(closeFailure).when(zkClient).close();
+    VeniceException failure =
+        expectThrows(VeniceException.class, () -> constructClient(FailingAdmin.class.getName(), zkClient));
+    assertEquals(failure.getCause().getMessage(), "initialization failed");
+    assertEquals(failure.getSuppressed(), new Throwable[] { closeFailure });
+  }
+
+  private static ZkClient connectedZkClient() {
+    ZkClient zkClient = mock(ZkClient.class);
+    when(zkClient.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)).thenReturn(true);
+    return zkClient;
+  }
+
+  private static VeniceControllerMultiClusterConfig configsFor(String className) {
+    VeniceControllerClusterConfig common = mock(VeniceControllerClusterConfig.class);
+    when(common.getProps())
+        .thenReturn(new VeniceProperties(Collections.singletonMap(CONTROLLER_HELIX_ADMIN_CLASS, className)));
+    VeniceControllerMultiClusterConfig configs = mock(VeniceControllerMultiClusterConfig.class);
+    when(configs.getCommonConfig()).thenReturn(common);
+    when(configs.getControllerClusterName()).thenReturn(VENICE_CONTROLLER_CLUSTER);
+    return configs;
+  }
+
+  private static ZkHelixAdminClient constructClient(String className, ZkClient zkClient) {
+    VeniceControllerMultiClusterConfig configs = configsFor(className);
+    MetricsRepository metrics = new MetricsRepository();
+    try (MockedStatic<ZkClientFactory> factory = mockStatic(ZkClientFactory.class)) {
+      factory.when(() -> ZkClientFactory.newZkClient(configs.getZkAddress())).thenReturn(zkClient);
+      return new ZkHelixAdminClient(configs, metrics);
+    } finally {
+      metrics.close();
+    }
+  }
+
+  public static class ConfiguredAdmin extends ZKHelixAdmin {
+    private final HelixZkClient client;
+    private final String controllerCluster;
+
+    public ConfiguredAdmin(HelixZkClient client, VeniceControllerMultiClusterConfig configs) {
+      super(client);
+      this.client = client;
+      this.controllerCluster = configs.getControllerClusterName();
+    }
+
+    @Override
+    public List<String> getClusters() {
+      return Collections.singletonList(controllerCluster);
+    }
+  }
+
+  public static class FailingAdmin extends ZKHelixAdmin {
+    public FailingAdmin(HelixZkClient client, VeniceControllerMultiClusterConfig configs) {
+      super(client);
+      throw new IllegalStateException("initialization failed");
+    }
+  }
 
   @BeforeMethod
   public void setUp() {

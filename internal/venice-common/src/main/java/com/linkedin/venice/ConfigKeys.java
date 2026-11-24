@@ -408,6 +408,13 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   // Name of the Helix cluster for controllers
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+  /**
+   * Optional HelixAdmin implementation, identical across clusters in a controller process.
+   * The class must have a public constructor accepting HelixZkClient and
+   * VeniceControllerMultiClusterConfig. Absent or empty uses the default ZKHelixAdmin.
+   * The supplied ZooKeeper client is owned and closed by Venice, not the implementation.
+   */
+  public static final String CONTROLLER_HELIX_ADMIN_CLASS = "controller.helix.admin.class";
   // What instance group tag to assign to a cluster resource
   public static final String CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG = "controller.resource.instance.group.tag";
   // What tags to assign to a controller instance
