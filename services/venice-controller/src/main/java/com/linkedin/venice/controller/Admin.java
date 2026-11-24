@@ -373,6 +373,12 @@ public interface Admin extends AutoCloseable, Closeable {
 
   boolean hasStore(String clusterName, String storeName);
 
+  /**
+   * Check authoritative regional metadata for the absence of both StoreConfig and Store metadata in every cluster.
+   * This check does not require leadership of the store's cluster; metadata lookup failures must propagate.
+   */
+  boolean isStoreMetadataAndConfigAbsent(String storeName);
+
   SchemaEntry getKeySchema(String clusterName, String storeName);
 
   Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName);

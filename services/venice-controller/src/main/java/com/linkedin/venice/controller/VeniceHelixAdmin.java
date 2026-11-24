@@ -10,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.common.PushStatusStoreUtils.CONTROLLER_HEARTBEAT_INSTANCE_NAME;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.exceptions.VeniceNoStoreException.DOES_NOT_EXISTS;
+import static com.linkedin.venice.helix.CachedReadOnlyStoreRepository.STORE_REPOSITORY_PATH;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
@@ -38,6 +39,7 @@ import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLE
 import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.PARTITION_COUNT;
 import static com.linkedin.venice.views.ViewUtils.USE_FAST_KAFKA_OPERATION_TIMEOUT;
+import static com.linkedin.venice.zk.VeniceZkPaths.STORE_CONFIGS;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -5305,6 +5307,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
       return resources.getStoreMetadataRepository().hasStore(storeName);
     }
+  }
+
+  @Override
+  public boolean isStoreMetadataAndConfigAbsent(String storeName) {
+    if (getStoreConfigRepo().getStoreConfig(storeName).isPresent()) {
+      return false;
+    }
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    String metadataStoreName = systemStoreType != null && systemStoreType.isNewMedataRepositoryAdopted()
+        ? systemStoreType.extractRegularStoreName(storeName)
+        : storeName;
+    String storeConfigPath = "/" + STORE_CONFIGS + "/" + metadataStoreName;
+    ZkClient zkClient = getZkClient();
+    if (zkClient.exists(storeConfigPath)) {
+      return false;
+    }
+    // Enumerate the regional metadata namespace rather than relying on this controller's leadership or cached stores.
+    for (String clusterName: zkClient.getChildren("/")) {
+      String storePath =
+          HelixUtils.getHelixClusterZkPath(clusterName) + STORE_REPOSITORY_PATH + "/" + metadataStoreName;
+      if (zkClient.exists(storePath)) {
+        return false;
+      }
+    }
+    return !zkClient.exists(storeConfigPath);
   }
 
   /**

@@ -2469,6 +2469,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().hasStore(clusterName, storeName);
   }
 
+  @Override
+  public boolean isStoreMetadataAndConfigAbsent(String storeName) {
+    return getVeniceHelixAdmin().isStoreMetadataAndConfigAbsent(storeName);
+  }
+
   /**
    * Unsupported operation in the parent controller.
    */
