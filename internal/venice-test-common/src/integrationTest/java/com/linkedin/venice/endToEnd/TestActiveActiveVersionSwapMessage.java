@@ -9,12 +9,21 @@ import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
@@ -36,13 +45,16 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -54,6 +66,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -66,6 +79,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -73,9 +87,11 @@ import java.util.stream.IntStream;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -217,9 +233,17 @@ public class TestActiveActiveVersionSwapMessage {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testCDCMultiDataCenterVersionSwapMessageHandling() throws Exception {
+  @DataProvider(name = "versionSwapSeekOptimization")
+  public Object[][] versionSwapSeekOptimization() {
+    return new Object[][] { { false, false }, { true, false }, { true, true } };
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "versionSwapSeekOptimization")
+  public void testCDCMultiDataCenterVersionSwapMessageHandling(
+      boolean seekOptimizationEnabled,
+      boolean timestampLookupReturnsNull) throws Exception {
     String storeName = Utils.getUniqueString("test-store");
+    List<AutoCloseable> closeables = new ArrayList<>();
     try {
       String keySchemaStr = TestChangelogKey.SCHEMA$.toString();
       String valueSchemaStr = TestChangelogValue.SCHEMA$.toString();
@@ -261,11 +285,35 @@ public class TestActiveActiveVersionSwapMessage {
       }
       // Start a local consumer with version swap by control messages that should subscribe to v1
       MetricsRepository metricsRepository = new MetricsRepository();
-      VeniceChangelogConsumerClientFactory changelogConsumerClientFactory = new VeniceChangelogConsumerClientFactory(
-          getDefaultVersionSwapEnabledChangelogClientConfig(childDatacenters.get(0)),
-          metricsRepository);
+      closeables.add(metricsRepository::close);
+      ChangelogClientConfig consumerConfig = getDefaultVersionSwapEnabledChangelogClientConfig(childDatacenters.get(0))
+          .setIsNewStatelessClientEnabled(false)
+          .setVersionSwapSeekOptimizationEnabled(seekOptimizationEnabled)
+          .setVersionSwapSeekOptimizationBufferInMs(TimeUnit.SECONDS.toMillis(5))
+          .setVersionSwapSeekOptimizationTimeoutInMs(TimeUnit.SECONDS.toMillis(10));
+      Properties consumerProperties = new Properties();
+      consumerProperties.putAll(consumerConfig.getConsumerProperties());
+      consumerProperties.setProperty(
+          VersionSwapSeekConsumerFactory.DELEGATE_FACTORY_CLASS,
+          childDatacenters.get(0)
+              .getPubSubBrokerWrapper()
+              .getPubSubClientsFactory()
+              .getConsumerAdapterFactory()
+              .getClass()
+              .getName());
+      consumerProperties
+          .setProperty(PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS, VersionSwapSeekConsumerFactory.class.getName());
+      consumerProperties.setProperty(
+          VersionSwapSeekConsumerFactory.EMPTY_TIMESTAMP_LOOKUP,
+          Boolean.toString(timestampLookupReturnsNull));
+      consumerProperties.setProperty(VersionSwapSeekConsumerFactory.INTERNAL_CONSUMER_NAME, storeName + "-internal");
+      consumerConfig.setConsumerProperties(consumerProperties);
+      VeniceChangelogConsumerClientFactory changelogConsumerClientFactory =
+          new VeniceChangelogConsumerClientFactory(consumerConfig, metricsRepository);
       VeniceChangelogConsumer<GenericRecord, GenericRecord> consumer =
           changelogConsumerClientFactory.getChangelogConsumer(storeName);
+      closeables.add(consumer);
+      Assert.assertTrue(consumer instanceof VeniceAfterImageConsumerImpl, "Exercise the legacy non-DVC consumer");
       consumer.subscribeAll().get();
       Map<String, VeniceChangeCoordinate> polledChangeEventsMap = new HashMap<>();
       List<String> polledChangeEventsKeyList = new ArrayList<>();
@@ -277,8 +325,13 @@ public class TestActiveActiveVersionSwapMessage {
       // Start a second consumer configured with a short version swap timeout and a non-existing region to simulate when
       // a region is down.
       MetricsRepository metricsRepository2 = new MetricsRepository();
+      closeables.add(metricsRepository2::close);
       ChangelogClientConfig timeoutConsumerConfig =
-          getDefaultVersionSwapEnabledChangelogClientConfig(childDatacenters.get(0));
+          getDefaultVersionSwapEnabledChangelogClientConfig(childDatacenters.get(0))
+              .setIsNewStatelessClientEnabled(false)
+              .setVersionSwapSeekOptimizationEnabled(seekOptimizationEnabled)
+              .setVersionSwapSeekOptimizationBufferInMs(TimeUnit.SECONDS.toMillis(5))
+              .setVersionSwapSeekOptimizationTimeoutInMs(TimeUnit.SECONDS.toMillis(10));
       timeoutConsumerConfig.setTotalRegionCount(childDatacenters.size() + 1);
       timeoutConsumerConfig.setVersionSwapTimeoutInMs(1000L);
       timeoutConsumerConfig.setConsumerName("timeout-consumer");
@@ -286,6 +339,7 @@ public class TestActiveActiveVersionSwapMessage {
           new VeniceChangelogConsumerClientFactory(timeoutConsumerConfig, metricsRepository2);
       VeniceChangelogConsumer<GenericRecord, GenericRecord> timeoutConsumer =
           timeoutConsumerFactory.getChangelogConsumer(storeName);
+      closeables.add(timeoutConsumer);
       timeoutConsumer.subscribeAll().get();
       Map<String, VeniceChangeCoordinate> timeoutConsumerpolledChangeEventsMap = new HashMap<>();
       List<String> timeoutConsumerpolledChangeEventsKeyList = new ArrayList<>();
@@ -332,6 +386,36 @@ public class TestActiveActiveVersionSwapMessage {
       Assert
           .assertTrue(polledChangeEventsMap.get("154").toString().contains(newVersionCreationResponse.getKafkaTopic()));
 
+      PubSubConsumerAdapter seekConsumer =
+          VersionSwapSeekConsumerFactory.INTERNAL_CONSUMERS.get(storeName + "-internal");
+      Assert.assertNotNull(seekConsumer, "The swap must use the internal checkpoint consumer");
+      if (seekOptimizationEnabled) {
+        Set<Long> lookupTimestamps = new HashSet<>();
+        for (int partition = 0; partition < consumer.getPartitionCount(); partition++) {
+          PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(
+              PUB_SUB_TOPIC_REPOSITORY.getTopic(newVersionCreationResponse.getKafkaTopic()),
+              partition);
+          ArgumentCaptor<Long> timestampCaptor = ArgumentCaptor.forClass(Long.class);
+          verify(seekConsumer, atLeastOnce())
+              .getPositionByTimestamp(eq(topicPartition), timestampCaptor.capture(), any(Duration.class));
+          lookupTimestamps.addAll(timestampCaptor.getAllValues());
+          if (timestampLookupReturnsNull) {
+            verify(seekConsumer, atLeastOnce()).subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
+            verify(seekConsumer, never()).subscribe(eq(topicPartition), any(PubSubPosition.class), eq(true));
+          } else {
+            // Observe the real timestamp lookup and inclusive subscription, not just the enabled flag.
+            verify(seekConsumer, atLeastOnce()).subscribe(eq(topicPartition), any(PubSubPosition.class), eq(true));
+          }
+        }
+        Assert.assertEquals(lookupTimestamps.size(), 1, "All assigned partitions must use the same swap timestamp");
+        Assert.assertTrue(
+            lookupTimestamps.iterator().next() > 0,
+            "The controlled buffer must not clamp the seek to zero");
+      } else {
+        verify(seekConsumer, never())
+            .getPositionByTimestamp(any(PubSubTopicPartition.class), anyLong(), any(Duration.class));
+      }
+
       // The other consumer should be able to consume at least 305 events if version swap via timeout is successful.
       // 150 (base) + 150 (base replayed in new version) + 5 (new writes after version swap) = 305.
       pollUntilSpecificEventKeyListSize(
@@ -344,7 +428,54 @@ public class TestActiveActiveVersionSwapMessage {
               .toString()
               .contains(newVersionCreationResponse.getKafkaTopic()));
     } finally {
+      for (int i = closeables.size() - 1; i >= 0; i--) {
+        Utils.closeQuietlyWithErrorLogged(closeables.get(i));
+      }
+      VersionSwapSeekConsumerFactory.INTERNAL_CONSUMERS.remove(storeName + "-internal");
       deleteStores(storeName);
+    }
+  }
+
+  /**
+   * Keeps the real broker adapter and only intercepts the internal swap seek consumer. The null-lookup case
+   * deterministically exercises EARLIEST fallback without depending on broker timing or waiting for a long deadline.
+   */
+  public static class VersionSwapSeekConsumerFactory extends PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
+    private static final String DELEGATE_FACTORY_CLASS = "test.version.swap.delegate.factory";
+    private static final String EMPTY_TIMESTAMP_LOOKUP = "test.version.swap.empty.timestamp.lookup";
+    private static final String INTERNAL_CONSUMER_NAME = "test.version.swap.internal.consumer.name";
+    private static final Map<String, PubSubConsumerAdapter> INTERNAL_CONSUMERS = new ConcurrentHashMap<>();
+    private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> delegate;
+
+    @Override
+    public PubSubConsumerAdapter create(PubSubConsumerAdapterContext context) {
+      if (delegate == null) {
+        delegate = PubSubClientsFactory.createInstance(context.getVeniceProperties().getString(DELEGATE_FACTORY_CLASS));
+      }
+      PubSubConsumerAdapter adapter = delegate.create(context);
+      String internalConsumerName = context.getVeniceProperties().getString(INTERNAL_CONSUMER_NAME);
+      // The context decorates the supplied name with client type, host, broker, and timestamp.
+      if (context.getConsumerName().contains("-" + internalConsumerName + "-from-")) {
+        adapter = spy(adapter);
+        if (context.getVeniceProperties().getBoolean(EMPTY_TIMESTAMP_LOOKUP)) {
+          doReturn(null).when(adapter)
+              .getPositionByTimestamp(any(PubSubTopicPartition.class), anyLong(), any(Duration.class));
+        }
+        INTERNAL_CONSUMERS.put(internalConsumerName, adapter);
+      }
+      return adapter;
+    }
+
+    @Override
+    public String getName() {
+      return "VersionSwapSeekConsumer";
+    }
+
+    @Override
+    public void close() throws IOException {
+      if (delegate != null) {
+        delegate.close();
+      }
     }
   }
 

@@ -99,6 +99,14 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    * to the new version and resume normal consumption from EOP for any incomplete partitions. Default is 30 minutes.
    */
   private long versionSwapTimeoutInMs = MINUTES.toMillis(30);
+  /**
+   * Opt-in timestamp-guided checkpoint discovery for the legacy control-message version swap path.
+   * This is a heuristic: if old/new topic timestamp divergence exceeds the buffer, an earlier regional swap
+   * marker can be skipped even when a later matching marker is found. The search timeout cannot detect that case.
+   */
+  private boolean versionSwapSeekOptimizationEnabled = false;
+  private long versionSwapSeekOptimizationTimeoutInMs = MINUTES.toMillis(15);
+  private long versionSwapSeekOptimizationBufferInMs = MINUTES.toMillis(15);
 
   /**
    * Whether to include control messages in buffer for users to poll. Default is false.
@@ -420,6 +428,47 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public boolean isVersionSwapSeekOptimizationEnabled() {
+    return versionSwapSeekOptimizationEnabled;
+  }
+
+  public ChangelogClientConfig setVersionSwapSeekOptimizationEnabled(boolean enabled) {
+    this.versionSwapSeekOptimizationEnabled = enabled;
+    return this;
+  }
+
+  public long getVersionSwapSeekOptimizationTimeoutInMs() {
+    return versionSwapSeekOptimizationTimeoutInMs;
+  }
+
+  /**
+   * Shared elapsed-time budget for timestamp lookup and scanning, retained across retries. Unresolved partitions
+   * revert to EARLIEST when it expires. Independent of the overall version-swap timeout and its EOP fallback.
+   */
+  public ChangelogClientConfig setVersionSwapSeekOptimizationTimeoutInMs(long timeoutInMs) {
+    if (timeoutInMs <= 0) {
+      throw new IllegalArgumentException("versionSwapSeekOptimizationTimeoutInMs must be positive");
+    }
+    this.versionSwapSeekOptimizationTimeoutInMs = timeoutInMs;
+    return this;
+  }
+
+  public long getVersionSwapSeekOptimizationBufferInMs() {
+    return versionSwapSeekOptimizationBufferInMs;
+  }
+
+  /**
+   * Lookback subtracted from the triggering old-topic message's pubsub timestamp, not client wall-clock time.
+   * Allows for clock skew and propagation differences between old and new version topics.
+   */
+  public ChangelogClientConfig setVersionSwapSeekOptimizationBufferInMs(long bufferInMs) {
+    if (bufferInMs < 0) {
+      throw new IllegalArgumentException("versionSwapSeekOptimizationBufferInMs must be nonnegative");
+    }
+    this.versionSwapSeekOptimizationBufferInMs = bufferInMs;
+    return this;
+  }
+
   public boolean isConsumerOffsetCommitEnabled() {
     return this.consumerOffsetCommitEnabled;
   }
@@ -481,6 +530,9 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setClientRegionName(config.getClientRegionName())
         .setTotalRegionCount(config.getTotalRegionCount())
         .setVersionSwapTimeoutInMs(config.getVersionSwapTimeoutInMs())
+        .setVersionSwapSeekOptimizationEnabled(config.isVersionSwapSeekOptimizationEnabled())
+        .setVersionSwapSeekOptimizationTimeoutInMs(config.getVersionSwapSeekOptimizationTimeoutInMs())
+        .setVersionSwapSeekOptimizationBufferInMs(config.getVersionSwapSeekOptimizationBufferInMs())
         .setConsumerOffsetCommitEnabled(config.isConsumerOffsetCommitEnabled())
         .setConsumerOffsetCommitIntervalMs(config.getConsumerOffsetCommitIntervalMs())
         .setConsumerOffsetCommitTimeoutMs(config.getConsumerOffsetCommitTimeoutMs())
