@@ -1038,6 +1038,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
             "RocksDB has been closed for replica: " + replicaId + ", partition id: " + partitionId
                 + ", any further operation is disallowed");
       }
+      // A failed reopen can leave the old RocksDB object without its native handle.
+      if (!db.isOwningHandle()) {
+        throw new VeniceException("No live RocksDB handle for replica: " + replicaId);
+      }
     }
 
     private void close() {
@@ -1054,10 +1058,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       lock.readLock().lock();
       try {
         checkOpen();
-        // A failed reopen can leave the old RocksDB object without its native handle.
-        if (!db.isOwningHandle()) {
-          throw new VeniceException("No live RocksDB handle for replica: " + replicaId);
-        }
         return db.getLongProperty(statName);
       } catch (RocksDBException e) {
         throw new VeniceException("Failed to perform RocksDB operation for replica: " + replicaId, e);

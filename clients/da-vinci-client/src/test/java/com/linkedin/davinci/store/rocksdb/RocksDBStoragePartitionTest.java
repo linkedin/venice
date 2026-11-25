@@ -1502,7 +1502,7 @@ public class RocksDBStoragePartitionTest {
         RocksDB checkedDb = mock(RocksDB.class, delegatesTo(db));
         // Fail in Java if the guard regresses rather than invoking JNI on a freed handle.
         Mockito.doAnswer(call -> {
-          assertTrue(db.isOwningHandle(), "Gauge attempted to read a closed DB");
+          assertTrue(db.isOwningHandle(), "Property read attempted on a closed DB");
           return db.getLongProperty(call.getArgument(0, String.class));
         }).when(checkedDb).getLongProperty(Mockito.anyString());
         currentDb = db;
@@ -1545,6 +1545,10 @@ public class RocksDBStoragePartitionTest {
           VeniceException failure = Assert.expectThrows(VeniceException.class, partition::reopen);
           Assert.assertSame(failure.getCause(), reopenFailure);
           assertEquals(gauge.value(), 0.0, "Gauge must skip a DB whose reopen failed");
+          Assert.assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue(property));
+          Assert.assertThrows(
+              VeniceException.class,
+              () -> partition.withSynchronizedDatabaseVoid(db -> Assert.fail("Write path acquired a closed DB")));
 
           Lock writeLock = partition.readCloseRWLock.writeLock();
           Future<Double> readDuringReopen;
