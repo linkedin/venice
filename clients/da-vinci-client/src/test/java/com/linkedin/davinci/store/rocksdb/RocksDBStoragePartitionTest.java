@@ -19,6 +19,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MIN
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -1485,6 +1486,29 @@ public class RocksDBStoragePartitionTest {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     StoragePartitionConfig config = new StoragePartitionConfig(storeName, 0);
     String dbDir = serverConfig.getRocksDBPath();
+    AtomicBoolean failNextOpen = new AtomicBoolean();
+    RocksDBException reopenFailure = new RocksDBException("Injected reopen failure");
+    RocksDBThrottler throttler = new RocksDBThrottler(1) {
+      private RocksDB currentDb;
+
+      @Override
+      protected RocksDB throttledOpen(String dbPath, RocksDBSupplier supplier)
+          throws InterruptedException, RocksDBException {
+        if (failNextOpen.getAndSet(false)) {
+          assertFalse(currentDb.isOwningHandle());
+          throw reopenFailure;
+        }
+        RocksDB db = super.throttledOpen(dbPath, supplier);
+        RocksDB checkedDb = mock(RocksDB.class, delegatesTo(db));
+        // Fail in Java if the guard regresses rather than invoking JNI on a freed handle.
+        Mockito.doAnswer(call -> {
+          assertTrue(db.isOwningHandle(), "Gauge attempted to read a closed DB");
+          return db.getLongProperty(call.getArgument(0, String.class));
+        }).when(checkedDb).getLongProperty(Mockito.anyString());
+        currentDb = db;
+        return checkedDb;
+      }
+    };
     CountDownLatch deregistering = new CountDownLatch(1);
     // Lock coordination deliberately delays measurement; avoid Tehuti's cached slow-metric path.
     AsyncGauge.AsyncGaugeExecutor measurementExecutor =
@@ -1507,14 +1531,8 @@ public class RocksDBStoragePartitionTest {
         FileUtils.forceMkdir(new File(RocksDBUtils.composeStoreDbDir(dbDir, storeName)));
         RocksDBServerConfig rocksDBConfig = serverConfig.getRocksDBServerConfig();
         RocksDBStoragePartition partition = replicationMetadataEnabled
-            ? new ReplicationMetadataRocksDBStoragePartition(
-                config,
-                factory,
-                dbDir,
-                stats,
-                ROCKSDB_THROTTLER,
-                rocksDBConfig)
-            : new RocksDBStoragePartition(config, factory, dbDir, stats, ROCKSDB_THROTTLER, rocksDBConfig);
+            ? new ReplicationMetadataRocksDBStoragePartition(config, factory, dbDir, stats, throttler, rocksDBConfig)
+            : new RocksDBStoragePartition(config, factory, dbDir, stats, throttler, rocksDBConfig);
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
           String property = "rocksdb.num-live-versions";
@@ -1522,6 +1540,11 @@ public class RocksDBStoragePartitionTest {
           long versions = partition.getRocksDBStatValue(property);
           assertTrue(versions > 0);
           assertEquals(gauge.value(), (double) versions, "Direct construction must register the open DB");
+
+          failNextOpen.set(true);
+          VeniceException failure = Assert.expectThrows(VeniceException.class, partition::reopen);
+          Assert.assertSame(failure.getCause(), reopenFailure);
+          assertEquals(gauge.value(), 0.0, "Gauge must skip a DB whose reopen failed");
 
           Lock writeLock = partition.readCloseRWLock.writeLock();
           Future<Double> readDuringReopen;
