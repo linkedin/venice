@@ -8,6 +8,7 @@ import io.grpc.ServerInterceptor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -20,8 +21,8 @@ public class VeniceGrpcServerConfig {
   private final SSLFactory sslFactory;
   private final Executor executor;
 
-  private VeniceGrpcServerConfig(Builder builder, int port) {
-    this.port = port;
+  private VeniceGrpcServerConfig(Builder builder) {
+    port = Objects.requireNonNull(builder.port);
     credentials = builder.credentials;
     services = builder.services;
     interceptors = builder.interceptors;
@@ -113,15 +114,14 @@ public class VeniceGrpcServerConfig {
     }
 
     public VeniceGrpcServerConfig build() {
-      Integer configuredPort = port;
-      if (configuredPort == null) {
-        throw new IllegalArgumentException("Port value is required to create the gRPC server but was not provided.");
-      }
-      verifyAndAddDefaults(configuredPort);
-      return new VeniceGrpcServerConfig(this, configuredPort);
+      verifyAndAddDefaults();
+      return new VeniceGrpcServerConfig(this);
     }
 
-    private void verifyAndAddDefaults(int port) {
+    private void verifyAndAddDefaults() {
+      if (port == null) {
+        throw new IllegalArgumentException("Port value is required to create the gRPC server but was not provided.");
+      }
       if (services.isEmpty()) {
         throw new IllegalArgumentException("Service value is required to create the gRPC server but was not provided.");
       }

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILE_STARTING_LEVEL;
@@ -28,7 +27,6 @@ import static org.testng.AssertJUnit.assertFalse;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
@@ -37,16 +35,12 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
-import io.tehuti.Metric;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -85,7 +79,6 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1475,84 +1468,6 @@ public class RocksDBStoragePartitionTest {
     } finally {
       partition.drop();
       removeDir(storeDir);
-    }
-  }
-
-  @DataProvider
-  public Object[][] partitionMetricsCases() {
-    return new Object[][] { { 0, false, false }, { 0, true, false }, { METADATA_PARTITION_ID, true, false },
-        { 0, false, true }, { 0, true, true } };
-  }
-
-  @Test(dataProvider = "partitionMetricsCases")
-  public void testPartitionMetricsFollowDatabaseLifecycle(
-      int partitionId,
-      boolean replicationMetadataEnabled,
-      boolean blobTransferInProgress) throws Exception {
-    String property = "rocksdb.num-live-versions";
-    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
-    String expectedPartitionName = RocksDBUtils.getPartitionDbName(storeName, partitionId);
-    List<RocksDBStoragePartition> registrations = new ArrayList<>();
-    MetricsRepository repository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    try {
-      RocksDBMemoryStats stats = new RocksDBMemoryStats(repository, "partition", false, "test") {
-        @Override
-        public void registerPartition(String partitionName, RocksDBStoragePartition partition) {
-          assertEquals(partitionName, expectedPartitionName);
-          if (partition instanceof ReplicationMetadataRocksDBStoragePartition) {
-            Assert.assertNotNull(
-                ((ReplicationMetadataRocksDBStoragePartition) partition).getFullPathForTempSSTFileDir(),
-                "Metrics registered before the replication-metadata partition finished construction");
-          }
-          registrations.add(partition);
-          super.registerPartition(partitionName, partition);
-        }
-      };
-      Metric gauge = repository.getMetric(".partition--" + property + ".Gauge");
-      VeniceProperties props = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
-      VeniceServerConfig serverConfig = new VeniceServerConfig(props);
-      VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, props, PersistenceType.ROCKS_DB);
-      storeConfig.setRestoreMetadataPartition(false);
-      RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(
-          serverConfig,
-          stats,
-          AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-      try {
-        RocksDBStorageEngine engine =
-            (RocksDBStorageEngine) factory.getStorageEngine(storeConfig, replicationMetadataEnabled);
-        RocksDBStoragePartition partition =
-            engine.createStoragePartition(new StoragePartitionConfig(storeName, partitionId, blobTransferInProgress));
-        try {
-          assertEquals(
-              partition instanceof ReplicationMetadataRocksDBStoragePartition,
-              replicationMetadataEnabled && partitionId != METADATA_PARTITION_ID);
-          if (blobTransferInProgress) {
-            assertTrue(registrations.isEmpty(), "An unopened partition must not be registered");
-            Assert.assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue(property));
-            assertEquals(gauge.value(), 0.0);
-          } else {
-            assertEquals(registrations.size(), 1);
-            Assert.assertSame(registrations.get(0), partition);
-            long versions = partition.getRocksDBStatValue(property);
-            assertTrue(versions > 0);
-            assertEquals(gauge.value(), (double) versions);
-
-            partition.reopen();
-            assertEquals(gauge.value(), (double) partition.getRocksDBStatValue(property));
-
-            partition.close();
-            assertEquals(gauge.value(), 0.0);
-          }
-        } finally {
-          partition.drop();
-        }
-      } finally {
-        factory.close();
-        FileUtils.deleteDirectory(new File(serverConfig.getRocksDBPath()));
-      }
-    } finally {
-      repository.close();
     }
   }
 

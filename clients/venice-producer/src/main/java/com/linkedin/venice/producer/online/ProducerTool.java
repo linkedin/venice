@@ -34,6 +34,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -160,13 +161,13 @@ public class ProducerTool {
   }
 
   private static ProducerContext validateOptionsAndExtractContext(CommandLine cmd) throws IOException {
-    String store = validateRequiredOption(cmd, STORE_OPTION);
+    ProducerContext producerContext = new ProducerContext();
+    producerContext.store = validateRequiredOption(cmd, STORE_OPTION);
 
     String filePath = cmd.getOptionValue(FILE_OPTION.getOpt());
     boolean hasFile = !StringUtils.isEmpty(filePath);
     boolean hasKey = !StringUtils.isEmpty(cmd.getOptionValue(KEY_OPTION.getOpt()));
-    String value = cmd.getOptionValue(VALUE_OPTION.getOpt());
-    boolean hasValue = !StringUtils.isEmpty(value);
+    boolean hasValue = !StringUtils.isEmpty(cmd.getOptionValue(VALUE_OPTION.getOpt()));
     boolean isDelete = cmd.hasOption(DELETE_OPTION.getOpt());
 
     boolean isUpdate = cmd.hasOption(UPDATE_OPTION.getOpt());
@@ -197,13 +198,13 @@ public class ProducerTool {
       System.exit(1);
     }
 
-    ProducerContext producerContext = new ProducerContext(store, hasFile || isDelete ? null : value);
     if (hasFile) {
       producerContext.filePath = filePath;
     } else {
       producerContext.key = cmd.getOptionValue(KEY_OPTION.getOpt());
       producerContext.isDelete = isDelete;
       if (!isDelete) {
+        producerContext.value = cmd.getOptionValue(VALUE_OPTION.getOpt());
         producerContext.isUpdate = isUpdate;
       }
     }
@@ -278,7 +279,7 @@ public class ProducerTool {
           Consumer<UpdateBuilder> updateFunction = buildUpdateFunction(producerContext.value, schemaFetcher);
           producer.asyncUpdate(key, updateFunction).get();
           System.out.println("Partial update written to Venice!");
-        } else if (producerContext.value.equals("null")) { // Only allow `null`. Not "null", or 'null', or whatever.
+        } else if (Objects.requireNonNull(producerContext.value, "Missing record value").equals("null")) {
           producer.asyncDelete(key).get();
           System.out.println("Record deleted from Venice!");
         } else {
@@ -667,9 +668,9 @@ public class ProducerTool {
   }
 
   private static class ProducerContext {
-    private final String store;
+    private String store;
     private String key;
-    private final String value;
+    private String value;
     private boolean isUpdate;
     private boolean isDelete;
     private String filePath;
@@ -677,10 +678,5 @@ public class ProducerTool {
     private SSLFactory sslFactory;
     private String veniceUrl;
     private String d2ServiceName;
-
-    private ProducerContext(String store, String value) {
-      this.store = store;
-      this.value = value;
-    }
   }
 }
