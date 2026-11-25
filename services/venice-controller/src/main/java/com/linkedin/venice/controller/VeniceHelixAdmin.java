@@ -97,6 +97,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -117,6 +118,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.helix.CachedReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
@@ -201,6 +203,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -267,6 +270,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
@@ -4667,7 +4671,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void safeDeleteRTTopic(String clusterName, Version version) {
     String realTimeTopicName = Utils.getRealTimeTopicName(version);
-    boolean rtDeletionPermitted = isRTTopicDeletionPermittedByAllControllers(clusterName, realTimeTopicName);
+    boolean rtDeletionPermitted =
+        isRTTopicDeletionPermittedByAllControllers(Optional.of(clusterName), realTimeTopicName);
 
     if (rtDeletionPermitted) {
       deleteRTTopicFromAllFabrics(realTimeTopicName, clusterName);
@@ -4680,73 +4685,228 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName) {
-    // Perform RT cleanup checks for batch only store that used to be hybrid. Check versions
-    // to see if any version is still using RT before deleting the RT.
-    // Since we perform this check everytime when a store version is deleted we can afford to do best effort
-    // approach if some fabrics are unavailable or out of sync (temporarily).
-    Map<String, ControllerClient> controllerClientMap = getControllerClientMap(clusterName);
+  @Override
+  public boolean isRTTopicDeletionPermittedByAllControllers(Optional<String> clusterName, String rtTopicName) {
+    if (PubSubTopicType.isAdminTopic(rtTopicName) || !Version.isRealTimeTopic(rtTopicName)) {
+      return false;
+    }
+    String storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
+    boolean orphanCleanup = !clusterName.isPresent();
+    Set<String> clusters = orphanCleanup
+        ? getOrphanRealTimeTopicClusters(storeName, rtTopicName)
+        : Collections.singleton(clusterName.get());
+    if (clusters.isEmpty() || (orphanCleanup && !isOrphanRealTimeTopicInLocalRegion(storeName, rtTopicName))) {
+      return false;
+    }
 
-    for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
-      StoreResponse storeResponse;
-      String storeName = null;
-      try {
-        storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
-        String finalStoreName = storeName;
-        storeResponse = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-          StoreResponse response = controllerClientEntry.getValue().getStore(finalStoreName);
-          if (response.isError() && response.getError().contains(DOES_NOT_EXISTS)) {
-            throw new VeniceNoStoreException(finalStoreName);
-          }
-          return response;
-        },
-            5,
-            Duration.ofMillis(10),
-            Duration.ofMillis(500),
-            Duration.ofSeconds(5),
-            Collections.singletonList(VeniceNoStoreException.class));
-        if (storeResponse.isError()) {
-          if (storeResponse.getError().contains(DOES_NOT_EXISTS)) {
-            LOGGER.warn(
-                "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
-                storeName,
-                clusterName,
-                controllerClientEntry.getKey());
-            continue;
-          }
+    for (String cluster: clusters) {
+      Map<String, ControllerClient> controllerClientMap = getControllerClientMap(cluster);
+      if (orphanCleanup) {
+        VeniceControllerClusterConfig config = getMultiClusterConfigs().getControllerConfig(cluster);
+        Set<String> expectedFabrics = new HashSet<>(config.getChildDatacenters());
+        if (config.isMultiRegion() && expectedFabrics.isEmpty()) {
           LOGGER.warn(
-              "Skipping RT cleanup check for store: {} in cluster: {} due to unable to get store from fabric: {} Error: {}",
-              storeName,
-              clusterName,
-              controllerClientEntry.getKey(),
-              storeResponse.getError());
+              "Cannot establish cross-fabric coverage for orphan RT topic {} in cluster {}",
+              rtTopicName,
+              cluster);
           return false;
         }
-      } catch (VeniceNoStoreException e) {
-        LOGGER.warn(
-            "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
-            storeName,
-            clusterName,
-            controllerClientEntry.getKey());
-        continue;
-      } catch (VeniceException e) {
-        LOGGER.warn(
-            "Unable to establish RT deletion eligibility for topic {} in cluster {} in fabric {}.",
-            rtTopicName,
-            clusterName,
-            controllerClientEntry.getKey(),
-            e);
-        return false;
+        if (!isParent()) {
+          expectedFabrics.remove(getMultiClusterConfigs().getRegionName());
+        }
+        if (!controllerClientMap.keySet().containsAll(expectedFabrics)) {
+          LOGGER.warn(
+              "Incomplete controller coverage for orphan RT topic {} in cluster {}: expected {}, available {}",
+              rtTopicName,
+              cluster,
+              expectedFabrics,
+              controllerClientMap.keySet());
+          return false;
+        }
       }
-      if (Version.containsHybridVersion(storeResponse.getStore().getVersions())) {
-        LOGGER.warn(
-            "Topic {} cannot be deleted yet because the store {} has at least one hybrid version",
-            rtTopicName,
-            storeName);
-        return false;
+
+      for (Map.Entry<String, ControllerClient> controllerClientEntry: controllerClientMap.entrySet()) {
+        if (orphanCleanup) {
+          MultiStoreInfoResponse response = controllerClientEntry.getValue().getClusterStores(cluster);
+          if (response == null || response.isError() || response.getStoreInfoList() == null) {
+            throw new VeniceException(
+                "Cannot read complete store metadata for orphan RT topic " + rtTopicName + " in cluster " + cluster
+                    + " in fabric " + controllerClientEntry.getKey() + ": " + response);
+          }
+          for (StoreInfo store: response.getStoreInfoList()) {
+            if (isStoreOrRealTimeTopicReference(store, storeName, rtTopicName)) {
+              return false;
+            }
+          }
+          continue;
+        }
+        StoreResponse storeResponse;
+        try {
+          String finalStoreName = storeName;
+          storeResponse = RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+            StoreResponse response = controllerClientEntry.getValue().getStore(finalStoreName);
+            if (response.isError() && response.getError().contains(DOES_NOT_EXISTS)) {
+              throw new VeniceNoStoreException(finalStoreName);
+            }
+            return response;
+          },
+              5,
+              Duration.ofMillis(10),
+              Duration.ofMillis(500),
+              Duration.ofSeconds(5),
+              Collections.singletonList(VeniceNoStoreException.class));
+          if (storeResponse.isError()) {
+            if (storeResponse.getError().contains(DOES_NOT_EXISTS)) {
+              LOGGER.warn(
+                  "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
+                  storeName,
+                  cluster,
+                  controllerClientEntry.getKey());
+              continue;
+            }
+            LOGGER.warn(
+                "Skipping RT cleanup check for store: {} in cluster: {} due to unable to get store from fabric: {} Error: {}",
+                storeName,
+                cluster,
+                controllerClientEntry.getKey(),
+                storeResponse.getError());
+            return false;
+          }
+        } catch (VeniceNoStoreException e) {
+          LOGGER.warn(
+              "Store {} does not exist in cluster {} in fabric {}, probably deleted already, skipping RT check",
+              storeName,
+              cluster,
+              controllerClientEntry.getKey());
+          continue;
+        } catch (VeniceException e) {
+          LOGGER.warn(
+              "Unable to establish RT deletion eligibility for topic {} in cluster {} in fabric {}.",
+              rtTopicName,
+              cluster,
+              controllerClientEntry.getKey(),
+              e);
+          return false;
+        }
+        if (Version.containsHybridVersion(storeResponse.getStore().getVersions())) {
+          LOGGER.warn(
+              "Topic {} cannot be deleted yet because the store {} has at least one hybrid version",
+              rtTopicName,
+              storeName);
+          return false;
+        }
       }
     }
-    return true;
+    return !orphanCleanup || isOrphanRealTimeTopicInLocalRegion(storeName, rtTopicName);
+  }
+
+  private Set<String> getOrphanRealTimeTopicClusters(String storeName, String rtTopicName) {
+    String metadataStoreName = getMetadataStoreNameForRealTimeTopic(storeName);
+    if (getStoreConfigRepo().getStoreConfig(metadataStoreName).isPresent()
+        || getZkClient().exists("/" + STORE_CONFIGS + "/" + metadataStoreName)) {
+      return Collections.emptySet();
+    }
+    Set<String> clusters = new HashSet<>(getMultiClusterConfigs().getClusters());
+    for (String cluster: clusters) {
+      Store deletedStore = getStoreGraveyard().getStoreFromGraveyard(cluster, metadataStoreName, null);
+      if (deletedStore == null) {
+        continue;
+      }
+      if (!metadataStoreName.equals(storeName)) {
+        VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+        if (deletedStore.getSystemStores().containsKey(systemStoreType.getPrefix())
+            && matchesRealTimeTopic(rtTopicName, Utils.composeRealTimeTopic(storeName))) {
+          return clusters;
+        }
+      } else if (referencesRealTimeTopic(StoreInfo.fromStore(deletedStore), rtTopicName)) {
+        return clusters;
+      } else {
+        String baseTopic = rtTopicName.endsWith(Utils.SEPARATE_TOPIC_SUFFIX)
+            ? rtTopicName.substring(0, rtTopicName.length() - Utils.SEPARATE_TOPIC_SUFFIX.length())
+            : rtTopicName;
+        if (!baseTopic.equals(Version.removeRTVersionSuffix(baseTopic))) {
+          int rtVersion = Version.parseVersionFromKafkaTopicName(baseTopic);
+          if (rtVersion > 0 && rtVersion <= deletedStore.getLargestUsedRTVersionNumber()) {
+            return clusters;
+          }
+        }
+      }
+    }
+    LOGGER.warn(
+        "Skipping orphan RT topic {} because its ownership cannot be established from the store graveyard",
+        rtTopicName);
+    return Collections.emptySet();
+  }
+
+  private boolean isOrphanRealTimeTopicInLocalRegion(String storeName, String rtTopicName) {
+    String metadataStoreName = getMetadataStoreNameForRealTimeTopic(storeName);
+    String storeConfigPath = "/" + STORE_CONFIGS + "/" + metadataStoreName;
+    ZkClient zkClient = getZkClient();
+    if (getStoreConfigRepo().getStoreConfig(metadataStoreName).isPresent() || zkClient.exists(storeConfigPath)) {
+      return false;
+    }
+    // The cleanup controller need not lead every cluster. Read fresh metadata, including split version znodes,
+    // without attaching repository watches or relying on another cluster's leadership-local cache.
+    for (String cluster: zkClient.getChildren("/")) {
+      String storeRoot = HelixUtils.getHelixClusterZkPath(cluster) + STORE_REPOSITORY_PATH;
+      if (zkClient.exists(storeRoot + "/" + metadataStoreName) || zkClient.exists(storeRoot + "/" + storeName)) {
+        return false;
+      }
+      if (zkClient.exists(storeRoot)) {
+        CachedReadOnlyStoreRepository repository = new CachedReadOnlyStoreRepository(
+            zkClient,
+            cluster,
+            getAdapterSerializer(),
+            new ClusterLockManager(cluster));
+        repository.refresh();
+        List<Store> stores = repository.getAllStores();
+        Set<String> loadedStoreNames = stores.stream().map(Store::getName).collect(Collectors.toSet());
+        if (!loadedStoreNames.containsAll(zkClient.getChildren(storeRoot))) {
+          throw new VeniceException(
+              "Incomplete store metadata snapshot in cluster " + cluster + " for RT topic " + rtTopicName);
+        }
+        for (Store store: stores) {
+          if (isStoreOrRealTimeTopicReference(StoreInfo.fromStore(store), storeName, rtTopicName)) {
+            return false;
+          }
+        }
+      }
+    }
+    return !zkClient.exists(storeConfigPath);
+  }
+
+  private static String getMetadataStoreNameForRealTimeTopic(String storeName) {
+    VeniceSystemStoreType type = VeniceSystemStoreType.getSystemStoreType(storeName);
+    return type != null && type.isNewMedataRepositoryAdopted() ? type.extractRegularStoreName(storeName) : storeName;
+  }
+
+  private static boolean isStoreOrRealTimeTopicReference(StoreInfo store, String storeName, String rtTopicName) {
+    if (store == null || store.getName() == null || store.getVersions() == null) {
+      throw new VeniceException("Incomplete store metadata while checking RT topic " + rtTopicName);
+    }
+    return storeName.equals(store.getName()) || getMetadataStoreNameForRealTimeTopic(storeName).equals(store.getName())
+        || referencesRealTimeTopic(store, rtTopicName);
+  }
+
+  private static boolean referencesRealTimeTopic(StoreInfo store, String rtTopicName) {
+    HybridStoreConfig hybridConfig = store.getHybridStoreConfig();
+    if (hybridConfig != null) {
+      String configuredTopic = hybridConfig.getRealTimeTopicName();
+      if (matchesRealTimeTopic(
+          rtTopicName,
+          StringUtils.isBlank(configuredTopic) ? Utils.composeRealTimeTopic(store.getName()) : configuredTopic)) {
+        return true;
+      }
+    }
+    return store.getVersions()
+        .stream()
+        .anyMatch(
+            version -> version.isHybrid() && matchesRealTimeTopic(rtTopicName, Utils.getRealTimeTopicName(version)));
+  }
+
+  private static boolean matchesRealTimeTopic(String rtTopicName, String referencedTopic) {
+    return rtTopicName.equals(referencedTopic)
+        || rtTopicName.equals(Utils.getSeparateRealTimeTopicName(referencedTopic));
   }
 
   private void deleteRTTopicFromAllFabrics(String topic, String clusterName) {
@@ -5307,31 +5467,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreReadLock(storeName)) {
       return resources.getStoreMetadataRepository().hasStore(storeName);
     }
-  }
-
-  @Override
-  public boolean isStoreMetadataAndConfigAbsent(String storeName) {
-    if (getStoreConfigRepo().getStoreConfig(storeName).isPresent()) {
-      return false;
-    }
-    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    String metadataStoreName = systemStoreType != null && systemStoreType.isNewMedataRepositoryAdopted()
-        ? systemStoreType.extractRegularStoreName(storeName)
-        : storeName;
-    String storeConfigPath = "/" + STORE_CONFIGS + "/" + metadataStoreName;
-    ZkClient zkClient = getZkClient();
-    if (zkClient.exists(storeConfigPath)) {
-      return false;
-    }
-    // Enumerate the regional metadata namespace rather than relying on this controller's leadership or cached stores.
-    for (String clusterName: zkClient.getChildren("/")) {
-      String storePath =
-          HelixUtils.getHelixClusterZkPath(clusterName) + STORE_REPOSITORY_PATH + "/" + metadataStoreName;
-      if (zkClient.exists(storePath)) {
-        return false;
-      }
-    }
-    return !zkClient.exists(storeConfigPath);
   }
 
   /**

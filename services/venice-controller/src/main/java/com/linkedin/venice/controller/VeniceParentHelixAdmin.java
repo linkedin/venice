@@ -2469,11 +2469,6 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().hasStore(clusterName, storeName);
   }
 
-  @Override
-  public boolean isStoreMetadataAndConfigAbsent(String storeName) {
-    return getVeniceHelixAdmin().isStoreMetadataAndConfigAbsent(storeName);
-  }
-
   /**
    * Unsupported operation in the parent controller.
    */
@@ -4070,14 +4065,17 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName) {
+  public boolean isRTTopicDeletionPermittedByAllControllers(Optional<String> clusterName, String rtTopicName) {
+    if (!clusterName.isPresent()) {
+      return getVeniceHelixAdmin().isRTTopicDeletionPermittedByAllControllers(clusterName, rtTopicName);
+    }
     String storeName = Version.parseStoreFromRealTimeTopic(rtTopicName);
     Optional<StoreConfig> storeConfig = getStoreConfigRepo().getStoreConfig(storeName);
     if (!storeConfig.isPresent() || !storeConfig.get().isDeleting()
-        || !clusterName.equals(storeConfig.get().getCluster())) {
+        || !clusterName.get().equals(storeConfig.get().getCluster())) {
       return false;
     }
-    Store store = getVeniceHelixAdmin().getStore(clusterName, storeName);
+    Store store = getVeniceHelixAdmin().getStore(clusterName.get(), storeName);
     if (store != null && (store.isMigrating() || !store.getVersions().isEmpty()
         || (!VeniceSystemStoreUtils.isUserSystemStore(storeName)
             && (store.isEnableReads() || store.isEnableWrites())))) {

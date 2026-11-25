@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PER_VERSION_ZNODE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS;
 import static org.testng.Assert.assertEquals;
@@ -14,13 +15,18 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -30,11 +36,12 @@ import org.testng.annotations.Test;
 
 
 public class TopicCleanupServiceIntegrationTest {
-  @Test(timeOut = 180_000)
-  public void testOrphanRealTimeTopicIsMarkedBeforeCleanupDeletion() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 180_000)
+  public void testOrphanRealTimeTopicIsMarkedBeforeCleanupDeletion(boolean splitVersionMetadata) {
     Properties controllerProperties = new Properties();
     controllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
     controllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "false");
+    controllerProperties.setProperty(CONTROLLER_PER_VERSION_ZNODE_ENABLED, Boolean.toString(splitVersionMetadata));
     // Drive cleanup synchronously below rather than racing the controller's background cleanup thread.
     controllerProperties.setProperty(
         TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
@@ -52,6 +59,12 @@ public class TopicCleanupServiceIntegrationTest {
       String clusterName = cluster.getClusterName();
       String storeName = Utils.getUniqueString("orphan-rt-retention");
       childAdmin.createStore(clusterName, storeName, "test-owner", "\"string\"", "\"string\"");
+      childAdmin.updateStore(
+          clusterName,
+          storeName,
+          new UpdateStoreQueryParams().setHybridRewindSeconds(1)
+              .setHybridOffsetLagThreshold(0)
+              .setRealTimeTopicName(Utils.composeRealTimeTopic(storeName)));
       HelixVeniceClusterResources resources = childAdmin.getHelixVeniceClusterResources(clusterName);
       assertNotNull(resources.getStoreMetadataRepository().getStore(storeName));
       assertNotNull(resources.getStoreConfigAccessor().getStoreConfig(storeName));
@@ -82,6 +95,9 @@ public class TopicCleanupServiceIntegrationTest {
           "An existing store's normal-retention RT must be preserved");
       assertEquals(topicManager.getTopicRetention(realTimeTopic), ordinaryRetentionMs);
 
+      // A graveyard record must not override live metadata or StoreConfig protection.
+      childAdmin.getStoreGraveyard()
+          .putStoreIntoGraveyard(clusterName, resources.getStoreMetadataRepository().getStore(storeName));
       resources.getStoreConfigAccessor().deleteConfig(storeName);
       assertNotNull(resources.getStoreMetadataRepository().getStore(storeName));
       assertNull(resources.getStoreConfigAccessor().getStoreConfig(storeName));
@@ -114,6 +130,37 @@ public class TopicCleanupServiceIntegrationTest {
         expectThrows(VeniceNoStoreException.class, () -> childAdmin.discoverCluster(storeName));
       });
       assertEquals(topicManager.getTopicRetention(realTimeTopic), ordinaryRetentionMs);
+
+      String customOwner = Utils.getUniqueString("custom-rt-owner");
+      childAdmin.createStore(clusterName, customOwner, "test-owner", "\"string\"", "\"string\"");
+      childAdmin.updateStore(
+          clusterName,
+          customOwner,
+          new UpdateStoreQueryParams().setHybridRewindSeconds(1)
+              .setHybridOffsetLagThreshold(0)
+              .setRealTimeTopicName(realTimeTopic.getName()));
+      cleanup.cleanupVeniceTopics(topicManager);
+      assertTrue(
+          topicManager.containsTopic(realTimeTopic),
+          "Another store's exact custom RT reference must be protected");
+      assertEquals(topicManager.getTopicRetention(realTimeTopic), ordinaryRetentionMs);
+
+      Store customStore = resources.getStoreMetadataRepository().getStore(customOwner);
+      Version hybridVersion = new VersionImpl(customOwner, 1, "custom-rt-push");
+      hybridVersion.setHybridStoreConfig(customStore.getHybridStoreConfig().clone());
+      customStore.addVersion(hybridVersion);
+      customStore.setHybridStoreConfig(null);
+      resources.getStoreMetadataRepository().updateStore(customStore);
+      assertEquals(
+          childAdmin.getZkClient().exists("/" + clusterName + "/Stores/" + customOwner + "/versions/1"),
+          splitVersionMetadata);
+      cleanup.cleanupVeniceTopics(topicManager);
+      assertEquals(
+          topicManager.getTopicRetention(realTimeTopic),
+          ordinaryRetentionMs,
+          "A remaining hybrid version must protect its custom RT even after the store becomes batch-only");
+      resources.getStoreMetadataRepository().deleteStore(customOwner);
+      resources.getStoreConfigAccessor().deleteConfig(customOwner);
 
       cleanup.cleanupVeniceTopics(topicManager);
       assertTrue(

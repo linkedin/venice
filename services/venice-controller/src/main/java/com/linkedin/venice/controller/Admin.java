@@ -373,12 +373,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   boolean hasStore(String clusterName, String storeName);
 
-  /**
-   * Check authoritative regional metadata for the absence of both StoreConfig and Store metadata in every cluster.
-   * This check does not require leadership of the store's cluster; metadata lookup failures must propagate.
-   */
-  boolean isStoreMetadataAndConfigAbsent(String storeName);
-
   SchemaEntry getKeySchema(String clusterName, String storeName);
 
   Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName);
@@ -579,7 +573,11 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
-  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName);
+  /**
+   * A known cluster uses the normal unused-RT checks. An absent cluster requires graveyard-backed ownership,
+   * authoritative regional metadata absence, and no remaining RT references in any configured child region.
+   */
+  boolean isRTTopicDeletionPermittedByAllControllers(Optional<String> clusterName, String rtTopicName);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be

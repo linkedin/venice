@@ -25,7 +25,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -53,7 +52,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -65,7 +63,6 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.StorageMode;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.Version.PushType;
@@ -115,14 +112,12 @@ import org.apache.helix.PropertyKey;
 import org.apache.helix.constants.InstanceConstants;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.InstanceConfig;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.testng.TestException;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -134,56 +129,6 @@ public class TestVeniceHelixAdmin {
 
   private static final String clusterName = "test-cluster";
   private static final String storeName = "test-store";
-
-  @DataProvider
-  public Object[][] orphanMetadataStoreNames() {
-    return new Object[][] { { storeName }, { VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName) },
-        { VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName) } };
-  }
-
-  @Test(dataProvider = "orphanMetadataStoreNames")
-  public void testStoreMetadataAndConfigMustBothBeAbsent(String requestedStoreName) {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    HelixReadOnlyStoreConfigRepository configRepository = mock(HelixReadOnlyStoreConfigRepository.class);
-    ZkClient zkClient = mock(ZkClient.class);
-    doReturn(configRepository).when(admin).getStoreConfigRepo();
-    doReturn(zkClient).when(admin).getZkClient();
-    doReturn(Arrays.asList("cluster-a", "cluster-b")).when(zkClient).getChildren("/");
-    doCallRealMethod().when(admin).isStoreMetadataAndConfigAbsent(requestedStoreName);
-    String configPath = "/storeConfigs/" + storeName;
-    String metadataPath = "/cluster-b/Stores/" + storeName;
-
-    assertTrue(admin.isStoreMetadataAndConfigAbsent(requestedStoreName));
-
-    doReturn(true).when(zkClient).exists(metadataPath);
-    assertFalse(admin.isStoreMetadataAndConfigAbsent(requestedStoreName));
-
-    doReturn(false).when(zkClient).exists(metadataPath);
-    doReturn(true).when(zkClient).exists(configPath);
-    assertFalse(admin.isStoreMetadataAndConfigAbsent(requestedStoreName));
-
-    doReturn(false).when(zkClient).exists(configPath);
-    doReturn(Optional.of(new StoreConfig(storeName))).when(configRepository).getStoreConfig(requestedStoreName);
-    assertFalse(admin.isStoreMetadataAndConfigAbsent(requestedStoreName));
-
-    doReturn(Optional.empty()).when(configRepository).getStoreConfig(requestedStoreName);
-    when(zkClient.exists(configPath)).thenReturn(false, true);
-    assertFalse(admin.isStoreMetadataAndConfigAbsent(requestedStoreName));
-    verify(admin, never()).checkControllerLeadershipFor(anyString());
-  }
-
-  @Test
-  public void testStoreMetadataLookupFailureDoesNotIndicateAbsence() {
-    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
-    HelixReadOnlyStoreConfigRepository configRepository = mock(HelixReadOnlyStoreConfigRepository.class);
-    ZkClient zkClient = mock(ZkClient.class);
-    doReturn(configRepository).when(admin).getStoreConfigRepo();
-    doReturn(zkClient).when(admin).getZkClient();
-    doThrow(new VeniceException("ZooKeeper metadata lookup failed")).when(zkClient).getChildren("/");
-    doCallRealMethod().when(admin).isStoreMetadataAndConfigAbsent(storeName);
-
-    expectThrows(VeniceException.class, () -> admin.isStoreMetadataAndConfigAbsent(storeName));
-  }
 
   @Test
   public void testGetClusterProvisionedVeniceUnitsExcludesAllSystemStores() {
