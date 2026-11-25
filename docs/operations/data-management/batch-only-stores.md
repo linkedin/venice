@@ -9,7 +9,8 @@ A batch-only store is written exclusively by pushes from an upstream batch job. 
 1. A **full push** writes the entire dataset into a new, immutable store version.
 2. Venice ingests the version in the background while reads continue to be served from the current version.
 3. After the new version is validated and ready, reads are swapped to it. Venice retires old backup versions
-   automatically according to the version retention policy.
+   automatically according to the version retention policy. By default, the policy retains two versions in steady state:
+   the current version and one rollback backup.
 
 ## Recommendations
 
@@ -19,8 +20,7 @@ A batch-only store is written exclusively by pushes from an upstream batch job. 
   [hybrid store](hybrid-stores.md) (enabling incremental push on a batch store implicitly converts it to hybrid with
   default settings). Even then, use them only for limited changes; they are not a substitute for rebuilding the source
   dataset.
-- Validate before swapping reads (for example, record-count and schema checks in the push job). Aim to retain two
-  versions in steady state: the current version and one rollback backup.
+- Validate before swapping reads (for example, record-count and schema checks in the push job).
 - Start at **5-10 GB of data per Venice partition**; see
   [partition sizing](hybrid-stores.md#choosing-and-changing-the-partition-count). Repartitioning with a full push or
   repush is easier before the store becomes hybrid.

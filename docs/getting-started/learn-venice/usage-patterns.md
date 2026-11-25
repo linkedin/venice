@@ -16,7 +16,7 @@ pushes. Choose how data enters the store separately from how applications read i
 | :--------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Write mechanisms | Batch (full) push, incremental push, and streaming writes (see [Write APIs](../../user-guide/write-apis/index.md))                                              |
 | Serving clients  | [Thin](../../user-guide/read-apis/thin-client.md), [Fast](../../user-guide/read-apis/fast-client.md), [Da Vinci](../../user-guide/read-apis/da-vinci-client.md) |
-| Change streams   | [CDC](../../user-guide/read-apis/cdc.md) for ongoing changes on hybrid stores; not recommended for batch-only stores                                            |
+| Change streams   | [CDC](../../user-guide/read-apis/cdc.md) for hybrid nearline changes; use serving clients for batch-only snapshots                                              |
 
 ### Partial Updates
 
@@ -53,8 +53,9 @@ Use these as planning targets for your deployment, not guarantees from Venice OS
 - **Full pushes (batch-only and hybrid):** Budget **24 hours** from the start of the Venice Push Job (VPJ) to the new
   version serving reads. Allow for maintenance and, on hybrid stores, nearline catch-up. If your application needs a
   tighter target, validate it with your operators under expected load and maintenance conditions.
-- **Nearline writes (hybrid):** Plan for **10 minutes at p99** from publishing a write to seeing it in reads from the
-  regions that serve your application. This measures freshness, not the time to acknowledge a write.
+- **Nearline writes (hybrid):** Plan for **10 minutes at p99** from publishing a write to read visibility in the serving
+  region, including cross-region replication when the write originates elsewhere. This measures freshness, not the time
+  to acknowledge a write.
 
 ## Examples
 

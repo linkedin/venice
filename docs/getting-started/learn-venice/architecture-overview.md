@@ -108,6 +108,9 @@ The serving clients support:
 
 #### Change Data Capture (CDC)
 
-Use [CDC](../../user-guide/read-apis/cdc.md) for a hybrid store's ongoing inserts, updates, and deletes, for example to
-keep a client-side index current. CDC is not recommended for batch-only stores; use a serving client to read the current
-snapshot.
+Use [CDC](../../user-guide/read-apis/cdc.md) for a hybrid store's ongoing inserts, updates, and deletes. Batch-only
+stores publish snapshots without a nearline change stream. Read their current snapshot with a serving client.
+
+For example, an inference application can consume embedding changes, transform them into entries in a CPU- or
+GPU-resident vector index, and remove entries on deletes. The application maintains the index and queries it to retrieve
+candidates at inference time.
