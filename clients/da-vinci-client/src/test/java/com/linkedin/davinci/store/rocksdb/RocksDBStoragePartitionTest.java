@@ -27,6 +27,7 @@ import static org.testng.AssertJUnit.assertFalse;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
@@ -41,6 +42,9 @@ import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.metrics.MetricsRepositoryUtils;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -1471,6 +1475,39 @@ public class RocksDBStoragePartitionTest {
     }
   }
 
+  @Test
+  public void testPartitionMetricsFollowDatabaseLifecycle() throws Exception {
+    String property = "rocksdb.num-live-versions";
+    MetricsRepository repository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    try {
+      RocksDBMemoryStats stats = new RocksDBMemoryStats(repository, "partition", false, "test") {
+        @Override
+        public void registerPartition(String partitionName, RocksDBStoragePartition partition) {
+          Assert.fail("Metrics registration must not publish the partition during construction");
+        }
+      };
+      Metric gauge = repository.getMetric(".partition--" + property + ".Gauge");
+      RocksDBStoragePartition partition = createPartition(false, stats);
+      String storeDir = lastCreatedStoreDir;
+      try {
+        long versions = partition.getRocksDBStatValue(property);
+        assertTrue(versions > 0);
+        assertEquals(gauge.value(), (double) versions);
+
+        partition.reopen();
+        assertEquals(gauge.value(), (double) partition.getRocksDBStatValue(property));
+
+        partition.close();
+        assertEquals(gauge.value(), 0.0);
+      } finally {
+        partition.drop();
+        removeDir(storeDir);
+      }
+    } finally {
+      repository.close();
+    }
+  }
+
   /**
    * Verifies that read methods return correct results when the partition is open (not just
    * that they don't crash). Ensures the helpers don't silently swallow data.
@@ -1523,6 +1560,10 @@ public class RocksDBStoragePartitionTest {
   private String lastCreatedStoreDir;
 
   private RocksDBStoragePartition createPartition(boolean deferredWrite) {
+    return createPartition(deferredWrite, null);
+  }
+
+  private RocksDBStoragePartition createPartition(boolean deferredWrite, RocksDBMemoryStats stats) {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     lastCreatedStoreDir = getTempDatabaseDir(storeName);
     StoragePartitionConfig config = new StoragePartitionConfig(storeName, 0);
@@ -1532,7 +1573,7 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(props);
     VeniceServerConfig serverConfig = new VeniceServerConfig(props);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    return new RocksDBStoragePartition(config, factory, DATA_BASE_DIR, null, ROCKSDB_THROTTLER, rocksDBServerConfig);
+    return new RocksDBStoragePartition(config, factory, DATA_BASE_DIR, stats, ROCKSDB_THROTTLER, rocksDBServerConfig);
   }
 
   private void assertFutureCompletes(Future<?> f, int timeoutSeconds) {

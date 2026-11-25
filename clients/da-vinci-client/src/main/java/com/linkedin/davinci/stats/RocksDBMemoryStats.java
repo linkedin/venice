@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
+import java.util.function.ToLongFunction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.Cache;
@@ -62,7 +63,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
       RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_USAGE.getRocksDBProperty(),
       RocksDBMemoryOtelMetricEntity.BLOCK_CACHE_PINNED_USAGE.getRocksDBProperty());
 
-  private final Map<String, RocksDBStoragePartition> hostedRocksDBPartitions = new VeniceConcurrentHashMap<>();
+  private final Map<String, ToLongFunction<String>> hostedRocksDBPartitions = new VeniceConcurrentHashMap<>();
   private final AtomicBoolean rmdBlockCacheRegistered = new AtomicBoolean(false);
 
   /** OTel repository; null when OTel is disabled or when using a plain {@link MetricsRepository}. */
@@ -177,7 +178,11 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   }
 
   public void registerPartition(String partitionName, RocksDBStoragePartition rocksDBPartition) {
-    hostedRocksDBPartitions.put(partitionName, rocksDBPartition);
+    registerPartitionMetrics(partitionName, rocksDBPartition::getRocksDBStatValue);
+  }
+
+  public void registerPartitionMetrics(String partitionName, ToLongFunction<String> readStat) {
+    hostedRocksDBPartitions.put(partitionName, readStat);
   }
 
   public void deregisterPartition(String partitionName) {
@@ -259,9 +264,9 @@ public class RocksDBMemoryStats extends AbstractVeniceStats {
   private long getAggregatedPropertyValue(String metric) {
     long total = 0L;
     synchronized (hostedRocksDBPartitions) {
-      for (RocksDBStoragePartition dbPartition: hostedRocksDBPartitions.values()) {
+      for (ToLongFunction<String> readStat: hostedRocksDBPartitions.values()) {
         try {
-          total += dbPartition.getRocksDBStatValue(metric);
+          total += readStat.applyAsLong(metric);
         } catch (VeniceException e) {
           LOGGER.warn("Could not get rocksDB metric {} with error:", metric, e);
           continue;

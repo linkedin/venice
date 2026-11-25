@@ -52,16 +52,17 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
     validateCollectionReplicationMetadataRecord(collectionRmdRecord);
     this.collectionRmdRecord = collectionRmdRecord;
     this.deletedElementInfo = new HashMap<>();
-    populateDeletedElementSet();
+    indexDeletedElements(readDeletedElements(), readDeletedElementTimestamps());
   }
 
   private void populateDeletedElementSet() {
     if (!deletedElementInfo.isEmpty()) {
       deletedElementInfo.clear();
     }
-    final List<DELETED_ELEMENT_TYPE> deletedElements = getDeletedElements();
-    final List<Long> deletedElementTimestamps = getDeletedElementTimestamps();
+    indexDeletedElements(getDeletedElements(), getDeletedElementTimestamps());
+  }
 
+  private void indexDeletedElements(List<DELETED_ELEMENT_TYPE> deletedElements, List<Long> deletedElementTimestamps) {
     for (int i = 0; i < deletedElements.size(); i++) {
       deletedElementInfo.put(deletedElements.get(i), new ElementTimestampAndIdx(deletedElementTimestamps.get(i), i));
     }
@@ -193,10 +194,18 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
   }
 
   public List<Long> getDeletedElementTimestamps() {
+    return readDeletedElementTimestamps();
+  }
+
+  private List<Long> readDeletedElementTimestamps() {
     return (List<Long>) collectionRmdRecord.get(DELETED_ELEM_TS_FIELD_POS);
   }
 
   public List<DELETED_ELEMENT_TYPE> getDeletedElements() {
+    return readDeletedElements();
+  }
+
+  private List<DELETED_ELEMENT_TYPE> readDeletedElements() {
     return (List<DELETED_ELEMENT_TYPE>) collectionRmdRecord.get(DELETED_ELEM_FIELD_POS);
   }
 

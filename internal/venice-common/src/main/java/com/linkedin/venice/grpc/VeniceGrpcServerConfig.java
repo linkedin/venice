@@ -20,8 +20,8 @@ public class VeniceGrpcServerConfig {
   private final SSLFactory sslFactory;
   private final Executor executor;
 
-  private VeniceGrpcServerConfig(Builder builder) {
-    port = builder.port;
+  private VeniceGrpcServerConfig(Builder builder, int port) {
+    this.port = port;
     credentials = builder.credentials;
     services = builder.services;
     interceptors = builder.interceptors;
@@ -113,14 +113,15 @@ public class VeniceGrpcServerConfig {
     }
 
     public VeniceGrpcServerConfig build() {
-      verifyAndAddDefaults();
-      return new VeniceGrpcServerConfig(this);
-    }
-
-    private void verifyAndAddDefaults() {
-      if (port == null) {
+      Integer configuredPort = port;
+      if (configuredPort == null) {
         throw new IllegalArgumentException("Port value is required to create the gRPC server but was not provided.");
       }
+      verifyAndAddDefaults(configuredPort);
+      return new VeniceGrpcServerConfig(this, configuredPort);
+    }
+
+    private void verifyAndAddDefaults(int port) {
       if (services.isEmpty()) {
         throw new IllegalArgumentException("Service value is required to create the gRPC server but was not provided.");
       }

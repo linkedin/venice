@@ -160,13 +160,13 @@ public class ProducerTool {
   }
 
   private static ProducerContext validateOptionsAndExtractContext(CommandLine cmd) throws IOException {
-    ProducerContext producerContext = new ProducerContext();
-    producerContext.store = validateRequiredOption(cmd, STORE_OPTION);
+    String store = validateRequiredOption(cmd, STORE_OPTION);
 
     String filePath = cmd.getOptionValue(FILE_OPTION.getOpt());
     boolean hasFile = !StringUtils.isEmpty(filePath);
     boolean hasKey = !StringUtils.isEmpty(cmd.getOptionValue(KEY_OPTION.getOpt()));
-    boolean hasValue = !StringUtils.isEmpty(cmd.getOptionValue(VALUE_OPTION.getOpt()));
+    String value = cmd.getOptionValue(VALUE_OPTION.getOpt());
+    boolean hasValue = !StringUtils.isEmpty(value);
     boolean isDelete = cmd.hasOption(DELETE_OPTION.getOpt());
 
     boolean isUpdate = cmd.hasOption(UPDATE_OPTION.getOpt());
@@ -197,13 +197,13 @@ public class ProducerTool {
       System.exit(1);
     }
 
+    ProducerContext producerContext = new ProducerContext(store, hasFile || isDelete ? null : value);
     if (hasFile) {
       producerContext.filePath = filePath;
     } else {
       producerContext.key = cmd.getOptionValue(KEY_OPTION.getOpt());
       producerContext.isDelete = isDelete;
       if (!isDelete) {
-        producerContext.value = cmd.getOptionValue(VALUE_OPTION.getOpt());
         producerContext.isUpdate = isUpdate;
       }
     }
@@ -667,9 +667,9 @@ public class ProducerTool {
   }
 
   private static class ProducerContext {
-    private String store;
+    private final String store;
     private String key;
-    private String value;
+    private final String value;
     private boolean isUpdate;
     private boolean isDelete;
     private String filePath;
@@ -677,5 +677,10 @@ public class ProducerTool {
     private SSLFactory sslFactory;
     private String veniceUrl;
     private String d2ServiceName;
+
+    private ProducerContext(String store, String value) {
+      this.store = store;
+      this.value = value;
+    }
   }
 }
