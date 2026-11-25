@@ -101,7 +101,7 @@ Java 11 is the minimum version for building and running Venice. The supported JD
 recommended.
 
 Venice artifacts target the Java 11 language and standard library and use class-file major version 55, whether built on
-JDK 11 or 17. Applications running on Java 8 must upgrade their JVM before using these artifacts.
+JDK 11 or 17. Applications on JVMs older than Java 11 must upgrade before using these artifacts.
 
 ## Memory
 

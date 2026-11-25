@@ -11,8 +11,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.management.ManagementFactory;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -272,17 +270,8 @@ public final class ForkedJavaProcess extends Process {
 
   private static synchronized long getPidOfProcess(Process process) {
     try {
-      if (process.getClass().getName().equals("java.lang.UNIXProcess")) {
-        // Java 8: `pid` is a private field
-        Field pidField = process.getClass().getDeclaredField("pid");
-        pidField.setAccessible(true);
-        return pidField.getInt(process);
-      } else {
-        // Java 9+: `pid()` is a public method
-        Method pidMethod = Process.class.getMethod("pid");
-        return (long) pidMethod.invoke(process);
-      }
-    } catch (Exception e) {
+      return process.pid();
+    } catch (UnsupportedOperationException | SecurityException e) {
       LOGGER.error("Unable to access pid of " + process.getClass().getName(), e);
       return -1;
     }
@@ -342,6 +331,7 @@ public final class ForkedJavaProcess extends Process {
     return command;
   }
 
+  @Override
   public long pid() {
     return getPidOfProcess(process);
   }

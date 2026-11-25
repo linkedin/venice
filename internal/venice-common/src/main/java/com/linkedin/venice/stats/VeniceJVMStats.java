@@ -90,8 +90,5 @@ public class VeniceJVMStats extends AbstractVeniceStats {
       }
       return -1;
     }, "HeapUsage"));
-
-    // Removing maxDirectMemory sensor as sun.misc.VM class is removed in JDK11
-    // This makes code compatible with both JDK8 and JDK11
   }
 }

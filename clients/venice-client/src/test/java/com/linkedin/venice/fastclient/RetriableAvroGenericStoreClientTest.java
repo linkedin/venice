@@ -147,9 +147,8 @@ public class RetriableAvroGenericStoreClientTest {
   @BeforeClass
   public void setUp() {
     // Use a faster ticking interval (10ms instead of default 1000ms) and more threads so that
-    // the long-tail retry fires promptly even on slow CI runners. The default 1000ms tick means
-    // the retry can be delayed by up to 1 full second, which compounds with JDK 8's slower
-    // ForkJoinPool scheduling to push metric recording beyond test timeouts.
+    // the long-tail retry fires promptly even on slow CI runners. The default 1000ms tick can
+    // delay the retry by up to a second, leaving less time for scheduling and metric recording.
     timeoutProcessor = new TimeoutProcessor(null, 10, true, 2);
     clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>().setStoreName(STORE_NAME)
         .setR2Client(mock(Client.class))

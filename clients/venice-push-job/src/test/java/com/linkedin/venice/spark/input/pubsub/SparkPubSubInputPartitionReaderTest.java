@@ -38,7 +38,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Comprehensive TestNG unit tests for {@link SparkPubSubInputPartitionReader} with Java 8 compatibility.
+ * Tests for {@link SparkPubSubInputPartitionReader}.
  *
  * This test class validates the functionality of the partition reader including:
  * - Constructor scenarios with different configurations

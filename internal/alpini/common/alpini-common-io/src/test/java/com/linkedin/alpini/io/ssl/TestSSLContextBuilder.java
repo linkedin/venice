@@ -95,24 +95,6 @@ public class TestSSLContextBuilder {
   }
 
   @Test(groups = "unit")
-  public void testSslContextConstructorForIncorrectTrustStore() {
-    // The bug this test tries to cover is fixed in JDK 1.8.0_60
-    // http://bugs.java.com/view_bug.do?bug_id=8062552
-    String version = System.getProperty("java.version");
-    String bugFixedIn = "1.8.0_60";
-
-    if (!isGreaterOrEqual(version, bugFixedIn)) {
-      testSslContextConstructor(
-          new File(pkcs12KeyStoreFilePath),
-          pkcs12KeyStoreFilePassword,
-          "PKCS12",
-          new File(pkcs12KeyStoreFilePath),
-          jksTrustStoreFilePassword,
-          /* shouldThrowException = */ true);
-    }
-  }
-
-  @Test(groups = "unit")
   public void testSslContextConstructorForIncorrectTrustStorePassowrd() {
     testSslContextConstructor(
         new File(pkcs12KeyStoreFilePath),
@@ -121,30 +103,6 @@ public class TestSSLContextBuilder {
         new File(jksTrustStoreFilePath),
         incorrectPassword,
         /* shouldThrowException = */ true);
-  }
-
-  private static boolean isGreaterOrEqual(String version, String baseVersion) {
-    String[] baseSegs = baseVersion.split("\\.|_");
-    String[] versionSegs = version.split("\\.|_");
-
-    try {
-      // assuming same length for segs
-      for (int i = 0; i < baseSegs.length; i++) {
-        int vSeg = Integer.parseInt(versionSegs[i]);
-        int bSeg = Integer.parseInt(baseSegs[i]);
-        if (vSeg < bSeg) {
-          return false;
-        } else if (vSeg > bSeg) {
-          return true;
-        }
-      }
-
-      return true;
-    } catch (Exception ex) {
-      // do nothing
-    }
-
-    return false;
   }
 
   private void testSslContextConstructor(

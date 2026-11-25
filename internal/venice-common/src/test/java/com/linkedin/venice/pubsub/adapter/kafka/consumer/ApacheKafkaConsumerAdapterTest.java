@@ -755,7 +755,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(
         internalKafkaConsumer
             .endOffsets(new HashSet<>(Arrays.asList(topicPartition1, topicPartition2)), Duration.ofMillis(500)))
-                .thenReturn(mockResponse);
+        .thenReturn(mockResponse);
 
     Map<PubSubTopicPartition, PubSubPosition> actualPositions = kafkaConsumerAdapter
         .endPositions(Arrays.asList(pubSubTopicPartition1, pubSubTopicPartition2), Duration.ofMillis(500));
@@ -802,7 +802,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(
         internalKafkaConsumer
             .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
-                .thenReturn(mockResponse);
+        .thenReturn(mockResponse);
 
     PubSubPosition actualPosition =
         kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
@@ -820,7 +820,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(
         internalKafkaConsumer
             .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
-                .thenReturn(mockResponse);
+        .thenReturn(mockResponse);
 
     assertNull(
         kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500)),
@@ -837,7 +837,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(
         internalKafkaConsumer
             .offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), Duration.ofMillis(500)))
-                .thenThrow(new TimeoutException("Test timeout"));
+        .thenThrow(new TimeoutException("Test timeout"));
 
     kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
   }
@@ -1119,8 +1119,7 @@ public class ApacheKafkaConsumerAdapterTest {
    * <p>We use an {@link AtomicInteger} sequence counter to record the order of operations
    * <b>inside</b> the mocked Kafka consumer methods, which execute while the adapter's lock is
    * held. This avoids relying on {@link System#nanoTime()} timestamps set <i>after</i> the lock
-   * is released, where thread-scheduling differences (especially on JDK 8) can reorder the
-   * assignments and cause a false failure.
+   * is released, where thread scheduling can reorder the assignments and cause a false failure.
    */
   @Test(timeOut = 15_000)
   public void testPollHoldsLockBlocksPauseUntilPollReturns() throws Exception {

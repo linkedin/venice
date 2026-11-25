@@ -15,7 +15,7 @@ public class AggServerReadQuotaUsageStatsTest {
     /*
      * Inject TestMockTime so Tehuti's Rate.measure(now) is deterministic. Without a frozen
      * clock the rate denominator (now - oldest_window.lastWindowMs) drifts micros between
-     * consecutive reads, which on JDK 8 / loaded CI runs can exceed the 0.05 tolerance used
+     * consecutive reads, which on loaded CI runners can exceed the 0.05 tolerance used
      * downstream and surface as a flake.
      */
     TestMockTime mockTime = new TestMockTime();

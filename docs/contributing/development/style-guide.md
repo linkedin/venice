@@ -121,10 +121,10 @@ would be a good candidate for automation, perhaps via a new Spotbugs plugin; con
 ### Avoid Optionals
 
 We are aligned with the philosophy of the original creators of the Optional API, which is that it is a useful construct
-in the context of the Java 8 stream APIs, but should generally not be used beyond that. Null is a perfectly appropriate
-way to denote emptiness, and is not more or less likely to cause a `NullPointerException`. Sentinel values in primitive
-types (e.g., `-1` for a numeric value that is otherwise expected to be positive) are also perfectly appropriate ways to
-denote emptiness. For more info, here are a good [video](https://www.youtube.com/watch?v=fBYhtvY19xA&t=2317s) and
+in the context of the Stream API, but should generally not be used beyond that. Null is a perfectly appropriate way to
+denote emptiness, and is not more or less likely to cause a `NullPointerException`. Sentinel values in primitive types
+(e.g., `-1` for a numeric value that is otherwise expected to be positive) are also perfectly appropriate ways to denote
+emptiness. For more info, here are a good [video](https://www.youtube.com/watch?v=fBYhtvY19xA&t=2317s) and
 [post](https://homes.cs.washington.edu/~mernst/advice/nothing-is-better-than-optional.html) on this subject.
 
 ### Avoid Java Stream API in Hot Paths
