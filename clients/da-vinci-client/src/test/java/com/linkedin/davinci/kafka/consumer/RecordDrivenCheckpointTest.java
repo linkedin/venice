@@ -60,12 +60,11 @@ public class RecordDrivenCheckpointTest {
     if (periodic) {
       CheckpointProgress progress = new CheckpointProgress();
       progress.source(StoreIngestionTask.checkpointSource(tp, "remote-broker"), checkpoint);
-      checkpoint.recordUserData();
       when(pcs.initializeCheckpointProgress()).thenReturn(progress);
       when(pcs.getCheckpointProgress()).thenReturn(progress);
       when(task.getPartitionConsumptionState(0)).thenReturn(pcs);
       when(pcs.getOffsetRecord()).thenReturn(mock(com.linkedin.venice.offsets.OffsetRecord.class));
-      doCallRealMethod().when(task).captureCheckpointCoverage(any(), any());
+      doCallRealMethod().when(task).initializeCheckpointSource(any(), any(), any());
     }
     doCallRealMethod().when(task).produceToLocalKafka(any(), any(), any(), any(), anyInt(), any(), anyInt(), anyLong());
     VeniceException failure = new VeniceException("produce failed");
@@ -83,12 +82,12 @@ public class RecordDrivenCheckpointTest {
     assertEquals(persisted.isCompletedExceptionally(), periodic);
     verify(pcs).setLastLeaderPersistFuture(persisted);
     if (periodic) {
-      assertTrue(checkpoint.isDue(100), "A synchronous producer failure must release source snapshot coalescing");
+      assertTrue(checkpoint.isDue(100, 1), "A synchronous producer failure must not refresh the deadline");
     } else {
       verify(pcs, never()).initializeCheckpointProgress();
       verify(pcs, never()).getCheckpointProgress();
     }
-    verify(task, never()).enqueueCheckpointSnapshot(any(), any(), any(), any(), any(), anyBoolean());
+    verify(task, never()).enqueueCheckpointSnapshot(any(), any(), any(), any(), any());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = com.linkedin.venice.utils.DataProviderUtils.class)
@@ -137,7 +136,7 @@ public class RecordDrivenCheckpointTest {
     assertFalse(task.shouldSendGlobalRtDiv(record, pcs, "broker"));
 
     verify(task, never()).getSyncBytesInterval(any());
-    verify(task, never()).isCheckpointDue(any(), any(), any());
+    verify(task, never()).isCheckpointDue(any(), any(), any(), any());
     org.mockito.Mockito.verifyNoInteractions(pcs);
   }
 
@@ -160,9 +159,7 @@ public class RecordDrivenCheckpointTest {
     PeriodicCheckpoint checkpoint = progress.source(
         StoreIngestionTask.checkpointSource(record.getTopicPartition(), "broker"),
         new PeriodicCheckpoint(100, 0, 0));
-    if (pendingData) {
-      checkpoint.recordUserData();
-    }
+    when(pcs.getConsumedBytesSinceLastGlobalRtDivSync("broker")).thenReturn(pendingData ? 1L : 0L);
     when(pcs.initializeCheckpointProgress()).thenReturn(progress);
     when(pcs.getCheckpointProgress()).thenReturn(progress);
     when(pcs.isSubscribed()).thenReturn(true);
@@ -170,8 +167,8 @@ public class RecordDrivenCheckpointTest {
     when(pcs.getVeniceWriterLazyRef()).thenReturn(Lazy.of(() -> writer));
     when(writer.sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong()))
         .thenReturn(CompletableFuture.completedFuture(null));
-    doCallRealMethod().when(task).recordCheckpointUserData(any(), any(), any());
-    doCallRealMethod().when(task).isCheckpointDue(any(), any(), any());
+    doCallRealMethod().when(task).initializeCheckpointSource(any(), any(), any());
+    doCallRealMethod().when(task).isCheckpointDue(any(), any(), any(), any());
     doCallRealMethod().when(task).shouldSendGlobalRtDiv(any(), any(), any());
     doCallRealMethod().when(task)
         .propagateHeartbeatFromUpstreamTopicToLocalVersionTopic(
@@ -194,9 +191,9 @@ public class RecordDrivenCheckpointTest {
 
     verify(writer).sendHeartbeat(any(), any(), any(), anyBoolean(), any(), anyLong());
     verify(task, org.mockito.Mockito.times(pendingData ? 1 : 0))
-        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), any(), anyLong(), anyInt(), anyBoolean());
+        .sendGlobalRtDivMessage(any(), any(), any(), anyInt(), any(), anyLong(), anyInt());
     verify(pcs, never()).setLastLeaderPersistFuture(any());
-    assertEquals(checkpoint.generation(), pendingData ? 1L : 0L);
+    assertTrue(checkpoint.isDue(100, 1), "Dispatch alone must not refresh the deadline");
   }
 
   @DataProvider
@@ -205,7 +202,7 @@ public class RecordDrivenCheckpointTest {
   }
 
   @Test(dataProvider = "recordRoutes")
-  public void testNewHeartbeatUsesTimeOnlyForPendingDataAndByteThresholdRemainsIndependent(String route) {
+  public void testTimeUsesExistingCounterAndByteThresholdRemainsIndependent(String route) {
     LeaderFollowerStoreIngestionTask task = mock(LeaderFollowerStoreIngestionTask.class);
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     PubSubTopicRepository topics = new PubSubTopicRepository();
@@ -222,7 +219,7 @@ public class RecordDrivenCheckpointTest {
     when(task.getVersionTopic()).thenReturn(topics.getTopic("store_v1"));
     when(pcs.getCheckpointProgress()).thenReturn(progress);
     when(pcs.isSubscribed()).thenReturn(true);
-    doCallRealMethod().when(task).isCheckpointDue(any(), any(), any());
+    doCallRealMethod().when(task).isCheckpointDue(any(), any(), any(), any());
     doCallRealMethod().when(task).shouldSyncOffset(any(), any(), any());
     doCallRealMethod().when(task).shouldSendGlobalRtDiv(any(), any(), any());
     doCallRealMethod().when(task).shouldSendVtDivSnapshot(any(), any());
@@ -233,12 +230,14 @@ public class RecordDrivenCheckpointTest {
             : () -> task.shouldSendVtDivSnapshot(record, pcs);
 
     when(task.checkpointTimeNs()).thenReturn(120L);
-    assertFalse(predicate.getAsBoolean(), "Heartbeat-only traffic must not dirty a source");
-    checkpoint.recordUserData();
+    assertFalse(predicate.getAsBoolean(), "Zero existing bytes must not trigger the time branch");
+    when(pcs.getProcessedRecordSizeSinceLastSync()).thenReturn(1L);
+    when(pcs.getConsumedBytesSinceLastGlobalRtDivSync("broker")).thenReturn(1L);
+    when(pcs.getConsumedBytesSinceLastGlobalRtDivSync("store_v1")).thenReturn(1L);
     when(task.checkpointTimeNs()).thenReturn(119L);
     assertFalse(predicate.getAsBoolean(), "The stable spread is part of the effective interval");
     when(task.checkpointTimeNs()).thenReturn(120L);
-    assertTrue(predicate.getAsBoolean(), "A new heartbeat can checkpoint earlier pending user data");
+    assertTrue(predicate.getAsBoolean(), "A heartbeat can checkpoint positive existing bytes");
     when(task.isTimeBasedCheckpointEnabled()).thenReturn(false);
     assertFalse(predicate.getAsBoolean(), "Startup-loaded kill switch disables only the time branch");
 
@@ -265,35 +264,36 @@ public class RecordDrivenCheckpointTest {
     CheckpointProgress progress = new CheckpointProgress();
     PeriodicCheckpoint checkpoint = progress
         .source(StoreIngestionTask.checkpointSource(tp, task.localKafkaServer), new PeriodicCheckpoint(100, 0, 0));
-    checkpoint.recordUserData();
     when(task.isTimeBasedCheckpointEnabled()).thenReturn(true);
     when(task.isGlobalRtDivEnabled()).thenReturn(true);
     when(task.checkpointTimeNs()).thenReturn(100L);
     when(pcs.getCheckpointProgress()).thenReturn(progress);
+    when(pcs.initializeCheckpointProgress()).thenReturn(progress);
+    when(pcs.getConsumedBytesSinceLastGlobalRtDivSync("store_v1")).thenReturn(1L);
     when(pcs.isSubscribed()).thenReturn(true);
     PubSubTopicPartition local = new PubSubTopicPartitionImpl(new PubSubTopicRepository().getTopic("store_v1"), 0);
     when(pcs.getReplicaTopicPartition()).thenReturn(local);
     com.linkedin.venice.offsets.OffsetRecord offsetRecord = mock(com.linkedin.venice.offsets.OffsetRecord.class);
     when(offsetRecord.getLeaderTopic(any())).thenReturn(tp.getPubSubTopic());
     when(pcs.getOffsetRecord()).thenReturn(offsetRecord);
-    when(task.getVersionTopic()).thenReturn(tp.getPubSubTopic());
+    when(task.getVersionTopic()).thenReturn(local.getPubSubTopic());
     DataIntegrityValidator div = mock(DataIntegrityValidator.class);
     when(task.getConsumerDiv()).thenReturn(div);
     when(div.cloneVtProducerStates(anyInt(), anyBoolean(), anyLong())).thenReturn(mock(PartitionTracker.class));
-    doCallRealMethod().when(task).isCheckpointDue(any(), any(), any());
-    doCallRealMethod().when(task).captureCheckpointCoverage(any(), any());
+    doCallRealMethod().when(task).isCheckpointDue(any(), any(), any(), any());
+    doCallRealMethod().when(task).initializeCheckpointSource(any(), any(), any());
     doCallRealMethod().when(task).addVtDivToProducerCallbackIfNeeded(any(), any(), any(), any());
     LeaderProducerCallback callback = mock(LeaderProducerCallback.class);
-    when(task.enqueueCheckpointSnapshot(any(), any(), any(), any(), any(), anyBoolean()))
+    when(task.enqueueCheckpointSnapshot(any(), any(), any(), any(), any()))
         .thenReturn(CompletableFuture.completedFuture(null));
 
     task.addVtDivToProducerCallbackIfNeeded(record, callback, pcs, new CompletableFuture<>());
 
     verify(callback).setOnCompletionCallback(any());
-    verify(pcs).resetConsumedBytesSinceLastGlobalRtDivSync(source);
+    verify(pcs).resetConsumedBytesSinceLastGlobalRtDivSync("store_v1");
     verify(task, never()).sendGlobalRtDivMessage(any(), any(), any(), anyInt(), any(), anyLong(), anyInt());
-    assertFalse(checkpoint.isDue(100), "The source's outstanding snapshot suppresses another time attempt");
-    assertEquals(checkpoint.generation(), 1L, "Enqueue must not acknowledge pending data");
+    assertTrue(checkpoint.isDue(100, 1), "An outstanding snapshot must not reserve the source");
+    assertFalse(checkpoint.isDue(100, 0), "Dispatch reset, not in-flight state, suppresses the time branch");
     org.mockito.ArgumentCaptor<java.util.function.Consumer<com.linkedin.venice.pubsub.api.PubSubProduceResult>> completion =
         org.mockito.ArgumentCaptor.forClass(java.util.function.Consumer.class);
     verify(callback).setOnCompletionCallback(completion.capture());
@@ -303,8 +303,7 @@ public class RecordDrivenCheckpointTest {
         org.mockito.ArgumentMatchers.eq(pcs),
         any(),
         any(),
-        any(),
-        org.mockito.ArgumentMatchers.eq(true));
+        org.mockito.ArgumentMatchers.eq(checkpoint));
   }
 
   private DefaultPubSubMessage heartbeat(PubSubTopicPartition tp) {

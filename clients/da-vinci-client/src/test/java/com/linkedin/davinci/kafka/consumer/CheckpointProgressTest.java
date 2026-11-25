@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -12,40 +11,34 @@ import org.testng.annotations.Test;
 
 public class CheckpointProgressTest {
   @Test
-  public void testSnapshotCoverageIsSourceAwareAndGenerationBounded() {
+  public void testSourceDeadlinesAreIndependent() {
     CheckpointProgress progress = new CheckpointProgress();
     PeriodicCheckpoint first = progress.source("first", new PeriodicCheckpoint(100, 0, 0));
     PeriodicCheckpoint second = progress.source("second", new PeriodicCheckpoint(100, 0, 0));
-    first.recordUserData();
-    second.recordUserData();
-    Map<PeriodicCheckpoint, Long> coverage = progress.capture("first");
-    first.recordUserData();
-    coverage.forEach((checkpoint, generation) -> checkpoint.checkpointSucceeded(generation, 100));
-    assertTrue(second.isDue(100), "Another source's durable DIV must not postpone this source");
-    assertFalse(first.isDue(199));
-    assertTrue(first.isDue(200), "New arrivals must remain pending");
-    first.checkpointSucceeded(first.generation(), 200);
-    assertFalse(first.isDue(1000));
+    first.checkpointSucceeded(100);
+    assertTrue(second.isDue(100, 1), "Another source's successful DIV must not postpone this source");
+    assertFalse(first.isDue(199, 1));
+    assertTrue(first.isDue(200, 1));
+    assertFalse(first.isDue(1000, 0));
   }
 
   @Test
-  public void testEmptyCoverageDoesNotAcknowledgePendingSources() {
+  public void testPartitionSuccessRefreshesInitializedDeadlines() {
     CheckpointProgress progress = new CheckpointProgress();
     PeriodicCheckpoint checkpoint = progress.source("source", new PeriodicCheckpoint(100, 0, 0));
-    checkpoint.recordUserData();
-    CheckpointProgress.checkpointSucceeded(progress.capture("absent"));
-    assertTrue(checkpoint.isDue(100));
+    progress.checkpointSucceeded(100);
+    assertFalse(checkpoint.isDue(199, 1));
+    assertTrue(checkpoint.isDue(200, 1));
   }
 
   @Test
-  public void testInvalidationDisablesDueChecksWithoutDiscardingSourceCoverage() {
+  public void testInvalidationDisablesDueChecks() {
     CheckpointProgress progress = new CheckpointProgress();
     PeriodicCheckpoint checkpoint = progress.source("source", new PeriodicCheckpoint(100, 0, 0));
-    checkpoint.recordUserData();
-    assertTrue(progress.isDue(100));
+    assertTrue(progress.isDue(100, 1));
     progress.invalidate();
-    assertFalse(progress.isDue(100));
-    org.testng.Assert.assertEquals(progress.capture("source").get(checkpoint).longValue(), 1L);
+    assertFalse(progress.isDue(100, 1));
+    org.testng.Assert.assertSame(progress.source("source"), checkpoint);
   }
 
   @Test

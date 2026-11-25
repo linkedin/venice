@@ -3,91 +3,47 @@ package com.linkedin.davinci.kafka.consumer;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
 
 
 public class PeriodicCheckpointTest {
   @Test
-  public void testControlCheckpointRefreshesFreshnessWithoutDirtyingCleanSubscription() {
-    PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 0, 0);
-    checkpoint.checkpointSucceeded(0, 200);
-    assertFalse(checkpoint.isDue(1000));
-    checkpoint.recordUserData();
-    assertFalse(checkpoint.isDue(299));
-    assertTrue(checkpoint.isDue(300));
-  }
-
-  @Test
-  public void testOnlyPendingDataAfterIntervalAndStableSpreadIsDue() {
+  public void testTimeRequiresPositiveExistingBytesAndStableSpread() {
     PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 20, 0);
-    assertFalse(checkpoint.isDue(1000));
-    checkpoint.recordUserData();
-    assertFalse(checkpoint.isDue(119));
-    assertTrue(checkpoint.isDue(120));
+    assertFalse(checkpoint.isDue(1000, 0));
+    assertFalse(checkpoint.isDue(119, 1));
+    assertTrue(checkpoint.isDue(120, 1));
+    assertFalse(checkpoint.isDue(120, 0), "Dispatch reset suppresses time even before durable completion");
+    assertTrue(checkpoint.isDue(121, 1), "New bytes need no separate in-flight reservation");
   }
 
   @Test
-  public void testSuccessfulByteCheckpointRefreshesFreshnessWithoutClearingNewerData() {
+  public void testEverySuccessfulCheckpointRefreshesDeadlineWithSameSpread() {
     PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 20, 0);
-    checkpoint.recordUserData();
-    long covered = checkpoint.generation();
-    checkpoint.recordUserData();
-    checkpoint.checkpointSucceeded(covered, 125);
-    assertFalse(checkpoint.isDue(244));
-    assertTrue(checkpoint.isDue(245));
-    checkpoint.checkpointSucceeded(checkpoint.generation(), 245);
-    assertFalse(checkpoint.isDue(1000));
-    // Stale completion cannot postpone a new generation.
-    checkpoint.recordUserData();
-    checkpoint.checkpointSucceeded(covered, 999);
-    assertTrue(checkpoint.isDue(1000));
+    checkpoint.checkpointSucceeded(50); // A byte/control checkpoint before the deadline.
+    assertFalse(checkpoint.isDue(169, 1));
+    assertTrue(checkpoint.isDue(170, 1));
+    checkpoint.checkpointSucceeded(1000); // A late success does not replay missed intervals.
+    assertFalse(checkpoint.isDue(1119, 1));
+    assertTrue(checkpoint.isDue(1120, 1));
+    assertFalse(checkpoint.isDue(2000, 0));
   }
 
   @Test
-  public void testOutstandingSnapshotDefersTimeBranchWithoutAcknowledgingData() {
-    CompletableFuture<Void> pending = new CompletableFuture<>();
-    PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 20, 0);
-    checkpoint.recordUserData();
-    assertTrue(checkpoint.isDue(120));
-    checkpoint.trackCheckpoint(pending);
-    assertFalse(checkpoint.isDue(500));
-    checkpoint.checkpointSucceeded(checkpoint.generation(), 501);
-    pending.complete(null);
-    checkpoint.recordUserData();
-    assertFalse(checkpoint.isDue(620));
-    assertTrue(checkpoint.isDue(621));
-  }
-
-  @Test
-  public void testFailureAndNoOpNeverRefreshDeadline() {
-    CompletableFuture<Void> failed = new CompletableFuture<>();
-    failed.completeExceptionally(new IllegalStateException("checkpoint failed"));
+  public void testFailureOrSkipWithoutSuccessLeavesDeadlineUnchanged() {
     PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 0, 0);
-    checkpoint.recordUserData();
-    checkpoint.trackCheckpoint(CompletableFuture.completedFuture(null));
-    assertTrue(checkpoint.isDue(100));
-    checkpoint.trackCheckpoint(failed);
-    assertTrue(checkpoint.isDue(102));
-  }
-
-  @Test
-  public void testEmptyCoverageCannotPostponeUncoveredData() {
-    PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 0, 0);
-    checkpoint.recordUserData();
-    checkpoint.checkpointSucceeded(0, 200);
-    assertTrue(checkpoint.isDue(100));
+    assertTrue(checkpoint.isDue(100, 1));
+    assertFalse(checkpoint.isDue(101, 0), "Global dispatch resets bytes even if persistence fails");
+    assertTrue(checkpoint.isDue(102, 1), "Failure does not postpone the deadline when bytes arrive again");
   }
 
   @Test
   public void testMonotonicClockWraparound() {
     PeriodicCheckpoint checkpoint = new PeriodicCheckpoint(100, 0, Long.MAX_VALUE - 50);
-    checkpoint.recordUserData();
-    assertFalse(checkpoint.isDue(Long.MIN_VALUE + 48));
-    assertTrue(checkpoint.isDue(Long.MIN_VALUE + 49));
-    checkpoint.checkpointSucceeded(checkpoint.generation(), Long.MIN_VALUE + 50);
-    checkpoint.recordUserData();
-    assertFalse(checkpoint.isDue(Long.MIN_VALUE + 149));
-    assertTrue(checkpoint.isDue(Long.MIN_VALUE + 150));
+    assertFalse(checkpoint.isDue(Long.MIN_VALUE + 48, 1));
+    assertTrue(checkpoint.isDue(Long.MIN_VALUE + 49, 1));
+    checkpoint.checkpointSucceeded(Long.MIN_VALUE + 50);
+    assertFalse(checkpoint.isDue(Long.MIN_VALUE + 149, 1));
+    assertTrue(checkpoint.isDue(Long.MIN_VALUE + 150, 1));
   }
 }

@@ -6,12 +6,10 @@ import java.util.concurrent.locks.ReentrantLock;
 
 
 /**
- * Allocated only for opted-in partitions. Byte counters are deliberately not used here: Global DIV byte counters
- * reset on send, before durability. Source tokens are captured with the corresponding immutable DIV snapshot.
+ * Allocated only for opted-in partitions. Tracks source deadlines and guards actual storage checkpoint execution.
+ * Pending work is determined by the existing byte counters, not by this state.
  */
 class CheckpointProgress {
-  // Synchronous snapshot/cursor ordering only. These locks do not reserve asynchronous producer or queue work.
-  final Object producerLock = new Object();
   final ReentrantLock executionLock = new ReentrantLock();
   private volatile boolean valid = true;
 
@@ -33,42 +31,31 @@ class CheckpointProgress {
     return sources.computeIfAbsent(key, ignored -> initial);
   }
 
-  synchronized boolean isDue(long nowNs) {
-    return valid && sources.values().stream().anyMatch(checkpoint -> checkpoint.isDue(nowNs));
+  synchronized boolean isDue(long nowNs, long pendingBytes) {
+    return valid && sources.values().stream().anyMatch(checkpoint -> checkpoint.isDue(nowNs, pendingBytes));
   }
 
-  synchronized Map<PeriodicCheckpoint, Long> capture(String source) {
-    Map<PeriodicCheckpoint, Long> result = new HashMap<>();
-    sources.forEach((key, checkpoint) -> {
-      if (source == null || source.equals(key)) {
-        result.put(checkpoint, checkpoint.generation());
-      }
-    });
-    return result;
-  }
-
-  static void checkpointSucceeded(Map<PeriodicCheckpoint, Long> coverage) {
-    long now = System.nanoTime();
-    coverage.forEach((checkpoint, generation) -> checkpoint.checkpointSucceeded(generation, now));
+  synchronized void checkpointSucceeded(long nowNs) {
+    sources.values().forEach(checkpoint -> checkpoint.checkpointSucceeded(nowNs));
   }
 
   static class Snapshot {
     final PartitionConsumptionState pcs;
     final CheckpointProgress progress;
-    final Map<PeriodicCheckpoint, Long> coverage;
-    final boolean timeOnly;
+    final PeriodicCheckpoint source;
 
-    Snapshot(PartitionConsumptionState pcs, Map<PeriodicCheckpoint, Long> coverage, boolean timeOnly) {
+    Snapshot(PartitionConsumptionState pcs, PeriodicCheckpoint source) {
       this.pcs = pcs;
       this.progress = pcs.initializeCheckpointProgress();
-      this.coverage = coverage;
-      this.timeOnly = timeOnly;
+      this.source = source;
     }
 
-    boolean isDue(long nowNs) {
-      return !timeOnly || coverage.entrySet()
-          .stream()
-          .anyMatch(entry -> entry.getKey().isCoveredGenerationDue(entry.getValue(), nowNs));
+    void checkpointSucceeded(long nowNs) {
+      if (source == null) {
+        progress.checkpointSucceeded(nowNs);
+      } else {
+        source.checkpointSucceeded(nowNs);
+      }
     }
   }
 }

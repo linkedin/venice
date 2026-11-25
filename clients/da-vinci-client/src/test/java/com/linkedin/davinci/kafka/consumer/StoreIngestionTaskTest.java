@@ -6600,8 +6600,13 @@ public abstract class StoreIngestionTaskTest {
    * {@link PartitionConsumptionState#addConsumedBytesSinceLastGlobalRtDivSync} only for the local VT
    * (keyed by VT name) and RT topics (keyed by broker URL). Remote VTs must be excluded entirely.
    */
-  @Test
-  public void testConsumedBytesSinceLastGlobalRtDivSyncTracking() throws Exception {
+  @DataProvider
+  public Object[][] checkpointRecordTypes() {
+    return new Object[][] { { MessageType.PUT }, { MessageType.CONTROL_MESSAGE }, { MessageType.GLOBAL_RT_DIV } };
+  }
+
+  @Test(dataProvider = "checkpointRecordTypes")
+  public void testConsumedBytesSinceLastGlobalRtDivSyncTracking(MessageType recordType) throws Exception {
     String storeName = "test-store";
     PubSubTopic localVt = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     PubSubTopic rtTopic = pubSubTopicRepository.getTopic(storeName + "_rt");
@@ -6628,6 +6633,7 @@ public abstract class StoreIngestionTaskTest {
       f.set(sit, false);
     }
     for (Object[] entry: new Object[][] { { "versionTopic", localVt },
+        { "versionedIngestionStats", mock(AggVersionedIngestionStats.class) },
         { "storageUtilizationManager", mock(StorageUtilizationManager.class) },
         { "partitionConsumptionStateMap", pcsMap } }) {
       Field f = StoreIngestionTask.class.getDeclaredField((String) entry[0]);
@@ -6635,22 +6641,28 @@ public abstract class StoreIngestionTaskTest {
       f.set(sit, entry[1]);
     }
 
-    KafkaKey mockKey = mock(KafkaKey.class);
-    doReturn(false).when(mockKey).isControlMessage();
     DefaultPubSubMessage mockRecord = mock(DefaultPubSubMessage.class);
-    doReturn(mockKey).when(mockRecord).getKey();
+    doReturn(new KafkaKey(recordType, new byte[0])).when(mockRecord).getKey();
+    doReturn(17).when(mockRecord).getPayloadSize();
+    if (recordType == MessageType.CONTROL_MESSAGE) {
+      KafkaMessageEnvelope envelope = new KafkaMessageEnvelope();
+      ControlMessage control = new ControlMessage();
+      control.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
+      envelope.payloadUnion = control;
+      doReturn(envelope).when(mockRecord).getValue();
+    }
     List<DefaultPubSubMessage> records = Collections.singletonList(mockRecord);
     doReturn(records).when(sit).validateAndFilterOutDuplicateMessagesFromLeaderTopic(any(), any(), any());
 
     // Local VT: keyed by VT name
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(localVt, partition), kafkaUrl, 0);
-    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(localVt.getName()), anyLong());
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(localVt.getName(), 17L);
     verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
 
     // RT topic: keyed by kafkaUrl
     clearInvocations(pcs);
     sit.produceToStoreBufferServiceOrKafka(records, new PubSubTopicPartitionImpl(rtTopic, partition), kafkaUrl, 0);
-    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(eq(kafkaUrl), anyLong());
+    verify(pcs).addConsumedBytesSinceLastGlobalRtDivSync(kafkaUrl, 17L);
     verify(pcs, never()).addConsumedBytesSinceLastGlobalRtDivSync(eq(rtTopic.getName()), anyLong());
 
     // Remote VT: excluded entirely
