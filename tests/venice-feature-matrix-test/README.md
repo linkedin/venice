@@ -10,7 +10,7 @@ configurations. This systematic approach catches interaction bugs that isolated 
 
 ## Prerequisites
 
-- Java 8+
+- JDK 11 or 17
 - Gradle (provided by wrapper)
 - **PICT tool** (for regenerating test cases): [github.com/microsoft/pict](https://github.com/microsoft/pict)
   - macOS: `brew install pict`

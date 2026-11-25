@@ -229,6 +229,7 @@ subprojects {
     tasks.withType(JavaCompile) {
       // Compiler arguments can be injected here...
       // options.compilerArgs << '-Xlint:unchecked'
+      // Keep Java 8 bytecode compatibility independent of the supported runtime JDKs.
       options.release = 8
     }
   }
@@ -856,7 +857,7 @@ allprojects {
   task printAllDependencies(type: DependencyReportTask) {}
 }
 
-def supportedJdkVersions = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_11, JavaVersion.VERSION_17]
+def supportedJdkVersions = [JavaVersion.VERSION_11, JavaVersion.VERSION_17]
 
 task verifyJdkVersion {
   def currentJdkVersion = JavaVersion.current()

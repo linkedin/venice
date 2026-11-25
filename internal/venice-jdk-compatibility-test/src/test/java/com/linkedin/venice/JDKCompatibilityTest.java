@@ -11,7 +11,7 @@ public class JDKCompatibilityTest {
   private static final Logger LOGGER = LogManager.getLogger(JDKCompatibilityTest.class);
 
   @Test
-  public void testJava8Runtime() {
+  public void testJavaRuntime() {
     String javaRuntime = System.getProperty("java.version");
     LOGGER.info("Java runtime: {}", javaRuntime);
     ByteBuffer buffer = ByteBuffer.wrap(new byte[] { 1, 2, 3 });

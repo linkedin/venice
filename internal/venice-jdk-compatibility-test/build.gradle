@@ -7,7 +7,7 @@ dependencies {
   testImplementation project(':internal:venice-common')
 }
 
-for (version in [8, 11]) {
+for (version in [11]) {
   task "testJava${version}"(type: Test) {
     javaLauncher = javaToolchains.launcherFor {
       languageVersion = JavaLanguageVersion.of(version)
@@ -17,7 +17,6 @@ for (version in [8, 11]) {
 
 test {
   dependsOn(
-      testJava8,
       testJava11
   )
 
