@@ -6,9 +6,9 @@ TTL can serve as a storage efficiency optimization for use cases where the data 
 beyond a certain age.
 
 TTL can also be useful in certain scenarios where the data should not be retained longer than prescribed for compliance
-reasons. Note that for these scenarios, it is important to understand (as explained above) that the rewind time is the
-minimum, not maximum, TTL. It is also advisable to schedule the periodic purging such that there is a margin of safety
-in case of infra delays or failures.
+reasons. Note that for these scenarios, it is important to understand that the rewind time is the minimum, not maximum,
+TTL (see [Hybrid stores](hybrid-stores.md#rewind)). It is also advisable to schedule the periodic purging such that
+there is a margin of safety in case of infra delays or failures.
 
 ## Usage
 
@@ -34,7 +34,9 @@ specified by setting one of the following configs on the VenicePushJob:
 | `repush.ttl.seconds`         | Records older than the specified value will expire                   |
 | `repush.ttl.start.timestamp` | Records that were written before the specified timestamp will expire |
 
-The `rewind.time.in.seconds.override` is a configurable value in push job (Default: 24 hours).
+The `rewind.time.in.seconds.override` config on the push job overrides the store's rewind time for the real-time replay
+of that push. For a repush of a hybrid store where it is unset, the push job falls back to 24 hours; this is a push job
+fallback, not a recommended value for every store.
 
 This brings two major benefits:
 
@@ -68,7 +70,13 @@ acts as a "minimum TTL", while the "maximum TTL" is N + delay between each empty
 daily empty push, and N = 6 days, then the oldest data in your store will be at least 6 days old, and at most 7 days
 old.
 
-N can be set up by configuring the `hybrid-rewind-seconds` using venice-admin-tool.
+N can be set up by configuring the `hybrid-rewind-seconds` using venice-admin-tool. Keep N to 23 days or less (see
+[Choosing a rewind time](hybrid-stores.md#choosing-a-rewind-time)).
+
+!!! warning
+
+    An empty push on a hybrid store discards all batch data; the new version contains only the replayed RT history. Use
+    it for TTL only when that outcome is acceptable. Repush with TTL keeps records that have not expired.
 
 ### How to enable
 

@@ -1,6 +1,9 @@
 # Write APIs
 
-Venice supports multiple write patterns to accommodate different data freshness and scale requirements.
+Venice supports multiple write mechanisms to accommodate different data freshness and scale requirements. These are
+independent of how a store is read, and a store can combine them; see
+[Store Usage Patterns](../../getting-started/learn-venice/usage-patterns.md) for how to choose between batch-only,
+hybrid, and streaming-only usage.
 
 ## Batch Push
 

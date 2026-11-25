@@ -99,6 +99,7 @@ nav:
     - Learn Venice:
       - Architecture Overview: getting-started/learn-venice/architecture-overview.md
       - Merging Batch & Real-Time Data: getting-started/learn-venice/merging-batch-and-rt-data.md
+      - Store Usage Patterns: getting-started/learn-venice/usage-patterns.md
     - Deployments:
       - Single Datacenter: getting-started/deployments/quickstart-single-dc.md
       - Multi Datacenter: getting-started/deployments/quickstart-multi-dc.md
@@ -120,6 +121,9 @@ nav:
   - Operations:
     - operations/index.md
     - Data Management:
+      - Batch-Only Stores: operations/data-management/batch-only-stores.md
+      - Hybrid Stores: operations/data-management/hybrid-stores.md
+      - Streaming-Only Stores: operations/data-management/streaming-only-stores.md
       - Repush: operations/data-management/repush.md
       - TTL: operations/data-management/ttl.md
       - System Stores: operations/data-management/system-stores.md

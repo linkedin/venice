@@ -39,7 +39,9 @@ workloads.
 
 ### Write Modes
 
-Venice supports three write modes with different platform support:
+Venice supports the following write mechanisms. They describe how data gets into a store; they are not store types. How
+a store is read is a separate choice (see [Read Modes](#read-modes)). For guidance on combining them, see
+[Store Usage Patterns](usage-patterns.md).
 
 | Write Mode       | Supported Platforms                 |
 | :--------------- | :---------------------------------- |
@@ -74,8 +76,9 @@ In addition to full record writes, Venice supports efficient partial updates:
 
 ### Read Modes
 
-Venice provides three client types with different performance/cost tradeoffs. Clients are designed to share the same
-read APIs, enabling cost/performance changes with minimal application changes.
+Venice provides three read clients with different performance/cost tradeoffs. Clients are designed to share the same
+read APIs, enabling cost/performance changes with minimal application changes. Any client can read a store regardless of
+how it is written.
 
 #### Client Types
 

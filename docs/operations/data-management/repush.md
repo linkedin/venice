@@ -9,6 +9,19 @@ auxiliary goals of Full Pushes end up being fulfilled organically.
 In other cases, users do Full Pushes either infrequently, or not at all. In these cases, the operator may want to
 manually trigger a Repush, without involving the user.
 
+## Push Types
+
+| Term                | Meaning                                                                                                                                 |
+| :------------------ | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| Full push           | A batch job writes the entire dataset into a new store version, which replaces the current version when ready.                          |
+| Incremental push    | A batch job writes a limited set of records through the RT topic of a hybrid store, without creating a new version.                     |
+| Repush              | A full push whose input is an existing store version (`source.kafka = true`) instead of an upstream dataset, typically operator-driven. |
+| Stream reprocessing | A stream-processing job replays historical input into a new store version, then continues with real-time events.                        |
+| Empty push          | A new version with no batch records. A hybrid store then contains only replayed RT history, so it is a data-loss-accepting option.      |
+
+Which mechanisms fit a store is covered in [Batch-only](batch-only-stores.md), [Hybrid](hybrid-stores.md), and
+[Streaming-only](streaming-only-stores.md) stores.
+
 ## Use Cases
 
 The various motivations for operator-driven Repushes are described in more details below.
