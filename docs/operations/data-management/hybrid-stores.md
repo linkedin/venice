@@ -1,8 +1,8 @@
 # Hybrid Stores
 
-A hybrid store combines a **versioned batch baseline** with a **real-time (RT) overlay**. Full pushes create immutable
-versions; streaming writes and incremental pushes flow through the store's RT topic and are applied on top. See
-[Store Usage Patterns](../../getting-started/learn-venice/usage-patterns.md) for when to choose this pattern,
+A hybrid store combines a **versioned batch baseline** with a **real-time (RT) overlay**. Full pushes create new
+versions; streaming writes and incremental pushes continue through the store's RT topic and are applied as an overlay.
+See [Store Usage Patterns](../../getting-started/learn-venice/usage-patterns.md) for when to choose this pattern,
 [Merging Batch & Real-Time Data](../../getting-started/learn-venice/merging-batch-and-rt-data.md) for the architecture,
 and [Push types](repush.md#push-types) for definitions.
 
@@ -35,10 +35,11 @@ How the start and end of the push are determined depends on the replication mode
 `REWIND_FROM_SOP` also covers the duration of the push, which helps when pushes are long relative to the rewind time. It
 replays more records than `REWIND_FROM_EOP` for the same rewind time.
 
-Only writes inside the **effective replay window** are guaranteed to be overlaid. Writes older than the window are not
-replayed even if they are still retained in the RT topic, so a short rewind (including a short per-push override such as
-in a repush) can drop writes made early in a long push. Rewind time is therefore the **minimum** retained overlay, not a
-maximum TTL (see [TTL](ttl.md)).
+Writes inside the **effective replay window** are eligible for replay; they are not guaranteed to replace the version's
+value. Active-active conflict resolution can retain a newer logical timestamp instead. Writes older than the window are
+not replayed even if the RT topic still retains them, so a short rewind (including a short per-push override such as in
+a repush) can omit writes made early in a long push. Rewind time defines a replay-eligibility window, not a maximum TTL
+(see [TTL](ttl.md)).
 
 A per-push override does not extend RT retention, which is derived from the store-level config (see
 [RT topic retention](#rt-topic-retention)). Before using an override longer than the store's rewind, check that the
@@ -92,6 +93,9 @@ retention = max(5 days, rewind time + bootstrap-to-online timeout + 2 days)
 - Retention is computed from the **store-level** rewind time, not from a per-push override. If a push overrides the
   rewind to a window longer than the store's retention covers (for example, 10 days on a store sized for 5), the
   requested history may already be gone. Size the store-level rewind for any longer replay you intend.
+- Changing the bootstrap timeout changes the retention calculation, but does not by itself reconcile an existing RT
+  topic. Apply a hybrid-config update as part of the change, wait for reconciliation, and verify the broker's effective
+  retention before relying on the larger window.
 - Automatic RT-topic cleanup is conditional: Venice must consider a topic truncated or otherwise eligible after
   retirement. A gated partition-count change does not, by itself, guarantee that the obsolete topic is cleaned while the
   store remains hybrid. Monitor obsolete topics through retirement; do not delete them manually.
@@ -135,7 +139,8 @@ writers can continue to use the old topic and partitioning. Use this path only a
 complete refreshed baseline that includes every write through the pause. Verify that the new version resolves the
 intended RT topic and partition count, completes replay, and swaps successfully before redirecting or resuming writers.
 Refresh or restart producers that retain old topic metadata. If the writers cannot be paused and handed off safely, use
-Option B instead. RT topics are never deleted manually on either path.
+Option B instead. For active-active data, preserve conflict timestamps and delete tombstones in that baseline; if it is
+value-only, fence stale pre-handoff writes before replay. RT topics are never deleted manually on either path.
 
 ### Option A: In-place Change (requires pausing writers)
 
@@ -150,8 +155,11 @@ than silently accepting new defaults. Restore the source fabric before the next 
 3. **Disable hybrid** on the store.
 4. Run enough full pushes or repushes, plus version cleanup, so that **all hybrid versions are retired in every
    region**. The baseline must include every write up to the pause: repush from a fully caught-up source version, or use
-   a refreshed upstream batch baseline that contains those writes.
-5. **Wait for Venice's automatic RT topic cleanup.** Do not delete RT topics manually.
+   a refreshed upstream batch baseline that contains those writes. For active-active data, preserve conflict metadata
+   and delete tombstones, or fence stale pre-pause writes if the replacement is value-only.
+5. **Confirm cleanup of every obsolete RT topic**, including topics from earlier gated partition changes. If automatic
+   cleanup does not complete, use the deployment's supported cleanup/escalation path or abort to Option B rather than
+   waiting with writers paused indefinitely. Do not delete RT topics manually.
 6. **Change the partition count.**
 7. **Re-enable hybrid** with the recorded settings.
 8. Run a **fresh full push** with a baseline that again includes every write up to the pause, and validate it. If the

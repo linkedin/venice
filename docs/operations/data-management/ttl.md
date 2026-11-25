@@ -53,6 +53,11 @@ retained; only an older timestamp expires. An expired non-collection value or fi
 schema default. Collection fields are filtered at the entry level, so newer entries and deletion tombstones can remain
 instead of resetting the whole list or map.
 
+Before scheduling a TTL repush, verify that the source version contains non-empty replication metadata for the records
+being filtered. The filter throws if that metadata is missing or empty; the zero-valued batch sentinel is still
+replication metadata and does not exempt records that contain none. This preflight also applies to untimestamped batch
+records in an active-active source.
+
 Records carrying the batch sentinel timestamp are exempt from value-level filtering, but that exemption does not apply
 to field-level metadata. Batch records pushed with a record-level timestamp (`timestamp.field`) can expire. With
 field-level timestamps, an untouched non-collection field can still carry a zero/sentinel timestamp and be reset; newer
@@ -92,13 +97,15 @@ the data from the Full Push.
 
 This can be leveraged in order to enforce TTL on the dataset. By scheduling periodic empty pushes and configuring how
 far back to replay the real-time data (N), one can control the TTL parameters. The time to live is defined by N, which
-acts as a "minimum TTL", while the "maximum TTL" is N + delay between each empty push. For example, if you schedule a
-daily empty push, and N = 6 days, then the oldest data in your store will be at least 6 days old, and at most 7 days
-old.
+acts as a "minimum TTL." The maximum age also includes the time between empty pushes and the delay from the replay
+anchor until the new version is swapped. For example, with a daily schedule, N = 6 days, and no anchor-to-swap delay,
+the oldest data is approximately 6 to 7 days old; add that delay when estimating retention.
 
 For an admin-tool empty push, N comes from `hybrid-rewind-seconds`. A VenicePushJob empty push can replace that store
-setting with a shorter per-push rewind override, so use the effective rewind when calculating TTL. Keep the effective N
-to 23 days or less (see [Choosing a rewind time](hybrid-stores.md#choosing-a-rewind-time)).
+setting with a shorter per-push rewind override, so use the effective rewind when calculating TTL. An absolute
+`rewind.epoch.time.in.seconds.override` fixes one start time; it is not a rolling N-second window. Scheduled pushes that
+use it must advance the epoch for each run. Keep the effective N to 23 days or less (see
+[Choosing a rewind time](hybrid-stores.md#choosing-a-rewind-time)).
 
 !!! warning
 
