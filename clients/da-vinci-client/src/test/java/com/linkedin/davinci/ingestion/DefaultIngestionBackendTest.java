@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -21,6 +22,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -150,6 +152,26 @@ public class DefaultIngestionBackendTest {
     ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, true, REPLICA_ID);
 
     verify(storeIngestionService).stopConsumptionAndWait(eq(storeConfig), eq(PARTITION), eq(1), eq(5), eq(true));
+    verify(storeIngestionService).dropStoragePartitionGracefully(storeConfig, PARTITION);
+  }
+
+  @Test
+  public void testReplicaDropRequiresSuccessfulUnsubscribeBeforeDeletingStorage() {
+    when(veniceServerConfig.isReplicaDropBatchUnsubscribeEnabled()).thenReturn(true);
+    CompletableFuture<Void> unsubscribe = new CompletableFuture<>();
+    when(storeIngestionService.stopConsumption(storeConfig, PARTITION)).thenReturn(unsubscribe);
+    assertThrows(
+        VeniceException.class,
+        () -> ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 0, true, REPLICA_ID));
+    unsubscribe.completeExceptionally(new VeniceException("Poll barrier failed"));
+    assertThrows(
+        VeniceException.class,
+        () -> ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, true, REPLICA_ID));
+    verify(storeIngestionService, never()).dropStoragePartitionGracefully(storeConfig, PARTITION);
+
+    when(storeIngestionService.stopConsumption(storeConfig, PARTITION))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    ingestionBackend.dropStoragePartitionGracefully(storeConfig, PARTITION, 5, true, REPLICA_ID);
     verify(storeIngestionService).dropStoragePartitionGracefully(storeConfig, PARTITION);
   }
 

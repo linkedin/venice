@@ -7,12 +7,16 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
@@ -143,10 +147,18 @@ public class DefaultIngestionBackend implements IngestionBackend {
         replicaId,
         getOrCreateReplicaContext(replicaId).state);
 
-    // Stop consumption of the partition.
-    final int waitIntervalInSecond = 1;
-    final int maxRetry = timeoutInSeconds / waitIntervalInSecond;
-    getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, waitIntervalInSecond, maxRetry, true);
+    if (serverConfig.isReplicaDropBatchUnsubscribeEnabled() && !getStoreIngestionService().isDaVinciClient()) {
+      try {
+        getStoreIngestionService().stopConsumption(storeConfig, partition).get(timeoutInSeconds, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new VeniceException("Interrupted waiting for unsubscribe before dropping replica " + replicaId, e);
+      } catch (ExecutionException | TimeoutException e) {
+        throw new VeniceException("Unsubscribe did not complete before dropping replica " + replicaId, e);
+      }
+    } else {
+      getStoreIngestionService().stopConsumptionAndWait(storeConfig, partition, 1, timeoutInSeconds, true);
+    }
 
     try {
       return getStoreIngestionService().dropStoragePartitionGracefully(storeConfig, partition);
