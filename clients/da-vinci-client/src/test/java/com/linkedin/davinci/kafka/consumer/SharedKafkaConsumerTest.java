@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer.ReplicaDropPollTimeoutException;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -136,6 +138,28 @@ public class SharedKafkaConsumerTest {
     sharedConsumer.poll(0);
     sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime());
     verify(consumer).batchUnsubscribe(partitions);
+    verify(listener).call(sharedConsumer, versionTopic, partition);
+  }
+
+  @Test
+  public void testReplicaDropReleasesReservationAfterFailedSubscribe() throws InterruptedException {
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic("replica_drop_store_v1");
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic("replica_drop_store_rt");
+    PubSubTopicPartition partition = new PubSubTopicPartitionImpl(rtTopic, 0);
+    Set<PubSubTopicPartition> partitions = Collections.singleton(partition);
+    SharedKafkaConsumer.UnsubscriptionListener listener = mock(SharedKafkaConsumer.UnsubscriptionListener.class);
+    SharedKafkaConsumer sharedConsumer = new SharedKafkaConsumer(consumer, stats, () -> {}, listener, "test", 0);
+    doThrow(new VeniceException("Subscribe failed")).when(consumer)
+        .subscribe(partition, PubSubSymbolicPosition.EARLIEST, false);
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> sharedConsumer.subscribe(versionTopic, partition, PubSubSymbolicPosition.EARLIEST, false));
+    Assert.assertThrows(
+        ReplicaDropPollTimeoutException.class,
+        () -> sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime()));
+    verify(listener, never()).call(sharedConsumer, versionTopic, partition);
+    sharedConsumer.poll(0);
+    sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime());
     verify(listener).call(sharedConsumer, versionTopic, partition);
   }
 }

@@ -246,9 +246,9 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     }
     for (PubSubTopicPartition topicPartition: topicPartitions) {
       replicaDropPollBaselines.remove(topicPartition);
-      if (subscribedTopicPartitionToVersionTopic.remove(topicPartition, versionTopic)) {
-        unsubscriptionListener.call(this, versionTopic, topicPartition);
-      }
+      subscribedTopicPartitionToVersionTopic.remove(topicPartition, versionTopic);
+      // The service reserves the assignment before the delegate installs a subscription.
+      unsubscriptionListener.call(this, versionTopic, topicPartition);
     }
   }
 
