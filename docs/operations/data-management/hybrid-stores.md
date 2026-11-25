@@ -13,7 +13,7 @@ the batch job was running are overlaid on the new version. The **rewind time** (
 far back the replay starts. It is a per-store setting that a push can override (relative with
 `rewind.time.in.seconds.override`, or absolute with `rewind.epoch.time.in.seconds.override`). If both are set, the
 relative override wins. The epoch override requires `REWIND_FROM_SOP` and is converted to a relative rewind (now minus
-the epoch time) plus a buffer, 60 seconds by default (`rewind.epoch.time.in.seconds.buffer.override`).
+the epoch time) plus a buffer, 60 seconds by default (`rewind.epoch.time.buffer.in.seconds.override`).
 
 | Buffer replay policy        | Replay starts at                         |
 | :-------------------------- | :--------------------------------------- |
