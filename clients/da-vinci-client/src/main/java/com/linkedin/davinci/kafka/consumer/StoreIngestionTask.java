@@ -2612,7 +2612,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Set<SharedKafkaConsumer> candidateConsumers =
             aggKafkaConsumerService.getAssignedConsumersForReplicaDrop(versionTopic, candidates);
         // A later action must not add another consumer barrier before the head can acknowledge.
-        if (!headConsumers.containsAll(candidateConsumers)) {
+        if (candidateConsumers.isEmpty() || !headConsumers.containsAll(candidateConsumers)) {
           break;
         }
         topics.addAll(prepareReplicaDropUnsubscribe(action));
@@ -2659,9 +2659,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   boolean handleConsumerActionsError(Throwable e, ConsumerAction action, long actionProcessStartTimeInMs) {
-    boolean retry = isReplicaDropUnsubscribe(action) && e instanceof SharedKafkaConsumer.ReplicaDropPollTimeoutException
-        ? getReplicaDropDeadlineNanos(action) - System.nanoTime() > 0
-        : action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS;
+    boolean retry;
+    if (e instanceof SharedKafkaConsumer.ReplicaDropPollTimeoutException && isReplicaDropUnsubscribe(action)) {
+      action.recordReplicaDropPollTimeout();
+      retry = getReplicaDropDeadlineNanos(action) - System.nanoTime() > 0;
+    } else {
+      retry = action.getAttemptsExcludingReplicaDropPollTimeouts() <= MAX_CONSUMER_ACTION_ATTEMPTS;
+    }
     if (retry) {
       LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
       return false;

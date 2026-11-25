@@ -26,6 +26,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private final LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker;
 
   private int attempts = 0;
+  private int replicaDropPollTimeouts = 0;
 
   private long createTimestampInMs = System.currentTimeMillis();
   private final long createTimestampNanos = System.nanoTime();
@@ -84,6 +85,14 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public int getAttemptsCount() {
     return attempts;
+  }
+
+  void recordReplicaDropPollTimeout() {
+    replicaDropPollTimeouts++;
+  }
+
+  int getAttemptsExcludingReplicaDropPollTimeouts() {
+    return attempts - replicaDropPollTimeouts;
   }
 
   public int getSequenceNumber() {

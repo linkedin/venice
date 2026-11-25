@@ -2547,7 +2547,7 @@ public abstract class StoreIngestionTaskTest {
           CompletableFuture<Void> allDrops = CompletableFuture.allOf(drops.get(0), drops.get(1));
           waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> assertTrue(allDrops.isDone()));
           allDrops.join();
-          assertEquals(headDeadlines.size(), StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 2);
+          assertEquals(headDeadlines.size(), StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 3);
           assertEquals(new HashSet<>(headDeadlines).size(), 1);
         }, AA_OFF);
     Map<String, Object> properties = new HashMap<>();
@@ -2568,6 +2568,9 @@ public abstract class StoreIngestionTaskTest {
             headDeadlines.add(deadlineNanos);
             if (headDeadlines.size() <= StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 1) {
               throw new SharedKafkaConsumer.ReplicaDropPollTimeoutException("Poll barrier still pending");
+            }
+            if (headDeadlines.size() == StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 2) {
+              throw new VeniceException("Cleanup must still have a retry available after poll timeouts");
             }
           } else {
             assertEquals(requested, barOnly);
