@@ -61,4 +61,4 @@ The process works in the following way:
 ## Acknowledgements
 
 This guide is inspired from the
-[Apache Pulsar project proposal](https://github.com/apache/pulsar/blob/master/wiki/proposals/VIP.md) plan.
+[Apache Pulsar project proposal](https://github.com/apache/pulsar/blob/master/pip/README.md) plan.
