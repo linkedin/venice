@@ -74,7 +74,7 @@ can reduce the payload, with a [server-side ingestion cost](usage-patterns.md#pa
 
 ### Read Modes
 
-The Thin, Fast, and Da Vinci serving clients work with both batch-only and hybrid stores. Choose among them based on
+The Thin, Fast, and Da Vinci read clients work with both batch-only and hybrid stores. Choose among them based on
 latency and resource tradeoffs.
 
 #### Client Types
@@ -97,7 +97,7 @@ cost/performance tradeoff without needing to rewrite their applications.
 
 #### Read APIs
 
-The serving clients support:
+The read clients support:
 
 - **Single get**: Retrieve value for one key
 - **Batch get**: Retrieve values for multiple keys
@@ -109,7 +109,7 @@ The serving clients support:
 #### Change Data Capture (CDC)
 
 Use [CDC](../../user-guide/read-apis/cdc.md) for a hybrid store's ongoing inserts, updates, and deletes. Batch-only
-stores publish snapshots without a nearline change stream. Read their current snapshot with a serving client.
+stores publish snapshots without a nearline change stream. Use a read client to query the current snapshot.
 
 For example, an inference application can consume embedding changes, transform them into entries in a CPU- or
 GPU-resident vector index, and remove entries on deletes. The application maintains the index and queries it to retrieve

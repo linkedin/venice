@@ -15,8 +15,8 @@ pushes. Choose how data enters the store separately from how applications read i
 | Dimension        | Options                                                                                                                                                         |
 | :--------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Write mechanisms | Batch (full) push, incremental push, and streaming writes (see [Write APIs](../../user-guide/write-apis/index.md))                                              |
-| Serving clients  | [Thin](../../user-guide/read-apis/thin-client.md), [Fast](../../user-guide/read-apis/fast-client.md), [Da Vinci](../../user-guide/read-apis/da-vinci-client.md) |
-| Change streams   | [CDC](../../user-guide/read-apis/cdc.md) for hybrid nearline changes; use serving clients for batch-only snapshots                                              |
+| Read clients     | [Thin](../../user-guide/read-apis/thin-client.md), [Fast](../../user-guide/read-apis/fast-client.md), [Da Vinci](../../user-guide/read-apis/da-vinci-client.md) |
+| Change capture   | [Change data capture (CDC)](../../user-guide/read-apis/cdc.md) for hybrid nearline changes; use read clients for batch-only snapshots                           |
 
 ### Partial Updates
 
