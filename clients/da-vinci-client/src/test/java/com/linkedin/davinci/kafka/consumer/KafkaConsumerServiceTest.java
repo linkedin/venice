@@ -54,6 +54,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -767,13 +768,30 @@ public class KafkaConsumerServiceTest {
         createServiceWithConsumers(Collections.singletonMap(consumer, partitions), versionTopic);
     doThrow(new VeniceException("poll barrier failed")).doNothing()
         .when(consumer)
-        .batchUnsubscribeForReplicaDrop(versionTopic, partitions);
+        .batchUnsubscribeForReplicaDrop(eq(versionTopic), eq(partitions), anyLong());
 
-    Assert.assertThrows(VeniceException.class, () -> service.batchUnsubscribeForReplicaDrop(versionTopic, partitions));
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> service.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime()));
     Assert.assertSame(service.getConsumerAssignedToVersionTopicPartition(versionTopic, partition), consumer);
 
-    service.batchUnsubscribeForReplicaDrop(versionTopic, partitions);
-    verify(consumer, times(2)).batchUnsubscribeForReplicaDrop(versionTopic, partitions);
+    FutureTask<Void> retry = new FutureTask<>(() -> {
+      service.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime());
+      return null;
+    });
+    Thread retryThread = new Thread(retry);
+    retryThread.setDaemon(true);
+    service.versionTopicToTopicPartitionToConsumer.computeIfPresent(versionTopic, (topic, assignments) -> {
+      // Shutdown holds this map lock before acquiring a consumer lock.
+      retryThread.start();
+      try {
+        retry.get(10, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new AssertionError("Replica drop must detach without acquiring the outer map lock", e);
+      }
+      return assignments;
+    });
+    verify(consumer, times(2)).batchUnsubscribeForReplicaDrop(eq(versionTopic), eq(partitions), anyLong());
     Assert.assertNull(service.getConsumerAssignedToVersionTopicPartition(versionTopic, partition));
   }
 

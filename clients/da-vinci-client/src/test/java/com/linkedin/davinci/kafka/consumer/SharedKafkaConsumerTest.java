@@ -9,8 +9,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer.ReplicaDropPollTimeoutException;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -107,7 +107,7 @@ public class SharedKafkaConsumerTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testReplicaDropCannotCompleteWithoutNextPoll(boolean interruptAtPollBarrier) {
+  public void testReplicaDropCannotCompleteWithoutNextPoll(boolean interruptAtPollBarrier) throws InterruptedException {
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic("replica_drop_store_v1");
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(versionTopic, 0);
     Set<PubSubTopicPartition> partitions = Collections.singleton(partition);
@@ -120,17 +120,22 @@ public class SharedKafkaConsumerTest {
         Thread.currentThread().interrupt();
         return null;
       }).when(consumer).batchUnsubscribe(partitions);
-    } else {
-      sharedConsumer.setTimeoutMsOverride(0);
     }
 
-    Class<? extends Exception> expected = interruptAtPollBarrier ? InterruptedException.class : VeniceException.class;
+    Class<? extends Exception> expected =
+        interruptAtPollBarrier ? InterruptedException.class : ReplicaDropPollTimeoutException.class;
     try {
-      Assert.assertThrows(expected, () -> sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions));
-      verify(consumer).batchUnsubscribe(partitions);
+      long deadlineNanos = System.nanoTime() + (interruptAtPollBarrier ? TimeUnit.SECONDS.toNanos(10) : 0);
+      Assert.assertThrows(
+          expected,
+          () -> sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, deadlineNanos));
       verify(listener, never()).call(sharedConsumer, versionTopic, partition);
     } finally {
       Thread.interrupted();
     }
+    sharedConsumer.poll(0);
+    sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime());
+    verify(consumer).batchUnsubscribe(partitions);
+    verify(listener).call(sharedConsumer, versionTopic, partition);
   }
 }

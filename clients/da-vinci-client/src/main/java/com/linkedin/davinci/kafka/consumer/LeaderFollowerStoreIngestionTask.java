@@ -4119,6 +4119,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
     forEachSubscribedTopicPartition(
         partitionConsumptionState,
+        false,
         topicPartition -> aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, topicPartition));
     closePartitionWriter(partitionConsumptionState);
   }
@@ -4126,24 +4127,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void forEachSubscribedTopicPartition(
       PartitionConsumptionState partitionConsumptionState,
+      boolean includeRetainedAssignments,
       Consumer<PubSubTopicPartition> consumer) {
     int partitionId = partitionConsumptionState.getPartition();
     PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
 
-    // During leader/follower transitions or bootstrap a partition can be transiently subscribed
-    // to BOTH the version topic and a separate leader topic (e.g., RT). Unsubscribe each that is
-    // currently subscribed; consumerHasSubscription() avoids redundant work when a topic isn't
-    // attached.
-    if (consumerHasSubscription(versionTopic, partitionConsumptionState)) {
+    // Transitions can leave both VT and RT attached. Strict detach lets the service select retained
+    // assignments because the delegate drops its subscription before the poll barrier completes.
+    if (includeRetainedAssignments || consumerHasSubscription(versionTopic, partitionConsumptionState)) {
       consumer.accept(new PubSubTopicPartitionImpl(versionTopic, partitionId));
     }
     if (leaderTopic != null && !leaderTopic.equals(versionTopic)
-        && consumerHasSubscription(leaderTopic, partitionConsumptionState)) {
+        && (includeRetainedAssignments || consumerHasSubscription(leaderTopic, partitionConsumptionState))) {
       consumer.accept(new PubSubTopicPartitionImpl(leaderTopic, partitionId));
-      // Gate sep-RT unsubscribe on actual subscription to avoid WARN spam from the consumer
-      // delegator when sep-RT isn't currently attached (common during transitions).
+      // The legacy path gates sep-RT on an active subscription to avoid warnings for unassigned topics.
       if (isSeparatedRealtimeTopicEnabled() && leaderTopic.isRealTime() && separateRealTimeTopic != null
-          && consumerHasSubscription(separateRealTimeTopic, partitionConsumptionState)) {
+          && (includeRetainedAssignments
+              || consumerHasSubscription(separateRealTimeTopic, partitionConsumptionState))) {
         consumer.accept(new PubSubTopicPartitionImpl(separateRealTimeTopic, partitionId));
       }
     }

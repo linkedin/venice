@@ -28,6 +28,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
   private int attempts = 0;
 
   private long createTimestampInMs = System.currentTimeMillis();
+  private final long createTimestampNanos = System.nanoTime();
 
   private boolean isHelixTriggeredAction = true;
   private CompletableFuture<Void> future = new CompletableFuture<>();
@@ -95,6 +96,10 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   public long getCreateTimestampInMs() {
     return createTimestampInMs;
+  }
+
+  long getCreateTimestampNanos() {
+    return createTimestampNanos;
   }
 
   public CompletableFuture<Void> getFuture() {

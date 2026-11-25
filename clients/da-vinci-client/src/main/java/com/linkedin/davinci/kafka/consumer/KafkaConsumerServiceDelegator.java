@@ -134,10 +134,12 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   }
 
   @Override
-  void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
-      throws InterruptedException {
+  void batchUnsubscribeForReplicaDrop(
+      PubSubTopic versionTopic,
+      Set<PubSubTopicPartition> topicPartitions,
+      long deadlineNanos) throws InterruptedException {
     for (KafkaConsumerService consumerService: consumerServices) {
-      consumerService.batchUnsubscribeForReplicaDrop(versionTopic, topicPartitions);
+      consumerService.batchUnsubscribeForReplicaDrop(versionTopic, topicPartitions, deadlineNanos);
     }
     for (PubSubTopicPartition topicPartition: topicPartitions) {
       topicPartitionToConsumerService.remove(new TopicPartitionForIngestion(versionTopic, topicPartition));

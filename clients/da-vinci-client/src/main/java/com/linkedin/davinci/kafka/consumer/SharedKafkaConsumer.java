@@ -19,6 +19,8 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -97,6 +99,8 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
    * an ever-increasing count of number of time poll has been invoked.
    */
   private volatile long pollTimes = 0;
+  // Guarded by this monitor; each entry keeps the original poll baseline until detach completes or is superseded.
+  private final Map<PubSubTopicPartition, Long> replicaDropPollBaselines = new HashMap<>();
 
   public SharedKafkaConsumer(
       PubSubConsumerAdapter delegate,
@@ -162,6 +166,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       boolean inclusive) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
     this.delegate.subscribe(topicPartitionToSubscribe, lastReadPosition, inclusive);
+    replicaDropPollBaselines.remove(topicPartitionToSubscribe);
     PubSubTopic previousVersionTopic =
         subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
     if (previousVersionTopic != null && !previousVersionTopic.equals(versionTopic)) {
@@ -187,6 +192,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition, long timeoutMs) {
     unSubscribeAction(() -> {
       this.delegate.unSubscribe(pubSubTopicPartition);
+      replicaDropPollBaselines.remove(pubSubTopicPartition);
       PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
       unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       return Collections.singleton(pubSubTopicPartition);
@@ -198,6 +204,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     unSubscribeAction(() -> {
       this.delegate.batchUnsubscribe(pubSubTopicPartitionSet);
       for (PubSubTopicPartition pubSubTopicPartition: pubSubTopicPartitionSet) {
+        replicaDropPollBaselines.remove(pubSubTopicPartition);
         PubSubTopic versionTopic = subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
         unsubscriptionListener.call(this, versionTopic, pubSubTopicPartition);
       }
@@ -205,28 +212,49 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
     }, DEFAULT_MAX_WAIT_MS);
   }
 
-  synchronized void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
-      throws InterruptedException {
+  synchronized void batchUnsubscribeForReplicaDrop(
+      PubSubTopic versionTopic,
+      Set<PubSubTopicPartition> topicPartitions,
+      long deadlineNanos) throws InterruptedException {
     if (Thread.interrupted()) {
       throw new InterruptedException("Interrupted before detaching replica-drop subscriptions");
     }
+    Set<PubSubTopicPartition> newDetaches = new HashSet<>();
     for (PubSubTopicPartition topicPartition: topicPartitions) {
       PubSubTopic owner = subscribedTopicPartitionToVersionTopic.get(topicPartition);
       if (owner != null && !versionTopic.equals(owner)) {
         throw new VeniceException("Cannot detach " + topicPartition + " for " + versionTopic + "; owned by " + owner);
       }
+      if (!replicaDropPollBaselines.containsKey(topicPartition)) {
+        newDetaches.add(topicPartition);
+      }
     }
-    long pollsBeforeDetach = pollTimes;
-    delegate.batchUnsubscribe(topicPartitions);
+    if (!newDetaches.isEmpty()) {
+      long pollsBeforeDetach = pollTimes;
+      delegate.batchUnsubscribe(newDetaches);
+      newDetaches.forEach(partition -> replicaDropPollBaselines.put(partition, pollsBeforeDetach));
+    }
     updateCurrentAssignment(delegate.getAssignment());
-    if (!awaitNextPoll(pollsBeforeDetach, topicPartitions, DEFAULT_MAX_WAIT_MS)) {
-      throw new VeniceException(
+    long cutoff = Long.MIN_VALUE;
+    for (PubSubTopicPartition partition: topicPartitions) {
+      cutoff = Math.max(cutoff, replicaDropPollBaselines.get(partition));
+    }
+    long remainingMs = TimeUnit.NANOSECONDS.toMillis(Math.max(0, deadlineNanos - System.nanoTime()));
+    if (cutoff != Long.MIN_VALUE && !awaitNextPoll(cutoff, topicPartitions, remainingMs)) {
+      throw new ReplicaDropPollTimeoutException(
           "Timed out waiting for poll after detaching replica-drop subscriptions: " + topicPartitions);
     }
     for (PubSubTopicPartition topicPartition: topicPartitions) {
+      replicaDropPollBaselines.remove(topicPartition);
       if (subscribedTopicPartitionToVersionTopic.remove(topicPartition, versionTopic)) {
         unsubscriptionListener.call(this, versionTopic, topicPartition);
       }
+    }
+  }
+
+  static class ReplicaDropPollTimeoutException extends VeniceException {
+    ReplicaDropPollTimeoutException(String message) {
+      super(message);
     }
   }
 

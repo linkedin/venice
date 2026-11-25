@@ -2536,10 +2536,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeFromMsToMs(action.getCreateTimestampInMs()));
         action.incrementAttempt();
         boolean replicaDrop = isReplicaDropUnsubscribe(action);
-        if (replicaDrop && action.getReplicaDropUnsubscribeTopics() == null && action.getAttemptsCount() == 1
-            && consumerActionsQueue.size() > 1) {
-          tryBatchReplicaDropUnsubscribe(action);
-        }
         processConsumerAction(action, store);
         if (replicaDrop && Thread.interrupted()) {
           throw new InterruptedException("Interrupted before acknowledging " + action);
@@ -2596,20 +2592,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return batch;
   }
 
-  private void tryBatchReplicaDropUnsubscribe(ConsumerAction head) throws InterruptedException {
+  private void tryBatchReplicaDropUnsubscribe(
+      ConsumerAction head,
+      Set<PubSubTopicPartition> headTopics,
+      long deadlineNanos) throws InterruptedException {
     List<ConsumerAction> batch = getReplicaDropUnsubscribeBatch(consumerActionsQueue, head);
     if (batch.size() < 2) {
       return;
     }
     try {
-      Set<PubSubTopicPartition> topics = new HashSet<>();
-      for (ConsumerAction action: batch) {
+      Set<SharedKafkaConsumer> headConsumers =
+          aggKafkaConsumerService.getAssignedConsumersForReplicaDrop(versionTopic, headTopics);
+      if (headConsumers.isEmpty()) {
+        return;
+      }
+      Set<PubSubTopicPartition> topics = new HashSet<>(headTopics);
+      for (ConsumerAction action: batch.subList(1, batch.size())) {
+        Set<PubSubTopicPartition> candidates = getReplicaDropUnsubscribeTopics(action);
+        Set<SharedKafkaConsumer> candidateConsumers =
+            aggKafkaConsumerService.getAssignedConsumersForReplicaDrop(versionTopic, candidates);
+        // A later action must not add another consumer barrier before the head can acknowledge.
+        if (!headConsumers.containsAll(candidateConsumers)) {
+          break;
+        }
         topics.addAll(prepareReplicaDropUnsubscribe(action));
       }
-      if (!topics.isEmpty()) {
-        aggKafkaConsumerService.batchUnsubscribeForReplicaDrop(versionTopic, topics);
+      if (topics.size() > headTopics.size()) {
+        aggKafkaConsumerService.batchUnsubscribeForReplicaDrop(versionTopic, topics, deadlineNanos);
       }
-      batch.forEach(action -> action.setReplicaDropUnsubscribeTopics(Collections.emptySet()));
     } catch (RuntimeException e) {
       // Unfinished assignments remain discoverable by the strict detach path. Retry in queue order to isolate failures.
       LOGGER.warn("Batch detach failed for {}; processing replica drops individually", versionTopic, e);
@@ -2617,18 +2627,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private Set<PubSubTopicPartition> prepareReplicaDropUnsubscribe(ConsumerAction action) {
-    Set<PubSubTopicPartition> topics = action.getReplicaDropUnsubscribeTopics();
-    if (topics != null) {
-      return topics;
-    }
-
-    PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
-    topics = new HashSet<>();
-    if (state != null) {
-      preparePartitionUnsubscribe(state);
-      forEachSubscribedTopicPartition(state, topics::add);
-    }
+    preparePartitionUnsubscribe(partitionConsumptionStateMap.get(action.getPartition()));
+    Set<PubSubTopicPartition> topics = getReplicaDropUnsubscribeTopics(action);
     action.setReplicaDropUnsubscribeTopics(topics);
+    return topics;
+  }
+
+  private Set<PubSubTopicPartition> getReplicaDropUnsubscribeTopics(ConsumerAction action) {
+    Set<PubSubTopicPartition> topics = new HashSet<>();
+    topics.add(action.getTopicPartition());
+    if (action.getReplicaDropUnsubscribeTopics() != null) {
+      topics.addAll(action.getReplicaDropUnsubscribeTopics());
+    }
+    PartitionConsumptionState state = partitionConsumptionStateMap.get(action.getPartition());
+    if (state != null) {
+      forEachSubscribedTopicPartition(state, true, topics::add);
+    }
     return topics;
   }
 
@@ -2645,7 +2659,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   boolean handleConsumerActionsError(Throwable e, ConsumerAction action, long actionProcessStartTimeInMs) {
-    if (action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS) {
+    boolean retry = isReplicaDropUnsubscribe(action) && e instanceof SharedKafkaConsumer.ReplicaDropPollTimeoutException
+        ? getReplicaDropDeadlineNanos(action) - System.nanoTime() > 0
+        : action.getAttemptsCount() <= MAX_CONSUMER_ACTION_ATTEMPTS;
+    if (retry) {
       LOGGER.warn("Failed to process consumer action {}, will retry later.", action, e);
       return false;
     }
@@ -2675,6 +2692,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       reportError("Error when processing consumer action: " + action, action.getPartition(), new VeniceException(e));
     }
     return true;
+  }
+
+  private long getReplicaDropDeadlineNanos(ConsumerAction action) {
+    return action.getCreateTimestampNanos() + SECONDS.toNanos(serverConfig.getStopConsumptionTimeoutInSeconds());
   }
 
   /**
@@ -2835,11 +2856,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
         boolean replicaDrop = isReplicaDropUnsubscribe(consumerAction);
         if (replicaDrop) {
+          long nowNanos = System.nanoTime();
+          long deadlineNanos = nowNanos + Math.min(
+              MILLISECONDS.toNanos(SharedKafkaConsumer.DEFAULT_MAX_WAIT_MS),
+              getReplicaDropDeadlineNanos(consumerAction) - nowNanos);
+          boolean tryBatch = consumerAction.getReplicaDropUnsubscribeTopics() == null
+              && consumerAction.getAttemptsCount() == 1 && consumerActionsQueue.size() > 1;
           Set<PubSubTopicPartition> topics = prepareReplicaDropUnsubscribe(consumerAction);
-          if (!topics.isEmpty()) {
-            aggKafkaConsumerService.batchUnsubscribeForReplicaDrop(versionTopic, topics);
-            consumerAction.setReplicaDropUnsubscribeTopics(Collections.emptySet());
+          if (tryBatch && deadlineNanos - System.nanoTime() > 0) {
+            tryBatchReplicaDropUnsubscribe(consumerAction, topics, deadlineNanos);
           }
+          aggKafkaConsumerService.batchUnsubscribeForReplicaDrop(versionTopic, topics, deadlineNanos);
           if (consumptionState != null) {
             closePartitionWriter(consumptionState);
           }
@@ -5116,6 +5143,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract void forEachSubscribedTopicPartition(
       PartitionConsumptionState state,
+      boolean includeRetainedAssignments,
       Consumer<PubSubTopicPartition> consumer);
 
   protected static void closePartitionWriter(PartitionConsumptionState state) {

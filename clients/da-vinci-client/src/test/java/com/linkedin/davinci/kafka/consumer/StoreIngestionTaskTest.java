@@ -33,6 +33,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_REPLICA_DROP_BATCH_UNSUBSCRI
 import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_CHECK_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter.getPosition;
@@ -2504,11 +2505,26 @@ public abstract class StoreIngestionTaskTest {
     config.setBeforeStartingConsumption(() -> {
       try {
         doAnswer(invocation -> {
-          assertFalse(drops.get(0).isDone());
-          assertFalse(drops.get(1).isDone());
-          localKafkaConsumerService.batchUnsubscribeForReplicaDrop(pubSubTopic, invocation.getArgument(1));
+          Set<PubSubTopicPartition> requested = invocation.getArgument(1);
+          if (requested.equals(partitions)) {
+            assertFalse(drops.get(0).isDone());
+            assertFalse(drops.get(1).isDone());
+          }
+          localKafkaConsumerService.batchUnsubscribeForReplicaDrop(pubSubTopic, requested, invocation.getArgument(2));
           return null;
-        }).when(aggKafkaConsumerService).batchUnsubscribeForReplicaDrop(eq(pubSubTopic), eq(partitions));
+        }).when(aggKafkaConsumerService).batchUnsubscribeForReplicaDrop(eq(pubSubTopic), anySet(), anyLong());
+        doAnswer(invocation -> {
+          Set<PubSubTopicPartition> requested = invocation.getArgument(1);
+          Set<SharedKafkaConsumer> assigned = new HashSet<>();
+          for (PubSubTopicPartition partition: requested) {
+            SharedKafkaConsumer consumer =
+                localKafkaConsumerService.getConsumerAssignedToVersionTopicPartition(pubSubTopic, partition);
+            if (consumer != null) {
+              assigned.add(consumer);
+            }
+          }
+          return assigned;
+        }).when(aggKafkaConsumerService).getAssignedConsumersForReplicaDrop(eq(pubSubTopic), anySet());
       } catch (InterruptedException e) {
         throw new AssertionError(e);
       }
@@ -2516,6 +2532,93 @@ public abstract class StoreIngestionTaskTest {
       drops.add(storeIngestionTaskUnderTest.unSubscribePartition(barTopicPartition));
     });
 
+    runTest(config);
+  }
+
+  @Test
+  public void testReplicaDropRetriesWithinShortTimeoutWithoutWaitingForUnrelatedConsumer() throws Exception {
+    Set<PubSubTopicPartition> fooOnly = Collections.singleton(fooTopicPartition);
+    Set<PubSubTopicPartition> barOnly = Collections.singleton(barTopicPartition);
+    List<CompletableFuture<Void>> drops = new ArrayList<>();
+    List<Long> headDeadlines = new ArrayList<>();
+    int timeoutSeconds = 5;
+    StoreIngestionTaskTestConfig config =
+        new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
+          CompletableFuture<Void> allDrops = CompletableFuture.allOf(drops.get(0), drops.get(1));
+          waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> assertTrue(allDrops.isDone()));
+          allDrops.join();
+          assertEquals(headDeadlines.size(), StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 2);
+          assertEquals(new HashSet<>(headDeadlines).size(), 1);
+        }, AA_OFF);
+    Map<String, Object> properties = new HashMap<>();
+    properties.put(SERVER_REPLICA_DROP_BATCH_UNSUBSCRIBE_ENABLED, true);
+    properties.put(SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS, timeoutSeconds);
+    config.setExtraServerProperties(properties).setBeforeStartingConsumption(() -> {
+      doReturn(Collections.singleton(mock(SharedKafkaConsumer.class))).when(aggKafkaConsumerService)
+          .getAssignedConsumersForReplicaDrop(pubSubTopic, fooOnly);
+      doReturn(Collections.singleton(mock(SharedKafkaConsumer.class))).when(aggKafkaConsumerService)
+          .getAssignedConsumersForReplicaDrop(pubSubTopic, barOnly);
+      try {
+        doAnswer(invocation -> {
+          Set<PubSubTopicPartition> requested = invocation.getArgument(1);
+          if (requested.equals(fooOnly)) {
+            long deadlineNanos = invocation.getArgument(2);
+            assertTrue(deadlineNanos - System.nanoTime() <= TimeUnit.SECONDS.toNanos(timeoutSeconds));
+            assertFalse(drops.get(0).isDone());
+            headDeadlines.add(deadlineNanos);
+            if (headDeadlines.size() <= StoreIngestionTask.MAX_CONSUMER_ACTION_ATTEMPTS + 1) {
+              throw new SharedKafkaConsumer.ReplicaDropPollTimeoutException("Poll barrier still pending");
+            }
+          } else {
+            assertEquals(requested, barOnly);
+            assertTrue(drops.get(0).isDone(), "The head must finish before the unrelated consumer is detached");
+          }
+          return null;
+        }).when(aggKafkaConsumerService).batchUnsubscribeForReplicaDrop(eq(pubSubTopic), anySet(), anyLong());
+      } catch (InterruptedException e) {
+        throw new AssertionError(e);
+      }
+      drops.add(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
+      drops.add(storeIngestionTaskUnderTest.unSubscribePartition(barTopicPartition));
+    });
+    runTest(config);
+  }
+
+  @Test
+  public void testReplicaDropRefreshesDetachTopicsAfterDrainFailure() throws Exception {
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(storeNameWithoutVersionInfo));
+    PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
+    List<CompletableFuture<Void>> drops = new ArrayList<>();
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      CompletableFuture<Void> drop = drops.get(0);
+      waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> assertTrue(drop.isDone()));
+      drop.join();
+      try {
+        verify(aggKafkaConsumerService)
+            .batchUnsubscribeForReplicaDrop(eq(pubSubTopic), eq(Collections.singleton(fooTopicPartition)), anyLong());
+        verify(aggKafkaConsumerService).batchUnsubscribeForReplicaDrop(
+            eq(pubSubTopic),
+            eq(Utils.setOf(fooTopicPartition, rtPartition)),
+            anyLong());
+      } catch (InterruptedException e) {
+        throw new AssertionError(e);
+      }
+    }, AA_OFF);
+    config.setExtraServerProperties(Collections.singletonMap(SERVER_REPLICA_DROP_BATCH_UNSUBSCRIBE_ENABLED, true));
+    config.setBeforeStartingConsumption(() -> {
+      try {
+        doAnswer(invocation -> {
+          PartitionConsumptionState state = invocation.getArgument(1);
+          state.getOffsetRecord().setLeaderTopic(rtTopic);
+          throw new VeniceException("Drain failed before finishing replica drop");
+        }).doCallRealMethod()
+            .when(storeIngestionTaskUnderTest)
+            .waitForAllMessageToBeProcessedFromTopicPartition(eq(fooTopicPartition), any());
+      } catch (InterruptedException e) {
+        throw new AssertionError(e);
+      }
+      drops.add(storeIngestionTaskUnderTest.unSubscribePartition(fooTopicPartition));
+    });
     runTest(config);
   }
 

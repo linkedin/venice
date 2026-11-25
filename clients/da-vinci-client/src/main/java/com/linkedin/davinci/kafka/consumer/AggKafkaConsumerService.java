@@ -511,11 +511,28 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
-      throws InterruptedException {
+  void batchUnsubscribeForReplicaDrop(
+      PubSubTopic versionTopic,
+      Set<PubSubTopicPartition> topicPartitions,
+      long deadlineNanos) throws InterruptedException {
     for (AbstractKafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
-      consumerService.batchUnsubscribeForReplicaDrop(versionTopic, topicPartitions);
+      consumerService.batchUnsubscribeForReplicaDrop(versionTopic, topicPartitions, deadlineNanos);
     }
+  }
+
+  Set<SharedKafkaConsumer> getAssignedConsumersForReplicaDrop(
+      PubSubTopic versionTopic,
+      Set<PubSubTopicPartition> topicPartitions) {
+    Set<SharedKafkaConsumer> consumers = new HashSet<>();
+    for (AbstractKafkaConsumerService service: kafkaServerToConsumerServiceMap.values()) {
+      for (PubSubTopicPartition partition: topicPartitions) {
+        SharedKafkaConsumer consumer = service.getConsumerAssignedToVersionTopicPartition(versionTopic, partition);
+        if (consumer != null) {
+          consumers.add(consumer);
+        }
+      }
+    }
+    return consumers;
   }
 
   public ConsumedDataReceiver<List<DefaultPubSubMessage>> subscribeConsumerFor(

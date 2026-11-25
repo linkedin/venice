@@ -393,8 +393,10 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   @Override
-  void batchUnsubscribeForReplicaDrop(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitions)
-      throws InterruptedException {
+  void batchUnsubscribeForReplicaDrop(
+      PubSubTopic versionTopic,
+      Set<PubSubTopicPartition> topicPartitions,
+      long deadlineNanos) throws InterruptedException {
     // Keep this on the ingestion thread so failures and interrupts can't leave a detach running behind a retry.
     for (Map.Entry<SharedKafkaConsumer, Set<PubSubTopicPartition>> group: groupByAssignedConsumer(
         versionTopic,
@@ -402,22 +404,28 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       SharedKafkaConsumer consumer = group.getKey();
       Set<PubSubTopicPartition> partitions = group.getValue();
       ReentrantLock lock = consumerToLocks.get(consumer);
-      lock.lockInterruptibly();
+      if (!lock.tryLock(Math.max(0, deadlineNanos - System.nanoTime()), TimeUnit.NANOSECONDS)) {
+        throw new SharedKafkaConsumer.ReplicaDropPollTimeoutException(
+            "Timed out acquiring consumer lock for replica-drop subscriptions: " + partitions);
+      }
       try {
-        partitions
-            .removeIf(partition -> getConsumerAssignedToVersionTopicPartition(versionTopic, partition) != consumer);
+        Map<PubSubTopicPartition, SharedKafkaConsumer> assignments =
+            versionTopicToTopicPartitionToConsumer.get(versionTopic);
+        if (assignments == null) {
+          continue;
+        }
+        partitions.removeIf(partition -> assignments.get(partition) != consumer);
         if (partitions.isEmpty()) {
           continue;
         }
-        consumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions);
+        consumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, deadlineNanos);
         for (PubSubTopicPartition partition: partitions) {
           removeTopicPartitionFromConsumptionTask(consumer, partition);
           consumerPollTracker.removeTopicPartition(partition);
         }
-        versionTopicToTopicPartitionToConsumer.computeIfPresent(versionTopic, (topic, assignments) -> {
-          partitions.forEach(partition -> assignments.remove(partition, consumer));
-          return assignments.isEmpty() ? null : assignments;
-        });
+        // Shutdown owns outer-map cleanup: it takes the outer lock before the consumer lock.
+        // Assignment can insert into the inner map after obtaining it, so an empty map is not safe to prune here.
+        partitions.forEach(partition -> assignments.remove(partition, consumer));
       } finally {
         lock.unlock();
       }
