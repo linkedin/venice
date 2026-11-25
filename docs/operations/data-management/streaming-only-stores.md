@@ -14,11 +14,13 @@ stream.
 
 ## Risks
 
-- **Recovery depends on retained RT history.** Venice retains only a bounded window of RT data (see
-  [RT topic retention](hybrid-stores.md#rt-topic-retention)). If data is lost or corrupted beyond that window, the only
+- **Recovery depends on what Venice still holds.** RT topics retain only a bounded window (see
+  [RT topic retention](hybrid-stores.md#rt-topic-retention)). Streaming writes are also persisted into version topics,
+  so while a usable version topic survives, a Kafka-input [repush](repush.md) can rebuild the store without replaying
+  your upstream. If every required version topic is unusable or expired, or the history you need is absent, the only
   recovery is a **full replay from your upstream**, which is slow and operationally expensive.
-- **No baseline to fall back on.** A new version created by an empty push contains only the retained RT history, so
-  older records are lost.
+- **No batch baseline to fall back on.** An empty push creates a version containing only RT history within the rewind
+  window (not all broker-retained RT data), so older records are lost.
 - **Eventual consistency.** Updates are applied asynchronously and in the order of the RT stream; readers can briefly
   observe stale values.
 

@@ -34,9 +34,15 @@ specified by setting one of the following configs on the VenicePushJob:
 | `repush.ttl.seconds`         | Records older than the specified value will expire                   |
 | `repush.ttl.start.timestamp` | Records that were written before the specified timestamp will expire |
 
-The `rewind.time.in.seconds.override` config on the push job overrides the store's rewind time for the real-time replay
-of that push. For a repush of a hybrid store where it is unset, the push job falls back to 24 hours; this is a push job
-fallback, not a recommended value for every store.
+The TTL filter applies only to the repush **input**. RT history is replayed afterward and can reintroduce records older
+than the TTL cutoff. Set the effective replay start (`rewind.time.in.seconds.override`, or
+`rewind.epoch.time.in.seconds.override`) to align with the cutoff while still covering writes made during the push. A
+24-hour relative fallback applies to a hybrid repush only when neither override is set; do not treat it as a universal
+value.
+
+Repush with TTL requires replication metadata, so it expires only records written through active-active RT writes. Batch
+records carrying the sentinel timestamp are retained regardless of age. It is not a generic purge of an old batch
+baseline: remove expired batch records upstream and refresh with a full push.
 
 This brings two major benefits:
 
@@ -75,8 +81,8 @@ N can be set up by configuring the `hybrid-rewind-seconds` using venice-admin-to
 
 !!! warning
 
-    An empty push on a hybrid store discards all batch data; the new version contains only the replayed RT history. Use
-    it for TTL only when that outcome is acceptable. Repush with TTL keeps records that have not expired.
+    An empty push on a hybrid store discards the whole previous baseline; the new version contains only RT history from
+    the effective rewind start. Use it for TTL only when that loss is acceptable.
 
 ### How to enable
 

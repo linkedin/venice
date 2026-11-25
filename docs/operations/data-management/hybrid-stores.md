@@ -8,20 +8,30 @@ and [Push types](repush.md#push-types) for definitions.
 
 ## Rewind
 
-When a new version is pushed, Venice **replays** the retained RT history on top of it before swapping reads, so updates
-made while the batch job was running are not lost. The **rewind time** (`hybrid-rewind-seconds`) controls how far back
-the replay starts. It is a per-store setting.
+When a new version is pushed, Venice **replays** RT history on top of it before swapping reads, so updates made while
+the batch job was running are overlaid on the new version. The **rewind time** (`hybrid-rewind-seconds`) controls how
+far back the replay starts. It is a per-store setting that a push can override (relative with
+`rewind.time.in.seconds.override`, or absolute with `rewind.epoch.time.in.seconds.override`).
 
-| Buffer replay policy        | Replay starts at                                                                              |
-| :-------------------------- | :-------------------------------------------------------------------------------------------- |
-| `REWIND_FROM_EOP` (default) | Rewind time before the end of the batch push (End of Push) was received by the controller     |
-| `REWIND_FROM_SOP`           | Rewind time before the start of the batch push (Start of Push) was received by the controller |
+| Buffer replay policy        | Replay starts at                         |
+| :-------------------------- | :--------------------------------------- |
+| `REWIND_FROM_EOP` (default) | Rewind time before the end of the push   |
+| `REWIND_FROM_SOP`           | Rewind time before the start of the push |
 
-`REWIND_FROM_SOP` replays a window that also covers the whole duration of the push, which can help when pushes are long
-relative to the rewind time. It replays more records than `REWIND_FROM_EOP` for the same rewind time.
+How the start and end of the push are determined depends on the replication mode:
 
-Rewind time is also the **minimum** time an RT record is guaranteed to be overlaid on a new version; it is not a maximum
-TTL (see [TTL](ttl.md)).
+- **Active-active:** each leader computes the replay start deterministically from the push's Start/End of Push control
+  message producer timestamps, so all regions agree.
+- **Otherwise:** the controller computes it. `REWIND_FROM_SOP` uses the version creation time, and `REWIND_FROM_EOP`
+  uses the time of the topic switch.
+
+`REWIND_FROM_SOP` also covers the duration of the push, which helps when pushes are long relative to the rewind time. It
+replays more records than `REWIND_FROM_EOP` for the same rewind time.
+
+Only writes inside the **effective replay window** are guaranteed to be overlaid. Writes older than the window are not
+replayed even if they are still retained in the RT topic, so a short rewind (including a short per-push override such as
+in a repush) can drop writes made early in a long push. Rewind time is therefore the **minimum** retained overlay, not a
+maximum TTL (see [TTL](ttl.md)).
 
 ### Choosing a Rewind Time
 
@@ -47,9 +57,15 @@ rewind. Replaying history from upstream into the RT topic is slow and operationa
 
 ### Defaults
 
-The rewind time is a per-store setting. There is no universal production default. In particular, 86,400 seconds (24
-hours) is only an OSS **fallback** used when enabling incremental push on a batch-only store automatically converts it
-to an active-active hybrid store with default settings. It should not be assumed for any store.
+The rewind time is a per-store setting, and there is no universal production default. The value 86,400 seconds (24
+hours) appears as two separate OSS fallbacks, neither of which should be assumed for any store:
+
+- When enabling incremental push on a batch-only store converts it to a hybrid store with default settings. The
+  conversion also enables active-active replication only if the cluster's default for hybrid stores enables it;
+  incremental push requires active-active, and the controller (parent controller in multi-region deployments) can reject
+  the request when it is not enabled.
+- The push-job fallback for a repush whose source version is hybrid, used only when neither
+  `rewind.time.in.seconds.override` nor `rewind.epoch.time.in.seconds.override` is set.
 
 ## RT Topic Retention
 
@@ -71,9 +87,11 @@ Run a full push after converting so a new version is created with the hybrid con
 
 ## Empty Push on a Hybrid Store
 
-An empty push on a hybrid store creates a new version containing **only the replayed RT history** (within the rewind
-window). Everything older is discarded. It is therefore a **data-loss-accepting** option, not a normal migration or
-refresh path. For a deliberately RT-only dataset it is a valid way to start fresh; see
+An empty push on a hybrid store creates a new version containing **only the RT history replayed from the effective
+rewind start**. Everything else, including the whole previous batch baseline, is discarded. The replay window is
+determined by the rewind time, not by how much RT data the broker retains: with a one-day rewind, records that exist
+only in days 2-5 of a five-day RT topic are not preserved. It is therefore a **data-loss-accepting** option, not a
+normal migration or refresh path. For a deliberately RT-only dataset it is a valid way to start fresh; see
 [Streaming-only stores](streaming-only-stores.md).
 
 ## Choosing and Changing the Partition Count
@@ -86,29 +104,40 @@ partitions as the store, changing it requires retiring the old RT topic.
 
 ### Option A: In-place Change (requires pausing writers)
 
-1. **Pause** RT and incremental-push writers.
-2. **Disable hybrid** on the store.
-3. Run enough full pushes or repushes, plus version cleanup, so that **all hybrid versions are retired in every
-   region**.
-4. **Wait for Venice's automatic RT topic cleanup.** Do not delete RT topics manually.
-5. **Change the partition count.**
-6. **Re-enable hybrid** (with the rewind time and lag threshold).
-7. Run a **fresh full push**, and validate it.
-8. **Resume** the writers.
+Before starting, **record the store's hybrid settings**: rewind time, lag thresholds, replay policy, active-active
+replication, and incremental push. Disabling hybrid also disables active-active replication and incremental push, so
+they must be restored explicitly (or verified against your deployment defaults) when hybrid is re-enabled.
 
-An empty push can replace steps 3 and 7, but it discards all existing data and replays only retained RT history, so use
-it only when data loss is acceptable.
+1. **Pause** RT and incremental-push writers.
+2. **Wait for catch-up:** every active hybrid version in every region must consume and persist all RT writes up to the
+   pause point.
+3. **Disable hybrid** on the store.
+4. Run enough full pushes or repushes, plus version cleanup, so that **all hybrid versions are retired in every
+   region**. The baseline must include every write up to the pause: repush from a fully caught-up source version, or use
+   a refreshed upstream batch baseline that contains those writes.
+5. **Wait for Venice's automatic RT topic cleanup.** Do not delete RT topics manually.
+6. **Change the partition count.**
+7. **Re-enable hybrid** with the recorded settings.
+8. Run a **fresh full push** with a baseline that again includes every write up to the pause, and validate it.
+9. **Resume** the writers. If long-lived producers or stream-processing sinks cache the RT topic or partition count,
+   restart or recreate them first so they pick up fresh metadata.
+
+An empty push is **not** a shortcut for steps 4 or 8. Once hybrid is disabled and the old RT topic is cleaned up, there
+is no RT history to replay, so the new version would be effectively empty.
 
 ### Option B: Migrate to a New Store (when pausing is unacceptable)
 
-1. Create a new store with the desired partition count and the same schemas.
-2. **Dual-write** from the upstream to both stores (both batch and RT, if applicable) and backfill the new store with a
-   full push.
-3. Migrate readers gradually (for example, behind a flag), comparing results between stores.
-4. After readers are fully moved, stop writes to the old store and retire it.
+1. Create the new store with the desired partition count and the same schemas. Configure it as hybrid and initialize it
+   with a version so it can accept RT writes.
+2. Start **dual-writing** the upstream's RT/incremental writes to both stores.
+3. Take a snapshot and **full push** it to the new store. The snapshot must cover writes up to the snapshot time, and
+   the rewind window must cover the backfill duration plus margin so dual-written writes are overlaid.
+4. Validate, then migrate readers gradually (for example, behind a flag), comparing results between stores.
+5. After readers are fully moved, stop writes to the old store and retire it.
 
 ## Checklist
 
+- [ ] Settings (active-active, incremental push) are recorded before disabling hybrid.
 - [ ] Rewind time is the shortest value that safely covers batch/catch-up overlap, at most 23 days.
 - [ ] RT retention, storage, and bootstrap time are forecast from the rewind time.
 - [ ] Full pushes run periodically (see [Repush](repush.md) and [TTL](ttl.md)).

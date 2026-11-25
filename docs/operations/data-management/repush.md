@@ -16,8 +16,11 @@ manually trigger a Repush, without involving the user.
 | Full push           | A batch job writes the entire dataset into a new store version, which replaces the current version when ready.                          |
 | Incremental push    | A batch job writes a limited set of records through the RT topic of a hybrid store, without creating a new version.                     |
 | Repush              | A full push whose input is an existing store version (`source.kafka = true`) instead of an upstream dataset, typically operator-driven. |
-| Stream reprocessing | A stream-processing job replays historical input into a new store version, then continues with real-time events.                        |
+| Stream reprocessing | A finite stream-processing job that writes historical input into a new store version and stops when the push completes.                 |
 | Empty push          | A new version with no batch records. A hybrid store then contains only replayed RT history, so it is a data-loss-accepting option.      |
+
+Stream reprocessing does not continue as an ongoing writer; keep a separate streaming writer (stream processor or online
+producer) to keep the store fresh.
 
 Which mechanisms fit a store is covered in [Batch-only](batch-only-stores.md), [Hybrid](hybrid-stores.md), and
 [Streaming-only](streaming-only-stores.md) stores.
@@ -131,10 +134,10 @@ More details on how to configure TTL can be found in the [TTL](ttl.md) guide.
 ### Dictionary sampling
 
 Source-topic dictionary sampling for Kafka-input rebuilds and hybrid empty pushes scans at most
-`max(1000, compression.dictionary.max.messages / partitionCount)` messages per partition, including
-heartbeats. The positive message budget defaults to `1000000`; the per-partition floor can make the
-aggregate limit exceed that budget. The existing sample-byte limit and synthetic-dictionary fallback
-are unchanged. Interrupted dictionary builds fail without falling back.
+`max(1000, compression.dictionary.max.messages / partitionCount)` messages per partition, including heartbeats. The
+positive message budget defaults to `1000000`; the per-partition floor can make the aggregate limit exceed that budget.
+The existing sample-byte limit and synthetic-dictionary fallback are unchanged. Interrupted dictionary builds fail
+without falling back.
 
 This bounds messages scanned, not elapsed time spent planning, polling, or reading the source dictionary.
 

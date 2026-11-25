@@ -23,7 +23,7 @@ Any read client can read any usage pattern below.
 
 | Pattern            | Writes                                                                              | Freshness                      | Typical fit                                   | Operations guide                                                                   |
 | :----------------- | :---------------------------------------------------------------------------------- | :----------------------------- | :-------------------------------------------- | :--------------------------------------------------------------------------------- |
-| **Batch-only**     | Full pushes (optionally small incremental pushes)                                   | As fresh as the last push      | Datasets recomputed on a schedule             | [Batch-only stores](../../operations/data-management/batch-only-stores.md)         |
+| **Batch-only**     | Full pushes only (incremental push requires hybrid)                                 | As fresh as the last push      | Datasets recomputed on a schedule             | [Batch-only stores](../../operations/data-management/batch-only-stores.md)         |
 | **Hybrid**         | Full pushes as a baseline, plus streaming writes and/or incremental pushes overlaid | Seconds to minutes for updates | Large baseline plus online updates            | [Hybrid stores](../../operations/data-management/hybrid-stores.md)                 |
 | **Streaming-only** | Streaming writes only; no recurring batch baseline                                  | Seconds to minutes             | Event-derived data with a replayable upstream | [Streaming-only stores](../../operations/data-management/streaming-only-stores.md) |
 

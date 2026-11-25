@@ -15,8 +15,9 @@ A batch-only store is written exclusively by pushes from an upstream batch job. 
 
 - Rebuild the dataset upstream and **full push on a schedule** matching your freshness needs. A periodic push also
   refreshes data, applies new store configs, and keeps the store healthy (see [Repush](repush.md)).
-- Use **incremental pushes** only for limited changes between full pushes. They are not a substitute for rebuilding the
-  source dataset, and they require a [hybrid store](hybrid-stores.md).
+- A batch-only store is written by full pushes only. Incremental pushes write through the RT topic, so they require a
+  [hybrid store](hybrid-stores.md) (enabling incremental push on a batch store converts it to hybrid). Even then, use
+  them only for limited changes; they are not a substitute for rebuilding the source dataset.
 - Validate before swapping reads (for example, record-count and schema checks in the push job) and keep at least one
   backup version available for rollback.
 - Make sure old versions are cleaned up so retained backups do not accumulate and consume storage.
