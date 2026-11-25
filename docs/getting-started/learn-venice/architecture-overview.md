@@ -43,12 +43,12 @@ Venice supports the following write mechanisms. They describe how data gets into
 a store is read is a separate choice (see [Read Modes](#read-modes)). For guidance on combining them, see
 [Store Usage Patterns](usage-patterns.md).
 
-| Write Mode       | Supported Platforms                 |
-| :--------------- | :---------------------------------- |
-| Batch Push       | Hadoop, Spark                       |
-| Incremental Push | Hadoop, Spark (via Venice Push Job) |
-| Streaming Writes | Samza, Flink, Online Producer       |
-| Write Compute    | Any (with Incremental/Streaming)    |
+| Write Mode       | Supported Platforms                                       |
+| :--------------- | :-------------------------------------------------------- |
+| Batch Push       | Hadoop, Spark                                             |
+| Incremental Push | Hadoop, Spark (via Venice Push Job)                       |
+| Streaming Writes | Samza, Flink, Online Producer                             |
+| Partial Updates  | Online Producer, `VeniceSystemProducer`, incremental push |
 
 #### Batch Push
 
@@ -67,19 +67,15 @@ Real-time updates via Kafka, Samza, Flink, or [Online Producer](../../user-guide
 go to all existing versions (backup, current, future) to maintain consistency. See
 [stream processor guide](../../user-guide/write-apis/stream-processor.md) for details. **Requires hybrid stores**.
 
-#### Write Compute Operations
+#### Partial Updates
 
-In addition to full record writes, Venice supports write compute. It can reduce the bytes a producer sends, with a
-[server-side ingestion cost](usage-patterns.md#partial-updates).
-
-- **Partial update**: Send changes to specific fields without sending the entire value
-- **Collection merging**: Add or remove entries in sets or maps
+Use partial updates to change specific fields or add or remove collection entries without sending the entire value. This
+can reduce the payload, with a [server-side ingestion cost](usage-patterns.md#partial-updates).
 
 ### Read Modes
 
-Venice provides three read clients with different performance/cost tradeoffs. Clients are designed to share the same
-read APIs, enabling cost/performance changes with minimal application changes. Any client can read a store regardless of
-how it is written.
+The Thin, Fast, and Da Vinci serving clients work with both batch-only and hybrid stores. Choose among them based on
+latency and resource tradeoffs.
 
 #### Client Types
 
@@ -101,7 +97,7 @@ cost/performance tradeoff without needing to rewrite their applications.
 
 #### Read APIs
 
-All clients support:
+The serving clients support:
 
 - **Single get**: Retrieve value for one key
 - **Batch get**: Retrieve values for multiple keys
@@ -112,5 +108,6 @@ All clients support:
 
 #### Change Data Capture (CDC)
 
-Venice supports **streaming change data capture** to subscribe to all data changes (inserts, updates, deletes). A common
-use case is populating client-side indexes for ML feature retrieval.
+Use [CDC](../../user-guide/read-apis/cdc.md) for a hybrid store's ongoing inserts, updates, and deletes, for example to
+keep a client-side index current. CDC is not recommended for batch-only stores; use a serving client to read the current
+snapshot.

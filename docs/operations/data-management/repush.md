@@ -11,16 +11,13 @@ manually trigger a Repush, without involving the user.
 
 ## Push Types
 
-| Term                | Meaning                                                                                                                                 |
-| :------------------ | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| Full push           | A batch job writes the entire dataset into a new store version, which replaces the current version when ready.                          |
-| Incremental push    | A batch job writes a limited set of records through the RT topic of a hybrid store, without creating a new version.                     |
-| Repush              | A full push whose input is an existing store version (`source.kafka = true`) instead of an upstream dataset, typically operator-driven. |
-| Stream reprocessing | A finite stream-processing job that writes historical input into a new store version and stops when the push completes.                 |
-| Empty push          | A new version with no batch records. A hybrid store then contains only replayed RT history, so it is a data-loss-accepting option.      |
-
-Stream reprocessing does not continue as an ongoing writer; keep a separate streaming writer (stream processor or online
-producer) to keep the store fresh.
+| Term                             | Meaning                                                                                                                                 |
+| :------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| Full push                        | A batch job writes the entire dataset into a new store version, which replaces the current version when ready.                          |
+| Incremental push                 | A batch job writes a limited set of records through the RT topic of a hybrid store, without creating a new version.                     |
+| Repush                           | A full push whose input is an existing store version (`source.kafka = true`) instead of an upstream dataset, typically operator-driven. |
+| Stream reprocessing (deprecated) | A finite stream-processing job that writes historical data into a new version. Use a full push instead.                                 |
+| Empty push                       | A new version with no batch records. A hybrid store then contains only replayed RT history, so it is a data-loss-accepting option.      |
 
 Which mechanisms fit a store is covered in [Batch-only](batch-only-stores.md), [Hybrid](hybrid-stores.md), and
 [Streaming-only](streaming-only-stores.md) stores.
@@ -54,12 +51,8 @@ When doing a Full Push (and also when Repushing), the data gets sorted inside th
 Start of Push control message is annotated with the fact that the incoming data is sorted, which triggers an alternative
 code path within servers (and Da Vinci clients) in order to generate the storage files more efficiently.
 
-When doing a Stream Reprocessing (SR), on the other hand, data does not get sorted. More generally, if the last Full
-Push happened a while ago, and lots of nearline writes happened since then, there could be a large portion of the data
-which is unsorted, and the operator may find that rebalance performance degrades as a result.
-
-While it is not considered necessary to perform a Repush after every SR just for the sake of sorting, it can sometimes
-be useful if the last SR or Full Push happened quite a while ago.
+If a store has received many nearline writes since its last full push, a large share of its data may be unsorted. A
+repush can sort that data to improve rebalance performance.
 
 ### Repair
 

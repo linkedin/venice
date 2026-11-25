@@ -8,8 +8,8 @@ A batch-only store is written exclusively by pushes from an upstream batch job. 
 
 1. A **full push** writes the entire dataset into a new, immutable store version.
 2. Venice ingests the version in the background while reads continue to be served from the current version.
-3. After the new version is validated and ready, reads are swapped to it. Previous versions are kept as backups until
-   they are cleaned up.
+3. After the new version is validated and ready, reads are swapped to it. Venice retires old backup versions
+   automatically according to the version retention policy.
 
 ## Recommendations
 
@@ -19,11 +19,11 @@ A batch-only store is written exclusively by pushes from an upstream batch job. 
   [hybrid store](hybrid-stores.md) (enabling incremental push on a batch store implicitly converts it to hybrid with
   default settings). Even then, use them only for limited changes; they are not a substitute for rebuilding the source
   dataset.
-- Validate before swapping reads (for example, record-count and schema checks in the push job) and keep at least one
-  backup version available for rollback.
-- Make sure old versions are cleaned up so retained backups do not accumulate and consume storage.
-- Plan the [partition count](hybrid-stores.md#choosing-and-changing-the-partition-count) up front. It is much easier to
-  change on a batch-only store (with a full push or repush) than after it has become hybrid.
+- Validate before swapping reads (for example, record-count and schema checks in the push job). Aim to retain two
+  versions in steady state: the current version and one rollback backup.
+- Start at **5-10 GB of data per Venice partition**; see
+  [partition sizing](hybrid-stores.md#choosing-and-changing-the-partition-count). Repartitioning with a full push or
+  repush is easier before the store becomes hybrid.
 
 ## Converting to Hybrid
 
@@ -35,6 +35,7 @@ Either way it becomes a hybrid store; follow [Hybrid stores](hybrid-stores.md#co
 
 - [ ] Dataset is rebuilt from a replayable upstream on a schedule.
 - [ ] Push validation and version-swap behavior are understood, and a backup version exists for rollback.
-- [ ] Schema changes are backward compatible with data already in retained versions.
-- [ ] Storage and ingestion capacity are forecast for two or more versions coexisting during a push.
+- [ ] Schema changes are backward and forward compatible with clients and retained data.
+- [ ] Capacity covers the current and incoming versions during a push. If capacity is limited to two versions, confirm
+      the retention policy removes the previous backup before the new version needs that space.
 - [ ] Push failures and stale-data (time since last successful push) are monitored.

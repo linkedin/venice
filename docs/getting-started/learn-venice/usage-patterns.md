@@ -9,23 +9,24 @@ reads and optional online updates. It is not:
 
 ## Write Mechanisms vs. Read Clients
 
-Venice has no "store types" in the sense of different products. A store is shaped by **how it is written**, and **how it
-is read** is an independent choice.
+Batch-only and hybrid are Venice store types. Streaming-only is a way to use a hybrid store without recurring batch
+pushes. Choose how data enters the store separately from how applications read it.
 
 | Dimension        | Options                                                                                                                                                         |
 | :--------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Write mechanisms | Batch (full) push, incremental push, streaming writes, write compute (see [Write APIs](../../user-guide/write-apis/index.md))                                   |
-| Read clients     | [Thin](../../user-guide/read-apis/thin-client.md), [Fast](../../user-guide/read-apis/fast-client.md), [Da Vinci](../../user-guide/read-apis/da-vinci-client.md) |
-
-Any read client can read any usage pattern below.
+| Write mechanisms | Batch (full) push, incremental push, and streaming writes (see [Write APIs](../../user-guide/write-apis/index.md))                                              |
+| Serving clients  | [Thin](../../user-guide/read-apis/thin-client.md), [Fast](../../user-guide/read-apis/fast-client.md), [Da Vinci](../../user-guide/read-apis/da-vinci-client.md) |
+| Change streams   | [CDC](../../user-guide/read-apis/cdc.md) for ongoing changes on hybrid stores; not recommended for batch-only stores                                            |
 
 ### Partial Updates
 
-Partial updates (write compute) are common when a producer owns only a few fields, such as a stream processor refreshing
-recent engagement signals in a ranking record. On a hybrid store with write compute enabled, the producer can send just
-those fields. This reduces the payload but typically costs more to ingest than a full `PUT`: Venice looks up the current
-value, merges the changes, and writes the result. Prefer a full `PUT` when the producer already has the complete,
-authoritative value. See the [Online Producer API](../../user-guide/write-apis/online-producer.md#api).
+Partial updates are common when a producer owns only a few fields, such as a stream processor refreshing recent
+engagement signals in a ranking record. On a hybrid store with partial updates enabled, send only those fields through
+the [Online Producer](../../user-guide/write-apis/online-producer.md#api),
+[`VeniceSystemProducer`](../../user-guide/write-apis/stream-processor.md#apache-samza-integration), or an
+[incremental push](../../user-guide/write-apis/batch-push.md#incremental-push). This reduces the payload but typically
+costs more to ingest than a full `PUT`: Venice reads the current value, merges the changes, and writes the result.
+Prefer a full `PUT` when the producer already has the complete, authoritative value.
 
 ## Choosing a Usage Pattern
 
@@ -44,6 +45,16 @@ Rules of thumb:
 - Choose **streaming-only** only when the data is naturally event-derived and an external, replayable upstream can
   rebuild it. It is common but discouraged for important durable data (see
   [Streaming-only stores](../../operations/data-management/streaming-only-stores.md)).
+
+## Write Freshness Targets
+
+Use these as planning targets for your deployment, not guarantees from Venice OSS:
+
+- **Full pushes (batch-only and hybrid):** Budget **24 hours** from the start of the Venice Push Job (VPJ) to the new
+  version serving reads. Allow for maintenance and, on hybrid stores, nearline catch-up. If your application needs a
+  tighter target, validate it with your operators under expected load and maintenance conditions.
+- **Nearline writes (hybrid):** Plan for **10 minutes at p99** from publishing a write to seeing it in reads from the
+  regions that serve your application. This measures freshness, not the time to acknowledge a write.
 
 ## Examples
 

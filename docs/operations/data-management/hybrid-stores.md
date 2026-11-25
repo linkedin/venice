@@ -8,6 +8,9 @@ and [Push types](repush.md#push-types) for definitions.
 
 ## Active-Active Writes
 
+Avoid hybrid stores without active-active replication. Common hybrid workflows assume it is enabled, and incremental
+pushes require it.
+
 For an active-active store, publish each real-time write once, to one participating region. Venice asynchronously
 replicates it to the other configured regions, where normal conflict resolution applies. Independent writes can
 originate in any participating region, but publishing the same event in several regions adds unnecessary load to
@@ -56,9 +59,10 @@ requested history is still retained.
 
 Use the **shortest window that safely covers the overlap between your batch baseline and the real-time stream**: the
 time between the snapshot your batch job reads and the version becoming current, plus margin for delayed or retried
-pushes.
+pushes. A **24-hour rewind** is a common starting point and often covers this gap. Use a shorter window when it still
+covers the overlap and margin.
 
-!!! warning "Recommendation: keep rewind to 23 days or less"
+!!! warning "Recommended rewind ceiling: 23 days"
 
     Do not configure a rewind time above 23 days, for compliance and operational reasons. Venice OSS does **not**
     enforce this ceiling; a deployment's provisioning or control plane may. Do not rely on a longer rewind to recover
@@ -103,9 +107,8 @@ retention = max(5 days, rewind time + bootstrap-to-online timeout + 2 days)
 - Changing the bootstrap timeout alone does not update existing RT topic retention. Apply a hybrid-config update, then
   verify broker retention and available history for every RT topic used for replay in each region. Reconcile any
   retention mismatch before relying on a longer rewind.
-- Automatic RT-topic cleanup is conditional: Venice must consider a topic truncated or otherwise eligible after
-  retirement. A gated partition-count change does not, by itself, guarantee that the obsolete topic is cleaned while the
-  store remains hybrid. Monitor obsolete topics through retirement; do not delete them manually.
+- Disabling hybrid does not remove RT topics immediately. Wait for Venice's automatic cleanup after old hybrid versions
+  retire in all regions. Do not delete the topics manually.
 
 ## Converting from Batch-Only
 
@@ -141,20 +144,15 @@ retains them. Use an empty push only when that loss is acceptable, such as when 
 
 ## Choosing and Changing the Partition Count
 
-Size partitions up front: the partition count determines the parallelism of ingestion and reads and cannot be changed
-casually on a hybrid store. Under-sizing limits throughput; over-sizing adds overhead per partition.
+For both batch-only and hybrid stores, start at **5-10 GB of data per Venice partition**. Larger partitions can take
+longer to rebuild during rebalances and concentrate broker I/O. Too many small partitions add overhead. Adjust for
+expected data growth, uneven partition sizes, and throughput.
 
-By default the controller rejects partition-count changes on a hybrid store. Because the RT topic has the same number of
-partitions as the store, changing it requires retiring the old RT topic.
+!!! warning "Plan for growth before enabling hybrid"
 
-Operators can optionally enable the controller config `controller.enable.hybrid.store.partition.count.update=true`. With
-it, later versions can be assigned a new RT topic without changing the current version's partition count. This is not a
-cutover procedure: push monitoring can select the old topic for replay while the producer API returns the new one. Even
-a successful push and matching partition counts in metadata do not prove that writes reach the serving version. Prefer
-Option A or B below. If using the gate, pause and drain writes, save a restorable baseline as in Option A, and full push
-that baseline after changing the count. Refresh producer routing, verify that the serving version actually subscribes to
-the intended RT topic and partitions, and confirm that a canary write through the refreshed producer is readable in
-every region. If these checks fail, keep production writers paused.
+    Treat the hybrid partition count as fixed during normal operation. Size it for future data and traffic growth
+    before creating or converting the store. Changing it requires a disruptive in-place cutover with writes paused
+    or a migration to a new store.
 
 ### Option A: In-place Change (requires pausing writers)
 
@@ -172,10 +170,10 @@ than silently accepting new defaults. Restore the source fabric before the next 
    compatible, fully caught-up source version, and wait for version cleanup. A TTL repush is not supported while hybrid
    is disabled. For regular full pushes with data in this step or step 8, check the
    [TTL repush guard](ttl.md#repush-with-ttl).
-5. **Confirm cleanup of every obsolete RT topic**, including topics from earlier gated partition changes. If automatic
-   cleanup stalls, escalate through the deployment's supported cleanup path or finish as a paused migration: seed a new
-   hybrid store at the desired partition count from the saved baseline, validate it, and switch readers and writers to
-   it before resuming writes. Do not dual-write to the now batch-only store or delete RT topics manually.
+5. **Confirm automatic cleanup of every obsolete RT topic in every region.** If cleanup stalls, escalate through the
+   deployment's supported cleanup path or finish as a paused migration: seed a new hybrid store at the desired partition
+   count from the saved baseline, validate it, and switch readers and writers to it before resuming writes. Do not
+   dual-write to the now batch-only store or delete RT topics manually.
 6. **Change the partition count.**
 7. **Re-enable hybrid** with the recorded settings.
 8. Run a **fresh full push** from the saved baseline and validate the new serving version.
@@ -191,8 +189,8 @@ Choose this path while the original store is still hybrid and accepting writes.
 
 1. Create the new store with the desired partition count and the same schemas. Copy the existing writer capabilities
    before the first initialization or dual write: hybrid config, incremental push, active-active replication, and
-   partial-update (write-compute) config and schemas. A hybrid flag alone is not enough. Initialize it with a version so
-   it can accept RT writes.
+   partial update settings and schemas. A hybrid flag alone is not enough. Initialize it with a version so it can accept
+   RT writes.
 2. Start **dual-writing** the upstream's RT/incremental writes to both stores. For conflicting active-active writes, use
    the same source logical timestamp for each event in both stores. If the writer cannot preserve that timestamp, use a
    paused cutover for those writes rather than relying on arrival order.
@@ -211,6 +209,6 @@ Choose this path while the original store is still hybrid and accepting writes.
 - [ ] Rewind time is the shortest value that safely covers batch/catch-up overlap, at most 23 days.
 - [ ] RT retention, storage, and bootstrap time are forecast from the rewind time.
 - [ ] Full pushes run periodically (see [Repush](repush.md) and [TTL](ttl.md)).
-- [ ] Source of truth is replayable upstream, and old versions are cleaned up.
-- [ ] Schema changes are backward compatible; collection fields have bounded growth.
+- [ ] Source of truth is replayable upstream.
+- [ ] Schema changes are backward and forward compatible; collection fields have bounded growth.
 - [ ] Lag, bootstrap time, and replay volume are monitored.
