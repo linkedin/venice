@@ -41,6 +41,8 @@ public class RouterHttpRequestStatsRouterTehutiMetricNameEnumTest {
     map.put(
         RouterHttpRequestStats.RouterTehutiMetricNameEnum.NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
         "no_available_replica_aborted_retry_request");
+    map.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.READ_QUOTA_PER_ROUTER, "read_quota_per_router");
+    map.put(RouterHttpRequestStats.RouterTehutiMetricNameEnum.REQUEST_USAGE, "request_usage");
     return map;
   }
 

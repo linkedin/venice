@@ -8,6 +8,8 @@ import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_TIME;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.DISALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_SIZE;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.READ_QUOTA;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.READ_QUOTA_KEY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_DELAY;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
@@ -108,6 +110,14 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   /** key size metrics */
   private final MetricEntityStateBase keySizeMetric;
 
+  /**
+   * read quota metrics: recorded only in the single get stats for requests of all types, so the OTel metrics don't
+   * have the request method dimension
+   */
+  private final MetricEntityStateBase quotaMetric;
+  // Reflect the real request usage, e.g count each key as an unit of request usage.
+  private final MetricEntityStateBase requestUsageMetric;
+
   /** OTel metrics yet to be added */
   private final Sensor compressedResponseSizeSensor;
   private final Sensor decompressedResponseSizeSensor;
@@ -116,10 +126,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor decompressionTimeSensor;
   private final Sensor routerResponseWaitingTimeSensor;
   private final Sensor fanoutRequestCountSensor;
-  private final Sensor quotaSensor;
   private final Sensor findUnhealthyHostRequestSensor;
-  // Reflect the real request usage, e.g count each key as an unit of request usage.
-  private final Sensor requestUsageSensor;
   private final Sensor requestCallCountSensor;
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
@@ -382,7 +389,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         "decompression_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompression_time")),
         new Avg());
-    quotaSensor = registerSensor("read_quota_per_router", new Gauge());
     findUnhealthyHostRequestSensor = registerSensor("find_unhealthy_host_request", new OccurrenceRate());
 
     registerSensor(new LambdaStat((ignored, ignored2) -> scatterGatherStats.getTotalRetries(), "retry_count"));
@@ -399,10 +405,36 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             "retry_faster_than_original_count"));
 
     /**
-     * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
+     * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS. The read quota metrics are only
+     * recorded in the single get stats, for requests of all types (see
+     * {@link com.linkedin.venice.router.api.VenicePathParser} and
+     * {@link com.linkedin.venice.router.throttle.ReadRequestThrottler}), so their OTel metrics are only emitted from
+     * the single get stats and use base dimensions without the request method.
      */
-    requestUsageSensor = RequestType.isSingleGet(requestType)
-        ? registerSensor("request_usage", new Total(), new OccurrenceRate())
+    OpenTelemetryMetricsSetup.OpenTelemetryMetricsSetupInfo readQuotaOtelData =
+        OpenTelemetryMetricsSetup.builder(metricsRepository)
+            .isTotalStats(isTotalStats())
+            .setOtelEnabledOverride(RequestType.isSingleGet(requestType))
+            .setStoreName(storeName)
+            .setClusterName(clusterName)
+            .build();
+    quotaMetric = MetricEntityStateBase.create(
+        READ_QUOTA.getMetricEntity(),
+        readQuotaOtelData.getOtelRepository(),
+        this::registerSensorFinal,
+        RouterTehutiMetricNameEnum.READ_QUOTA_PER_ROUTER,
+        singletonList(new Gauge()),
+        readQuotaOtelData.getBaseDimensionsMap(),
+        readQuotaOtelData.getBaseAttributes());
+    requestUsageMetric = RequestType.isSingleGet(requestType)
+        ? MetricEntityStateBase.create(
+            READ_QUOTA_KEY_COUNT.getMetricEntity(),
+            readQuotaOtelData.getOtelRepository(),
+            this::registerSensorFinal,
+            RouterTehutiMetricNameEnum.REQUEST_USAGE,
+            Arrays.asList(new Total(), new OccurrenceRate()),
+            readQuotaOtelData.getBaseDimensionsMap(),
+            readQuotaOtelData.getBaseAttributes())
         : null;
 
     /**
@@ -685,7 +717,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordQuota(double quota) {
-    quotaSensor.record(quota);
+    quotaMetric.record(quota);
   }
 
   public void recordFindUnhealthyHostRequest() {
@@ -708,8 +740,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordRequestUsage(int usage) {
-    if (requestUsageSensor != null) {
-      requestUsageSensor.record(usage);
+    if (requestUsageMetric != null) {
+      requestUsageMetric.record(usage);
     }
     if (requestCallCountSensor != null) {
       requestCallCountSensor.record();
@@ -837,6 +869,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     KEY_SIZE_IN_BYTE,
     /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
     DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, SLOW_ROUTE_ABORTED_RETRY_REQUEST, RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
-    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST
+    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
+    /** for {@link RouterMetricEntity#READ_QUOTA} */
+    READ_QUOTA_PER_ROUTER,
+    /** for {@link RouterMetricEntity#READ_QUOTA_KEY_COUNT} */
+    REQUEST_USAGE
   }
 }
