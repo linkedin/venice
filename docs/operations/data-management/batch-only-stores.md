@@ -16,8 +16,9 @@ A batch-only store is written exclusively by pushes from an upstream batch job. 
 - Rebuild the dataset upstream and **full push on a schedule** matching your freshness needs. A periodic push also
   refreshes data, applies new store configs, and keeps the store healthy (see [Repush](repush.md)).
 - A batch-only store is written by full pushes only. Incremental pushes write through the RT topic, so they require a
-  [hybrid store](hybrid-stores.md) (enabling incremental push on a batch store converts it to hybrid). Even then, use
-  them only for limited changes; they are not a substitute for rebuilding the source dataset.
+  [hybrid store](hybrid-stores.md) (enabling incremental push on a batch store implicitly converts it to hybrid with
+  default settings). Even then, use them only for limited changes; they are not a substitute for rebuilding the source
+  dataset.
 - Validate before swapping reads (for example, record-count and schema checks in the push job) and keep at least one
   backup version available for rollback.
 - Make sure old versions are cleaned up so retained backups do not accumulate and consume storage.
@@ -26,8 +27,9 @@ A batch-only store is written exclusively by pushes from an upstream batch job. 
 
 ## Converting to Hybrid
 
-Converting a batch-only store to hybrid requires setting a rewind time (and a lag threshold) explicitly. Follow
-[Hybrid stores](hybrid-stores.md#converting-from-batch-only).
+Directly converting a batch-only store to hybrid requires setting a rewind time (and a lag threshold) explicitly.
+Enabling incremental push also converts it implicitly with default hybrid settings, if cluster prerequisites allow.
+Either way it becomes a hybrid store; follow [Hybrid stores](hybrid-stores.md#converting-from-batch-only).
 
 ## Checklist
 

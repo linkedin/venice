@@ -6,9 +6,11 @@ TTL can serve as a storage efficiency optimization for use cases where the data 
 beyond a certain age.
 
 TTL can also be useful in certain scenarios where the data should not be retained longer than prescribed for compliance
-reasons. Note that for these scenarios, it is important to understand that the rewind time is the minimum, not maximum,
-TTL (see [Hybrid stores](hybrid-stores.md#rewind)). It is also advisable to schedule the periodic purging such that
-there is a margin of safety in case of infra delays or failures.
+reasons. Note that for an [empty push](#empty-push), the store rewind time is the minimum, not maximum, window of
+history reconstructed (see [Hybrid stores](hybrid-stores.md#rewind)). For [repush with TTL](#repush-with-ttl), the
+cutoff comes from `repush.ttl.seconds` or `repush.ttl.start.timestamp`, applied to the input records' replication
+metadata, and the replay that follows can reintroduce older records unless its start is aligned. It is also advisable to
+schedule the periodic purging such that there is a margin of safety in case of infra delays or failures.
 
 ## Usage
 

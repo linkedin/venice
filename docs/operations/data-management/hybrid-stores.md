@@ -78,12 +78,21 @@ retention = max(5 days, rewind time + bootstrap-to-online timeout + 2 days)
 - **5 days is a floor**, not a fixed value. Retention grows with rewind time and the store's bootstrap-to-online timeout
   (24 hours by default).
 - The formula itself has no upper cap in Venice OSS. Your pub-sub broker or deployment may apply stricter limits.
+- Retention is computed from the **store-level** rewind time, not from a per-push override. If a push overrides the
+  rewind to a window longer than the store's retention covers (for example, 10 days on a store sized for 5), the
+  requested history may already be gone. Size the store-level rewind for any longer replay you intend.
 - RT topics are cleaned up automatically by Venice; do not delete them manually.
 
 ## Converting from Batch-Only
 
-Converting a batch-only store to hybrid requires setting a rewind time and a lag threshold (offset or time) explicitly.
-Run a full push after converting so a new version is created with the hybrid configuration.
+Directly converting a batch-only store to hybrid requires setting a rewind time and a lag threshold (offset or time)
+explicitly. Run a full push after converting so a new version is created with the hybrid configuration.
+
+Enabling incremental push on a batch-only store is an implicit conversion: Venice synthesizes a default hybrid
+configuration (default rewind and lag settings, `REWIND_FROM_EOP`) and enables active-active replication when the
+cluster default allows it. If the prerequisites are not enabled, the controller (or parent controller) can reject the
+request. Once incremental push is in use, you are operating a hybrid store, so review the defaults against
+[Choosing a rewind time](#choosing-a-rewind-time).
 
 ## Empty Push on a Hybrid Store
 
@@ -101,6 +110,12 @@ casually on a hybrid store. Under-sizing limits throughput; over-sizing adds ove
 
 By default the controller rejects partition-count changes on a hybrid store. Because the RT topic has the same number of
 partitions as the store, changing it requires retiring the old RT topic.
+
+Operators can optionally enable the controller config `controller.enable.hybrid.store.partition.count.update=true`. With
+it, a partition-count update is accepted directly and later versions use a new RT topic, while the current version's
+partition count stays unchanged. This gate does not remove the need for a fresh full push and validation, and it carries
+the same data-continuity risks; the default workflow below remains the primary path. RT topics are never deleted
+manually on either path.
 
 ### Option A: In-place Change (requires pausing writers)
 

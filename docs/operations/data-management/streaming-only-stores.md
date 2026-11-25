@@ -21,8 +21,9 @@ stream.
   recovery is a **full replay from your upstream**, which is slow and operationally expensive.
 - **No batch baseline to fall back on.** An empty push creates a version containing only RT history within the rewind
   window (not all broker-retained RT data), so older records are lost.
-- **Eventual consistency.** Updates are applied asynchronously and in the order of the RT stream; readers can briefly
-  observe stale values.
+- **Eventual consistency.** Updates are applied asynchronously, so readers can briefly observe stale values (visibility
+  lag). Separately, in active-active stores conflicts are resolved by write timestamps: a later-arriving update with an
+  older timestamp can be ignored, so arrival order alone does not decide the applied value.
 
 ## Recommendations
 
