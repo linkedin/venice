@@ -12,8 +12,13 @@ When a new version is pushed, Venice **replays** RT history on top of it before 
 the batch job was running are overlaid on the new version. The **rewind time** (`hybrid-rewind-seconds`) controls how
 far back the replay starts. It is a per-store setting that a push can override (relative with
 `rewind.time.in.seconds.override`, or absolute with `rewind.epoch.time.in.seconds.override`). If both are set, the
-relative override wins. The epoch override requires `REWIND_FROM_SOP` and is converted to a relative rewind (now minus
-the epoch time) plus a buffer, 60 seconds by default (`rewind.epoch.time.buffer.in.seconds.override`).
+relative override wins. The epoch override requires `REWIND_FROM_SOP`. VenicePushJob calculates an equivalent relative
+rewind for compatibility, but also forwards an absolute start of epoch minus the buffer; the buffer is 60 seconds by
+default (`rewind.epoch.time.buffer.in.seconds.override`). In multi-region operation, the parent controller forwards the
+absolute epoch only when the agreed admin-operation protocol is v106 or newer. Older controllers use the equivalent
+relative rewind.
+
+The following anchors apply to a **relative** rewind:
 
 | Buffer replay policy        | Replay starts at                         |
 | :-------------------------- | :--------------------------------------- |
@@ -87,7 +92,9 @@ retention = max(5 days, rewind time + bootstrap-to-online timeout + 2 days)
 - Retention is computed from the **store-level** rewind time, not from a per-push override. If a push overrides the
   rewind to a window longer than the store's retention covers (for example, 10 days on a store sized for 5), the
   requested history may already be gone. Size the store-level rewind for any longer replay you intend.
-- RT topics are cleaned up automatically by Venice; do not delete them manually.
+- Automatic RT-topic cleanup is conditional: Venice must consider a topic truncated or otherwise eligible after
+  retirement. A gated partition-count change does not, by itself, guarantee that the obsolete topic is cleaned while the
+  store remains hybrid. Monitor obsolete topics through retirement; do not delete them manually.
 
 ## Converting from Batch-Only
 
@@ -120,8 +127,15 @@ partitions as the store, changing it requires retiring the old RT topic.
 Operators can optionally enable the controller config `controller.enable.hybrid.store.partition.count.update=true`. With
 it, a partition-count update is accepted directly and later versions use a new RT topic, while the current version's
 partition count stays unchanged. This gate does not remove the need for a fresh full push and validation, and it carries
-the same data-continuity risks; the default workflow below remains the primary path. RT topics are never deleted
-manually on either path.
+the same data-continuity risks; the default workflow below remains the primary path.
+
+The gate changes the store's topic for later versions, but it does not itself guarantee a seamless writer or replay
+handoff. During the transition, push monitoring can resolve replay through the current version's RT topic, and existing
+writers can continue to use the old topic and partitioning. Use this path only after a coordinated pause/drain and a
+complete refreshed baseline that includes every write through the pause. Verify that the new version resolves the
+intended RT topic and partition count, completes replay, and swaps successfully before redirecting or resuming writers.
+Refresh or restart producers that retain old topic metadata. If the writers cannot be paused and handed off safely, use
+Option B instead. RT topics are never deleted manually on either path.
 
 ### Option A: In-place Change (requires pausing writers)
 
@@ -157,7 +171,10 @@ is no RT history to replay, so the new version would be effectively empty.
    it can accept RT writes.
 2. Start **dual-writing** the upstream's RT/incremental writes to both stores.
 3. Take a snapshot and **full push** it to the new store. The snapshot must cover writes up to the snapshot time, and
-   the rewind window must cover the backfill duration plus margin so dual-written writes are overlaid.
+   the rewind window must cover the backfill duration plus margin so dual-written writes are overlaid. For an
+   active-active store, a value-only snapshot is not enough: preserve the conflict timestamps and delete tombstones
+   needed by the target. If that metadata cannot be preserved, coordinate a snapshot/stream boundary that fences stale
+   pre-snapshot writes before replay. Rewind overlap alone does not restore missing conflict metadata.
 4. Validate, then migrate readers gradually (for example, behind a flag), comparing results between stores.
 5. After readers are fully moved, stop writes to the old store and retire it.
 
