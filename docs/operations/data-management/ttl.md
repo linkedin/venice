@@ -8,10 +8,11 @@ beyond a certain age.
 TTL can also be useful in certain scenarios where the data should not be retained longer than prescribed for compliance
 reasons. Note that for an [empty push](#empty-push), the effective rewind time is the minimum, not maximum, window of
 history reconstructed; it can be shorter than the store setting when the push supplies an override (see
-[Hybrid stores](hybrid-stores.md#rewind)). For [repush with TTL](#repush-with-ttl), the cutoff comes from
-`repush.ttl.seconds` or `repush.ttl.start.timestamp`, applied to the input records' replication metadata, and the replay
-that follows can reintroduce older records unless its start is aligned. It is also advisable to schedule the periodic
-purging such that there is a margin of safety in case of infra delays or failures.
+[Hybrid stores](hybrid-stores.md#rewind)). For [repush with TTL](#repush-with-ttl), the cutoff comes from the job start
+time minus the store's hybrid rewind by default. `repush.ttl.seconds` or `repush.ttl.start.timestamp` can override it,
+applied to the input records' replication metadata. The replay that follows can reintroduce older records unless its
+start is aligned. It is also advisable to schedule the periodic purging such that there is a margin of safety in case of
+infra delays or failures.
 
 ## Usage
 
@@ -29,8 +30,8 @@ Repush with TTL runs as a VenicePushJob that reads the data in the existing vers
 a new version. The TTL is enforced by the VenicePushJob, which only writes records that are younger than the specified
 TTL. Repush with TTL can also be configured and scheduled periodically to enforce TTL.
 
-Set exactly one of the following configs on the VenicePushJob. VenicePushJob does not derive a TTL cutoff from the
-store-level rewind when both are absent:
+If neither override is set, VenicePushJob derives the cutoff as the job start time minus the store's hybrid rewind. Set
+at most one of the following mutually exclusive configs to override that default:
 
 | Config                       | TTL behavior                                                    |
 | ---------------------------- | --------------------------------------------------------------- |
@@ -47,11 +48,16 @@ expired timestamps are not replayed. Prevent such writes or purge them separatel
 the epoch buffer before using them together. A 24-hour relative fallback applies to a hybrid repush only when neither
 override is set; do not treat it as a universal value.
 
-Repush with TTL acts on replication-metadata timestamps. Records carrying the batch sentinel timestamp are exempt, but
-that exemption applies to **value-level** timestamps only. Batch records pushed with a record-level timestamp
-(`timestamp.field`) can expire. With field-level timestamps, TTL resets fields at or below the cutoff to their schema
-defaults, including zero/sentinel-timestamp fields created by partial updates; newer fields remain. Do not rely on TTL
-to retain or purge batch data; remove expired batch records upstream and refresh with a full push.
+Repush with TTL acts on replication-metadata timestamps and uses an exclusive cutoff: a timestamp equal to the cutoff is
+retained; only an older timestamp expires. An expired non-collection value or field may be removed or reset to its
+schema default. Collection fields are filtered at the entry level, so newer entries and deletion tombstones can remain
+instead of resetting the whole list or map.
+
+Records carrying the batch sentinel timestamp are exempt from value-level filtering, but that exemption does not apply
+to field-level metadata. Batch records pushed with a record-level timestamp (`timestamp.field`) can expire. With
+field-level timestamps, an untouched non-collection field can still carry a zero/sentinel timestamp and be reset; newer
+fields remain. Do not rely on TTL to retain or purge batch data; remove expired batch records upstream and refresh with
+a full push.
 
 After a TTL repush, a regular (non-empty) full push is rejected unless the input provides `timestamp.field` record
 timestamps or `allow.regular.push.with.ttl.repush=true` is set. The override skips the push job's rejection check; it
