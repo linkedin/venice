@@ -110,7 +110,3 @@ The read clients support:
 
 Use [CDC](../../user-guide/read-apis/cdc.md) for a hybrid store's ongoing inserts, updates, and deletes. Batch-only
 stores publish snapshots without a nearline change stream. Use a read client to query the current snapshot.
-
-For example, an inference application can consume embedding changes, transform them into entries in a CPU- or
-GPU-resident vector index, and remove entries on deletes. The application maintains the index and queries it to retrieve
-candidates at inference time.
