@@ -22,9 +22,9 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HashSet;
 import java.util.Set;
+import java.util.function.ToLongFunction;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -40,18 +40,18 @@ public class RocksDBStorageEngineFactoryTest {
         new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
 
     MetricsRepository repository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
-    Map<String, RocksDBStoragePartition> registrations = new HashMap<>();
+    Set<String> registrations = new HashSet<>();
     try {
       RocksDBMemoryStats stats = new RocksDBMemoryStats(repository, "partition", false, "test") {
         @Override
         public void registerPartition(String name, RocksDBStoragePartition partition) {
-          if (partition instanceof ReplicationMetadataRocksDBStoragePartition) {
-            Assert.assertNotNull(
-                ((ReplicationMetadataRocksDBStoragePartition) partition).getFullPathForTempSSTFileDir(),
-                "Metrics registered before the replication-metadata partition finished construction");
-          }
-          Assert.assertNull(registrations.put(name, partition), "Duplicate metrics registration");
-          super.registerPartition(name, partition);
+          Assert.fail("Automatic metrics registration must not publish the partition object");
+        }
+
+        @Override
+        public void registerPartitionMetrics(String name, ToLongFunction<String> readStat) {
+          Assert.assertTrue(registrations.add(name), "Duplicate metrics registration");
+          super.registerPartitionMetrics(name, readStat);
         }
       };
       RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(
@@ -73,11 +73,9 @@ public class RocksDBStorageEngineFactoryTest {
         Assert.assertFalse(engine.getMetadataPartition() instanceof ReplicationMetadataRocksDBStoragePartition);
         Assert.assertEquals(
             registrations,
-            Map.of(
+            Set.of(
                 RocksDBUtils.getPartitionDbName(testStore, METADATA_PARTITION_ID),
-                engine.getMetadataPartition(),
-                RocksDBUtils.getPartitionDbName(testStore, 0),
-                partition));
+                RocksDBUtils.getPartitionDbName(testStore, 0)));
         Assert.assertThrows(VeniceException.class, () -> engine.getPartitionOrThrow(1).getRocksDBStatValue(property));
         long versions = partition.getRocksDBStatValue(property);
         Assert.assertTrue(versions > 0 && metadataVersions > 0);

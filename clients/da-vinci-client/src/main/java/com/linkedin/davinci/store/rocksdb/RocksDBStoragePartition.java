@@ -95,12 +95,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final String fullPathForPartitionDB;
 
   /**
-   * If the internal RocksDB handler has been closed or in the middle of closing, any other RocksDB operations
-   * will crash.
-   * We will use {@link #isClosed} to indicate whether the current RocksDB is closed or not.
-   */
-  private boolean isClosed = false;
-  /**
    * Since all the modification functions are synchronized, we don't need any other synchronization for the update path
    * to guard RocksDB closing behavior.
    * The following {@link #readCloseRWLock} is only used to guard {@link #get} since we don't want to synchronize get requests.
@@ -122,7 +116,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private final Options options;
 
   /**
-   * The RocksDB JNI handle. Private to enforce lifecycle safety and prevent use-after-free crashes.
+   * Holds the current RocksDB JNI handle. Private to enforce lifecycle safety and prevent use-after-free crashes.
    *
    * <p><b>DO NOT make this field protected or public.</b> Direct access to this handle without proper
    * lifecycle guards causes JVM crashes (SIGSEGV) when the native handle is freed by {@link #close()}
@@ -137,7 +131,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    * <p>Direct access is only permitted within this class, and only in tightly controlled lifecycle code
    * paths such as construction/initialization, {@link #close()}, and {@link #reopen()}.
    */
-  private RocksDB rocksDB;
+  private final DatabaseHandle databaseHandle;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final RocksDBStorageEngineFactory factory;
   private final RocksDBThrottler rocksDBThrottler;
@@ -192,6 +186,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.storeVersion = Version.parseVersionFromVersionTopicPartition(storeNameAndVersion);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.replicaId = Utils.getReplicaId(storagePartitionConfig.getStoreName(), partitionId);
+    this.databaseHandle = new DatabaseHandle(readCloseRWLock, replicaId, partitionId);
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeNameAndVersion, partitionId);
     List<byte[]> columnFamilyNamesToOpen = getColumnFamilyNamesToOpen(columnFamilyNameList);
     this.aggStatistics = factory.getAggStatistics();
@@ -279,7 +274,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
 
     if (blobTransferInProgress) {
-      this.rocksDB = null;
       LOGGER.info("Blob transfer in progress for replica: {}. Skip initializing and opening RocksDB.", replicaId);
       return;
     }
@@ -290,15 +284,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
      */
     try {
       if (this.readOnly) {
-        this.rocksDB = rocksDbThrottler
+        databaseHandle.db = rocksDbThrottler
             .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       } else {
-        this.rocksDB =
+        databaseHandle.db =
             rocksDbThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
     } catch (RocksDBException | InterruptedException e) {
       throw new VeniceException("Failed to open RocksDB for replica: " + replicaId, e);
     }
+    registerDBStats();
     LOGGER.info(
         "Opened RocksDB: {} for replica: {} in {} and {} mode",
         fullPathForPartitionDB,
@@ -368,11 +363,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   protected void makeSureRocksDBIsStillOpen() {
-    if (rocksDB == null || isClosed) {
-      throw new VeniceException(
-          "RocksDB has been closed for replica: " + replicaId + ", partition id: " + partitionId
-              + ", any further operation is disallowed");
-    }
+    databaseHandle.checkOpen();
   }
 
   /**
@@ -405,7 +396,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return operation.execute(rocksDB);
+      return operation.execute(databaseHandle.db);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to perform RocksDB operation for replica: " + replicaId, e);
     } finally {
@@ -433,7 +424,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected synchronized <T> T withSynchronizedDatabase(RocksDBOperation<T> operation) {
     makeSureRocksDBIsStillOpen();
     try {
-      return operation.execute(rocksDB);
+      return operation.execute(databaseHandle.db);
     } catch (RocksDBException e) {
       checkAndThrowDiskLimitException(e);
       throw new VeniceException("Failed to perform RocksDB operation for replica: " + replicaId, e);
@@ -961,7 +952,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void close() {
-    if (isClosed) {
+    if (databaseHandle.closed) {
       return;
     }
     long startTimeInMs = System.currentTimeMillis();
@@ -971,11 +962,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     deRegisterDBStats();
     readCloseRWLock.writeLock().lock();
     try {
-      if (rocksDB != null) {
-        rocksDB.close();
-      }
+      databaseHandle.close();
     } finally {
-      isClosed = true;
       readCloseRWLock.writeLock().unlock();
     }
     if (envOptions != null) {
@@ -1002,16 +990,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     readCloseRWLock.writeLock().lock();
     try {
       long startTimeInMs = System.currentTimeMillis();
-      rocksDB.close();
+      databaseHandle.db.close();
       LOGGER.info(
           "RocksDB close for replica: {} took {} ms.",
           replicaId,
           LatencyUtils.getElapsedTimeFromMsToMs(startTimeInMs));
       if (this.readOnly) {
-        this.rocksDB = rocksDBThrottler
+        databaseHandle.db = rocksDBThrottler
             .openReadOnly(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       } else {
-        this.rocksDB =
+        databaseHandle.db =
             rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
       }
       LOGGER.info("Reopened RocksDB for replica: {}", replicaId);
@@ -1022,9 +1010,60 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  final void registerDBStats() {
-    if (rocksDBMemoryStats != null && rocksDB != null) {
-      rocksDBMemoryStats.registerPartition(RocksDBUtils.getPartitionDbName(storeNameAndVersion, partitionId), this);
+  private void registerDBStats() {
+    if (rocksDBMemoryStats != null && databaseHandle.db != null) {
+      // A subclass may still be initializing; publish only the guarded DB state.
+      rocksDBMemoryStats.registerPartitionMetrics(
+          RocksDBUtils.getPartitionDbName(storeNameAndVersion, partitionId),
+          databaseHandle::readStat);
+    }
+  }
+
+  private static final class DatabaseHandle {
+    private final ReentrantReadWriteLock lock;
+    private final String replicaId;
+    private final int partitionId;
+    private RocksDB db;
+    private boolean closed;
+
+    private DatabaseHandle(ReentrantReadWriteLock lock, String replicaId, int partitionId) {
+      this.lock = lock;
+      this.replicaId = replicaId;
+      this.partitionId = partitionId;
+    }
+
+    private void checkOpen() {
+      if (db == null || closed) {
+        throw new VeniceException(
+            "RocksDB has been closed for replica: " + replicaId + ", partition id: " + partitionId
+                + ", any further operation is disallowed");
+      }
+    }
+
+    private void close() {
+      try {
+        if (db != null) {
+          db.close();
+        }
+      } finally {
+        closed = true;
+      }
+    }
+
+    private long readStat(String statName) {
+      lock.readLock().lock();
+      try {
+        checkOpen();
+        // A failed reopen can leave the old RocksDB object without its native handle.
+        if (!db.isOwningHandle()) {
+          throw new VeniceException("No live RocksDB handle for replica: " + replicaId);
+        }
+        return db.getLongProperty(statName);
+      } catch (RocksDBException e) {
+        throw new VeniceException("Failed to perform RocksDB operation for replica: " + replicaId, e);
+      } finally {
+        lock.readLock().unlock();
+      }
     }
   }
 

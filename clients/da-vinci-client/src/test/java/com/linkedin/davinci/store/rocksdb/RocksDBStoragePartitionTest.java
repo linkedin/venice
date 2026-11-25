@@ -27,6 +27,7 @@ import static org.testng.AssertJUnit.assertFalse;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
@@ -39,8 +40,13 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricConfig;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -65,6 +71,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
 import java.util.function.Supplier;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.RandomStringUtils;
@@ -1469,6 +1476,99 @@ public class RocksDBStoragePartitionTest {
       partition.drop();
       removeDir(storeDir);
     }
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 30_000)
+  public void testDirectPartitionMetricsDuringReopenAndClose(boolean replicationMetadataEnabled) throws Exception {
+    VeniceProperties props = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(props);
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    StoragePartitionConfig config = new StoragePartitionConfig(storeName, 0);
+    String dbDir = serverConfig.getRocksDBPath();
+    CountDownLatch deregistering = new CountDownLatch(1);
+    // Lock coordination deliberately delays measurement; avoid Tehuti's cached slow-metric path.
+    AsyncGauge.AsyncGaugeExecutor measurementExecutor =
+        new AsyncGauge.AsyncGaugeExecutor.Builder().setMetricMeasurementThreadCount(1)
+            .setInitialMetricsMeasurementTimeoutInMs(30_000)
+            .setMaxMetricsMeasurementTimeoutInMs(30_000)
+            .setSlowMetricThresholdMs(30_000)
+            .build();
+    MetricsRepository repository = new MetricsRepository(new MetricConfig(measurementExecutor));
+    try {
+      RocksDBMemoryStats stats = new RocksDBMemoryStats(repository, "partition", false, "test") {
+        @Override
+        public void deregisterPartition(String name) {
+          deregistering.countDown();
+          super.deregisterPartition(name);
+        }
+      };
+      RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+      try {
+        FileUtils.forceMkdir(new File(RocksDBUtils.composeStoreDbDir(dbDir, storeName)));
+        RocksDBServerConfig rocksDBConfig = serverConfig.getRocksDBServerConfig();
+        RocksDBStoragePartition partition = replicationMetadataEnabled
+            ? new ReplicationMetadataRocksDBStoragePartition(
+                config,
+                factory,
+                dbDir,
+                stats,
+                ROCKSDB_THROTTLER,
+                rocksDBConfig)
+            : new RocksDBStoragePartition(config, factory, dbDir, stats, ROCKSDB_THROTTLER, rocksDBConfig);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+          String property = "rocksdb.num-live-versions";
+          Metric gauge = repository.getMetric(".partition--" + property + ".Gauge");
+          long versions = partition.getRocksDBStatValue(property);
+          assertTrue(versions > 0);
+          assertEquals(gauge.value(), (double) versions, "Direct construction must register the open DB");
+
+          Lock writeLock = partition.readCloseRWLock.writeLock();
+          Future<Double> readDuringReopen;
+          writeLock.lock();
+          try {
+            readDuringReopen = queueGaugeRead(executor, gauge, partition);
+            partition.reopen();
+          } finally {
+            writeLock.unlock();
+          }
+          Double reopenedVersions = (double) partition.getRocksDBStatValue(property);
+          assertEquals(readDuringReopen.get(5, TimeUnit.SECONDS), reopenedVersions);
+
+          Future<Double> readDuringClose;
+          Future<?> close;
+          writeLock.lock();
+          try {
+            readDuringClose = queueGaugeRead(executor, gauge, partition);
+            close = executor.submit(partition::close);
+            assertTrue(deregistering.await(5, TimeUnit.SECONDS), "Close did not reach metrics deregistration");
+          } finally {
+            writeLock.unlock();
+          }
+          assertEquals(readDuringClose.get(5, TimeUnit.SECONDS), reopenedVersions);
+          close.get(5, TimeUnit.SECONDS);
+          assertEquals(gauge.value(), 0.0);
+        } finally {
+          executor.shutdownNow();
+          partition.close();
+        }
+      } finally {
+        factory.close();
+        FileUtils.deleteDirectory(new File(dbDir));
+      }
+    } finally {
+      repository.close();
+      measurementExecutor.close();
+    }
+  }
+
+  private Future<Double> queueGaugeRead(ExecutorService executor, Metric gauge, RocksDBStoragePartition partition) {
+    Future<Double> reading = executor.submit(gauge::value);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> assertTrue(partition.readCloseRWLock.hasQueuedThreads(), "Gauge did not queue on the lifecycle lock"));
+    return reading;
   }
 
   /**
