@@ -11,7 +11,9 @@ and [Push types](repush.md#push-types) for definitions.
 When a new version is pushed, Venice **replays** RT history on top of it before swapping reads, so updates made while
 the batch job was running are overlaid on the new version. The **rewind time** (`hybrid-rewind-seconds`) controls how
 far back the replay starts. It is a per-store setting that a push can override (relative with
-`rewind.time.in.seconds.override`, or absolute with `rewind.epoch.time.in.seconds.override`).
+`rewind.time.in.seconds.override`, or absolute with `rewind.epoch.time.in.seconds.override`). If both are set, the
+relative override wins. The epoch override requires `REWIND_FROM_SOP` and is converted to a relative rewind (now minus
+the epoch time) plus a buffer, 60 seconds by default (`rewind.epoch.time.in.seconds.buffer.override`).
 
 | Buffer replay policy        | Replay starts at                         |
 | :-------------------------- | :--------------------------------------- |
@@ -32,6 +34,10 @@ Only writes inside the **effective replay window** are guaranteed to be overlaid
 replayed even if they are still retained in the RT topic, so a short rewind (including a short per-push override such as
 in a repush) can drop writes made early in a long push. Rewind time is therefore the **minimum** retained overlay, not a
 maximum TTL (see [TTL](ttl.md)).
+
+A per-push override does not extend RT retention, which is derived from the store-level config (see
+[RT topic retention](#rt-topic-retention)). Before using an override longer than the store's rewind, check that the
+requested history is still retained.
 
 ### Choosing a Rewind Time
 
@@ -120,8 +126,9 @@ manually on either path.
 ### Option A: In-place Change (requires pausing writers)
 
 Before starting, **record the store's hybrid settings**: rewind time, lag thresholds, replay policy, active-active
-replication, and incremental push. Disabling hybrid also disables active-active replication and incremental push, so
-they must be restored explicitly (or verified against your deployment defaults) when hybrid is re-enabled.
+replication, incremental push, native-replication source fabric, and data-replication policy. Disabling hybrid also
+disables active-active replication and incremental push, so restore them explicitly, using your intended values rather
+than silently accepting new defaults. Restore the source fabric before the next repush.
 
 1. **Pause** RT and incremental-push writers.
 2. **Wait for catch-up:** every active hybrid version in every region must consume and persist all RT writes up to the
@@ -133,7 +140,9 @@ they must be restored explicitly (or verified against your deployment defaults) 
 5. **Wait for Venice's automatic RT topic cleanup.** Do not delete RT topics manually.
 6. **Change the partition count.**
 7. **Re-enable hybrid** with the recorded settings.
-8. Run a **fresh full push** with a baseline that again includes every write up to the pause, and validate it.
+8. Run a **fresh full push** with a baseline that again includes every write up to the pause, and validate it. If the
+   store previously used TTL repush, a regular push with records must supply `timestamp.field` or set
+   `allow.regular.push.with.ttl.repush=true` (see [TTL](ttl.md#repush-with-ttl)).
 9. **Resume** the writers. If long-lived producers or stream-processing sinks cache the RT topic or partition count,
    restart or recreate them first so they pick up fresh metadata.
 
@@ -142,8 +151,10 @@ is no RT history to replay, so the new version would be effectively empty.
 
 ### Option B: Migrate to a New Store (when pausing is unacceptable)
 
-1. Create the new store with the desired partition count and the same schemas. Configure it as hybrid and initialize it
-   with a version so it can accept RT writes.
+1. Create the new store with the desired partition count and the same schemas. Copy the existing writer capabilities
+   before the first initialization or dual write: hybrid config, incremental push, active-active replication, and
+   partial-update (write-compute) config and schemas. A hybrid flag alone is not enough. Initialize it with a version so
+   it can accept RT writes.
 2. Start **dual-writing** the upstream's RT/incremental writes to both stores.
 3. Take a snapshot and **full push** it to the new store. The snapshot must cover writes up to the snapshot time, and
    the rewind window must cover the backfill duration plus margin so dual-written writes are overlaid.

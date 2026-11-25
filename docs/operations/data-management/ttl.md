@@ -38,13 +38,20 @@ specified by setting one of the following configs on the VenicePushJob:
 
 The TTL filter applies only to the repush **input**. RT history is replayed afterward and can reintroduce records older
 than the TTL cutoff. Set the effective replay start (`rewind.time.in.seconds.override`, or
-`rewind.epoch.time.in.seconds.override`) to align with the cutoff while still covering writes made during the push. A
-24-hour relative fallback applies to a hybrid repush only when neither override is set; do not treat it as a universal
-value.
+`rewind.epoch.time.in.seconds.override`, which requires `REWIND_FROM_SOP` and adds a buffer) to align with the cutoff
+while still covering writes made during the push. Replay is positioned by pub-sub timestamp, but TTL filtering uses the
+record's replication-metadata (logical) timestamp, so aligning windows does not guarantee that late-arriving writes with
+expired timestamps are not replayed. Prevent such writes or purge them separately. A 24-hour relative fallback applies
+to a hybrid repush only when neither override is set; do not treat it as a universal value.
 
-Repush with TTL requires replication metadata, so it expires only records written through active-active RT writes. Batch
-records carrying the sentinel timestamp are retained regardless of age. It is not a generic purge of an old batch
-baseline: remove expired batch records upstream and refresh with a full push.
+Repush with TTL acts on replication-metadata timestamps. Records carrying the batch sentinel timestamp are exempt, but
+this is per value: batch records pushed with a record-level timestamp (`timestamp.field`) can expire, and with partial
+updates, fields never touched since the batch push keep the sentinel while updated fields can be cleared. Do not rely on
+TTL to retain or purge batch data; remove expired batch records upstream and refresh with a full push.
+
+After a TTL repush, a regular (non-empty) full push is rejected unless the input provides `timestamp.field` record
+timestamps or `allow.regular.push.with.ttl.repush=true` is set. The override skips the check and changes how the push
+interacts with the store's TTL-repush flag, so use it deliberately.
 
 This brings two major benefits:
 
