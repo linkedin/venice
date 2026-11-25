@@ -122,12 +122,18 @@ public class SharedKafkaConsumerTest {
         Thread.currentThread().interrupt();
         return null;
       }).when(consumer).batchUnsubscribe(partitions);
+    } else {
+      Assert.assertThrows(
+          ReplicaDropPollTimeoutException.class,
+          () -> sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime()));
+      verify(consumer, never()).batchUnsubscribe(partitions);
+      sharedConsumer.setTimeoutMsOverride(0);
     }
 
     Class<? extends Exception> expected =
         interruptAtPollBarrier ? InterruptedException.class : ReplicaDropPollTimeoutException.class;
     try {
-      long deadlineNanos = System.nanoTime() + (interruptAtPollBarrier ? TimeUnit.SECONDS.toNanos(10) : 0);
+      long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
       Assert.assertThrows(
           expected,
           () -> sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, deadlineNanos));
@@ -154,9 +160,13 @@ public class SharedKafkaConsumerTest {
     Assert.assertThrows(
         VeniceException.class,
         () -> sharedConsumer.subscribe(versionTopic, partition, PubSubSymbolicPosition.EARLIEST, false));
+    sharedConsumer.setTimeoutMsOverride(0);
     Assert.assertThrows(
         ReplicaDropPollTimeoutException.class,
-        () -> sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime()));
+        () -> sharedConsumer.batchUnsubscribeForReplicaDrop(
+            versionTopic,
+            partitions,
+            System.nanoTime() + TimeUnit.SECONDS.toNanos(10)));
     verify(listener, never()).call(sharedConsumer, versionTopic, partition);
     sharedConsumer.poll(0);
     sharedConsumer.batchUnsubscribeForReplicaDrop(versionTopic, partitions, System.nanoTime());

@@ -230,6 +230,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
       }
     }
     if (!newDetaches.isEmpty()) {
+      if (deadlineNanos - System.nanoTime() <= 0) {
+        throw new ReplicaDropPollTimeoutException(
+            "Replica-drop deadline expired before detaching subscriptions: " + newDetaches);
+      }
       long pollsBeforeDetach = pollTimes;
       delegate.batchUnsubscribe(newDetaches);
       newDetaches.forEach(partition -> replicaDropPollBaselines.put(partition, pollsBeforeDetach));
