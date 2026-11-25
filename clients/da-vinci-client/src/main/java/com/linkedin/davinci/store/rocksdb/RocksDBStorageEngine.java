@@ -147,9 +147,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
 
   @Override
   public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+    RocksDBStoragePartition partition;
     // Metadata partition should not enable replication metadata column family.
     if (storagePartitionConfig.getPartitionId() == METADATA_PARTITION_ID || !replicationMetadataEnabled) {
-      return new RocksDBStoragePartition(
+      partition = new RocksDBStoragePartition(
           storagePartitionConfig,
           factory,
           rocksDbPath,
@@ -157,7 +158,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           rocksDbThrottler,
           rocksDBServerConfig);
     } else {
-      return new ReplicationMetadataRocksDBStoragePartition(
+      partition = new ReplicationMetadataRocksDBStoragePartition(
           storagePartitionConfig,
           factory,
           rocksDbPath,
@@ -165,6 +166,9 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           rocksDbThrottler,
           rocksDBServerConfig);
     }
+    // Register only after construction so readers cannot see a partially initialized partition.
+    partition.registerDBStats();
+    return partition;
   }
 
   private long getRMDSizeInBytes() {

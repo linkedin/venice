@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
+import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOB_FILE_STARTING_LEVEL;
@@ -36,6 +37,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
@@ -83,6 +85,7 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -1475,33 +1478,78 @@ public class RocksDBStoragePartitionTest {
     }
   }
 
-  @Test
-  public void testPartitionMetricsFollowDatabaseLifecycle() throws Exception {
+  @DataProvider
+  public Object[][] partitionMetricsCases() {
+    return new Object[][] { { 0, false, false }, { 0, true, false }, { METADATA_PARTITION_ID, true, false },
+        { 0, false, true }, { 0, true, true } };
+  }
+
+  @Test(dataProvider = "partitionMetricsCases")
+  public void testPartitionMetricsFollowDatabaseLifecycle(
+      int partitionId,
+      boolean replicationMetadataEnabled,
+      boolean blobTransferInProgress) throws Exception {
     String property = "rocksdb.num-live-versions";
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String expectedPartitionName = RocksDBUtils.getPartitionDbName(storeName, partitionId);
+    List<RocksDBStoragePartition> registrations = new ArrayList<>();
     MetricsRepository repository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
     try {
       RocksDBMemoryStats stats = new RocksDBMemoryStats(repository, "partition", false, "test") {
         @Override
         public void registerPartition(String partitionName, RocksDBStoragePartition partition) {
-          Assert.fail("Metrics registration must not publish the partition during construction");
+          assertEquals(partitionName, expectedPartitionName);
+          if (partition instanceof ReplicationMetadataRocksDBStoragePartition) {
+            Assert.assertNotNull(
+                ((ReplicationMetadataRocksDBStoragePartition) partition).getFullPathForTempSSTFileDir(),
+                "Metrics registered before the replication-metadata partition finished construction");
+          }
+          registrations.add(partition);
+          super.registerPartition(partitionName, partition);
         }
       };
       Metric gauge = repository.getMetric(".partition--" + property + ".Gauge");
-      RocksDBStoragePartition partition = createPartition(false, stats);
-      String storeDir = lastCreatedStoreDir;
+      VeniceProperties props = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+      VeniceServerConfig serverConfig = new VeniceServerConfig(props);
+      VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, props, PersistenceType.ROCKS_DB);
+      storeConfig.setRestoreMetadataPartition(false);
+      RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(
+          serverConfig,
+          stats,
+          AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
       try {
-        long versions = partition.getRocksDBStatValue(property);
-        assertTrue(versions > 0);
-        assertEquals(gauge.value(), (double) versions);
+        RocksDBStorageEngine engine =
+            (RocksDBStorageEngine) factory.getStorageEngine(storeConfig, replicationMetadataEnabled);
+        RocksDBStoragePartition partition =
+            engine.createStoragePartition(new StoragePartitionConfig(storeName, partitionId, blobTransferInProgress));
+        try {
+          assertEquals(
+              partition instanceof ReplicationMetadataRocksDBStoragePartition,
+              replicationMetadataEnabled && partitionId != METADATA_PARTITION_ID);
+          if (blobTransferInProgress) {
+            assertTrue(registrations.isEmpty(), "An unopened partition must not be registered");
+            Assert.assertThrows(VeniceException.class, () -> partition.getRocksDBStatValue(property));
+            assertEquals(gauge.value(), 0.0);
+          } else {
+            assertEquals(registrations.size(), 1);
+            Assert.assertSame(registrations.get(0), partition);
+            long versions = partition.getRocksDBStatValue(property);
+            assertTrue(versions > 0);
+            assertEquals(gauge.value(), (double) versions);
 
-        partition.reopen();
-        assertEquals(gauge.value(), (double) partition.getRocksDBStatValue(property));
+            partition.reopen();
+            assertEquals(gauge.value(), (double) partition.getRocksDBStatValue(property));
 
-        partition.close();
-        assertEquals(gauge.value(), 0.0);
+            partition.close();
+            assertEquals(gauge.value(), 0.0);
+          }
+        } finally {
+          partition.drop();
+        }
       } finally {
-        partition.drop();
-        removeDir(storeDir);
+        factory.close();
+        FileUtils.deleteDirectory(new File(serverConfig.getRocksDBPath()));
       }
     } finally {
       repository.close();
@@ -1560,10 +1608,6 @@ public class RocksDBStoragePartitionTest {
   private String lastCreatedStoreDir;
 
   private RocksDBStoragePartition createPartition(boolean deferredWrite) {
-    return createPartition(deferredWrite, null);
-  }
-
-  private RocksDBStoragePartition createPartition(boolean deferredWrite, RocksDBMemoryStats stats) {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     lastCreatedStoreDir = getTempDatabaseDir(storeName);
     StoragePartitionConfig config = new StoragePartitionConfig(storeName, 0);
@@ -1573,7 +1617,7 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(props);
     VeniceServerConfig serverConfig = new VeniceServerConfig(props);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    return new RocksDBStoragePartition(config, factory, DATA_BASE_DIR, stats, ROCKSDB_THROTTLER, rocksDBServerConfig);
+    return new RocksDBStoragePartition(config, factory, DATA_BASE_DIR, null, ROCKSDB_THROTTLER, rocksDBServerConfig);
   }
 
   private void assertFutureCompletes(Future<?> f, int timeoutSeconds) {
