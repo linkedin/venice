@@ -94,8 +94,10 @@ retention = max(5 days, rewind time + bootstrap-to-online timeout + 2 days)
   rewind to a window longer than the store's retention covers (for example, 10 days on a store sized for 5), the
   requested history may already be gone. Size the store-level rewind for any longer replay you intend.
 - Changing the bootstrap timeout changes the retention calculation, but does not by itself reconcile an existing RT
-  topic. Apply a hybrid-config update as part of the change, wait for reconciliation, and verify the broker's effective
-  retention before relying on the larger window.
+  topic. Apply a hybrid-config update as part of the change and wait for reconciliation. That update reconciles the
+  primary RT topic; a separate RT topic used for incremental push may keep its previous retention until a later topic
+  setup or switch checks it. Before relying on the larger window, verify and, if needed, reconcile broker retention for
+  every relevant topic, including the primary and separate incremental-push RT topics.
 - Automatic RT-topic cleanup is conditional: Venice must consider a topic truncated or otherwise eligible after
   retirement. A gated partition-count change does not, by itself, guarantee that the obsolete topic is cleaned while the
   store remains hybrid. Monitor obsolete topics through retirement; do not delete them manually.
