@@ -52,10 +52,9 @@ field-level timestamps, an untouched non-collection field can still carry a zero
 fields remain. Do not rely on TTL to retain or purge batch data; remove expired batch records upstream and refresh with
 a full push.
 
-In a non-chunked MapReduce repush, TTL filtering happens before selecting the latest record for a key. If an older,
-TTL-exempt `PUT` and a later, expired `DELETE` are both present in the source topic, the filter can drop the `DELETE`
-and the deleted value can reappear even without RT replay. When deletes must be preserved, rebuild from an upstream
-snapshot that reflects them and [prevent stale writes from being replayed](hybrid-stores.md#backfills).
+A TTL repush can expose an older value if the filter keeps it but drops a newer write or delete for the same key, even
+without RT replay. When current values and deletes must be preserved, rebuild from an authoritative upstream snapshot
+that reflects both and [prevent stale writes from being replayed](hybrid-stores.md#backfills).
 
 For a regular full push with records after a TTL repush, the push job requires `timestamp.field` or
 `allow.regular.push.with.ttl.repush=true`. Use the Spark writer to persist `timestamp.field` as replication metadata and
