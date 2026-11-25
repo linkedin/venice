@@ -19,6 +19,14 @@ is read** is an independent choice.
 
 Any read client can read any usage pattern below.
 
+### Partial Updates
+
+Partial updates (write compute) are common when a producer owns only a few fields, such as a stream processor refreshing
+recent engagement signals in a ranking record. On a hybrid store with write compute enabled, the producer can send just
+those fields. This reduces the payload but typically costs more to ingest than a full `PUT`: Venice looks up the current
+value, merges the changes, and writes the result. Prefer a full `PUT` when the producer already has the complete,
+authoritative value. See the [Online Producer API](../../user-guide/write-apis/online-producer.md#api).
+
 ## Choosing a Usage Pattern
 
 | Pattern            | Writes                                                                              | Freshness                      | Typical fit                                   | Operations guide                                                                   |
@@ -54,4 +62,5 @@ These are illustrative; the right pattern depends on your recompute cost, freshn
 
 Hybrid stores overlay real-time writes on a versioned batch baseline. See
 [Merging Batch & Real-Time Data](merging-batch-and-rt-data.md) for the architectural patterns and
-[Hybrid stores](../../operations/data-management/hybrid-stores.md) for rewind and retention guidance.
+[Hybrid stores](../../operations/data-management/hybrid-stores.md) for rewind and retention guidance. For multi-region
+stores, see [Active-active writes](../../operations/data-management/hybrid-stores.md#active-active-writes).

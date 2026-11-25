@@ -69,9 +69,10 @@ go to all existing versions (backup, current, future) to maintain consistency. S
 
 #### Write Compute Operations
 
-In addition to full record writes, Venice supports efficient partial updates:
+In addition to full record writes, Venice supports write compute. It can reduce the bytes a producer sends, with a
+[server-side ingestion cost](usage-patterns.md#partial-updates).
 
-- **Partial update**: Set specific fields within a value without rewriting the entire record
+- **Partial update**: Send changes to specific fields without sending the entire value
 - **Collection merging**: Add or remove entries in sets or maps
 
 ### Read Modes

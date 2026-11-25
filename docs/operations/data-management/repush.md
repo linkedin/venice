@@ -70,10 +70,9 @@ data in other DCs.
 
 ### Time to Live (TTL)
 
-It's usually required to evict stale entries from the store in order to achieve GDPR compliance or other business
-requirements. The repush with TTL functionality will replay and scan through the entries in the current version, and use
-store-level rewind time as TTL time to evict stale records based on the write timestamp. See [TTL](ttl.md) for the
-comparison among various TTL options.
+A TTL repush filters data from its source version using replication-metadata timestamps. By default the cutoff is the
+job start time minus the store's rewind. This filter does not apply to subsequent RT replay. See [TTL](ttl.md) for
+overrides and expiry caveats.
 
 ## Usage
 

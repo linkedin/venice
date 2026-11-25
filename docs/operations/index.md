@@ -5,13 +5,12 @@ This guide covers operational tasks for Venice administrators and operators.
 ## Data Management
 
 - [Batch-Only Stores](data-management/batch-only-stores.md) - Operating stores refreshed by full pushes
-- [Hybrid Stores](data-management/hybrid-stores.md) - Rewind, RT retention, and partition-count changes
+- [Hybrid Stores](data-management/hybrid-stores.md) - Rewind, RT retention, backfills, and partition-count changes
 - [Streaming-Only Stores](data-management/streaming-only-stores.md) - Risks and recovery for stores without a batch
   baseline
 
-- [Repush](data-management/repush.md) - Re-ingest data from source of truth to repair inconsistencies or apply schema
-  changes
-- [TTL](data-management/ttl.md) - Configure time-to-live to automatically expire old records
+- [Repush](data-management/repush.md) - Rebuild a store version from an existing Venice version
+- [TTL](data-management/ttl.md) - Periodically expire stale data with a TTL repush or empty push
 - [System Stores](data-management/system-stores.md) - Internal stores used by Venice for metadata and coordination
 
 ## Alerting
