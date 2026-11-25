@@ -26,6 +26,7 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
+import com.linkedin.venice.meta.CurrentVersionType;
 import com.linkedin.venice.meta.ExternalStorageReadMode;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StorageMode;
@@ -101,6 +102,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private volatile boolean closed;
   /** The pending scheduled refresh task; stored so it can be cancelled during {@link #close()} */
   private volatile ScheduledFuture<?> scheduledRefreshFuture;
+  private volatile Runnable refreshCallback;
   /** scheduler within {@link #refresh()} to warmup new instances updated via metadata refresh.
    * Using a new ExecutorService rather than CompletableFuture's default one to not affect
    * the read requests happening in parallel.
@@ -123,6 +125,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   // Keyed by version rather than a scalar because a fetched version switch can be deferred, and the serving version
   // must never be paired with another version's storage mode.
   private final Map<Integer, StorageMode> versionStorageModeMap = new VeniceConcurrentHashMap<>();
+  // A deferred version switch must not apply the fetched version's cache policy to the still-serving version.
+  private final Map<Integer, CurrentVersionType> versionTypeMap = new VeniceConcurrentHashMap<>();
   private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient d2TransportClient;
@@ -282,6 +286,19 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           INITIAL_METADATA_FETCH_REFRESH_INTERVAL_IN_SECONDS,
           e);
     }
+  }
+
+  @Override
+  public CurrentVersionType getCurrentVersionType() {
+    return versionTypeMap.getOrDefault(currentVersion.get(), CurrentVersionType.UNKNOWN);
+  }
+
+  @Override
+  public void setRefreshCallback(Runnable callback) {
+    if (callback == null) {
+      throw new IllegalArgumentException("Refresh callback must not be null");
+    }
+    refreshCallback = callback;
   }
 
   void discoverD2Service() {
@@ -616,6 +633,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionCompressionStrategyMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionStorageModeMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      versionTypeMap.put(fetchedCurrentVersion, CurrentVersionType.valueOf(metadataResponse.getCurrentVersionType()));
+      versionTypeMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
 
       /*
        * Reconcile instance-health tracking with the live serving set (all active versions' replicas) so departed
@@ -828,6 +847,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         } catch (Throwable t) {
           LOGGER.error("Listener callback threw for store {}; continuing with remaining callbacks", storeName, t);
         }
+      }
+      // The refresh succeeded and every change has been committed; let the record cache drop its entries.
+      Runnable callback = refreshCallback;
+      if (callback != null) {
+        callback.run();
       }
     } catch (InterruptedException e) {
       // Interrupted during shutdown — restore the flag so the executor can terminate cleanly.

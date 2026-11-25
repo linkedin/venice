@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.util.Arrays;
@@ -17,6 +18,9 @@ public class BatchGetRequestContextTest {
   @Test
   public void testCreateRetryRequestContext() {
     BatchGetRequestContext originalRequestContext = new BatchGetRequestContext(10, true);
+    assertEquals(originalRequestContext.getKeyCount(), 10);
+    assertThrows(NullPointerException.class, originalRequestContext::getRoutingKeyCount);
+    originalRequestContext.setKeys(new HashSet<>(Arrays.asList("key1", "key2", "key3")));
     Map<Integer, Set<String>> originalRoutesForPartitionMapping = new HashMap<>();
     originalRequestContext.currentVersion = 1;
     originalRequestContext.routeRequestMap.put("route1", new CompletableFuture<>());
@@ -30,6 +34,14 @@ public class BatchGetRequestContextTest {
     assertEquals(retryRequestContext.helixGroupId, 1);
     assertEquals(retryRequestContext.currentVersion, 1);
     assertEquals(retryRequestContext.numKeysInRequest, 3);
+    assertEquals(retryRequestContext.getKeyCount(), 3);
+    // Each attempt must prepare its own post-cache keys, rather than inheriting the original attempt's set.
+    assertThrows(NullPointerException.class, retryRequestContext::getRoutingKeyCount);
+    retryRequestContext.setKeys(new HashSet<>(Arrays.asList("key2", "key3")));
+    assertEquals(retryRequestContext.getRoutingKeyCount(), 2);
+    assertEquals(retryRequestContext.getKeyCount(), 3);
+    assertEquals(originalRequestContext.getRoutingKeyCount(), 3);
+    assertEquals(originalRequestContext.getKeyCount(), 10);
     assertEquals(retryRequestContext.getRoutesForPartitionMapping().size(), 2);
     assertEquals(retryRequestContext.getRouteRequestMap().size(), 1);
   }

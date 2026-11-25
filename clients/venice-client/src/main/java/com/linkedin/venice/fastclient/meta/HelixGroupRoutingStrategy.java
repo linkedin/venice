@@ -103,7 +103,7 @@ public class HelixGroupRoutingStrategy extends AbstractClientRoutingStrategy {
     helixGroupStats.recordGroupNum(getGroupCount());
     helixGroupStats.recordGroupRequest(groupId);
     // Track the latency per group
-    int keyCount = requestContext.getKeyCount();
+    int keyCount = requestContext.getRoutingKeyCount();
     long startTimeInNS = System.nanoTime();
     requestContext.getResultFuture().whenComplete((ignored, throwable) -> {
       if (shouldRecordLatency(requestContext, (Throwable) throwable)) {

@@ -7,6 +7,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +50,8 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   private int fanoutSize;
 
   private Set<K> keys;
+  // Attempt-local writes, present only for retriable batch cache reads; compute remains uncached.
+  Map<K, Runnable> cacheWrites;
 
   public MultiKeyRequestContext(int numKeysInRequest, boolean isPartialSuccessAllowed) {
     this.routeRequests = new VeniceConcurrentHashMap<>();
@@ -70,6 +73,11 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   @Override
   public int getKeyCount() {
     return numKeysInRequest;
+  }
+
+  @Override
+  public int getRoutingKeyCount() {
+    return Objects.requireNonNull(keys, "Request keys must be set before routing").size();
   }
 
   @Override
@@ -147,6 +155,9 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
     // Used to choose a different helix group id in retry request.
     retryContext.helixGroupId = this.helixGroupId;
     retryContext.retryRequest = true;
+    if (cacheWrites != null) {
+      retryContext.cacheWrites = new VeniceConcurrentHashMap<>();
+    }
   }
 
   void recordDecompressionTime(String routeId, long latencyInNS) {

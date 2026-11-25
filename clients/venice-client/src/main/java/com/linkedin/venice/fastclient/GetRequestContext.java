@@ -14,6 +14,9 @@ public class GetRequestContext<K> extends RequestContext {
   byte[] serializedKey;
   String route;
   K key;
+  // The retry layer drains each attempt's write, but executes only the winning one before publishing its value.
+  boolean deferCacheWrite;
+  Runnable cacheWrite;
 
   public GetRequestContext() {
     partitionId = -1;
@@ -64,6 +67,7 @@ public class GetRequestContext<K> extends RequestContext {
     retryRequestContext.serializedKey = serializedKey;
     retryRequestContext.helixGroupId = this.helixGroupId;
     retryRequestContext.retryRequest = true;
+    retryRequestContext.deferCacheWrite = deferCacheWrite;
 
     return retryRequestContext;
   }
