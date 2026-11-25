@@ -22,6 +22,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -120,6 +122,7 @@ public class HelixGroupRoutingStrategyTest {
     assertFalse(strategy.trackRequest(singleGetRequestContext));
 
     BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext(10, true);
+    batchGetRequestContext.setKeys(IntStream.range(0, 10).boxed().collect(Collectors.toSet()));
     batchGetRequestContext.setRetryRequest(true);
     assertFalse(strategy.trackRequest(batchGetRequestContext));
 
@@ -143,6 +146,7 @@ public class HelixGroupRoutingStrategyTest {
     CompletableFuture resultFuture = new CompletableFuture();
     resultFuture.completeExceptionally(new RuntimeException("boom"));
     BatchGetRequestContext batchGetRequestContext = new BatchGetRequestContext(10, true);
+    batchGetRequestContext.setKeys(IntStream.range(0, 10).boxed().collect(Collectors.toSet()));
     batchGetRequestContext.setRetryRequest(false);
     batchGetRequestContext.setHelixGroupId(1);
     batchGetRequestContext.setResultFuture(resultFuture);

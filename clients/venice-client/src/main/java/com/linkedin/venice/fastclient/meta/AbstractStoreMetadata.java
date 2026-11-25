@@ -249,8 +249,10 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
       requestContext.setCurrentVersion(currentVersion);
     }
     requestContext.setRequestId(REQUEST_ID_GENERATOR.getAndIncrement());
-    int groupId = routingStrategy
-        .getHelixGroupId(requestContext.getRequestId(), requestContext.getHelixGroupId(), requestContext.getKeyCount());
+    int groupId = routingStrategy.getHelixGroupId(
+        requestContext.getRequestId(),
+        requestContext.getHelixGroupId(),
+        requestContext.getRoutingKeyCount());
     requestContext.setHelixGroupId(groupId);
     /**
      * Track the request for the routing strategy.

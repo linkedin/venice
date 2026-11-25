@@ -7,6 +7,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,6 +73,11 @@ public abstract class MultiKeyRequestContext<K, V> extends RequestContext {
   @Override
   public int getKeyCount() {
     return numKeysInRequest;
+  }
+
+  @Override
+  public int getRoutingKeyCount() {
+    return Objects.requireNonNull(keys, "Request keys must be set before routing").size();
   }
 
   @Override

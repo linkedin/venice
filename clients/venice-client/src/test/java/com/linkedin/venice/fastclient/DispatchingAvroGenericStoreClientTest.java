@@ -52,6 +52,8 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.fastclient.cache.FastClientRecordCache;
+import com.linkedin.venice.fastclient.meta.AbstractStoreMetadata;
+import com.linkedin.venice.fastclient.meta.HelixLatencyAdaptiveGroupRoutingStrategy;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitorConfig;
 import com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
@@ -92,6 +94,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -1044,6 +1047,7 @@ public class DispatchingAvroGenericStoreClientTest {
           nanos::get,
           executor);
       assertEquals(storeMetadata.getCurrentVersionType(), CurrentVersionType.HYBRID);
+      HelixLatencyAdaptiveGroupRoutingStrategy routingStrategy = setUpSizeAwareRouting();
       doReturn(0).when(storeMetadata).getPartitionId(eq(1), any(byte[].class));
       Set<String> keys = new LinkedHashSet<>(Arrays.asList("test_key_1", "test_key_2"));
       GenericRecord original = GenericData.get().deepCopy(STORE_VALUE_SCHEMA, SINGLE_GET_VALUE_RESPONSE);
@@ -1087,11 +1091,20 @@ public class DispatchingAvroGenericStoreClientTest {
           assertEquals(callback.calls.get(key), Integer.valueOf(1));
         }
         assertEquals(callback.completionCount, 1);
+        assertEquals(context.getKeyCount(), keys.size());
         assertEquals(context.successRequestKeyCount.get(), keys.size());
         if (request == 0 || request == 3) {
           assertEquals(context.getRoutes().size(), 1);
+          assertEquals(context.getKeys(), keys);
+          verify(routingStrategy).getHelixGroupId(context.getRequestId(), -1, keys.size());
+        } else {
+          assertNull(context.getResultFuture(), "Full cache hits must not start remote latency tracking");
         }
-        verify(mockedTransportClient, times(request < 3 ? 1 : 2)).post(any(), any(), any());
+        int remoteRequests = request < 3 ? 1 : 2;
+        verify(mockedTransportClient, times(remoteRequests)).post(any(), any(), any());
+        verify(routingStrategy, times(remoteRequests)).trackRequest(any());
+        assertRoutingLatencySamples(2, remoteRequests);
+        assertRoutingLatencySamples(1, 0);
       }
       verify(mockedTransportClient, never()).get(any());
     } finally {
@@ -1159,6 +1172,47 @@ public class DispatchingAvroGenericStoreClientTest {
     doReturn(CompressionStrategy.NO_OP).when(storeMetadata).getCompressionStrategy(1);
   }
 
+  private HelixLatencyAdaptiveGroupRoutingStrategy setUpSizeAwareRouting() {
+    TreeMap<Integer, Integer> buckets = new TreeMap<>();
+    buckets.put(1, 10);
+    buckets.put(2, 100);
+    HelixLatencyAdaptiveGroupRoutingStrategy strategy = spy(
+        new HelixLatencyAdaptiveGroupRoutingStrategy(
+            storeMetadata.getInstanceHealthMonitor(),
+            clientConfig.getMetricsRepository(),
+            STORE_NAME,
+            buckets,
+            0.25,
+            1.0,
+            10,
+            null));
+    // Match the metadata fixture's groups, including the mapping restored by metadata refresh.
+    Map<String, Integer> groups = new HashMap<>();
+    groups.put(REPLICA1_NAME, 0);
+    groups.put(REPLICA2_NAME, 1);
+    strategy.updateHelixGroupInfo(groups);
+    ((AbstractStoreMetadata) storeMetadata).setRoutingStrategy(strategy);
+    return strategy;
+  }
+
+  private void assertRoutingLatencySamples(int bucket, int expected) {
+    // The application callback can finish before the asynchronous decoder completes latency tracking.
+    // Await sample publication, never a particular measured latency or randomized group choice.
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      double samples = 0;
+      for (int group = 0; group < 2; group++) {
+        Metric count = clientConfig.getMetricsRepository()
+            .getMetric(
+                "." + STORE_NAME + "_HelixGroupStats--group_" + group + "_bucket_" + bucket
+                    + "_routing_response_waiting_time.Count");
+        if (count != null) {
+          samples += count.value();
+        }
+      }
+      assertEquals(samples, (double) expected, "Unexpected remote latency sample count in bucket " + bucket);
+    });
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchPinsVersionBeforeCacheScanAndKeepsItForRouting() throws Exception {
     try {
@@ -1166,6 +1220,7 @@ public class DispatchingAvroGenericStoreClientTest {
       String hit = "test_key_1";
       String miss = "test_key_2";
       assertEquals(statsAvroGenericStoreClient.get(hit).get(), SINGLE_GET_VALUE_RESPONSE);
+      HelixLatencyAdaptiveGroupRoutingStrategy routingStrategy = setUpSizeAwareRouting();
       doAnswer(ignored -> {
         // Metadata changes while decoding the first cache hit, before the missed key is routed.
         doReturn(2).when(storeMetadata).getCurrentStoreVersion();
@@ -1180,6 +1235,8 @@ public class DispatchingAvroGenericStoreClientTest {
       assertEquals(context.getCurrentVersion(), 1);
       assertEquals(storeMetadata.getCurrentStoreVersion(), 2);
       assertEquals(context.getKeys(), Collections.singleton(miss));
+      assertEquals(context.getKeyCount(), 2, "Cache filtering must preserve the logical request size");
+      verify(routingStrategy).getHelixGroupId(context.getRequestId(), -1, 1);
       verify(mockedTransportClient).post(contains("/test_store_v1"), any(), any());
       remote.complete(
           new TransportClientResponse(
@@ -1189,6 +1246,12 @@ public class DispatchingAvroGenericStoreClientTest {
       callback.completion.get(1, TimeUnit.SECONDS);
       assertEquals(callback.values.size(), 2);
       assertEquals(callback.completionCount, 1);
+      assertEquals(context.successRequestKeyCount.get(), 2);
+      assertFalse(context.hasPartialResponseFailure());
+      assertFalse(context.isRetryTriggered());
+      verify(clientConfig.getStats(RequestType.MULTI_GET_STREAMING)).recordRequestKeyCount(2);
+      assertRoutingLatencySamples(1, 1);
+      assertRoutingLatencySamples(2, 0);
     } finally {
       tearDown();
     }

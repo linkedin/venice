@@ -187,7 +187,7 @@ public class HelixLatencyAdaptiveGroupRoutingStrategyTest {
     doReturn(RequestType.MULTI_GET).when(requestContext).getRequestType();
     doReturn(false).when(requestContext).isRetryRequest();
     doReturn(1).when(requestContext).getHelixGroupId();
-    doReturn(10).when(requestContext).getKeyCount();
+    doReturn(10).when(requestContext).getRoutingKeyCount();
     doReturn(resultFuture).when(requestContext).getResultFuture();
     doReturn(partialFailure).when(requestContext).hasPartialResponseFailure();
     doReturn(retryTriggered).when(requestContext).isRetryTriggered();

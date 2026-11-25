@@ -70,11 +70,18 @@ public abstract class RequestContext {
   public abstract RequestType getRequestType();
 
   /**
-   * Number of keys in this request, used to route and attribute latency by request size. Defaults to a single key; the
-   * multi-key context reports its actual batch size.
+   * Logical number of keys in this request, including keys served from cache.
    */
   public int getKeyCount() {
     return 1;
+  }
+
+  /**
+   * Number of keys sent to servers in this attempt, used for group selection and latency attribution.
+   * Multi-key contexts require the dispatcher to prepare their post-cache key set before routing.
+   */
+  public int getRoutingKeyCount() {
+    return getKeyCount();
   }
 
   /**
