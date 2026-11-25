@@ -192,6 +192,8 @@ dependencies {
   alpnAgent libraries.alpnAgent
 }
 
+def minimumJavaVersion = JavaVersion.VERSION_11
+
 subprojects {
   task allDeps(type: DependencyReportTask) {}
 }
@@ -225,19 +227,16 @@ subprojects {
     }
   }
 
-  if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
-    tasks.withType(JavaCompile) {
-      // Compiler arguments can be injected here...
-      // options.compilerArgs << '-Xlint:unchecked'
-      // Keep Java 8 bytecode compatibility independent of the supported runtime JDKs.
-      options.release = 8
-    }
-  }
-
   java {
+    sourceCompatibility = minimumJavaVersion
+    targetCompatibility = minimumJavaVersion
     withSourcesJar()
     // TODO: Enable after we have valid javadocs
     //withJavadocJar()
+  }
+
+  tasks.withType(JavaCompile).configureEach {
+    options.release = minimumJavaVersion.majorVersion.toInteger()
   }
 
   if (isLeafSubModule && isProtoModule) {
@@ -857,7 +856,7 @@ allprojects {
   task printAllDependencies(type: DependencyReportTask) {}
 }
 
-def supportedJdkVersions = [JavaVersion.VERSION_11, JavaVersion.VERSION_17]
+def supportedJdkVersions = [minimumJavaVersion, JavaVersion.VERSION_17]
 
 task verifyJdkVersion {
   def currentJdkVersion = JavaVersion.current()

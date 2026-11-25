@@ -97,14 +97,11 @@ there is no intent to use JS anywhere else in the codebase.
 
 ## Java Versions
 
-Venice supports JDK 11 and 17 as build and runtime JDKs. Java 8 is not a supported or tested Venice runtime.
+Java 11 is the minimum version for building and running Venice. The supported JDKs are 11 and 17, and JDK 17 is
+recommended.
 
-The build uses `options.release = 8`, which limits source code and standard-library APIs to the Java 8 release and emits
-class files with major version 52. This is a Java 8 bytecode compatibility property of the build output, not support for
-running Venice on a Java 8 JVM. The JDK compatibility test verifies this class-file target while running on a supported
-JDK.
-
-It is recommended to run Venice on JDK 17, the latest supported runtime.
+Venice artifacts target the Java 11 language and standard library and use class-file major version 55, whether built on
+JDK 11 or 17. Applications running on Java 8 must upgrade their JVM before using these artifacts.
 
 ## Memory
 
