@@ -97,15 +97,14 @@ there is no intent to use JS anywhere else in the codebase.
 
 ## Java Versions
 
-Currently, the Venice project intends to support Java versions 8, 11 and 17. This means that the codebase cannot use
-language features that have been introduced in versions later than 8. We hope to lift this restriction in the future and
-drop support for older Java versions. For the time being, the build ensures that compilation will fail if recent
-language features are used.
+Venice supports JDK 11 and 17 as build and runtime JDKs. Java 8 is not a supported or tested Venice runtime.
 
-The main motivation for maintaining compatibility with older Java versions is to support legacy applications which
-depend on the Venice client libraries. The Venice services (controller, router and server) also work on older Java
-versions though in practice we run them on Java 17 JVMs, which provide better performance. As much as possible, it is
-recommended to run all Venice code on the latest supported JVM version.
+The build uses `options.release = 8`, which limits source code and standard-library APIs to the Java 8 release and emits
+class files with major version 52. This is a Java 8 bytecode compatibility property of the build output, not support for
+running Venice on a Java 8 JVM. The JDK compatibility test verifies this class-file target while running on a supported
+JDK.
+
+It is recommended to run Venice on JDK 17, the latest supported runtime.
 
 ## Memory
 
