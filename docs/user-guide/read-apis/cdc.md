@@ -21,6 +21,10 @@ Choose the CDC client when:
 - You need to maintain external caches synchronized with Venice
 - You're implementing event-driven workflows triggered by data changes
 
+For example, an inference application can consume embedding changes, transform them into entries in a CPU- or
+GPU-resident vector index, and remove entries on deletes. The application maintains the index and queries it to retrieve
+candidates at inference time.
+
 For point-in-time reads, consider the [Thin Client](thin-client.md), [Fast Client](fast-client.md), or
 [Da Vinci Client](da-vinci-client.md).
 

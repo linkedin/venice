@@ -7,6 +7,7 @@
 - [Architecture Overview](learn-venice/architecture-overview.md) - Core concepts
 - [Merging Batch & Real-Time Data](learn-venice/merging-batch-and-rt-data.md) - Hybrid stores, lambda vs kappa
   architecture
+- [Store Usage Patterns](learn-venice/usage-patterns.md) - Batch-only, hybrid, and streaming-only usage
 
 ## Deployments
 

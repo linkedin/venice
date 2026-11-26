@@ -2,39 +2,65 @@
 
 ## Use Cases
 
-TTL can serve as a storage efficiency optimization for use cases where the data is transient in nature, and not useful
-beyond a certain age.
-
-TTL can also be useful in certain scenarios where the data should not be retained longer than prescribed for compliance
-reasons. Note that for these scenarios, it is important to understand (as explained above) that the rewind time is the
-minimum, not maximum, TTL. It is also advisable to schedule the periodic purging such that there is a margin of safety
-in case of infra delays or failures.
+Periodically removing stale data can reduce serving storage and help meet data lifecycle requirements. These push-based
+mechanisms do not provide a strict per-record expiration deadline. Account for delayed or failed pushes and check
+[RT topic retention](hybrid-stores.md#rt-topic-retention) separately.
 
 ## Usage
 
-There are two ways to achieve TTL compliance, via [Repush with TTL](#repush-with-ttl) or via [empty push](#empty-push).
-The major differences between both approaches is the original data source and how real-time buffer is replayed.
+The two approaches differ in what they copy into the new version and how real-time (RT) data is replayed.
 
-|                 | Source Data for TTL    | Real-time buffer replay                                               |
-| --------------- | ---------------------- | --------------------------------------------------------------------- |
-| Empty push      | None                   | Replay real-time buffer with `hybrid-rewind-seconds` config           |
-| Repush with TTL | Existing version topic | Replay real-time buffer with `rewind.time.in.seconds.override` config |
+| Approach                            | Source data                      | RT replay                                                         |
+| :---------------------------------- | :------------------------------- | :---------------------------------------------------------------- |
+| [Empty push](#empty-push)           | No baseline                      | Starts at the effective rewind; only retained history is replayed |
+| [Repush with TTL](#repush-with-ttl) | Existing version topic, filtered | Starts at the effective rewind; replayed records are not filtered |
 
 ## Repush with TTL
 
-Repush with TTL runs as a VenicePushJob that reads the data in the existing version of the store, and writes it back as
-a new version. The TTL is enforced by the VenicePushJob, which only writes records that are younger than the specified
-TTL. Repush with TTL can also be configured and scheduled periodically to enforce TTL.
+Repush with TTL filters source-version data by replication-metadata timestamps before writing a new version. It can run
+on a schedule.
 
-The store-level rewind time (in hybrid store configs) is used as the default TTL time. A custom TTL time can be
-specified by setting one of the following configs on the VenicePushJob:
+If neither override is set, VenicePushJob derives the cutoff as the job start time minus the store's hybrid rewind. Set
+at most one of the following mutually exclusive configs to override that default:
 
-| Config                       | TTL behavior                                                         |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `repush.ttl.seconds`         | Records older than the specified value will expire                   |
-| `repush.ttl.start.timestamp` | Records that were written before the specified timestamp will expire |
+| Config                       | Cutoff                                            |
+| :--------------------------- | :------------------------------------------------ |
+| `repush.ttl.seconds`         | Job start time minus this many seconds            |
+| `repush.ttl.start.timestamp` | The specified timestamp in **epoch milliseconds** |
 
-The `rewind.time.in.seconds.override` is a configurable value in push job (Default: 24 hours).
+The TTL filter applies only to the repush **input**. RT replay can reintroduce expired data. Set the effective replay
+start (`rewind.time.in.seconds.override`, or `rewind.epoch.time.in.seconds.override` with `REWIND_FROM_SOP` and its
+buffer) to align with the cutoff while still covering writes made during the push. Replay seeks by pub-sub timestamp; it
+does not filter individual records by timestamp. Even with aligned starts, prevent or separately purge replayed writes
+with logical timestamps older than the cutoff. The TTL start timestamp is in **milliseconds**, while
+`rewind.epoch.time.in.seconds.override` is in **seconds**; account for the epoch buffer when using them together. A
+24-hour relative fallback applies to a hybrid repush only when neither rewind override is set.
+
+Repush with TTL acts on replication-metadata timestamps and uses an exclusive cutoff: a timestamp equal to the cutoff is
+retained; only an older timestamp expires. An expired non-collection value or field may be removed or reset to its
+schema default. Collection fields are filtered at the entry level, so newer entries and deletion tombstones can remain
+instead of resetting the whole list or map.
+
+Before scheduling a TTL repush, verify that the source version contains non-empty replication metadata for the records
+being filtered. The filter throws if that metadata is missing or empty; the zero-valued batch sentinel is still
+replication metadata and does not exempt records that contain none. This preflight also applies to untimestamped batch
+records in an active-active source.
+
+Records carrying the batch sentinel timestamp are exempt from value-level filtering, but that exemption does not apply
+to field-level metadata. Batch records pushed with a record-level timestamp (`timestamp.field`) can expire. With
+field-level timestamps, an untouched non-collection field can still carry a zero/sentinel timestamp and be reset; newer
+fields remain. Do not rely on TTL to retain or purge batch data; remove expired batch records upstream and refresh with
+a full push.
+
+A TTL repush can expose an older value if the filter keeps it but drops a newer write or delete for the same key, even
+without RT replay. When current values and deletes must be preserved, rebuild from an authoritative upstream snapshot
+that reflects both and [prevent stale writes from being replayed](hybrid-stores.md#backfills).
+
+For a regular full push with records after a TTL repush, the push job requires `timestamp.field` or
+`allow.regular.push.with.ttl.repush=true`. Use the Spark writer to persist `timestamp.field` as replication metadata and
+verify it in the resulting version topic. The default MapReduce writer can pass the guard with `timestamp.field` set but
+does not persist that field as replication metadata. The `allow.regular.push.with.ttl.repush` override skips the guard;
+the controller clears the TTL-repush flag when it processes the resulting regular push ID.
 
 This brings two major benefits:
 
@@ -54,21 +80,23 @@ For more options related to repush, refer to the [Repush](repush.md) guide.
 
 ## Empty push
 
-For Venice stores that receive nearline writes, it is possible to set up a periodic purge of records that are older than
-some threshold.
+An empty push starts with no batch data and reconstructs a new version by replaying from the
+[rewind start positions](hybrid-stores.md#rewind). With periodic empty pushes, a relative rewind of N seconds is a rough
+minimum age for expiry by replay, not a maximum TTL. For example, a six-day rewind and daily successful swaps with
+negligible anchor-to-swap delay give roughly six to seven days before expiry for an unchanged record. This assumes the
+relevant RT history is retained and pub-sub timestamps follow partition offset order. A delayed or failed swap can keep
+data in the serving version for longer.
 
-The way this works is by leveraging the real-time buffer replay mechanism of hybrid stores. As part of pushing a new
-store-version, after the push finishes, but before swapping the read traffic over to the new version, there is a buffer
-replay phase where the last N seconds of buffered real-time data is replayed. The replayed data gets overlaid on top of
-the data from the Full Push.
+For an admin-tool empty push, N comes from `hybrid-rewind-seconds`. A VenicePushJob empty push can replace that store
+setting with a shorter per-push rewind override, so use the effective rewind when calculating TTL. An absolute
+`rewind.epoch.time.in.seconds.override` fixes one start time; it is not a rolling N-second window. Scheduled pushes that
+use it must advance the epoch for each run. Keep the effective N to 23 days or less (see
+[Choosing a rewind time](hybrid-stores.md#choosing-a-rewind-time)).
 
-This can be leveraged in order to enforce TTL on the dataset. By scheduling periodic empty pushes and configuring how
-far back to replay the real-time data (N), one can control the TTL parameters. The time to live is defined by N, which
-acts as a "minimum TTL", while the "maximum TTL" is N + delay between each empty push. For example, if you schedule a
-daily empty push, and N = 6 days, then the oldest data in your store will be at least 6 days old, and at most 7 days
-old.
+!!! warning
 
-N can be set up by configuring the `hybrid-rewind-seconds` using venice-admin-tool.
+    An empty push discards the whole previous baseline. The new version contains only what its retained RT writes can
+    reconstruct. Use it for TTL only when that loss is acceptable.
 
 ### How to enable
 
