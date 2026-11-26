@@ -53,7 +53,7 @@ public class StoreRepushCommand extends Command {
 
   public StoreRepushCommand(Params params) {
     this.params = params;
-    this.shellCmd = generateShellCmd();
+    this.shellCmd = generateShellCmd(params);
   }
 
   // For unit test only.
@@ -89,27 +89,27 @@ public class StoreRepushCommand extends Command {
     getResult().setCoreWorkDone(true);
   }
 
-  private List<String> generateRepushCommand() {
+  private static List<String> generateRepushCommand(Params params) {
     List<String> cmd = new ArrayList<>();
-    cmd.add(this.getParams().command);
-    cmd.add(this.getParams().extraCommandArgs);
-    cmd.add(String.format("--store '%s'", this.getParams().store));
-    cmd.add(String.format("--fabric '%s'", this.getParams().sourceFabric));
+    cmd.add(params.command);
+    cmd.add(params.extraCommandArgs);
+    cmd.add(String.format("--store '%s'", params.store));
+    cmd.add(String.format("--fabric '%s'", params.sourceFabric));
     return cmd;
   }
 
-  private List<String> generateShellCmd() {
+  private static List<String> generateShellCmd(Params params) {
     List<String> shellCmd = new ArrayList<>();
     // Start a shell process so that it contains the right PATH variables.
     shellCmd.add("sh");
     shellCmd.add("-c");
-    shellCmd.add(String.join(" ", generateRepushCommand()));
+    shellCmd.add(String.join(" ", generateRepushCommand(params)));
     return shellCmd;
   }
 
   public List<String> getShellCmd() {
     if (shellCmd == null) {
-      shellCmd = generateShellCmd();
+      shellCmd = generateShellCmd(getParams());
     }
     return shellCmd;
   }

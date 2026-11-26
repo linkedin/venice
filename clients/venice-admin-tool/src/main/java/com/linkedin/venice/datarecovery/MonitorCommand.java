@@ -13,6 +13,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Objects;
 import java.util.Optional;
 
 
@@ -147,7 +148,8 @@ public class MonitorCommand extends Command {
         resp.getVersion(),
         resp.getStatus(),
         resp.getUncompletedPartitions().size(),
-        result.storeInfo.getPartitionCount());
+        Objects.requireNonNull(result.storeInfo, "Store metadata is required to report recovery progress")
+            .getPartitionCount());
   }
 
   private void completeCoreWorkWithError(String error) {

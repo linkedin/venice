@@ -17,19 +17,14 @@ import org.testng.annotations.Test;
  */
 public class TestAbstractAsyncFuture {
   static void verifyNoMoreInteractions(Object... mocks) {
-    if (System.getProperty("java.version").startsWith("1.8.")) {
-      Mockito.verifyNoMoreInteractions(mocks);
-    } else {
-      ArrayList<Object> test = new ArrayList<>(mocks.length);
-      for (Object mock: mocks) {
-        if (mock instanceof CompletableFuture) {
-          // Java11 has different internal implementation which renders spy failing due to extra interactions.
-          continue;
-        }
+    ArrayList<Object> test = new ArrayList<>(mocks.length);
+    for (Object mock: mocks) {
+      // CompletableFuture spies also record calls made within the JDK.
+      if (!(mock instanceof CompletableFuture)) {
         test.add(mock);
       }
-      Mockito.verifyNoMoreInteractions(test.toArray());
     }
+    Mockito.verifyNoMoreInteractions(test.toArray());
   }
 
   @Test(groups = "unit")

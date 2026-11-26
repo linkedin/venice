@@ -21,6 +21,7 @@
 # Lifted and adapted from: https://raw.githubusercontent.com/apache/arrow/refs/heads/main/ci/scripts/util_free_space.sh
 set -eux
 
+# Keep the Node.js tool cache and system Node/npm for Spotless Markdown checks.
 echo "Disk usage before background cleanup:"
 df -h
 echo "::group::/usr/local/*"
@@ -44,7 +45,6 @@ sudo rm -rf \
   /usr/local/bin/hub \
   /usr/local/bin/kubectl \
   /usr/local/bin/minikube \
-  /usr/local/bin/node \
   /usr/local/bin/packer \
   /usr/local/bin/pulumi* \
   /usr/local/bin/sam \
@@ -66,8 +66,6 @@ echo "::endgroup::"
 sudo rm -rf /usr/local/lib/android || :
 # 341MB
 sudo rm -rf /usr/local/lib/heroku || :
-# 1.2GB
-sudo rm -rf /usr/local/lib/node_modules || :
 echo "::group::/opt/*"
 du -hsc /opt/*
 echo "::endgroup::"
@@ -87,8 +85,6 @@ sudo rm -rf /opt/hostedtoolcache/CodeQL || :
 sudo rm -rf /opt/hostedtoolcache/go || :
 # 489MB
 sudo rm -rf /opt/hostedtoolcache/PyPy || :
-# 376MB
-sudo rm -rf /opt/hostedtoolcache/node || :
 # Remove Web browser packages
 sudo apt purge -y \
   firefox \

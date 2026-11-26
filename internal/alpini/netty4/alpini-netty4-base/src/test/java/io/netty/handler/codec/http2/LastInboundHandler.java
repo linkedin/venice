@@ -26,7 +26,6 @@ public class LastInboundHandler extends ChannelDuplexHandler {
   private boolean channelActive;
   private String writabilityStates = "";
 
-  // TODO(scott): use JDK 8's Consumer
   public interface Consumer<T> {
     void accept(T obj);
   }

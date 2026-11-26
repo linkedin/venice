@@ -816,8 +816,7 @@ public class Utils {
    * @return the version of the venice-common jar on the classpath, if available, or null otherwise.
    */
   public static String getVeniceVersionFromClassPath() {
-    // The application class loader is no longer an instance of java.net.URLClassLoader in JDK 9+
-    // So changing implementation to be compatible with JDK8 and JDK11 at the same time
+    // The application class loader is not necessarily a URLClassLoader.
     String classpath = System.getProperty("java.class.path");
     String[] entries = classpath.split(File.pathSeparator);
     String jarNamePrefixToLookFor = "venice-common-";
@@ -844,16 +843,7 @@ public class Utils {
   }
 
   public static int getJavaMajorVersion() {
-    String[] versionElements = System.getProperty("java.version").split("\\.");
-    int discard = Integer.parseInt(versionElements[0]);
-    int version;
-    if (discard == 1) {
-      version = Integer.parseInt(versionElements[1]);
-    } else {
-      version = discard;
-    }
-
-    return version;
+    return Runtime.version().feature();
   }
 
   public static Map<CharSequence, CharSequence> getDebugInfo() {

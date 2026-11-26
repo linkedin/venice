@@ -97,15 +97,11 @@ there is no intent to use JS anywhere else in the codebase.
 
 ## Java Versions
 
-Currently, the Venice project intends to support Java versions 8, 11 and 17. This means that the codebase cannot use
-language features that have been introduced in versions later than 8. We hope to lift this restriction in the future and
-drop support for older Java versions. For the time being, the build ensures that compilation will fail if recent
-language features are used.
+Java 11 is the minimum version for building and running Venice. The supported JDKs are 11 and 17, and JDK 17 is
+recommended.
 
-The main motivation for maintaining compatibility with older Java versions is to support legacy applications which
-depend on the Venice client libraries. The Venice services (controller, router and server) also work on older Java
-versions though in practice we run them on Java 17 JVMs, which provide better performance. As much as possible, it is
-recommended to run all Venice code on the latest supported JVM version.
+Venice artifacts target the Java 11 language and standard library and use class-file major version 55, whether built on
+JDK 11 or 17. Applications on JVMs older than Java 11 must upgrade before using these artifacts.
 
 ## Memory
 

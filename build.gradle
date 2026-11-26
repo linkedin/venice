@@ -8,7 +8,7 @@ plugins {
   id 'idea'
   id 'java'
   id 'maven-publish'
-  id 'com.diffplug.spotless' version '6.12.0'
+  id 'com.diffplug.spotless' version '6.25.0'
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '7.1.2' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
@@ -192,6 +192,8 @@ dependencies {
   alpnAgent libraries.alpnAgent
 }
 
+def minimumJavaVersion = JavaVersion.VERSION_11
+
 subprojects {
   task allDeps(type: DependencyReportTask) {}
 }
@@ -225,18 +227,16 @@ subprojects {
     }
   }
 
-  if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
-    tasks.withType(JavaCompile) {
-      // Compiler arguments can be injected here...
-      // options.compilerArgs << '-Xlint:unchecked'
-      options.release = 8
-    }
-  }
-
   java {
+    sourceCompatibility = minimumJavaVersion
+    targetCompatibility = minimumJavaVersion
     withSourcesJar()
     // TODO: Enable after we have valid javadocs
     //withJavadocJar()
+  }
+
+  tasks.withType(JavaCompile).configureEach {
+    options.release = minimumJavaVersion.majorVersion.toInteger()
   }
 
   if (isLeafSubModule && isProtoModule) {
@@ -854,7 +854,7 @@ allprojects {
   task printAllDependencies(type: DependencyReportTask) {}
 }
 
-def supportedJdkVersions = [JavaVersion.VERSION_1_8, JavaVersion.VERSION_11, JavaVersion.VERSION_17]
+def supportedJdkVersions = [minimumJavaVersion, JavaVersion.VERSION_17]
 
 task verifyJdkVersion {
   def currentJdkVersion = JavaVersion.current()

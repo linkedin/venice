@@ -8,6 +8,7 @@ import io.grpc.ServerInterceptor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -21,7 +22,7 @@ public class VeniceGrpcServerConfig {
   private final Executor executor;
 
   private VeniceGrpcServerConfig(Builder builder) {
-    port = builder.port;
+    port = Objects.requireNonNull(builder.port);
     credentials = builder.credentials;
     services = builder.services;
     interceptors = builder.interceptors;

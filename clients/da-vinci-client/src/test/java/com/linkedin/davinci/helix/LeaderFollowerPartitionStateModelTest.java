@@ -59,7 +59,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -613,15 +612,9 @@ public class LeaderFollowerPartitionStateModelTest {
       long valueSizeBytes = 50 * 1024; // 50 KB per value
       long numRecords = targetDataSizeBytes / valueSizeBytes;
 
-      Random random = new Random(42);
       byte[] valueBytes = new byte[(int) valueSizeBytes];
-
-      for (int i = 0; i < numRecords; i++) {
-        String keyString = "key_" + i;
-        byte[] keyBytes = keyString.getBytes();
-        random.nextBytes(valueBytes);
-        storeEngine.put(testPartition, keyBytes, ByteBuffer.wrap(valueBytes));
-      }
+      AbstractStorageEngineTest
+          .putRandomRecords(storeEngine, testPartition, "key_", numRecords, valueBytes, new Random(42));
 
       // Verify data was written
       File storeDir = new File(factory.getRocksDBPath(testTopic, testPartition)).getParentFile();

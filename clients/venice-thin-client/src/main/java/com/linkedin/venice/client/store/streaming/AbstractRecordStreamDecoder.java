@@ -165,16 +165,7 @@ public abstract class AbstractRecordStreamDecoder<ENVELOPE, K, V> implements Rec
       if (resultMap.isEmpty()) {
         return;
       }
-      /**
-       * Execute the user callback in the same thread.
-       *
-       * There is a bug in JDK8, which could cause {@link CompletableFuture#allOf(CompletableFuture[])} if there
-       * are multiple layers of async processing:
-       * https://bugs.openjdk.java.net/browse/JDK-8201576
-       * So if the user's callback is executed in another async handler, {@link CompletableFuture#allOf(CompletableFuture[])}
-       * will hang sometimes.
-       * Also with this way, the context switches are also reduced.
-        */
+      // Deliver callbacks on the deserialization thread to avoid another context switch.
       resultMap.forEach(callback::onRecordReceived);
     });
     deserializationFutures.add(deserializationFuture);

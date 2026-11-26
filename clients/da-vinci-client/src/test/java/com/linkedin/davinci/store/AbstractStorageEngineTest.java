@@ -20,7 +20,9 @@ import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.Properties;
+import java.util.Random;
 import org.apache.commons.codec.binary.Hex;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -51,6 +53,20 @@ public abstract class AbstractStorageEngineTest<ASE extends AbstractStorageEngin
 
   public static VeniceConfigLoader getVeniceConfigLoader(VeniceProperties serverProperties) {
     return new VeniceConfigLoader(VeniceProperties.empty(), serverProperties);
+  }
+
+  public static void putRandomRecords(
+      StorageEngine engine,
+      int partitionId,
+      String keyPrefix,
+      long recordCount,
+      byte[] valueBuffer,
+      Random random) {
+    for (int i = 0; i < recordCount; i++) {
+      byte[] key = (keyPrefix + i).getBytes();
+      random.nextBytes(valueBuffer);
+      engine.put(partitionId, key, ByteBuffer.wrap(valueBuffer));
+    }
   }
 
   // creates instance for testStoreEngine

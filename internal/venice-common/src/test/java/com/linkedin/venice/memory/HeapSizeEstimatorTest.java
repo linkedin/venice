@@ -26,8 +26,6 @@ public abstract class HeapSizeEstimatorTest {
    * for now, though we could come back to it later...
    */
   private static final int SKIP_EXPECTED_FIELD_OVERHEAD = -1;
-  // com.sun.management.ThreadMXBean is a HotSpot extension not in the --release 8 API snapshot,
-  // so we use the standard interface and invoke getCurrentThreadAllocatedBytes() via reflection.
   private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
   private static final Method GET_THREAD_ALLOCATED_BYTES = resolveGetThreadAllocatedBytes();
   private static final int NUMBER_OF_ALLOCATIONS_WHEN_MEASURING = 200_000;
@@ -190,9 +188,7 @@ public abstract class HeapSizeEstimatorTest {
       double minimumAbsoluteDeltaInBytes = 1;
       double minimumAbsoluteDelta = minimumAbsoluteDeltaInBytes / memoryAllocatedPerInstance;
 
-      // JDK 8 uses a different field layout algorithm (intermediate alignment by pointer size) that
-      // causes slightly larger variance in measured vs predicted sizes compared to JDK 11+.
-      double minimumRelativeDelta = JAVA_MAJOR_VERSION <= 8 ? 0.03 : 0.02;
+      double minimumRelativeDelta = 0.02;
 
       // The larger of the two deltas is the one we use
       double maxAllowedDelta = Math.max(minimumAbsoluteDelta, minimumRelativeDelta);

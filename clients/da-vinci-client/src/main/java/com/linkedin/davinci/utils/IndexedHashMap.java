@@ -1063,8 +1063,6 @@ public class IndexedHashMap<K, V> extends AbstractMap<K, V> implements IndexedMa
     }
   }
 
-  // Overrides of JDK8 Map extension methods
-
   @Override
   public V getOrDefault(Object key, V defaultValue) {
     Node<K, V> e;
