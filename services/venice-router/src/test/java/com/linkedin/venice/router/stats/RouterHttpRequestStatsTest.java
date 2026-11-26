@@ -10,6 +10,8 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateExponentialHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromCounter;
+import static com.linkedin.venice.utils.OpenTelemetryDataTestUtils.validateLongPointDataFromGauge;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -379,4 +381,78 @@ public class RouterHttpRequestStatsTest {
         "");
   }
 
+  @Test
+  public void testReadQuotaMetrics() {
+    String storeName = "test-store";
+    String clusterName = "test-cluster";
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepositoryForRouter(RouterServer.ROUTER_SERVICE_METRIC_ENTITIES, true, inMemoryMetricReader);
+    RouterHttpRequestStats stats = new RouterHttpRequestStats(
+        metricsRepository,
+        storeName,
+        clusterName,
+        RequestType.SINGLE_GET,
+        mock(ScatterGatherStats.class),
+        false,
+        null);
+    // no request method dimension: these metrics cover requests of all types
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), clusterName)
+        .build();
+
+    // like the Tehuti gauge, nothing is reported before the throttler records a quota
+    for (MetricData metricData: inMemoryMetricReader.collectAllMetrics()) {
+      assertFalse(metricData.getName().endsWith(".read_quota"), "Unexpected metric: " + metricData.getName());
+    }
+
+    stats.recordQuota(1000);
+    validateLongPointDataFromGauge(inMemoryMetricReader, 1000, expectedAttributes, "read_quota", "");
+    assertEquals(metricsRepository.getMetric("." + storeName + "--read_quota_per_router.Gauge").value(), 1000.0);
+
+    // the quota is reported on every collection, not only when it is recorded
+    validateLongPointDataFromGauge(inMemoryMetricReader, 1000, expectedAttributes, "read_quota", "");
+
+    // the throttler records 0 when the store is deleted
+    stats.recordQuota(0);
+    validateLongPointDataFromGauge(inMemoryMetricReader, 0, expectedAttributes, "read_quota", "");
+    assertEquals(metricsRepository.getMetric("." + storeName + "--read_quota_per_router.Gauge").value(), 0.0);
+
+    stats.recordRequestUsage(5);
+    stats.recordRequestUsage(7);
+    validateLongPointDataFromCounter(inMemoryMetricReader, 12, expectedAttributes, "read_quota_key_count", "");
+    assertEquals(metricsRepository.getMetric("." + storeName + "--request_usage.Total").value(), 12.0);
+    assertTrue(metricsRepository.getMetric("." + storeName + "--request_usage.OccurrenceRate").value() > 0);
+  }
+
+  @Test
+  public void testReadQuotaMetricsAreOnlyEmittedFromSingleGetStats() {
+    String storeName = "test-store";
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepositoryForRouter(RouterServer.ROUTER_SERVICE_METRIC_ENTITIES, true, inMemoryMetricReader);
+    RouterHttpRequestStats stats = new RouterHttpRequestStats(
+        metricsRepository,
+        storeName,
+        "test-cluster",
+        RequestType.MULTI_GET,
+        mock(ScatterGatherStats.class),
+        false,
+        null);
+
+    stats.recordQuota(1000);
+    stats.recordRequestUsage(5);
+
+    for (MetricData metricData: inMemoryMetricReader.collectAllMetrics()) {
+      assertFalse(
+          metricData.getName().endsWith(".read_quota") || metricData.getName().endsWith(".read_quota_key_count"),
+          "Read quota metrics should only be emitted from the single get stats: " + metricData.getName());
+    }
+    // Tehuti is unchanged: the quota sensor is registered for every request type, request_usage only for single get
+    assertEquals(
+        metricsRepository.getMetric("." + storeName + "--multiget_read_quota_per_router.Gauge").value(),
+        1000.0);
+    assertNull(metricsRepository.getMetric("." + storeName + "--multiget_request_usage.Total"));
+  }
 }

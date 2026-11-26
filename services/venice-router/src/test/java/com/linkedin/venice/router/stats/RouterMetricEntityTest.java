@@ -131,6 +131,22 @@ public class RouterMetricEntityTest {
             MetricUnit.MILLISECOND,
             "Retry delay time",
             setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)));
+    map.put(
+        RouterMetricEntity.READ_QUOTA,
+        new MetricEntityExpectation(
+            "read_quota",
+            MetricType.GAUGE,
+            MetricUnit.NUMBER,
+            "Read quota of the store allotted to this router, in keys per second",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
+    map.put(
+        RouterMetricEntity.READ_QUOTA_KEY_COUNT,
+        new MetricEntityExpectation(
+            "read_quota_key_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of keys in incoming requests of all types, to compare against the read quota",
+            setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)));
     return map;
   }
 

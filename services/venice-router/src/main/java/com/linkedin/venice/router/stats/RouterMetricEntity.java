@@ -114,6 +114,23 @@ public enum RouterMetricEntity implements ModuleMetricEntityInterface {
   RETRY_DELAY(
       MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND, "Retry delay time",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
+  ),
+  /**
+   * Read quota of the store allotted to this router, in keys per second. It covers requests of all types, so it has
+   * no request method dimension.
+   */
+  READ_QUOTA(
+      MetricType.GAUGE, MetricUnit.NUMBER, "Read quota of the store allotted to this router, in keys per second",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+  ),
+  /**
+   * Count of keys in incoming requests of all types, to compare against {@link #READ_QUOTA}. It is recorded when the
+   * request is parsed, before any throttling, and includes requests that fail afterwards.
+   */
+  READ_QUOTA_KEY_COUNT(
+      MetricType.COUNTER, MetricUnit.NUMBER,
+      "Count of keys in incoming requests of all types, to compare against the read quota",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   );
 
   private final MetricEntity metricEntity;
