@@ -211,6 +211,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REPLICATION_MODE:
           assertEquals(dimension.getDimensionName(format), "venice.replication.mode");
           break;
+        case VENICE_PRODUCER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.producer.operation");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -420,6 +423,9 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REPLICATION_MODE:
           assertEquals(dimension.getDimensionName(format), "venice.replication.mode");
           break;
+        case VENICE_PRODUCER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "venice.producer.operation");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -628,6 +634,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_REPLICATION_MODE:
           assertEquals(dimension.getDimensionName(format), "Venice.Replication.Mode");
+          break;
+        case VENICE_PRODUCER_OPERATION:
+          assertEquals(dimension.getDimensionName(format), "Venice.Producer.Operation");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

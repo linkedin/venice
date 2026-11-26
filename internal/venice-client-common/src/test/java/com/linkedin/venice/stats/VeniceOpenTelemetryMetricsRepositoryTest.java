@@ -722,6 +722,19 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     assertNotNull(metricsRepository.getSdkMeterProvider(), "Parent should still be functional after child close");
   }
 
+  @Test
+  public void testHasMetricPrefix() {
+    assertTrue(metricsRepository.hasMetricPrefix(TEST_PREFIX));
+    assertFalse(metricsRepository.hasMetricPrefix("other_prefix"));
+    assertFalse(metricsRepository.hasMetricPrefix(null));
+
+    // A clone emits under its new prefix while keeping the parent's config
+    VeniceOpenTelemetryMetricsRepository childRepository = metricsRepository.cloneWithNewMetricPrefix("child_prefix");
+    assertTrue(childRepository.hasMetricPrefix("child_prefix"));
+    assertFalse(childRepository.hasMetricPrefix(TEST_PREFIX));
+    childRepository.close();
+  }
+
   private MetricEntity createAsyncCounterMetricEntity(String metricName) {
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VeniceMetricsDimensions.VENICE_STORE_NAME);

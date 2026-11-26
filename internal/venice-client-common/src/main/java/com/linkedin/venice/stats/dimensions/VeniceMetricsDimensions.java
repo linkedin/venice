@@ -207,7 +207,10 @@ public enum VeniceMetricsDimensions {
   VENICE_STORE_WRITE_TYPE("venice.store.write_type"),
 
   /** {@link VeniceReplicationMode} Store-version replication mode: non_active_active or active_active. */
-  VENICE_REPLICATION_MODE("venice.replication.mode");
+  VENICE_REPLICATION_MODE("venice.replication.mode"),
+
+  /** {@link VeniceProducerOperation} Online producer write operation type (put, delete, update) */
+  VENICE_PRODUCER_OPERATION("venice.producer.operation");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
