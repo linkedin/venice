@@ -241,7 +241,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           zkServer.getAddress(),
           false,
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
-          VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
+          VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
+          true);
       d2Clients.put(parentRegionName + ".parent", D2TestUtils.getAndStartD2Client(zkServer.getAddress()));
       VeniceControllerCreateOptions parentControllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServer, parentPubSubBrokerWrapper, d2Clients)
