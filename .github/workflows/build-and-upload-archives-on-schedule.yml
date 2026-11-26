@@ -15,6 +15,11 @@ on:
           - minor
           - major
 
+concurrency:
+  group: venice-publication
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   make-tag:
     if: github.repository == 'linkedin/venice' && github.ref == 'refs/heads/main'
