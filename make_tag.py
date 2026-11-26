@@ -4,6 +4,7 @@
 # It will parse the output of `git tag` to identify the correct next version, then it will
 # create the tag and push it to main
 
+import os
 import sys
 import requests
 from subprocess import check_output
@@ -93,7 +94,13 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
     tag_success = call(['git', 'tag', '-a', '-m', tag_message, version])
     if tag_success != 0:
         sys.exit("Could not tag")
-    call(['git', 'push', remote, version])
+    if call(['git', 'push', remote, f'refs/tags/{version}']) != 0:
+        sys.exit(f'Could not push tag {version}')
+
+    github_output = os.environ.get('GITHUB_OUTPUT')
+    if github_output:
+        with open(github_output, 'a', encoding='utf-8') as output:
+            output.write(f'release_tag={version}\n')
 
 
 def get_tags(remote):

@@ -4,11 +4,28 @@ on:
   schedule:
     - cron: "30 20 * * 1-5"
   workflow_dispatch:
+    inputs:
+      version_bump:
+        description: Version bump
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: venice-publication
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   make-tag:
-    if: github.repository == 'linkedin/venice'
+    if: github.repository == 'linkedin/venice' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
     steps:
       - name: Checkout the code
         uses: actions/checkout@v6
@@ -16,10 +33,29 @@ jobs:
           fetch-depth: 0 # all history for all branches and tags
 
       - name: Cut release tag to build and upload Venice Release archive
+        id: tag
+        env:
+          VERSION_BUMP: ${{ inputs.version_bump || 'patch' }}
         run: |
-          ./make_tag.py --no-verify --github-actor '${GITHUB_ACTOR}'
+          # GitHub Actions expression comparisons ignore case.
+          if [ "${GITHUB_REF:-}" != 'refs/heads/main' ]; then
+            echo "::error::Release tags can only be created from refs/heads/main."
+            exit 1
+          fi
+          case "$VERSION_BUMP" in
+            patch) bump_args=() ;;
+            minor) bump_args=(--bump-minor) ;;
+            major) bump_args=(--bump-major) ;;
+            *)
+              echo "::error::Unsupported version bump. Choose patch, minor, or major."
+              exit 1
+              ;;
+          esac
+          ./make_tag.py --no-verify --github-actor "$GITHUB_ACTOR" "${bump_args[@]}"
 
   build-and-publish:
     needs: make-tag
     uses: ./.github/workflows/build-and-upload-archives.yml
+    with:
+      release_tag: ${{ needs.make-tag.outputs.release_tag }}
     secrets: inherit
