@@ -3,6 +3,10 @@ name: Build and Upload Archives On Workflow Call
 # Run this workflow on workflow_call
 on:
   workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        required: true
 
 jobs:
   build:
@@ -17,6 +21,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
+          ref: refs/tags/${{ inputs.release_tag }}
           fetch-depth: 0 # all history for all branches and tags
 
       - name: Set up JDK 11
@@ -24,12 +29,11 @@ jobs:
         with:
           distribution: 'microsoft'
           java-version: '11'
-      - name: Get Latest Tag
-        run: echo "GIT_TAG=`echo $(git describe --tags --abbrev=0 main)`" >> $GITHUB_ENV
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
       - name: Upload archive
         env:
           JFROG_USERNAME: ${{ secrets.JFROG_USERNAME }}
           JFROG_API_KEY: ${{ secrets.JFROG_API_KEY }}
-        run: ./gradlew -Pversion=${{  env.GIT_TAG }} publishAllPublicationsToLinkedInJFrogRepository
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: ./gradlew "-Pversion=$RELEASE_TAG" publishAllPublicationsToLinkedInJFrogRepository

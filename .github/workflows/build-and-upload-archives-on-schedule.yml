@@ -24,6 +24,8 @@ jobs:
   make-tag:
     if: github.repository == 'linkedin/venice' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
     steps:
       - name: Checkout the code
         uses: actions/checkout@v6
@@ -31,6 +33,7 @@ jobs:
           fetch-depth: 0 # all history for all branches and tags
 
       - name: Cut release tag to build and upload Venice Release archive
+        id: tag
         env:
           VERSION_BUMP: ${{ inputs.version_bump || 'patch' }}
         run: |
@@ -48,4 +51,6 @@ jobs:
   build-and-publish:
     needs: make-tag
     uses: ./.github/workflows/build-and-upload-archives.yml
+    with:
+      release_tag: ${{ needs.make-tag.outputs.release_tag }}
     secrets: inherit
