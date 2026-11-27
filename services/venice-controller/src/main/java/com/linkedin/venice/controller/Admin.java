@@ -573,7 +573,11 @@ public interface Admin extends AutoCloseable, Closeable {
       List<String> toBeStoppedInstances,
       boolean isSSLEnabled);
 
-  boolean isRTTopicDeletionPermittedByAllControllers(String clusterName, String rtTopicName);
+  /**
+   * A known cluster uses the normal unused-RT checks. An absent cluster requires graveyard-backed ownership,
+   * authoritative regional metadata absence, and no remaining RT references in any configured child region.
+   */
+  boolean isRTTopicDeletionPermittedByAllControllers(Optional<String> clusterName, String rtTopicName);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be

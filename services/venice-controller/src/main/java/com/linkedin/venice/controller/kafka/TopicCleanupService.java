@@ -58,14 +58,14 @@ import org.apache.logging.log4j.Logger;
  * controller of the cluster owning the store that the topic to be deleted belongs to.
  *
  *
- * Here is how {@link TopicCleanupService} works to clean up deprecated topics [topic with low retention policy]:
+ * Here is how {@link TopicCleanupService} works to clean up deprecated topics and orphan real-time topics:
  * 1. This service is only running in leader controller of controller cluster, which means there should be only one
  * topic cleanup service running among all the Venice clusters (not strictly considering leader handover.);
  * 2. This service is running in a infinite loop, which will execute the following operations:
  *    2.1 For every round, check whether current controller is the leader controller of controller parent.
  *        If yes, continue; Otherwise, sleep for a pre-configured period and check again;
  *    2.2 Collect all the topics and categorize them based on store names;
- *    2.3 For deprecated real-time topic, will remove it right away;
+ *    2.3 Mark orphan real-time topics with deprecated retention; delete topics observed with deprecated retention;
  *    2.4 For deprecated version topics, will keep pre-configured minimal unused topics to avoid MM crash and remove others;
  *        version topics wait for the configured scan delay and remain eligible until their absence is confirmed.
  */
@@ -236,12 +236,20 @@ public class TopicCleanupService extends AbstractVeniceService {
     */
   void cleanupVeniceTopics() {
     for (TopicManager topicManager: getTopicManagersForCleanup()) {
-      cleanupVeniceTopics(topicManager);
+      try {
+        cleanupVeniceTopics(topicManager);
+      } catch (RuntimeException e) {
+        if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+          throw e;
+        }
+        LOGGER.error("Failed to clean up topics in pubsub cluster {}", topicManager.getPubSubClusterAddress(), e);
+        topicCleanupServiceStats.recordTopicDeletionError();
+      }
     }
   }
 
   /**
-   * The topic managers whose Kafka clusters should be scanned for deprecated topics. A parent controller
+   * The topic managers whose Kafka clusters should be scanned for deprecated topics and orphan real-time topics. A parent controller
    * truncates topics across every parent fabric (see {@code VeniceHelixAdmin#truncateKafkaTopicInParentFabrics}),
    * so cleanup must also run against each parent fabric's Kafka cluster; otherwise topics truncated in the
    * non-default fabrics would never be deleted. Every other deployment cleans up its single default cluster.
@@ -272,7 +280,7 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   void cleanupVeniceTopics(TopicManager topicManager) {
     PriorityQueue<PubSubTopic> allTopics = new PriorityQueue<>(topicPriorityComparator);
-    populateDeprecatedTopicQueue(allTopics, topicManager);
+    Map<PubSubTopic, Long> topicRetentions = populateDeprecatedTopicQueue(allTopics, topicManager);
     topicCleanupServiceStats.recordDeletableTopicsCount(allTopics.size());
     long refreshTime = System.currentTimeMillis();
     // Prevent failing or delayed topics from starving other topics across queue refreshes.
@@ -283,31 +291,45 @@ public class TopicCleanupService extends AbstractVeniceService {
       if (!attemptedTopics.add(topic)) {
         continue;
       }
-      String storeName = topic.getStoreName();
-      String clusterDiscovered;
       try {
-        clusterDiscovered = admin.discoverCluster(storeName);
-      } catch (VeniceNoStoreException e) {
-        LOGGER.warn(
-            "Expected store: {} not found corresponding to topic: {} in Venice. Will delete the topic without running any safety checks. Error: {}",
-            storeName,
+        Optional<String> clusterDiscovered;
+        try {
+          clusterDiscovered = Optional.of(admin.discoverCluster(topic.getStoreName()));
+        } catch (VeniceNoStoreException e) {
+          if (!topic.isRealTime()) {
+            LOGGER.warn(
+                "Store {} not found for non-RT topic {}; deleting the topic. Error: {}",
+                topic.getStoreName(),
+                topic.getName(),
+                e.toString());
+            deleteTopic(topic, topicManager);
+            continue;
+          }
+          clusterDiscovered = Optional.empty();
+        }
+        if (!topic.isRealTime() || ((clusterDiscovered.isPresent()
+            || admin.isTopicTruncatedBasedOnRetention(topic.getName(), topicRetentions.get(topic)))
+            && admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, topic.getName()))) {
+          deleteTopic(topic, topicManager);
+        } else {
+          LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
+        }
+      } catch (RuntimeException e) {
+        if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+          throw e;
+        }
+        LOGGER.error(
+            "Failed to establish deletion eligibility for topic {} in pubsub cluster {}",
             topic.getName(),
-            e.toString());
-        deleteTopic(topic, topicManager);
-        continue;
-      }
-
-      if (!topic.isRealTime() || admin.isRTTopicDeletionPermittedByAllControllers(clusterDiscovered, topic.getName())) {
-        // delete if it is a VT topic or an RT topic eligible for deletion by the above condition
-        deleteTopic(topic, topicManager);
-      } else {
-        LOGGER.warn("Topic deletion for topic: {} is delayed.", topic.getName());
+            topicManager.getPubSubClusterAddress(),
+            e);
+        topicCleanupServiceStats.recordTopicDeletionError();
       }
 
       // Refresh during long version-topic cleanup passes so newly eligible RT topics get priority.
       if (!topic.isRealTime() && System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
         allTopics.clear();
-        populateDeprecatedTopicQueue(allTopics, topicManager);
+        topicRetentions = populateDeprecatedTopicQueue(allTopics, topicManager);
         allTopics.removeIf(attemptedTopics::contains);
         if (allTopics.isEmpty()) {
           break;
@@ -328,8 +350,11 @@ public class TopicCleanupService extends AbstractVeniceService {
     }
   }
 
-  private void populateDeprecatedTopicQueue(PriorityQueue<PubSubTopic> topics, TopicManager topicManager) {
-    Map<PubSubTopic, Long> topicsWithRetention = topicManager.getAllTopicRetentions();
+  private Map<PubSubTopic, Long> populateDeprecatedTopicQueue(
+      PriorityQueue<PubSubTopic> topics,
+      TopicManager topicManager) {
+    Set<PubSubTopic> excludedRealTimeTopics = new HashSet<>();
+    Map<PubSubTopic, Long> topicsWithRetention = new HashMap<>(topicManager.getAllTopicRetentions());
     String pubSubClusterAddress = topicManager.getPubSubClusterAddress();
     Map<String, Integer> clusterCountdowns = versionTopicDeletionCountdowns.get(pubSubClusterAddress);
     if (clusterCountdowns != null) {
@@ -344,14 +369,34 @@ public class TopicCleanupService extends AbstractVeniceService {
           .stream()
           .filter(topic -> Version.isRealTimeTopic(topic.getName()))
           .collect(Collectors.toList());
-
       for (PubSubTopic realTimeTopic: realTimeTopics) {
-        if (topicRetentions.containsKey(realTimeTopic)) {
-          if (admin.isTopicTruncatedBasedOnRetention(realTimeTopic.getName(), topicRetentions.get(realTimeTopic))) {
+        long retention = topicRetentions.remove(realTimeTopic);
+        try {
+          if (admin.isTopicTruncatedBasedOnRetention(realTimeTopic.getName(), retention)) {
             topics.offer(realTimeTopic);
             minNumOfUnusedVersionTopicsOverride = 0;
+          } else if (admin.isRTTopicDeletionPermittedByAllControllers(Optional.empty(), realTimeTopic.getName())) {
+            excludedRealTimeTopics.add(realTimeTopic);
+            long deprecatedRetentionMs = multiClusterConfigs.getDeprecatedRealTimeTopicRetentionMs();
+            topicManager.updateTopicRetention(realTimeTopic, deprecatedRetentionMs);
+            LOGGER.info(
+                "Marked orphan real-time topic: {} for store: {} in pubsub cluster: {} with retention: {} ms after all-controller safety checks",
+                realTimeTopic.getName(),
+                storeName,
+                pubSubClusterAddress,
+                deprecatedRetentionMs);
           }
-          topicRetentions.remove(realTimeTopic);
+        } catch (RuntimeException e) {
+          if (ExceptionUtils.recursiveClassEquals(e, InterruptedException.class)) {
+            throw e;
+          }
+          excludedRealTimeTopics.add(realTimeTopic);
+          LOGGER.error(
+              "Failed to check or mark orphan RT topic {} in pubsub cluster {}",
+              realTimeTopic.getName(),
+              pubSubClusterAddress,
+              e);
+          topicCleanupServiceStats.recordTopicDeletionError();
         }
       }
       List<PubSubTopic> oldTopicsToDelete = extractVersionTopicsToCleanup(
@@ -368,13 +413,17 @@ public class TopicCleanupService extends AbstractVeniceService {
     // Check if there are dangling topics to be deleted.
     if (sourceOfTruthPubSubAdminAdapter != null
         && System.currentTimeMillis() - danglingTopicCleanupIntervalMs > recentDanglingTopicCleanupTime) {
-      List<PubSubTopic> pubSubTopics = collectDanglingTopics(topicsWithRetention);
+      // Retention marking and deletion eligibility use separate inventory scans.
+      Map<PubSubTopic, Long> danglingCandidates = new HashMap<>(topicsWithRetention);
+      excludedRealTimeTopics.forEach(danglingCandidates::remove);
+      List<PubSubTopic> pubSubTopics = collectDanglingTopics(danglingCandidates);
       if (!pubSubTopics.isEmpty()) {
         LOGGER.info("Find dangling topics: {} not present among all pubsub systems.", pubSubTopics);
       }
       recentDanglingTopicCleanupTime = System.currentTimeMillis();
       topics.addAll(pubSubTopics);
     }
+    return topicsWithRetention;
   }
 
   /**
@@ -388,7 +437,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       PubSubTopic topic = entry.getKey();
       long retention = entry.getValue();
       String storeName = topic.getStoreName();
-      if (storeName.isEmpty()) {
+      if (storeName.isEmpty() || PubSubTopicType.isAdminTopic(topic.getName())) {
         // TODO: check whether Venice needs to cleanup topics not belonging to Venice.
         continue;
       }
