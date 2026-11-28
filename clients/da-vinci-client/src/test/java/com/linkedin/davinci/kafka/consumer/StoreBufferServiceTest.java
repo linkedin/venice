@@ -13,6 +13,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
@@ -86,6 +87,70 @@ public class StoreBufferServiceTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricRepo).sensor(anyString(), any());
     mockedStats = mock(StoreBufferServiceStats.class);
+  }
+
+  @DataProvider
+  public Object[][] checkpointQueueRoutes() {
+    return new Object[][] { { "test_store_rt", false }, { "test_store_v1_sr", true } };
+  }
+
+  @Test(dataProvider = "checkpointQueueRoutes")
+  public void testCheckpointCommandIsOrderedAndTracksExecutingWork(String sourceTopic, boolean typed) throws Exception {
+    StoreBufferService service = new StoreBufferService(2, 100000, 1000, true, mockedStats, null);
+    StoreIngestionTask task = mock(StoreIngestionTask.class);
+    PubSubTopicPartition source = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(sourceTopic), 0);
+    DefaultPubSubMessage record = new ImmutablePubSubMessage(key, value, source, mockPosition, 0, 0);
+    PartitionTracker snapshot = mock(PartitionTracker.class);
+    CountDownLatch executing = new CountDownLatch(1);
+    CountDownLatch finish = new CountDownLatch(1);
+    org.mockito.stubbing.Answer<Void> persist = invocation -> {
+      executing.countDown();
+      Assert.assertTrue(finish.await(5, SECONDS));
+      return null;
+    };
+    CheckpointProgress.Snapshot checkpoint = mock(CheckpointProgress.Snapshot.class);
+    if (typed) {
+      doAnswer(persist).when(task)
+          .updateAndSyncOffsetFromSnapshot(
+              org.mockito.ArgumentMatchers.eq(snapshot),
+              org.mockito.ArgumentMatchers.eq(source),
+              any(),
+              org.mockito.ArgumentMatchers.eq(checkpoint));
+    } else {
+      doAnswer(persist).when(task).updateAndSyncOffsetFromSnapshot(snapshot, source);
+    }
+    service.putConsumerRecord(record, task, null, 0, "broker", 0);
+    CompletableFuture<Void> first = typed
+        ? service.execSyncOffsetFromSnapshotAsync(
+            source,
+            snapshot,
+            CompletableFuture.completedFuture(null),
+            task,
+            checkpoint)
+        : service.execSyncOffsetFromSnapshotAsync(source, snapshot, CompletableFuture.completedFuture(null), task);
+    Assert.assertFalse(first.isDone());
+    service.start();
+    try {
+      Assert.assertTrue(executing.await(5, SECONDS));
+      Assert.assertFalse(first.isDone(), "A dequeued, executing checkpoint must still be awaitable");
+      finish.countDown();
+      first.get(5, SECONDS);
+      org.mockito.InOrder order = inOrder(task);
+      order.verify(task).processConsumerRecord(record, null, 0, "broker", 0);
+      if (typed) {
+        order.verify(task)
+            .updateAndSyncOffsetFromSnapshot(
+                org.mockito.ArgumentMatchers.eq(snapshot),
+                org.mockito.ArgumentMatchers.eq(source),
+                any(),
+                org.mockito.ArgumentMatchers.eq(checkpoint));
+      } else {
+        order.verify(task).updateAndSyncOffsetFromSnapshot(snapshot, source);
+      }
+    } finally {
+      finish.countDown();
+      service.stop();
+    }
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
